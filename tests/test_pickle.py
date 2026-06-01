@@ -47,9 +47,9 @@ def test_pickle_context_preserves_max_connections(server_url):
     with Context.from_any_uri(server_url, api_key="secret", max_connections=3)[
         0
     ] as context:
-        assert context._concurrent_request_semaphore._value == 3
+        assert context.max_connections == 3
         restored = pickle.loads(pickle.dumps(context))
-        assert restored._concurrent_request_semaphore._value == 3
+        assert restored.max_connections == 3
 
 
 @pytest.mark.parametrize("structure_clients", ["numpy", "dask"])

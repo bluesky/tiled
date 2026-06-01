@@ -15,7 +15,7 @@ from tiled.adapters.array import ArrayAdapter
 from tiled.adapters.dataframe import DataFrameAdapter
 from tiled.adapters.mapping import MapAdapter
 from tiled.client import Context, from_context, from_profile, record_history
-from tiled.client.logger import hide_logs
+from tiled.client.logger import hide_logs, show_logs
 from tiled.client.utils import retry_context
 from tiled.profiles import load_profiles, paths
 from tiled.queries import Key
@@ -35,7 +35,7 @@ def test_configurable_timeout():
 def test_configurable_max_connections():
     "max_connections is reflected in the semaphore on the Context."
     with Context.from_app(build_app(tree), max_connections=3) as context:
-        assert context._concurrent_request_semaphore._value == 3
+        assert context.max_connections == 3
 
 
 def test_client_version_check(caplog):
@@ -180,41 +180,43 @@ def test_jump_down_tree():
     assert len(h.requests) == 5
 
 
-def test_hide_logs_does_not_suppress_third_party_stamina(caplog):
-    "Calling hide_logs() must not suppress retry warnings from other libraries' stamina usage."
-    hide_logs()
+def test_no_stamina_retry_scheduled_messages(caplog):
+    """stamina's default 'stamina.retry_scheduled' WARNING must never appear.
 
-    # Simulate a third-party library retrying via stamina directly.
-    # Re-enable stamina for this test (conftest disables it globally for speed).
+    Tiled removes the default stamina hook so that no global retry noise is emitted,
+    regardless of show_logs()/hide_logs() state.
+    """
     stamina.set_active(True)
     try:
         n = 0
-        with caplog.at_level(logging.WARNING, logger="stamina"):
+        with caplog.at_level(logging.DEBUG, logger="stamina"):
             for attempt in stamina.retry_context(on=Exception, attempts=2, timeout=10):
                 with attempt:
                     n += 1
                     if n < 2:
-                        raise ValueError("third-party transient error")
+                        raise ValueError("transient error")
 
-        # The stamina logger should still have emitted its own WARNING for the retry.
         stamina_messages = [r for r in caplog.records if r.name == "stamina"]
         assert (
-            len(stamina_messages) >= 1
-        ), "Third-party stamina retries should still be logged after hide_logs()"
+            len(stamina_messages) == 0
+        ), "stamina's default hook should be disabled — no 'stamina.retry_scheduled' messages"
     finally:
         stamina.set_active(False)
 
 
-def test_tiled_retry_logging_follows_show_hide(caplog):
-    "Tiled retries log to tiled.client at DEBUG; hidden by default, visible after show_logs()."
-    hide_logs()
+@pytest.mark.parametrize("logs_enabled", [True, False], ids=["show_logs", "hide_logs"])
+def test_tiled_retry_logging(caplog, logs_enabled):
+    """Tiled retry messages appear on tiled.client after show_logs(), silent otherwise."""
+    if logs_enabled:
+        show_logs()
+    else:
+        hide_logs()
 
-    # Re-enable stamina for this test (conftest disables it globally for speed).
     stamina.set_active(True)
     try:
-        # Force a single retry inside tiled's retry_context.
         n = 0
-        with caplog.at_level(logging.DEBUG, logger="tiled.client"):
+        # Capture at DEBUG globally to detect any leakage in the hide_logs case.
+        with caplog.at_level(logging.DEBUG):
             for attempt in retry_context():
                 with attempt:
                     n += 1
@@ -222,12 +224,14 @@ def test_tiled_retry_logging_follows_show_hide(caplog):
                         raise httpx.ReadTimeout("simulated timeout")
 
         tiled_messages = [r for r in caplog.records if r.name == "tiled.client"]
-        assert (
-            len(tiled_messages) >= 1
-        ), "Tiled retries should emit DEBUG messages on tiled.client logger"
-        assert all(r.levelno == logging.DEBUG for r in tiled_messages)
+        if logs_enabled:
+            assert len(tiled_messages) >= 1
+            assert all(r.levelno == logging.DEBUG for r in tiled_messages)
+        else:
+            assert len(tiled_messages) == 0
     finally:
         stamina.set_active(False)
+        hide_logs()
 
 
 class TrackingSemaphore:
@@ -306,3 +310,440 @@ def test_semaphore_limits_concurrent_partition_fetches():
 
     assert sem.peak <= MAX_CONNECTIONS
     assert sem.peak > 0
+
+
+# --- Progress bar tests ---
+
+
+def test_tracking_progress_sets_and_clears_state():
+    """tracking_progress sets _progress_state during the context and clears it after."""
+    from unittest.mock import patch
+
+    tree = MapAdapter({"data": ArrayAdapter.from_array(numpy.zeros((10,)))})
+    app = build_app(tree)
+
+    with Context.from_app(app, show_progress=True) as context:
+        with patch("tiled.client.utils.is_interactive", return_value=True):
+            with context.tracking_progress(total=5):
+                assert context.progress_state is not None
+                state = context.progress_state
+                assert state._task_id is not None
+
+        # After exit, state is cleared
+        assert context.progress_state is None
+
+
+def test_tracking_progress_noop_when_show_progress_false():
+    """tracking_progress is a no-op when show_progress is False."""
+    tree = MapAdapter({"data": ArrayAdapter.from_array(numpy.zeros((10,)))})
+    app = build_app(tree)
+
+    with Context.from_app(app, show_progress=False) as context:
+        with context.tracking_progress(total=10):
+            assert context.progress_state is None
+
+
+def test_tracking_progress_nesting_is_noop():
+    """Inner tracking_progress defers to outer (no nested bars)."""
+    from unittest.mock import patch
+
+    tree = MapAdapter({"data": ArrayAdapter.from_array(numpy.zeros((10,)))})
+    app = build_app(tree)
+
+    with Context.from_app(app, show_progress=True) as context:
+        with patch("tiled.client.utils.is_interactive", return_value=True):
+            with context.tracking_progress(total=10):
+                outer_state = context.progress_state
+                assert outer_state is not None
+
+                # Inner tracking_progress should NOT overwrite
+                with context.tracking_progress(total=5):
+                    assert context.progress_state is outer_state
+
+            # After outer exits, state is cleared
+            assert context.progress_state is None
+
+
+def test_show_progress_from_env_var(monkeypatch):
+    """TILED_SHOW_PROGRESS env var controls context.show_progress."""
+    tree_local = MapAdapter({})
+    app = build_app(tree_local)
+
+    # Default (no env var) is True
+    monkeypatch.delenv("TILED_SHOW_PROGRESS", raising=False)
+    with Context.from_app(app) as context:
+        assert context.show_progress is True
+
+    monkeypatch.setenv("TILED_SHOW_PROGRESS", "1")
+    with Context.from_app(app) as context:
+        assert context.show_progress is True
+
+    monkeypatch.setenv("TILED_SHOW_PROGRESS", "0")
+    with Context.from_app(app) as context:
+        assert context.show_progress is False
+
+    monkeypatch.setenv("TILED_SHOW_PROGRESS", "false")
+    with Context.from_app(app) as context:
+        assert context.show_progress is False
+
+    monkeypatch.setenv("TILED_SHOW_PROGRESS", "no")
+    with Context.from_app(app) as context:
+        assert context.show_progress is False
+
+
+def test_show_progress_explicit_overrides_env(monkeypatch):
+    """Explicit show_progress=True/False overrides the env var."""
+    monkeypatch.setenv("TILED_SHOW_PROGRESS", "0")
+    tree_local = MapAdapter({})
+    app = build_app(tree_local)
+    with Context.from_app(app, show_progress=True) as context:
+        assert context.show_progress is True
+
+    monkeypatch.setenv("TILED_SHOW_PROGRESS", "1")
+    with Context.from_app(app, show_progress=False) as context:
+        assert context.show_progress is False
+
+
+# --- Retry indicator tests ---
+
+
+def test_progress_state_show_hide_retrying():
+    """ProgressState.show_retrying/hide_retrying toggle state and update Live."""
+    from unittest.mock import patch
+
+    tree = MapAdapter({"data": ArrayAdapter.from_array(numpy.zeros((10,)))})
+    app = build_app(tree)
+
+    with Context.from_app(app, show_progress=True) as context:
+        with patch("tiled.client.utils.is_interactive", return_value=True):
+            with context.tracking_progress(total=5) as state:
+                assert state._retrying is False
+
+                # Show retrying
+                state.show_retrying()
+                assert state._retrying is True
+
+                # Calling again is a no-op
+                state.show_retrying()
+                assert state._retrying is True
+
+                # Hide retrying
+                state.hide_retrying()
+                assert state._retrying is False
+
+                # Calling hide again is a no-op
+                state.hide_retrying()
+                assert state._retrying is False
+
+
+def test_standalone_retry_indicator_show_hide():
+    """StandaloneRetryIndicator: plain text on non-TTY, Live spinner on TTY."""
+    import sys
+    from io import StringIO
+    from unittest.mock import MagicMock, patch
+
+    from tiled.client.utils import StandaloneRetryIndicator
+
+    # Non-TTY: plain text written once, reset() is a no-op
+    indicator = StandaloneRetryIndicator()
+    assert indicator._showing is False
+
+    fake_stderr = StringIO()
+    with patch.object(sys, "stderr", fake_stderr):
+        indicator.show()
+        assert indicator._showing is True
+        assert "Retrying" in fake_stderr.getvalue()
+
+        # Second show() is a no-op
+        fake_stderr.truncate(0)
+        fake_stderr.seek(0)
+        indicator.show()
+        assert fake_stderr.getvalue() == ""
+
+        indicator.reset()
+        assert indicator._showing is False
+
+        # reset() again is a no-op
+        indicator.reset()
+        assert indicator._showing is False
+
+    # TTY: show() starts a Live spinner; reset() stops it
+    mock_live = MagicMock()
+    indicator2 = StandaloneRetryIndicator()
+    with patch("rich.live.Live", return_value=mock_live):
+        tty_stderr = MagicMock()
+        tty_stderr.isatty = lambda: True
+        with patch.object(sys, "stderr", tty_stderr):
+            indicator2.show()
+            assert indicator2._live is mock_live
+            mock_live.start.assert_called_once()
+
+            # Second show() is a no-op
+            indicator2.show()
+            mock_live.start.assert_called_once()
+
+            indicator2.reset()
+            assert indicator2._live is None
+            mock_live.stop.assert_called_once()
+
+            # reset() again is a no-op
+            indicator2.reset()
+            mock_live.stop.assert_called_once()
+
+
+@pytest.mark.parametrize("show_progress", [True, False])
+def test_signal_retry_uses_standalone_indicator(show_progress):
+    """signal_retry creates a standalone indicator regardless of show_progress."""
+    import sys
+    from io import StringIO
+    from unittest.mock import patch
+
+    tree = MapAdapter({"data": ArrayAdapter.from_array(numpy.zeros((10,)))})
+    app = build_app(tree)
+
+    with Context.from_app(app, show_progress=show_progress) as context:
+        assert context.retry_indicator is None
+
+        fake_stderr = StringIO()
+        with patch.object(sys, "stderr", fake_stderr):
+            context.signal_retry()
+            assert context.retry_indicator is not None
+            assert context.retry_indicator._showing is True
+            assert "Retrying" in fake_stderr.getvalue()
+
+            context.signal_retry_resolved()
+            assert context.retry_indicator is None
+    """retry_context() with no context still shows the standalone retry indicator."""
+    import sys
+    from io import StringIO
+    from unittest.mock import patch
+
+    import stamina
+
+    from tiled.client.utils import retry_context
+
+    fake_stderr = StringIO()
+    with patch.object(sys, "stderr", fake_stderr):
+        try:
+            stamina.set_active(True)
+            call_count = 0
+            for attempt in retry_context():  # no context
+                with attempt:
+                    call_count += 1
+                    if call_count < 3:
+                        raise httpx.ConnectError("test")
+            assert "Retrying" in fake_stderr.getvalue()
+        finally:
+            stamina.set_active(False)
+
+
+def test_signal_retry_uses_progress_state_when_available():
+    """signal_retry calls show_retrying on _progress_state if set."""
+    from unittest.mock import MagicMock
+
+    tree = MapAdapter({"data": ArrayAdapter.from_array(numpy.zeros((10,)))})
+    app = build_app(tree)
+
+    with Context.from_app(app, show_progress=True) as context:
+        mock_state = MagicMock()
+        context._progress_state = mock_state
+
+        context.signal_retry()
+        mock_state.show_retrying.assert_called_once()
+
+        context.signal_retry_resolved()
+        mock_state.hide_retrying.assert_called_once()
+
+        context._progress_state = None
+
+
+def test_retry_context_signals_retry_indicator():
+    """retry_context with a context signals the retry indicator on retry."""
+    from unittest.mock import patch
+
+    import stamina
+
+    from tiled.client.utils import retry_context
+
+    tree = MapAdapter({"data": ArrayAdapter.from_array(numpy.zeros((10,)))})
+    app = build_app(tree)
+
+    with Context.from_app(app, show_progress=True) as context:
+        with patch.object(context, "signal_retry") as mock_signal:
+            try:
+                stamina.set_active(True)
+                call_count = 0
+
+                for attempt in retry_context(context):
+                    with attempt:
+                        call_count += 1
+                        if call_count < 3:
+                            raise httpx.ConnectError("test")
+                # signal_retry should have been called for attempts 2 and 3
+                # (retry scheduled after attempt 1 and 2 fail)
+                assert mock_signal.call_count == 2
+            finally:
+                stamina.set_active(False)
+
+
+# --- 429 Too Many Requests tests ---
+
+
+def test_keyboard_interrupt_cancels_retries():
+    """KeyboardInterrupt during inter-retry sleep propagates and cancels remaining retries."""
+    from unittest.mock import patch
+
+    import stamina
+
+    from tiled.client.utils import retry_context
+
+    attempts_made = []
+
+    def fake_sleep(_):
+        raise KeyboardInterrupt("simulated Ctrl-C")
+
+    try:
+        stamina.set_active(True)
+        with patch("time.sleep", fake_sleep):
+            try:
+                for attempt in retry_context():
+                    with attempt:
+                        attempts_made.append(attempt.num)
+                        raise httpx.ConnectError("refused")
+            except KeyboardInterrupt:
+                pass  # expected
+            else:
+                raise AssertionError("KeyboardInterrupt was not raised")
+    finally:
+        stamina.set_active(False)
+
+    # Only 1 attempt made — Ctrl-C during the sleep before attempt 2
+    assert len(attempts_made) == 1, f"Expected 1 attempt, got {len(attempts_made)}"
+
+
+def test_keyboard_interrupt_cleans_up_retry_indicator():
+    """KeyboardInterrupt cancels retries and cleans up the retry indicator."""
+    from unittest.mock import MagicMock, patch
+
+    import stamina
+
+    from tiled.client.utils import retry_context
+
+    tree = MapAdapter({"data": ArrayAdapter.from_array(numpy.zeros((10,)))})
+    app = build_app(tree)
+
+    with Context.from_app(app, show_progress=True) as context:
+        mock_state = MagicMock()
+        context._progress_state = mock_state
+
+        def fake_sleep(_):
+            raise KeyboardInterrupt("simulated Ctrl-C")
+
+        try:
+            stamina.set_active(True)
+            with patch("time.sleep", fake_sleep):
+                try:
+                    for attempt in retry_context(context):
+                        with attempt:
+                            raise httpx.ConnectError("refused")
+                except KeyboardInterrupt:
+                    pass
+        finally:
+            stamina.set_active(False)
+            context._progress_state = None
+
+        # hide_retrying should have been called on Ctrl-C
+        mock_state.hide_retrying.assert_called()
+
+
+@pytest.mark.parametrize(
+    "status_code, headers, expected",
+    [
+        (429, {"Retry-After": "2.5"}, 2.5),  # 429 with header → Retry-After float
+        (429, {}, True),  # 429 without header → default backoff
+        (403, {}, False),  # other 4xx → do not retry
+    ],
+    ids=["429-retry-after", "429-no-header", "403-no-retry"],
+)
+def test_should_retry(status_code, headers, expected):
+    """should_retry returns Retry-After float, True, or False depending on the response."""
+    from tiled.client.utils import should_retry
+
+    request = httpx.Request("GET", "http://example.com/test")
+    response = httpx.Response(status_code, headers=headers, request=request)
+    exc = httpx.HTTPStatusError("error", request=request, response=response)
+    assert should_retry(exc) == expected
+
+
+def test_handle_error_lets_429_propagate():
+    """handle_error does not convert 429 into ClientError — lets it propagate for retry."""
+    from tiled.client.utils import handle_error
+
+    request = httpx.Request("GET", "http://example.com/test")
+    response = httpx.Response(429, headers={"Retry-After": "5"}, request=request)
+    with pytest.raises(httpx.HTTPStatusError) as exc_info:
+        handle_error(response)
+    # It should be a plain HTTPStatusError, not a ClientError
+    from tiled.client.utils import ClientError
+
+    assert not isinstance(exc_info.value, ClientError)
+    assert exc_info.value.response.status_code == 429
+
+
+def test_retry_context_logs_429_retry(caplog):
+    """429 retries are logged at DEBUG on tiled.client logger."""
+    show_logs()
+    stamina.set_active(True)
+    try:
+        attempts_made = 0
+        with caplog.at_level(logging.DEBUG, logger="tiled.client"):
+            for attempt in retry_context():
+                with attempt:
+                    attempts_made += 1
+                    if attempts_made < 2:
+                        request = httpx.Request("GET", "http://example.com/data")
+                        response = httpx.Response(
+                            429,
+                            headers={"Retry-After": "0"},
+                            request=request,
+                        )
+                        raise httpx.HTTPStatusError(
+                            "Too Many Requests", request=request, response=response
+                        )
+
+        tiled_messages = [r for r in caplog.records if r.name == "tiled.client"]
+        assert len(tiled_messages) >= 1
+        assert "Retry" in tiled_messages[0].message
+    finally:
+        stamina.set_active(False)
+        hide_logs()
+
+
+def test_429_retry_with_real_server():
+    """Integration test: client retries on 429 from a mock transport."""
+    from tiled.client.utils import handle_error
+
+    call_count = {"n": 0}
+
+    class ThrottlingTransport(httpx.BaseTransport):
+        def handle_request(self, request):
+            call_count["n"] += 1
+            if call_count["n"] <= 2:
+                return httpx.Response(
+                    429,
+                    headers={"Retry-After": "0"},
+                )
+            return httpx.Response(200, json={"status": "ok"})
+
+    stamina.set_active(True)
+    try:
+        with httpx.Client(transport=ThrottlingTransport()) as client:
+            for attempt in retry_context():
+                with attempt:
+                    response = client.get("http://testserver/data")
+                    handle_error(response)
+
+        assert call_count["n"] == 3
+        assert response.json() == {"status": "ok"}
+    finally:
+        stamina.set_active(False)
