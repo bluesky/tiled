@@ -244,18 +244,18 @@ class RaggedSQLAdapter(Adapter[RaggedStructure]):
         "Read a slice of data from the ragged array."
         rows = self._tabular_adapter._read_full_table_or_partition().to_pylist()
 
-        # Each row in the table represents an awkward container; concatenate them together
+        # Each row in the table represents an awkward buffer; concatenate them together
         form = self._structure.awk_form  # awkward form should be the same for each row
-        containers = [
+        buffers = [
             {
                 key: numpy.array(row[key], dtype=typ)
                 for key, typ in form.expected_from_buffers().items()
             }
             for row in rows
         ]
-        lengths = [len(container["node0-offsets"]) - 1 for container in containers]
         awk_arrays = [
-            awkward.from_buffers(form, l, c) for l, c in zip(lengths, containers)
+            awkward.from_buffers(form, l, b)
+            for l, b in zip(self._structure.chunks[0], buffers)
         ]
 
         array = ragged.array(awkward.concatenate(awk_arrays))
@@ -263,7 +263,7 @@ class RaggedSQLAdapter(Adapter[RaggedStructure]):
         return array[slice] if slice else array
 
     def read_block(self, block: NDBlock, slice: NDSlice | None = None) -> ragged.array:
-        "Read a single block of chunks of the ragged array."
+        """Read a single block of chunks of the ragged array."""
 
         # Slice the whole array to get this block and then slice within the block
         array = self.read(slice=block.slice_from_chunks(self._structure.chunks))
@@ -274,7 +274,8 @@ class RaggedSQLAdapter(Adapter[RaggedStructure]):
         if slice:
             raise NotImplementedError
 
-        form, _, container = awkward.to_buffers(make_ragged_array(data)._impl)
+        form, _, buffers = awkward.to_buffers(make_ragged_array(data)._impl)
+        buffers = {key: val.ravel() for key, val in buffers.items()}
 
         if self.structure().awk_form != form:
             raise ValueError(
@@ -285,16 +286,14 @@ class RaggedSQLAdapter(Adapter[RaggedStructure]):
         if not self._tabular_adapter.read(fields=["chunk_index"]).empty:
             raise NotImplementedError("Overwriting of existing data is not supported")
 
-        container["chunk_index"] = 0
-        self._tabular_adapter.append_partition(
-            0, pyarrow.Table.from_pylist([container])
-        )
+        buffers["chunk_index"] = 0
+        self._tabular_adapter.append_partition(0, pyarrow.Table.from_pylist([buffers]))
 
     def write_block(self, array: ragged.array, block: NDBlock) -> None:
         """Write a single partition block"""
         raise NotImplementedError("...")
 
-    def append(self, data: ragged.array) -> RaggedStructure:
+    def append(self, data: ragged.array, axis=0) -> RaggedStructure:
         raise NotImplementedError("...")
 
     def patch(
@@ -321,18 +320,17 @@ class RaggedSQLAdapter(Adapter[RaggedStructure]):
             and extend is False
         """
         data = make_ragged_array(data)
-        form, length, container = awkward.to_buffers(data._impl)
+        form, length, buffers = awkward.to_buffers(data._impl)
+        buffers = {key: val.ravel() for key, val in buffers.items()}
 
         if self.structure().awk_form != form:
             raise ValueError(
                 "The structure of the provided data does not match the adapter"
             )
 
-        container["chunk_index"] = len(self.structure().chunks[0])
+        buffers["chunk_index"] = len(self.structure().chunks[0])
 
-        self._tabular_adapter.append_partition(
-            0, pyarrow.Table.from_pylist([container])
-        )
+        self._tabular_adapter.append_partition(0, pyarrow.Table.from_pylist([buffers]))
 
         # Update the structure to reflect the new data
         self._structure.shape = (

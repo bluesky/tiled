@@ -1,4 +1,5 @@
 import itertools
+from collections import namedtuple
 from collections.abc import Callable
 from typing import cast
 
@@ -12,6 +13,7 @@ import ragged
 
 from tests.adapters.test_sql import adapter_duckdb_one_partition  # noqa: F401
 from tiled.adapters.mapping import MapAdapter
+from tiled.adapters.ragged import RaggedSQLAdapter
 from tiled.adapters.sql import SQLAdapter
 from tiled.catalog import in_memory
 from tiled.client import Context, from_context, record_history
@@ -25,7 +27,7 @@ from tiled.serialization.ragged import (
     to_zipped_buffers,
 )
 from tiled.server.app import build_app
-from tiled.storage import SQLStorage, parse_storage, register_storage
+from tiled.storage import SQLStorage, get_storage, parse_storage, register_storage
 from tiled.structures.core import StructureFamily
 from tiled.structures.data_source import DataSource, Management
 from tiled.structures.ragged import RaggedStructure, make_ragged_array
@@ -117,9 +119,9 @@ ragged_3xNonex2xNone = ragged.array(node0)
 # └── RegularForm(size=3)
 #     └── ListOffsetForm
 #         └── NumpyForm(int64)
-node3 = ak.contents.NumpyArray(np.arange(15))
+node3 = ak.contents.NumpyArray(np.arange(30))
 node2 = ak.contents.ListOffsetArray(
-    offsets=ak.index.Index64(np.array([0, 2, 5, 5, 9, 12, 15])),
+    offsets=ak.index.Index64(np.array([0, 2, 5, 5, 9, 12, 15, 18, 20, 23, 25, 28, 30])),
     content=node3,
 )
 node1 = ak.contents.RegularArray(node2, size=3)
@@ -154,7 +156,7 @@ ragged_2xNonex3xNone_listforms = ragged.array(node0)
 #     └── RegularForm(size=3)
 #         └── RegularForm(size=2)
 #             └── NumpyForm(int64)
-node4 = ak.contents.NumpyArray(np.arange(48))
+node4 = ak.contents.NumpyArray(np.arange(72))
 node3 = ak.contents.RegularArray(content=node4, size=2)
 node2 = ak.contents.RegularArray(content=node3, size=3)
 node1 = ak.contents.ListArray(
@@ -275,6 +277,63 @@ arrays = {
 }
 
 
+chunkable_size = 30
+chunkable_arrays = [
+    ragged.array(
+        [
+            rng.random(size=chunkable_size),
+            *[rng.random(size=rng.integers(0, 10)) for _ in range(20)],
+        ],
+        dtype=np.float32,
+    ),
+    ragged.array(
+        [
+            *[rng.random(size=rng.integers(0, 10)) for _ in range(5)],
+            rng.random(size=chunkable_size),
+            *[rng.random(size=rng.integers(0, 10)) for _ in range(15)],
+        ],
+        dtype=np.float32,
+    ),
+    ragged.array(
+        [
+            *[rng.random(size=rng.integers(0, 10)) for _ in range(10)],
+            rng.random(size=chunkable_size),
+            *[rng.random(size=rng.integers(0, 10)) for _ in range(10)],
+        ],
+        dtype=np.float32,
+    ),
+    ragged.array(
+        [
+            *[rng.random(size=rng.integers(0, 10)) for _ in range(15)],
+            rng.random(size=chunkable_size),
+            *[rng.random(size=rng.integers(0, 10)) for _ in range(5)],
+        ],
+        dtype=np.float32,
+    ),
+    ragged.array(
+        [
+            *[rng.random(size=rng.integers(0, 10)) for _ in range(20)],
+            rng.random(size=chunkable_size),
+        ],
+        dtype=np.float32,
+    ),
+    ragged.array(
+        [rng.random(size=rng.integers(0, chunkable_size)).tolist() for _ in range(20)],
+        dtype=np.float32,
+    ),
+]
+
+
+@pytest.fixture(params=["duckdb_uri", "postgres_uri"], scope="function")
+def sql_storage(request):
+    storage = cast(SQLStorage, parse_storage(request.getfixturevalue(request.param)))
+    register_storage(storage)
+
+    yield cast(SQLStorage, storage)
+
+    storage.dispose()
+
+
 @pytest.fixture(scope="module")
 def module_client(tmpdir_module):
     """Module-scoped client with all test arrays pre-written under their own keys."""
@@ -292,9 +351,64 @@ def module_client(tmpdir_module):
         yield client
 
 
+@pytest.fixture(scope="module")
+def chunking_client(tmpdir_module):
+    """Module-scoped client with all partitionable arrays pre-written under their own keys."""
+    catalog = in_memory(writable_storage=str(tmpdir_module))
+    app = build_app(catalog)
+    with Context.from_app(app) as context:
+        client = from_context(context)
+        max_partition_bytes = (chunkable_size * np.float32(0).nbytes) + (
+            2 * np.int64(0).nbytes
+        )
+        for i, array in enumerate(chunkable_arrays):
+            client.write_ragged(
+                array, key=f"partitionable_{i}", max_partition_bytes=max_partition_bytes
+            )
+        yield client
+
+
+@pytest.mark.parametrize("name", arrays.keys())
+def test_awkward_form_from_structure(name):
+    array = make_ragged_array(arrays[name])
+    structure = RaggedStructure.from_array(array)
+    form, length, buffers = ak.to_buffers(array._impl)
+
+    assert structure.awk_form == form
+    assert structure.awk_length == length
+    assert set(form.expected_from_buffers().keys()) == set(buffers.keys())
+
+    for key, val in form.expected_from_buffers().items():
+        assert buffers[key].dtype == val
+
+
+@pytest.mark.parametrize("name", arrays.keys())
+def test_adapter_roundtrip(name, sql_storage):
+    DummyNode = namedtuple("node", "metadata_, specs")
+    node = DummyNode({}, [])
+
+    array = make_ragged_array(arrays[name])
+    structure = RaggedStructure.from_array(array)
+    data_source = DataSource(
+        management=Management.writable,
+        mimetype="application/x-ragged+sql",
+        structure_family=StructureFamily.ragged,
+        structure=structure,
+        assets=[],
+    )
+    data_source = RaggedSQLAdapter.init_storage(
+        data_source=data_source, storage=sql_storage
+    )
+    adp = RaggedSQLAdapter.from_catalog(data_source, node)
+
+    adp.write(array)
+    array_from_adp = adp.read()
+    assert ak.array_equal(array._impl, array_from_adp._impl)
+
+
 @pytest.mark.parametrize("name", arrays.keys())
 def test_serialization_roundtrip(name):
-    array = ragged.array(arrays[name])
+    array = make_ragged_array(arrays[name])
 
     # Test reduced/flattened numpy array.
     _array, _offsets, _shape = _deconstruct_ragged(array)
@@ -362,84 +476,6 @@ def test_slicing(module_client, name):
     assert len(h.responses) == 1  # sanity check
     sliced_response_size = len(h.responses[0].content)
     assert sliced_response_size < full_response_size
-
-
-chunkable_size = 30
-chunkable_arrays = [
-    ragged.array(
-        [
-            rng.random(size=chunkable_size),
-            *[rng.random(size=rng.integers(0, 10)) for _ in range(20)],
-        ],
-        dtype=np.float32,
-    ),
-    ragged.array(
-        [
-            *[rng.random(size=rng.integers(0, 10)) for _ in range(5)],
-            rng.random(size=chunkable_size),
-            *[rng.random(size=rng.integers(0, 10)) for _ in range(15)],
-        ],
-        dtype=np.float32,
-    ),
-    ragged.array(
-        [
-            *[rng.random(size=rng.integers(0, 10)) for _ in range(10)],
-            rng.random(size=chunkable_size),
-            *[rng.random(size=rng.integers(0, 10)) for _ in range(10)],
-        ],
-        dtype=np.float32,
-    ),
-    ragged.array(
-        [
-            *[rng.random(size=rng.integers(0, 10)) for _ in range(15)],
-            rng.random(size=chunkable_size),
-            *[rng.random(size=rng.integers(0, 10)) for _ in range(5)],
-        ],
-        dtype=np.float32,
-    ),
-    ragged.array(
-        [
-            *[rng.random(size=rng.integers(0, 10)) for _ in range(20)],
-            rng.random(size=chunkable_size),
-        ],
-        dtype=np.float32,
-    ),
-    ragged.array(
-        [rng.random(size=rng.integers(0, chunkable_size)).tolist() for _ in range(20)],
-        dtype=np.float32,
-    ),
-]
-
-
-@pytest.fixture(scope="module")
-def chunking_client(tmpdir_module):
-    """Module-scoped client with all partitionable arrays pre-written under their own keys."""
-    catalog = in_memory(writable_storage=str(tmpdir_module))
-    app = build_app(catalog)
-    with Context.from_app(app) as context:
-        client = from_context(context)
-        max_partition_bytes = (chunkable_size * np.float32(0).nbytes) + (
-            2 * np.int64(0).nbytes
-        )
-        for i, array in enumerate(chunkable_arrays):
-            client.write_ragged(
-                array, key=f"partitionable_{i}", max_partition_bytes=max_partition_bytes
-            )
-        yield client
-
-
-@pytest.mark.parametrize("name", arrays.keys())
-def test_awkward_form_from_structure(name):
-    array = make_ragged_array(arrays[name])
-    structure = RaggedStructure.from_array(array)
-    form, length, buffers = ak.to_buffers(array._impl)
-
-    assert structure.awk_form == form
-    assert structure.awk_length == length
-    assert set(form.expected_from_buffers().keys()) == set(buffers.keys())
-
-    for key, val in form.expected_from_buffers().items():
-        assert buffers[key].dtype == val
 
 
 @pytest.mark.parametrize("i", range(len(chunkable_arrays)))

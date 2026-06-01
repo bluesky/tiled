@@ -102,13 +102,3 @@ class AwkwardAdapter(Adapter[AwkwardStructure]):
         # Write each buffer to the corresponding file in the directory
         for form_key, value in data.items():
             self._container[form_key] = value
-
-
-def is_ragged_form(form: awkward.forms.form.Form) -> bool:
-    "Check if an Awkward Form represents a ragged (or a uniform) array structure."
-    if isinstance(form, awkward.forms.NumpyForm):
-        return True
-    elif isinstance(form, awkward.forms.ListOffsetForm):
-        return is_ragged_form(form.content)
-    else:
-        return False
