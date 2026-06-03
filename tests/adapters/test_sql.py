@@ -909,9 +909,7 @@ def test_order_by_multi_column(
 ) -> None:
     """Multi-column order_by_args: rows are sorted by the first column, then by the
     second column for ties."""
-    schema = pa.schema(
-        [pa.field("category", pa.string()), pa.field("ts", pa.int64())]
-    )
+    schema = pa.schema([pa.field("category", pa.string()), pa.field("ts", pa.int64())])
     order_args = [
         {"column": "category", "direction": "asc"},
         {"column": "ts", "direction": "desc"},
@@ -1054,9 +1052,7 @@ def test_order_by_table_name_hash() -> None:
     ), "Same schema and no primary_key should always produce the same table name"
 
     # Different primary_key columns → different table names
-    assert SQLAdapter.get_table_name(
-        make_ds(["ts"])
-    ) != SQLAdapter.get_table_name(
+    assert SQLAdapter.get_table_name(make_ds(["ts"])) != SQLAdapter.get_table_name(
         make_ds(["value"])
     ), "Different primary_key columns should produce different table names"
 

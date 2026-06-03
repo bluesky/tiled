@@ -114,15 +114,13 @@ class SQLAdapter(Adapter[TableStructure]):
         self.primary_key: List[str] = primary_key or []
 
         for arg in self.order_by_args:
-            column = arg["column"]
-            direction = arg["direction"]
-            if column not in self.structure().columns:
+            if arg["column"] not in self.structure().columns:
                 raise ValueError(
-                    f"order_by column '{column}' is not in the structure columns"
+                    f"order_by column '{arg['column']}' is not in the structure columns"
                 )
-            if direction not in ("asc", "desc"):
+            if arg["direction"] not in ("asc", "desc"):
                 raise ValueError(
-                    f"order_by direction must be 'asc' or 'desc', got '{direction}'"
+                    f"order_by direction must be 'asc' or 'desc', got '{arg['direction']}'"
                 )
         for key in self.primary_key:
             if key not in self.structure().columns:
@@ -189,7 +187,7 @@ class SQLAdapter(Adapter[TableStructure]):
             schema, table_name, cast(DIALECTS, storage.dialect)
         )
 
-        # If there is a primary_key parameter, validate it against the table schema
+        # If there is a primary_key parameter, first validate it against the table schema
         if primary_key := data_source.parameters.get("primary_key"):
             for key in primary_key:
                 if key not in data_source.structure.columns:
