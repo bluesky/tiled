@@ -70,6 +70,10 @@ class RaggedStructure(Structure):
     resizable: bool | tuple[bool, ...] = False
 
     def __post_init__(self):
+        if len(self.shape) == 0:
+            raise ValueError("A ragged array must have at least one dimension")
+        if len(self.chunks) == 0:
+            raise ValueError("A ragged array must have at least one chunk dimension")
         if self.shape[0] is None:
             raise ValueError(
                 "The first dimension of a ragged array must be a known integer"

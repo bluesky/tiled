@@ -39,7 +39,15 @@ def _buffers_from_data(form: awkward.forms.Form, data):
             return arr.shape[0] if getattr(form, "inner_shape", ()) else len(arr)
 
         if isinstance(form, awkward.forms.RegularForm):
-            recurse(form.content, [item for row in data for item in row])
+            flattened = []
+            for row in data:
+                if len(row) != form.size:
+                    raise ValueError(
+                        f"Row width mismatch for fixed-size dimension "
+                        f"(form key {form.form_key!r}): expected {form.size}, got {len(row)}"
+                    )
+                flattened.extend(row)
+            recurse(form.content, flattened)
             return len(data)
 
         if isinstance(form, awkward.forms.ListOffsetForm):

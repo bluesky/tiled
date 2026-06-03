@@ -13,6 +13,7 @@ from ..ndslice import NDSlice
 from ..serialization.ragged import from_zipped_buffers, to_zipped_buffers
 from ..structures.core import STRUCTURE_TYPES
 from ..structures.ragged import RaggedCompatibleType, make_ragged_array
+from ..utils import Conflicts
 from .base import BaseClient
 from .utils import export_util, handle_error, params_from_slice, retry_context
 
@@ -67,17 +68,14 @@ class RaggedClient(BaseClient):
             streamed to subscribed listeners, but the server may choose not to save the changes.
         """
 
-        if not isinstance(block, int):
-            raise NotImplementedError(
-                "Only single-block writes are currently supported"
-            )
         if not persist:
             raise NotImplementedError("Only persist=True is currently supported")
 
+        block_tuple = (block,) if isinstance(block, int) else tuple(block)
         url_path = self.item["links"]["block"]
         params: dict[str, Any] = {
             **parse_qs(urlparse(url_path).query),
-            "block": str(block),
+            "block": ",".join(map(str, block_tuple)),
         }
 
         for attempt in retry_context():
@@ -119,7 +117,8 @@ class RaggedClient(BaseClient):
                 "Only extend=True and persist=True are currently supported"
             )
 
-        if not isinstance(offset, int) or offset != self.shape[0]:
+        offset = (offset,) if isinstance(offset, int) else offset
+        if offset[0] != self.shape[0]:
             raise NotImplementedError(
                 "Only appending to the end of the leftmost dimension is currently supported"
             )
@@ -132,8 +131,6 @@ class RaggedClient(BaseClient):
                 f"match the dtype of this array {self.dtype}."
             )
 
-        if isinstance(offset, int):
-            offset = (offset,)
         url_path = self.item["links"]["full"]
         params = {
             **parse_qs(urlparse(url_path).query),
@@ -158,7 +155,7 @@ class RaggedClient(BaseClient):
                     httpx.codes.BAD_REQUEST,
                     httpx.codes.CONFLICT,
                 ]:
-                    raise ValueError(
+                    detail = (
                         response.json()
                         .get("detail", "Array parameters conflict.")
                         .replace(
@@ -166,6 +163,9 @@ class RaggedClient(BaseClient):
                             "Pass keyword argument ",  # Python function argument
                         )
                     )
+                    if response.status_code == httpx.codes.CONFLICT:
+                        raise Conflicts(detail)
+                    raise ValueError(detail)
                 handle_error(response)
         # Update cached structure.
         new_structure = response.json()

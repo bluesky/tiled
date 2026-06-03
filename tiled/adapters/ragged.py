@@ -9,7 +9,7 @@ else:
 
 import copy
 from collections.abc import Set
-from typing import Any, List, Optional, Tuple
+from typing import Any
 
 import adbc_driver_manager
 import awkward
@@ -18,7 +18,7 @@ import pyarrow
 import ragged
 
 from ..catalog.orm import Node
-from ..ndslice import NDBlock, NDSlice
+from ..ndslice import NDBlock, NDSlice, compose_slices
 from ..storage import EmbeddedSQLStorage, RemoteSQLStorage, SQLStorage, Storage
 from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import DataSource
@@ -78,9 +78,11 @@ class RaggedAdapter(Adapter[RaggedStructure]):
 
         fixed_chunks = self._structure.chunks[: self._structure.ndim_fixed]
         block_slice = block.slice_from_chunks(fixed_chunks)  # type: ignore
-        data = make_ragged_array(self._array, slice=block_slice)
+        fused_slice = (
+            compose_slices(block_slice, NDSlice(slice)) if slice else block_slice
+        )
 
-        return make_ragged_array(data, slice=slice)
+        return make_ragged_array(self._array, slice=fused_slice)
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}({self._structure})"
@@ -96,8 +98,8 @@ class RaggedSQLAdapter(Adapter[RaggedStructure]):
         tabular_adapter: SQLAdapter,
         structure: RaggedStructure,
         *,
-        metadata: Optional[JSON] = None,
-        specs: Optional[List[Spec]] = None,
+        metadata: JSON | None = None,
+        specs: list[Spec] | None = None,
     ) -> None:
         self._tabular_adapter = tabular_adapter
         self._structure = structure
@@ -138,7 +140,7 @@ class RaggedSQLAdapter(Adapter[RaggedStructure]):
         cls,
         storage: SQLStorage,
         data_source: DataSource[RaggedStructure],
-        path_parts: Optional[List[str]] = None,
+        path_parts: list[str] | None = None,
     ) -> DataSource[RaggedStructure]:
         "Initialize an SQL storage for the data source."
 
@@ -178,10 +180,11 @@ class RaggedSQLAdapter(Adapter[RaggedStructure]):
 
         # Each row in the table represents an awkward buffer; concatenate them together
         form = self._structure.awk_form  # awkward form should be the same for each row
+        buffers_schema = form.expected_from_buffers()
         buffers = [
             {
                 key: numpy.array(row[key], dtype=typ)
-                for key, typ in form.expected_from_buffers().items()
+                for key, typ in buffers_schema.items()
             }
             for row in rows
         ]
@@ -202,8 +205,11 @@ class RaggedSQLAdapter(Adapter[RaggedStructure]):
 
         fixed_chunks = self._structure.chunks[: self._structure.ndim_fixed]
         block_slice = block.slice_from_chunks(fixed_chunks)  # type: ignore
+        fused_slice = (
+            compose_slices(block_slice, NDSlice(slice)) if slice else block_slice
+        )
 
-        return make_ragged_array(self.read(slice=block_slice), slice=slice)
+        return self.read(slice=fused_slice)
 
     def write(self, data: CanonicalRaggedArray) -> None:
         self.write_block(data, block=NDBlock(0))
@@ -232,7 +238,7 @@ class RaggedSQLAdapter(Adapter[RaggedStructure]):
             ) from exc
 
     def patch(
-        self, data: CanonicalRaggedArray, offset: Tuple[int, ...], extend: bool = False
+        self, data: CanonicalRaggedArray, offset: tuple[int, ...], extend: bool = False
     ) -> RaggedStructure:
         """Write data into a slice of the ragged array, possibly extending it.
 
@@ -251,6 +257,9 @@ class RaggedSQLAdapter(Adapter[RaggedStructure]):
         """
         if not extend:
             raise NotImplementedError("Overwriting existing data is not supported")
+
+        if not offset:
+            raise ValueError("`offset` must contain at least one dimension")
 
         ndim_fixed = self.structure().ndim_fixed
         if (
