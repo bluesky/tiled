@@ -25,7 +25,7 @@ from tiled.storage import SQLStorage, parse_storage, register_storage
 from tiled.structures.core import StructureFamily
 from tiled.structures.data_source import DataSource, Management
 from tiled.structures.ragged import RaggedStructure, make_ragged_array
-from tiled.utils import APACHE_ARROW_FILE_MIME_TYPE
+from tiled.utils import APACHE_ARROW_FILE_MIME_TYPE, Conflicts
 
 rng = np.random.default_rng(42)
 
@@ -406,6 +406,50 @@ def test_adapter_read_write_patch(name, sql_storage):
     adp.patch(array, offset=(2 * array.shape[0],), extend=True)
     expected = ragged.concat([array, array, array], axis=0)
     assert ak.array_equal(expected._impl, adp.read()._impl)
+
+
+@pytest.mark.parametrize("name", list(arrays.keys())[:1])
+def test_concurrent_patch_raises_conflicts(name, sql_storage, request):
+    """Simulate two concurrent producers writing to the same ragged dataset.
+
+    Both adapters load the same (stale) structure from the catalog, both compute
+    the same chunk_index, and both attempt to INSERT. The second INSERT must fail
+    with a 409 Conflicts error rather than a generic IntegrityError, since
+    ragged arrays are designed for a single producer per dataset.
+
+    DuckDB's ADBC driver does not enforce unique constraints during adbc_ingest,
+    so the collision is silently accepted; xfail to document this.
+    """
+    # The sql_storage fixture is parametrized; detect duckdb from storage URI
+    if "duckdb" in sql_storage.uri:
+        pytest.xfail(
+            "DuckDB ADBC adbc_ingest does not enforce unique index constraints"
+        )
+
+    array = make_ragged_array(arrays[name])
+    structure = RaggedStructure.from_array(array)
+    data_source = DataSource(
+        management=Management.writable,
+        mimetype="application/x-ragged+sql",
+        structure_family=StructureFamily.ragged,
+        structure=structure,
+        assets=[],
+    )
+    data_source = RaggedSQLAdapter.init_storage(
+        data_source=data_source, storage=sql_storage
+    )
+    node = SimpleNamespace(metadata_={}, specs=[])
+
+    # First producer writes the initial chunk (chunk_index=0).
+    adp1 = RaggedSQLAdapter.from_catalog(data_source, node)
+    adp1.write(array)
+
+    # Second producer was instantiated from the same data_source before adp1's
+    # write was reflected in the catalog. Its in-memory structure shows zero
+    # chunks, so its patch will also compute chunk_index=0 and collide.
+    adp2 = RaggedSQLAdapter.from_catalog(data_source, node)
+    with pytest.raises(Conflicts):
+        adp2.patch(array, offset=(0,), extend=True)
 
 
 @pytest.mark.parametrize("name", arrays.keys())

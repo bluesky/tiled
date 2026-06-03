@@ -11,6 +11,7 @@ import copy
 from collections.abc import Set
 from typing import Any, List, Optional, Tuple
 
+import adbc_driver_manager
 import awkward
 import numpy
 import pyarrow
@@ -29,6 +30,7 @@ from ..structures.ragged import (
 )
 from ..structures.table import TableStructure
 from ..type_aliases import JSON
+from ..utils import Conflicts
 from .core import Adapter
 from .sql import SQLAdapter
 
@@ -115,7 +117,7 @@ class RaggedSQLAdapter(Adapter[RaggedStructure]):
         empty_table_dict = {
             col: [numpy.empty(0, dtype=typ)] for col, typ in awk_schema.items()
         }
-        empty_table_dict["chunk_index"] = [0]
+        empty_table_dict["chunk_index"] = [numpy.int64(0)]
 
         return DataSource(
             structure_family=StructureFamily.table,
@@ -185,7 +187,7 @@ class RaggedSQLAdapter(Adapter[RaggedStructure]):
         ]
         awk_arrays = [
             awkward.from_buffers(form, length, buffer)
-            for length, buffer in zip(self._structure.chunks[0], buffers)
+            for length, buffer in zip(self._structure.chunks[0] or (), buffers)
         ]
 
         return make_ragged_array(awkward.concatenate(awk_arrays), slice=slice)
@@ -215,8 +217,19 @@ class RaggedSQLAdapter(Adapter[RaggedStructure]):
                 "The structure of the provided data does not match the adapter"
             )
 
-        buffers["chunk_index"] = block[0]
-        self._tabular_adapter.append_partition(0, pyarrow.Table.from_pylist([buffers]))
+        buffers["chunk_index"] = numpy.int64(block[0])
+        try:
+            self._tabular_adapter.append_partition(
+                0,
+                pyarrow.Table.from_pydict({k: [v] for k, v in buffers.items()}),
+            )
+        except adbc_driver_manager.IntegrityError as exc:
+            raise Conflicts(
+                f"Cannot write chunk with chunk_index={int(block[0])}: "
+                "a chunk with this index already exists. This typically "
+                "indicates a concurrent write to the same dataset; "
+                "ragged arrays are designed for a single producer per dataset."
+            ) from exc
 
     def patch(
         self, data: CanonicalRaggedArray, offset: Tuple[int, ...], extend: bool = False
@@ -262,9 +275,20 @@ class RaggedSQLAdapter(Adapter[RaggedStructure]):
                 "The structure (AwkwardForm) of the data does not match the adapter"
             )
 
-        buffers["chunk_index"] = len(self.structure().chunks[0])
+        buffers["chunk_index"] = numpy.int64(len(self.structure().chunks[0] or ()))
 
-        self._tabular_adapter.append_partition(0, pyarrow.Table.from_pylist([buffers]))
+        try:
+            self._tabular_adapter.append_partition(
+                0,
+                pyarrow.Table.from_pydict({k: [v] for k, v in buffers.items()}),
+            )
+        except adbc_driver_manager.IntegrityError as exc:
+            raise Conflicts(
+                f"Cannot append chunk with chunk_index={int(buffers['chunk_index'])}: "
+                "a chunk with this index already exists. This typically "
+                "indicates a concurrent write to the same dataset; "
+                "ragged arrays are designed for a single producer per dataset."
+            ) from exc
 
         # Update the structure to reflect the new data
         self._structure.shape = (
@@ -272,7 +296,7 @@ class RaggedSQLAdapter(Adapter[RaggedStructure]):
             *self._structure.shape[1:],
         )
         self._structure.chunks = (
-            self._structure.chunks[0] + (length,),
+            (self._structure.chunks[0] or ()) + (length,),
             *self._structure.chunks[1:],
         )
         self._structure.size += data.size

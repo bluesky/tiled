@@ -15,7 +15,13 @@ from tests.adapters.test_sql import assert_same_rows
 from tiled.adapters.array import ArrayAdapter
 from tiled.adapters.ragged import RaggedAdapter
 from tiled.adapters.sql import SQLAdapter
-from tiled.storage import SQLStorage, get_storage, parse_storage, register_storage
+from tiled.storage import (
+    SQLStorage,
+    get_storage,
+    parse_storage,
+    register_storage,
+    unregister_storage,
+)
 from tiled.structures.core import StructureFamily
 from tiled.structures.data_source import DataSource, Management
 from tiled.structures.table import TableStructure
@@ -82,7 +88,15 @@ batch2 = pa.record_batch(data2, names=names)
 
 
 @pytest.fixture
-def data_source_from_init_storage() -> Callable[[str, int], DataSource[TableStructure]]:
+def data_source_from_init_storage() -> (
+    Generator[Callable[[str, int], DataSource[TableStructure]], None, None]
+):
+    """Fixture providing a factory for DataSource[TableStructure] using the 6-column schema.
+
+    Tracks all created storages and disposes + unregisters them on teardown.
+    """
+    created: list[SQLStorage] = []
+
     def _data_source_from_init_storage(
         data_uri: str, num_partitions: int
     ) -> DataSource[TableStructure]:
@@ -95,12 +109,16 @@ def data_source_from_init_storage() -> Callable[[str, int], DataSource[TableStru
             structure=structure,
             assets=[],
         )
-
         storage = cast(SQLStorage, parse_storage(data_uri))
         register_storage(storage)
+        created.append(storage)
         return SQLAdapter.init_storage(data_source=data_source, storage=storage)
 
-    return _data_source_from_init_storage
+    yield _data_source_from_init_storage
+
+    for storage in created:
+        storage.dispose()
+        unregister_storage(storage)
 
 
 @pytest.mark.parametrize(
@@ -350,6 +368,7 @@ def ragged_adapter_psql(
     )
     storage = get_storage(sanitize_uri(postgres_uri)[0])
     cast(SQLStorage, storage).dispose()
+    unregister_storage(storage)
 
 
 @pytest.mark.parametrize(
@@ -371,7 +390,7 @@ def test_ragged_column_adapter_type_and_data(
     sql_adapter: SQLAdapter = request.getfixturevalue(sql_adapter_fixture)
     sql_adapter.append_partition(0, ragged_table)
 
-    child_adapter = sql_adapter[field]
+    child_adapter: Union[ArrayAdapter, RaggedAdapter] = sql_adapter[field]  # type: ignore[assignment]
     assert isinstance(child_adapter, expected_adapter_type)
 
     field_index = ragged_names.index(field)

@@ -65,7 +65,7 @@ class RaggedStructure(Structure):
     data_type: BuiltinDtype | StructDtype
     shape: tuple[int | None, ...]
     size: int
-    chunks: tuple[tuple[int, ...], *tuple[Union[tuple[int, ...], None], ...]]
+    chunks: tuple[tuple[int, ...] | None, ...]
     dims: tuple[str, ...] | None = None
     resizable: bool | tuple[bool, ...] = False
 
