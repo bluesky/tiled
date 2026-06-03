@@ -10,11 +10,10 @@ import pyarrow.parquet
 import pytest
 import ragged
 
-from tiled.adapters.ragged import RaggedAdapter, RaggedSQLAdapter
+from tiled.adapters.ragged import RaggedSQLAdapter
 from tiled.catalog import in_memory
 from tiled.client import Context, from_context, record_history
 from tiled.client.utils import ClientError
-from tiled.ndslice import NDBlock, NDSlice
 from tiled.serialization.ragged import (
     _buffers_from_data,
     from_json,
@@ -27,11 +26,7 @@ from tiled.storage import SQLStorage, parse_storage, register_storage
 from tiled.structures.array import BuiltinDtype
 from tiled.structures.core import StructureFamily
 from tiled.structures.data_source import DataSource, Management
-from tiled.structures.ragged import (
-    RaggedStructure,
-    make_ragged_array,
-    make_ragged_chunks,
-)
+from tiled.structures.ragged import RaggedStructure, make_ragged_array
 from tiled.utils import APACHE_ARROW_FILE_MIME_TYPE, Conflicts
 
 rng = np.random.default_rng(42)
@@ -623,84 +618,6 @@ def test_export_parquet(tmpdir, client, name):
         actual = pyarrow.parquet.read_table(filepath)
         expected = ak.to_arrow_table(array[1]._impl)
         assert actual == expected
-
-
-# ---------------------------------------------------------------------------
-# Section: read_block direct tests (both adapters), incl. sub-slice fusion
-# ---------------------------------------------------------------------------
-
-# Choose the same limit as the chunked client fixture so chunkable_arrays
-# produce multiple chunks reliably.
-_MAX_PARTITION_BYTES = (chunkable_size * np.float32(0).nbytes) + 2 * np.int64(0).nbytes
-
-
-def _chunkable_with_chunks():
-    """Yield (chunk_array, structure_with_chunks) for each chunkable array."""
-    for i, raw in enumerate(chunkable_arrays):
-        array = make_ragged_array(raw)
-        chunks = make_ragged_chunks(array, _MAX_PARTITION_BYTES)
-        structure = RaggedStructure.from_array(array, chunks=chunks)
-        yield pytest.param(array, structure, id=f"partitionable_{i}")
-
-
-@pytest.mark.parametrize("array, structure", list(_chunkable_with_chunks()))
-def test_read_block_memory(array, structure):
-    """RaggedAdapter.read_block: each block matches the equivalent direct slice;
-    sub-slicing within a block composes correctly with the block slice."""
-    assert len(structure.chunks[0]) > 1, "test requires multi-chunk structure"
-    adp = RaggedAdapter(array, structure)
-    divisions = [int(x) for x in np.cumsum((0, *structure.chunks[0]))]
-
-    for blk, (start, stop) in enumerate(zip(divisions[:-1], divisions[1:])):
-        block = adp.read_block(NDBlock(blk))
-        assert ak.array_equal(block._impl, array[start:stop]._impl)
-
-        # Sub-slice fusion: read only the first row of this block.
-        if stop - start >= 1:
-            block_sub = adp.read_block(
-                NDBlock(blk), slice=NDSlice(builtins.slice(0, 1))
-            )
-            expected_sub = array[start : start + 1]._impl  # noqa: E203
-            assert ak.array_equal(block_sub._impl, expected_sub)
-
-
-@pytest.mark.parametrize("array, structure", list(_chunkable_with_chunks()))
-def test_read_block_sql(array, structure, sql_storage):
-    """RaggedSQLAdapter.read_block: same semantics as memory adapter, via SQL."""
-    assert len(structure.chunks[0]) > 1, "test requires multi-chunk structure"
-
-    # The on-disk structure reflects *currently stored* extent; start with the
-    # first chunk only and grow via patch(), mirroring the real append path.
-    divisions = [int(x) for x in np.cumsum((0, *structure.chunks[0]))]
-    first_chunk = array[divisions[0] : divisions[1]]  # noqa: E203
-    initial_structure = RaggedStructure.from_array(first_chunk)
-
-    data_source = DataSource(
-        management=Management.writable,
-        mimetype="application/x-ragged+sql",
-        structure_family=StructureFamily.ragged,
-        structure=initial_structure,
-        assets=[],
-    )
-    data_source = RaggedSQLAdapter.init_storage(
-        data_source=data_source, storage=sql_storage
-    )
-    node = SimpleNamespace(metadata_={}, specs=[])
-    adp = RaggedSQLAdapter.from_catalog(data_source, node)
-    adp.write(first_chunk)
-    for start, stop in zip(divisions[1:-1], divisions[2:]):
-        adp.patch(array[start:stop], offset=(start,), extend=True)
-
-    for blk, (start, stop) in enumerate(zip(divisions[:-1], divisions[1:])):
-        block = adp.read_block(NDBlock(blk))
-        assert ak.array_equal(block._impl, array[start:stop]._impl)
-
-        if stop - start >= 1:
-            block_sub = adp.read_block(
-                NDBlock(blk), slice=NDSlice(builtins.slice(0, 1))
-            )
-            expected_sub = array[start : start + 1]._impl  # noqa: E203
-            assert ak.array_equal(block_sub._impl, expected_sub)
 
 
 # ---------------------------------------------------------------------------

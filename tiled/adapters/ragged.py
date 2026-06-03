@@ -18,7 +18,7 @@ import pyarrow
 import ragged
 
 from ..catalog.orm import Node
-from ..ndslice import NDBlock, NDSlice, compose_slices
+from ..ndslice import NDBlock, NDSlice
 from ..storage import EmbeddedSQLStorage, RemoteSQLStorage, SQLStorage, Storage
 from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import DataSource
@@ -72,17 +72,6 @@ class RaggedAdapter(Adapter[RaggedStructure]):
     def read(self, slice: NDSlice | None = None) -> ragged.array:
         """Read a slice of data from the ragged array, or the entire array."""
         return make_ragged_array(self._array, slice=slice)
-
-    def read_block(self, block: NDBlock, slice: NDSlice | None = None) -> ragged.array:
-        """Read a single partition block of the ragged array, possibly sliced."""
-
-        fixed_chunks = self._structure.chunks[: self._structure.ndim_fixed]
-        block_slice = block.slice_from_chunks(fixed_chunks)  # type: ignore
-        fused_slice = (
-            compose_slices(block_slice, NDSlice(slice)) if slice else block_slice
-        )
-
-        return make_ragged_array(self._array, slice=fused_slice)
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}({self._structure})"
@@ -194,22 +183,6 @@ class RaggedSQLAdapter(Adapter[RaggedStructure]):
         ]
 
         return make_ragged_array(awkward.concatenate(awk_arrays), slice=slice)
-
-    def read_block(
-        self, block: NDBlock, slice: NDSlice | None = None
-    ) -> CanonicalRaggedArray:
-        """Read a single block of chunks of the ragged array.
-
-        Slices the whole array to get this block and then slices within the block
-        """
-
-        fixed_chunks = self._structure.chunks[: self._structure.ndim_fixed]
-        block_slice = block.slice_from_chunks(fixed_chunks)  # type: ignore
-        fused_slice = (
-            compose_slices(block_slice, NDSlice(slice)) if slice else block_slice
-        )
-
-        return self.read(slice=fused_slice)
 
     def write(self, data: CanonicalRaggedArray) -> None:
         self.write_block(data, block=NDBlock(0))

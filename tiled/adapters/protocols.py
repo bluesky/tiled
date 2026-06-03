@@ -95,10 +95,6 @@ class RaggedAdapter(BaseAdapter, Protocol):
     def read(self, slice: NDSlice) -> ragged.array:
         pass
 
-    @abstractmethod
-    def read_block(self, block: Tuple[int, ...]) -> ragged.array:
-        pass
-
 
 class SparseAdapter(BaseAdapter, Protocol):
     structure_family: Literal[StructureFamily.sparse] = StructureFamily.sparse
