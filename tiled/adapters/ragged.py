@@ -32,7 +32,7 @@ from ..structures.table import TableStructure
 from ..type_aliases import JSON
 from ..utils import Conflicts
 from .core import Adapter
-from .sql import SQLAdapter
+from .sql import SQLAdapter, is_unique_violation
 
 
 class RaggedAdapter(Adapter[RaggedStructure]):
@@ -202,7 +202,9 @@ class RaggedSQLAdapter(Adapter[RaggedStructure]):
                 0,
                 pyarrow.Table.from_pydict({k: [v] for k, v in buffers.items()}),
             )
-        except adbc_driver_manager.IntegrityError as exc:
+        except adbc_driver_manager.Error as exc:
+            if not is_unique_violation(exc):
+                raise
             raise Conflicts(
                 f"Cannot write chunk with chunk_index={int(block[0])}: "
                 "a chunk with this index already exists. This typically "
@@ -264,7 +266,9 @@ class RaggedSQLAdapter(Adapter[RaggedStructure]):
                 0,
                 pyarrow.Table.from_pydict({k: [v] for k, v in buffers.items()}),
             )
-        except adbc_driver_manager.IntegrityError as exc:
+        except adbc_driver_manager.Error as exc:
+            if not is_unique_violation(exc):
+                raise
             raise Conflicts(
                 f"Cannot append chunk with chunk_index={int(buffers['chunk_index'])}: "
                 "a chunk with this index already exists. This typically "

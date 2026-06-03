@@ -178,6 +178,16 @@ class CompositeClient(Container):
                         raise ValueError(
                             f"Failed to convert awkward array to numpy: {e}"
                         ) from e
+            elif item["attributes"]["structure_family"] == StructureFamily.ragged:
+                if (variables is None) or (part in variables):
+                    try:
+                        data_vars[part] = self.base[part].read()._impl.to_numpy()
+                    except ValueError as e:
+                        raise ValueError(
+                            f"Failed to convert ragged array '{part}' to numpy "
+                            "(only ragged arrays whose sub-lists are all the "
+                            f"same length can be loaded into xarray): {e}"
+                        ) from e
             elif item["attributes"]["structure_family"] == StructureFamily.table:
                 # For now, greedily load tabular data. We cannot know the shape
                 # of the columns without reading them. Future work may enable

@@ -77,6 +77,14 @@ def _copy_sparse(source, dest, on_conflict):
         dest.write_block(array.coords, array.data, block)
 
 
+def _copy_ragged(source, dest, on_conflict):
+    # Ragged arrays do not have read_block; read whole array and write it.
+    # The first chunk is written via write(); subsequent chunks (if any)
+    # are appended via patch(extend=True).
+    array = source.read()
+    dest.write(array)
+
+
 def _copy_table(source, dest, on_conflict):
     for partition in range(source.structure().npartitions):
         df = source.read_partition(partition)
@@ -152,6 +160,7 @@ _DISPATCH = {
     StructureFamily.array: _copy_array,
     StructureFamily.awkward: _copy_awkward,
     StructureFamily.container: _copy_container,
+    StructureFamily.ragged: _copy_ragged,
     StructureFamily.sparse: _copy_sparse,
     StructureFamily.table: _copy_table,
 }

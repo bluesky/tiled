@@ -25,6 +25,7 @@ if TYPE_CHECKING:
     from .ragged import RaggedAdapter
     from .awkward import AwkwardAdapter
 
+import adbc_driver_manager
 import numpy
 import pandas
 import pyarrow
@@ -105,6 +106,21 @@ def _is_primary_key_type(arrow_type: pyarrow.DataType) -> bool:
     almost always a mistake.
     """
     return _is_orderable_type(arrow_type) and not pyarrow.types.is_floating(arrow_type)
+
+
+def is_unique_violation(exc: adbc_driver_manager.Error) -> bool:
+    """Return True if ``exc`` is a SQL unique/PK constraint violation.
+
+    The ADBC postgres driver reports unique-violations as ``ProgrammingError``
+    rather than ``IntegrityError`` (the spec-mandated subclass). Both expose a
+    ``sqlstate`` attribute; per SQL:2008 all integrity-constraint violations
+    use SQLSTATE class ``23``. Fall back to ``isinstance(IntegrityError)`` when
+    SQLSTATE is unavailable (e.g. other drivers).
+    """
+    sqlstate = getattr(exc, "sqlstate", None) or ""
+    if sqlstate.startswith("23"):
+        return True
+    return isinstance(exc, adbc_driver_manager.IntegrityError)
 
 
 class SQLAdapter(Adapter[TableStructure]):

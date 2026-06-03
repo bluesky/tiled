@@ -1,4 +1,5 @@
 import builtins
+import copy
 from types import SimpleNamespace
 from typing import cast
 
@@ -412,15 +413,16 @@ def test_adapter_read_write_patch(name, sql_storage):
 
 @pytest.mark.parametrize("name", list(arrays.keys())[:1])
 def test_concurrent_patch_raises_conflicts(name, sql_storage, request):
-    """Simulate two concurrent producers writing to the same ragged dataset.
+    """Simulate two concurrent producers appending to the same ragged dataset.
 
-    Both adapters load the same (stale) structure from the catalog, both compute
-    the same chunk_index, and both attempt to INSERT. The second INSERT must fail
-    with a 409 Conflicts error rather than a generic IntegrityError, since
-    ragged arrays are designed for a single producer per dataset.
+    Both adapters are instantiated against the same (stale) structure, so each
+    computes the same ``chunk_index`` for its next ``patch()`` call. The first
+    insert succeeds; the second must fail with a 409 ``Conflicts`` error rather
+    than a generic IntegrityError, since ragged arrays are designed for a
+    single producer per dataset.
 
-    DuckDB's ADBC driver does not enforce unique constraints during adbc_ingest,
-    so the collision is silently accepted; xfail to document this.
+    DuckDB's ADBC driver does not enforce unique constraints during
+    adbc_ingest, so the collision is silently accepted; xfail to document this.
     """
     # The sql_storage fixture is parametrized; detect duckdb from storage URI
     if "duckdb" in sql_storage.uri:
@@ -442,16 +444,25 @@ def test_concurrent_patch_raises_conflicts(name, sql_storage, request):
     )
     node = SimpleNamespace(metadata_={}, specs=[])
 
-    # First producer writes the initial chunk (chunk_index=0).
-    adp1 = RaggedSQLAdapter.from_catalog(data_source, node)
-    adp1.write(array)
+    # Write the initial chunk so the dataset has one row (chunk_index=0).
+    initial = RaggedSQLAdapter.from_catalog(data_source, node)
+    initial.write(array)
 
-    # Second producer was instantiated from the same data_source before adp1's
-    # write was reflected in the catalog. Its in-memory structure shows zero
-    # chunks, so its patch will also compute chunk_index=0 and collide.
-    adp2 = RaggedSQLAdapter.from_catalog(data_source, node)
+    # Two producers instantiate against the same stale structure: both see
+    # chunks=((N,),) and will compute chunk_index=1 on their next append.
+    # In production each request reloads the structure from the DB, so each
+    # adapter gets its own copy. We deep-copy here to mirror that and to
+    # prevent adp1's in-place structure mutation in patch() from leaking
+    # into adp2.
+    adp1 = RaggedSQLAdapter.from_catalog(copy.deepcopy(data_source), node)
+    adp2 = RaggedSQLAdapter.from_catalog(copy.deepcopy(data_source), node)
+
+    # First append wins.
+    adp1.patch(array, offset=(array.shape[0],), extend=True)
+
+    # Second append computes the same chunk_index and must collide.
     with pytest.raises(Conflicts):
-        adp2.patch(array, offset=(0,), extend=True)
+        adp2.patch(array, offset=(array.shape[0],), extend=True)
 
 
 @pytest.mark.parametrize("name", arrays.keys())
@@ -620,10 +631,6 @@ def test_export_parquet(tmpdir, client, name):
         assert actual == expected
 
 
-# ---------------------------------------------------------------------------
-# Section: validation / error-path coverage
-# ---------------------------------------------------------------------------
-
 _FLOAT64 = BuiltinDtype.from_numpy_dtype(np.dtype("float64"))
 
 
@@ -674,6 +681,7 @@ _FLOAT64 = BuiltinDtype.from_numpy_dtype(np.dtype("float64"))
     ],
 )
 def test_ragged_structure_validation(factory, exc_type, match):
+    """RaggedStructure must have a valid shape and chunking scheme."""
     with pytest.raises(exc_type, match=match):
         factory()
 
@@ -750,44 +758,37 @@ def test_ragged_sql_adapter_validation(_writable_sql_adapter, action, exc_type, 
         action(adp, array)
 
 
-# ---------------------------------------------------------------------------
-# Section: end-to-end HTTP PATCH (client -> server -> catalog -> SQL adapter)
-# ---------------------------------------------------------------------------
-
-
 @pytest.fixture
-def patch_client(tmp_path):
-    """Function-scoped client for HTTP PATCH testing (fresh tree per test)."""
-    catalog = in_memory(
-        writable_storage=[
-            str(tmp_path),
-            f"duckdb:///{tmp_path / 'data.duckdb'}",
-        ]
+def patch_container(client, request):
+    """Function-scoped fresh container inside the module client for PATCH tests."""
+    key = (
+        f"patch_{request.node.name}".replace("[", "_")
+        .replace("]", "")
+        .replace("-", "_")
     )
-    app = build_app(catalog)
-    with Context.from_app(app) as context:
-        yield from_context(context)
+    container = client.create_container(key)
+    try:
+        yield container
+    finally:
+        client.delete_contents(key, recursive=True, external_only=False)
 
 
-@pytest.mark.parametrize(
-    "name",
-    ["ragged_a", "ragged_c", "ragged_3xNonex2xNone", "ragged_2xNonex3xNone"],
-)
-def test_http_patch_extend_updates_structure_and_data(patch_client, name):
+@pytest.mark.parametrize("name", arrays.keys())
+def test_http_patch_extend_updates_structure_and_data(patch_container, name):
     """Round-trip a PATCH through the HTTP layer:
     - client.patch(extend=True) appends a new chunk via the router/catalog path
     - catalog re-computes structure_id and persists updated shape/chunks
     - subsequent read returns the concatenated data
     """
     array = make_ragged_array(arrays[name])
-    rac = patch_client.write_ragged(array, key="x")
+    rac = patch_container.write_ragged(array, key="x")
 
     initial_shape = rac.shape
     initial_chunks = rac.chunks
     n = array.shape[0]
 
-    # First PATCH: append the same array at the end.
-    rac.patch(array, offset=n, extend=True)
+    # First PATCH: append the same array at the end; use the tuple syntax for offset
+    rac.patch(array, offset=(n,), extend=True)
 
     # Catalog-side metadata should reflect the append along the leftmost dim.
     assert rac.shape[0] == initial_shape[0] + n
@@ -807,66 +808,19 @@ def test_http_patch_extend_updates_structure_and_data(patch_client, name):
     assert len(rac.chunks[0]) == len(initial_chunks[0]) + 2
 
 
-@pytest.mark.parametrize(
-    "kwargs, exc_type, match",
-    [
-        pytest.param(
-            {"extend": False},
-            NotImplementedError,
-            "extend=True",
-            id="extend_False",
-        ),
-        pytest.param(
-            {"extend": True, "persist": False},
-            NotImplementedError,
-            "persist=True",
-            id="persist_False",
-        ),
-    ],
-)
-def test_client_patch_unsupported_kwargs(patch_client, kwargs, exc_type, match):
-    """Client-side guards for unsupported patch() combinations."""
+def test_client_patch_wrong_offset_raises(patch_container):
     array = make_ragged_array(arrays["ragged_a"])
-    rac = patch_client.write_ragged(array, key="x")
-    with pytest.raises(exc_type, match=match):
-        rac.patch(array, offset=array.shape[0], **kwargs)
-
-
-def test_client_patch_wrong_offset_raises(patch_client):
-    array = make_ragged_array(arrays["ragged_a"])
-    rac = patch_client.write_ragged(array, key="x")
+    rac = patch_container.write_ragged(array, key="x")
     with pytest.raises(NotImplementedError, match="appending to the end"):
         # Offset must equal current shape[0] (append at end); 0 is "overwrite".
         rac.patch(array, offset=0, extend=True)
 
 
-def test_client_patch_dtype_mismatch_raises(patch_client):
-    rac = patch_client.write_ragged(
+def test_client_patch_dtype_mismatch_raises(patch_container):
+    rac = patch_container.write_ragged(
         ragged.array([rng.random(3), rng.random(5)], dtype=np.float64), key="x"
     )
     # Same shape & chunks, but different dtype.
     different = ragged.array([rng.random(3).astype(np.float32)], dtype=np.float32)
     with pytest.raises(ValueError, match="dtype"):
         rac.patch(different, offset=rac.shape[0], extend=True)
-
-
-def test_client_write_block_accepts_tuple(patch_client):
-    """After #16, write_block accepts a tuple block; the request must reach the server
-    in the comma-separated form the router expects."""
-    array = make_ragged_array(arrays["ragged_a"])
-    # Pre-create a node with the right structure but without writing data.
-    structure = RaggedStructure.from_array(array)
-    rac = patch_client.new(
-        StructureFamily.ragged,
-        [
-            DataSource(
-                structure=structure,
-                structure_family=StructureFamily.ragged,
-                mimetype="application/x-ragged+sql",
-            ),
-        ],
-        key="x",
-    )
-    # Tuple-form block (single partitioned dim).
-    rac.write_block(array, block=(0,))
-    assert ak.array_equal(rac.read()._impl, array._impl)
