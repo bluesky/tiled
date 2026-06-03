@@ -3,7 +3,18 @@ import hashlib
 import re
 from collections.abc import Set
 from contextlib import closing
-from typing import Any, Callable, Iterator, List, Literal, Optional, Tuple, Union, cast
+from typing import (
+    Any,
+    Callable,
+    Iterator,
+    List,
+    Literal,
+    Optional,
+    Tuple,
+    TypedDict,
+    Union,
+    cast,
+)
 
 import numpy
 import pandas
@@ -57,6 +68,11 @@ FORBIDDEN_CHARACTERS = re.compile(
 # Furthermore, user-specified table names can only be in lower case.
 
 
+class _OrderByArgs(TypedDict):
+    column: str
+    direction: Literal["asc", "desc"]
+
+
 class SQLAdapter(Adapter[TableStructure]):
     """SQLAdapter Class
 
@@ -82,8 +98,8 @@ class SQLAdapter(Adapter[TableStructure]):
         table_name: str,
         dataset_id: int,
         *,
-        order_by_column: Optional[str] = None,
-        unique_ordering: bool = False,
+        order_by_args: Optional[List[_OrderByArgs]] = None,
+        primary_key: Optional[List[str]] = None,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
     ) -> None:
@@ -93,12 +109,27 @@ class SQLAdapter(Adapter[TableStructure]):
         self.specs = list(specs or [])
         self.table_name = table_name
         self.dataset_id = dataset_id
-        if order_by_column in structure.columns:
-            self.order_by_column: Optional[str] = order_by_column
-            self.unique_ordering = unique_ordering
-        else:
-            self.order_by_column = None
-            self.unique_ordering = False
+
+        self.order_by_args: List[_OrderByArgs] = order_by_args or []
+        self.primary_key: List[str] = primary_key or []
+
+        for arg in self.order_by_args:
+            column = arg["column"]
+            direction = arg["direction"]
+            if column not in self.structure().columns:
+                raise ValueError(
+                    f"order_by column '{column}' is not in the structure columns"
+                )
+            if direction not in ("asc", "desc"):
+                raise ValueError(
+                    f"order_by direction must be 'asc' or 'desc', got '{direction}'"
+                )
+        for key in self.primary_key:
+            if key not in self.structure().columns:
+                raise ValueError(
+                    f"primary_key column '{key}' is not in the structure columns"
+                )
+
         super().__init__(structure, metadata=metadata, specs=specs)
 
     def metadata(self) -> JSON:
@@ -118,10 +149,7 @@ class SQLAdapter(Adapter[TableStructure]):
     def get_table_name(cls, data_source: "DataSource[TableStructure]") -> str:
         "If not defined, generate a default table name based on the Arrow schema and parameters"
 
-        if data_source.parameters.get("unique_ordering", False):
-            suffix = data_source.parameters.get("order_by_column", "")
-        else:
-            suffix = ""
+        suffix = "".join(data_source.parameters.get("primary_key", ""))
         encoded = (data_source.structure.arrow_schema + suffix).encode()
         default = "table_" + hashlib.md5(encoded).hexdigest().lower()
         table_name: str = data_source.parameters.setdefault("table_name", default)
@@ -153,20 +181,28 @@ class SQLAdapter(Adapter[TableStructure]):
         data_source = copy.deepcopy(data_source)  # Do not mutate caller input.
 
         # Prefix columns with internal _dataset_id, _partition_id, ...
-        table_name = cls.get_table_name(data_source)
         schema = data_source.structure.arrow_schema_decoded
         schema = schema.insert(0, pyarrow.field("_partition_id", pyarrow.int16()))
         schema = schema.insert(0, pyarrow.field("_dataset_id", pyarrow.int32()))
+        table_name = cls.get_table_name(data_source)
         create_table_statement = arrow_schema_to_create_table(
             schema, table_name, cast(DIALECTS, storage.dialect)
         )
+
+        # If there is a primary_key parameter, validate it against the table schema
+        if primary_key := data_source.parameters.get("primary_key"):
+            for key in primary_key:
+                if key not in data_source.structure.columns:
+                    raise ValueError(
+                        f"primary_key column '{key}' is not in the structure columns"
+                    )
 
         with closing(storage.connect()) as conn:
             with conn.cursor() as cursor:
                 cursor.execute(create_table_statement)
 
             # Create an index on the dataset_id and partition_id columns to speed up queries.
-            # If there is an order_by_column, include it in the index and ensure uniqueness.
+            # If there is a primary_key parameter, include it in the index and ensure uniqueness.
             create_index_statement = (
                 "CREATE INDEX IF NOT EXISTS dataset_and_partition_index "
                 f'ON "{table_name}"(_dataset_id, _partition_id)'
@@ -174,12 +210,11 @@ class SQLAdapter(Adapter[TableStructure]):
             with conn.cursor() as cursor:
                 cursor.execute(create_index_statement)
 
-            order_by_column = data_source.parameters.get("order_by_column")
-            unique_ordering = data_source.parameters.get("unique_ordering", False)
-            if order_by_column in data_source.structure.columns and unique_ordering:
+            if primary_key:
+                pkey_columns = ", ".join([f'"{col.lower()}"' for col in primary_key])
                 create_unique_index_statement = (
                     "CREATE UNIQUE INDEX IF NOT EXISTS unique_ordering_per_dataset_index "
-                    f'ON "{table_name}"(_dataset_id, {order_by_column.lower()})'
+                    f'ON "{table_name}"(_dataset_id, {pkey_columns})'
                 )
                 with conn.cursor() as cursor:
                     cursor.execute(create_unique_index_statement)
@@ -363,15 +398,13 @@ class SQLAdapter(Adapter[TableStructure]):
 
         if partition is not None:
             query += f"AND _partition_id={int(partition)}"
-            order_by_cols = [self.order_by_column] if self.order_by_column else []
+            order_by_partition = []
         else:
-            order_by_cols = [
-                c for c in [self.order_by_column, "_partition_id"] if c is not None
-            ]
+            order_by_partition = [{"column": "_partition_id", "direction": "asc"}]
 
-        if order_by_cols:
+        if args := self.order_by_args + order_by_partition:
             query += " ORDER BY " + ", ".join(
-                [f'"{c.lower()}"' for c in order_by_cols if c is not None]
+                [f'"{c["column"].lower()}" {c["direction"].upper()}' for c in args]
             )
 
         with closing(self.storage.connect()) as conn:
