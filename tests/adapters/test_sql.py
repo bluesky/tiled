@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any, Callable, Generator, Union, cast
+from typing import Any, Callable, Generator, Optional, Union, cast
 
 import numpy as np
 import pyarrow as pa
@@ -11,11 +11,15 @@ from tiled.adapters.sql import (
     SQLAdapter,
     is_safe_identifier,
 )
-from tiled.storage import SQLStorage, get_storage, parse_storage, register_storage
+from tiled.storage import (
+    SQLStorage,
+    parse_storage,
+    register_storage,
+    unregister_storage,
+)
 from tiled.structures.core import StructureFamily
 from tiled.structures.data_source import DataSource, Management
 from tiled.structures.table import TableStructure
-from tiled.utils import sanitize_uri
 
 names = ["f0", "f1", "f2", "f3"]
 data0 = [
@@ -42,26 +46,65 @@ batch1 = pa.record_batch(data1, names=names)
 batch2 = pa.record_batch(data2, names=names)
 
 
+def adapter_from_data_source(
+    data_source: DataSource[TableStructure], **kwargs: Any
+) -> SQLAdapter:
+    """Construct a SQLAdapter from an already-initialised DataSource.
+
+    Extra keyword arguments are forwarded to SQLAdapter.__init__, making it
+    easy to pass order_by_column, unique_ordering, etc. without repeating the
+    four positional arguments every time.
+    """
+    return SQLAdapter(
+        data_source.assets[0].data_uri,
+        data_source.structure,
+        data_source.parameters["table_name"],
+        data_source.parameters["dataset_id"],
+        **kwargs,
+    )
+
+
 @pytest.fixture
-def data_source_from_init_storage() -> Callable[[str, int], DataSource[TableStructure]]:
+def data_source_from_init_storage() -> (
+    Generator[
+        Callable[
+            [str, int, Optional[pa.Table], Optional[dict[str, Any]]],
+            DataSource[TableStructure],
+        ],
+        None,
+        None,
+    ]
+):
+    registered: list[SQLStorage] = []
+
     def _data_source_from_init_storage(
-        data_uri: str, num_partitions: int
+        data_uri: str,
+        num_partitions: int,
+        table: Optional[pa.Table] = None,
+        parameters: Optional[dict[str, Any]] = None,
     ) -> DataSource[TableStructure]:
-        table = pa.Table.from_arrays(data0, names)
+        if table is None:
+            table = pa.Table.from_arrays(data0, names)
         structure = TableStructure.from_arrow_table(table, npartitions=num_partitions)
         data_source = DataSource(
             management=Management.writable,
             mimetype="application/x-tiled-sql-table",
             structure_family=StructureFamily.table,
             structure=structure,
+            parameters=parameters or {},
             assets=[],
         )
 
         storage = cast(SQLStorage, parse_storage(data_uri))
         register_storage(storage)
+        registered.append(storage)
         return SQLAdapter.init_storage(data_source=data_source, storage=storage)
 
-    return _data_source_from_init_storage
+    yield _data_source_from_init_storage
+
+    for storage in registered:
+        storage.dispose()
+        unregister_storage(storage)
 
 
 @pytest.fixture
@@ -71,12 +114,7 @@ def adapter_duckdb_one_partition(
     duckdb_uri: str,
 ) -> Generator[SQLAdapter, None, None]:
     data_source = data_source_from_init_storage(duckdb_uri, 1)
-    yield SQLAdapter(
-        data_source.assets[0].data_uri,
-        data_source.structure,
-        data_source.parameters["table_name"],
-        data_source.parameters["dataset_id"],
-    )
+    yield adapter_from_data_source(data_source)
 
 
 @pytest.fixture
@@ -86,12 +124,7 @@ def adapter_duckdb_many_partitions(
     duckdb_uri: str,
 ) -> Generator[SQLAdapter, None, None]:
     data_source = data_source_from_init_storage(duckdb_uri, 3)
-    yield SQLAdapter(
-        data_source.assets[0].data_uri,
-        data_source.structure,
-        data_source.parameters["table_name"],
-        data_source.parameters["dataset_id"],
-    )
+    yield adapter_from_data_source(data_source)
 
 
 def test_attributes_duckdb_one_part(adapter_duckdb_one_partition: SQLAdapter) -> None:
@@ -113,12 +146,7 @@ def adapter_sqlite_one_partition(
     sqlite_uri: str,
 ) -> Generator[SQLAdapter, None, None]:
     data_source = data_source_from_init_storage(sqlite_uri, 1)
-    yield SQLAdapter(
-        data_source.assets[0].data_uri,
-        data_source.structure,
-        data_source.parameters["table_name"],
-        data_source.parameters["dataset_id"],
-    )
+    yield adapter_from_data_source(data_source)
 
 
 @pytest.fixture
@@ -128,12 +156,7 @@ def adapter_sqlite_many_partitions(
     sqlite_uri: str,
 ) -> Generator[SQLAdapter, None, None]:
     data_source = data_source_from_init_storage(sqlite_uri, 3)
-    yield SQLAdapter(
-        data_source.assets[0].data_uri,
-        data_source.structure,
-        data_source.parameters["table_name"],
-        data_source.parameters["dataset_id"],
-    )
+    yield adapter_from_data_source(data_source)
 
 
 def test_attributes_sql_one_part(adapter_sqlite_one_partition: SQLAdapter) -> None:
@@ -152,16 +175,7 @@ def adapter_psql_one_partition(
     postgres_uri: str,
 ) -> Generator[SQLAdapter, None, None]:
     data_source = data_source_from_init_storage(postgres_uri, 1)
-    yield SQLAdapter(
-        data_source.assets[0].data_uri,
-        data_source.structure,
-        data_source.parameters["table_name"],
-        data_source.parameters["dataset_id"],
-    )
-
-    # Close all connections and dispose of the storage
-    storage = get_storage(sanitize_uri(postgres_uri)[0])
-    cast(SQLStorage, storage).dispose()
+    yield adapter_from_data_source(data_source)
 
 
 @pytest.fixture
@@ -170,16 +184,7 @@ def adapter_psql_many_partitions(
     postgres_uri: str,
 ) -> Generator[SQLAdapter, None, None]:
     data_source = data_source_from_init_storage(postgres_uri, 3)
-    yield SQLAdapter(
-        data_source.assets[0].data_uri,
-        data_source.structure,
-        data_source.parameters["table_name"],
-        data_source.parameters["dataset_id"],
-    )
-
-    # Close all connections and dispose of the storage
-    storage = get_storage(sanitize_uri(postgres_uri)[0])
-    cast(SQLStorage, storage).dispose()
+    yield adapter_from_data_source(data_source)
 
 
 def test_psql(adapter_psql_one_partition: SQLAdapter) -> None:
@@ -797,3 +802,448 @@ def test_append_nullable(
     assert deep_array_equal(result_part, result_full)
 
     storage.dispose()  # Close all connections
+
+
+# ============================================================================
+# Tests for order_by_args and primary_key functionality
+# ============================================================================
+
+# Shared schemas used across order_by tests.
+_ts_value_schema = pa.schema(
+    [pa.field("ts", pa.int64()), pa.field("value", pa.float64())]
+)
+_ts_val_schema = pa.schema([pa.field("ts", pa.int64()), pa.field("val", pa.int32())])
+
+# Canonical order_by_args parameter: list of {"column": ..., "direction": ...} dicts.
+_order_by_ts_asc = [{"column": "ts", "direction": "asc"}]
+
+
+@pytest.mark.parametrize("data_uri", ["sqlite_uri", "duckdb_uri", "postgres_uri"])
+@pytest.mark.parametrize(
+    "schema, order_args, chunks, expected_col, expected_values",
+    [
+        pytest.param(
+            _ts_value_schema,
+            [{"column": "ts", "direction": "asc"}],
+            [
+                pa.table({"ts": [30, 40], "value": [3.0, 4.0]}),
+                pa.table({"ts": [10, 20], "value": [1.0, 2.0]}),
+            ],
+            "ts",
+            [10, 20, 30, 40],
+            id="integer_ts_out_of_order_chunks_asc",
+        ),
+        pytest.param(
+            _ts_value_schema,
+            [{"column": "ts", "direction": "desc"}],
+            [
+                pa.table({"ts": [30, 40], "value": [3.0, 4.0]}),
+                pa.table({"ts": [10, 20], "value": [1.0, 2.0]}),
+            ],
+            "ts",
+            [40, 30, 20, 10],
+            id="integer_ts_desc",
+        ),
+        pytest.param(
+            _ts_value_schema,
+            [{"column": "ts", "direction": "asc"}],
+            [
+                pa.table({"ts": [100, 200], "value": [10.0, 20.0]}),
+                pa.table({"ts": [50, 150], "value": [5.0, 15.0]}),
+                pa.table({"ts": [75, 300], "value": [7.0, 30.0]}),
+            ],
+            "ts",
+            [50, 75, 100, 150, 200, 300],
+            id="integer_ts_incremental_appends",
+        ),
+        pytest.param(
+            pa.schema([pa.field("name", pa.string()), pa.field("score", pa.int32())]),
+            [{"column": "name", "direction": "asc"}],
+            [pa.table({"name": ["charlie", "alice", "bob"], "score": [3, 1, 2]})],
+            "name",
+            ["alice", "bob", "charlie"],
+            id="string_column_lexicographic",
+        ),
+        pytest.param(
+            pa.schema([pa.field("Timestamp", pa.int64()), pa.field("val", pa.int32())]),
+            [{"column": "Timestamp", "direction": "asc"}],
+            [pa.table({"Timestamp": [30, 10, 20], "val": [3, 1, 2]})],
+            "Timestamp",
+            [10, 20, 30],
+            id="mixed_case_column_name",
+        ),
+    ],
+)
+def test_order_by_single_partition(
+    data_uri: str,
+    schema: pa.Schema,
+    order_args: list[dict[str, Any]],
+    chunks: list[pa.Table],
+    expected_col: str,
+    expected_values: list[Any],
+    data_source_from_init_storage: Callable[..., DataSource[TableStructure]],
+    request: pytest.FixtureRequest,
+) -> None:
+    """Appending data out of order and reading it back should return rows in the
+    requested order, regardless of insertion order, column type, case, or direction."""
+    data_source = data_source_from_init_storage(
+        request.getfixturevalue(data_uri),
+        1,
+        schema.empty_table(),
+        {"order_by_args": order_args},
+    )
+    adapter = adapter_from_data_source(data_source, order_by_args=order_args)
+
+    for chunk in chunks:
+        adapter.append_partition(0, chunk)
+
+    result = adapter.read()
+    assert result[expected_col].tolist() == expected_values
+
+
+@pytest.mark.parametrize("data_uri", ["sqlite_uri", "duckdb_uri", "postgres_uri"])
+def test_order_by_multi_column(
+    data_uri: str,
+    data_source_from_init_storage: Callable[..., DataSource[TableStructure]],
+    request: pytest.FixtureRequest,
+) -> None:
+    """Multi-column order_by_args: rows are sorted by the first column, then by the
+    second column for ties."""
+    schema = pa.schema([pa.field("category", pa.string()), pa.field("ts", pa.int64())])
+    order_args = [
+        {"column": "category", "direction": "asc"},
+        {"column": "ts", "direction": "desc"},
+    ]
+    data_source = data_source_from_init_storage(
+        request.getfixturevalue(data_uri),
+        1,
+        schema.empty_table(),
+        {"order_by_args": order_args},
+    )
+    adapter = adapter_from_data_source(data_source, order_by_args=order_args)
+    adapter.append_partition(
+        0,
+        pa.table(
+            {
+                "category": ["b", "a", "a", "b"],
+                "ts": [20, 30, 10, 5],
+            }
+        ),
+    )
+
+    result = adapter.read()
+    assert result["category"].tolist() == ["a", "a", "b", "b"]
+    assert result["ts"].tolist() == [30, 10, 20, 5]
+
+
+@pytest.mark.parametrize("data_uri", ["sqlite_uri", "duckdb_uri", "postgres_uri"])
+def test_order_by_multi_partition(
+    data_uri: str,
+    data_source_from_init_storage: Callable[..., DataSource[TableStructure]],
+    request: pytest.FixtureRequest,
+) -> None:
+    """With order_by_args set, both full-table and single-partition reads return rows
+    sorted correctly, regardless of which partition they were written to."""
+    data_source = data_source_from_init_storage(
+        request.getfixturevalue(data_uri),
+        2,
+        _ts_value_schema.empty_table(),
+        {"order_by_args": _order_by_ts_asc},
+    )
+    adapter = adapter_from_data_source(data_source, order_by_args=_order_by_ts_asc)
+
+    # Partition 0 has later timestamps than partition 1 — order must cross partition boundaries
+    adapter.append_partition(
+        0, pa.table({"ts": [50, 30, 60], "value": [5.0, 3.0, 6.0]})
+    )
+    adapter.append_partition(
+        1, pa.table({"ts": [40, 10, 20], "value": [4.0, 1.0, 2.0]})
+    )
+
+    assert adapter.read()["ts"].tolist() == [
+        10,
+        20,
+        30,
+        40,
+        50,
+        60,
+    ], "Full-table read must be ordered by 'ts' across partitions"
+    assert adapter.read_partition(0)["ts"].tolist() == [
+        30,
+        50,
+        60,
+    ], "Single-partition read must also be ordered by 'ts'"
+    assert adapter.read_partition(1)["ts"].tolist() == [10, 20, 40]
+
+
+@pytest.mark.parametrize("data_uri", ["sqlite_uri", "duckdb_uri", "postgres_uri"])
+def test_order_by_subset_fields_read(
+    data_uri: str,
+    data_source_from_init_storage: Callable[..., DataSource[TableStructure]],
+    request: pytest.FixtureRequest,
+) -> None:
+    """Reading a subset of fields with order_by_args set should return rows in the
+    correct order even when the sort column is not in the selected fields."""
+    schema = pa.schema(
+        [
+            pa.field("ts", pa.int64()),
+            pa.field("a", pa.int32()),
+            pa.field("b", pa.float64()),
+        ]
+    )
+    data_source = data_source_from_init_storage(
+        request.getfixturevalue(data_uri),
+        1,
+        schema.empty_table(),
+        {"order_by_args": _order_by_ts_asc},
+    )
+    adapter = adapter_from_data_source(data_source, order_by_args=_order_by_ts_asc)
+    adapter.append_partition(
+        0, pa.table({"ts": [30, 10, 20], "a": [3, 1, 2], "b": [3.0, 1.0, 2.0]})
+    )
+
+    assert adapter.read(fields=["a"])["a"].tolist() == [1, 2, 3]
+    assert adapter.read(fields=["b"])["b"].tolist() == [1.0, 2.0, 3.0]
+
+
+@pytest.mark.parametrize("data_uri", ["sqlite_uri", "duckdb_uri", "postgres_uri"])
+def test_no_order_by_does_not_crash(
+    data_uri: str,
+    data_source_from_init_storage: Callable[..., DataSource[TableStructure]],
+    request: pytest.FixtureRequest,
+) -> None:
+    """Without order_by_args, no ORDER BY clause is added — the adapter should
+    initialise and read data without errors, and order_by_args should be empty."""
+    data_source = data_source_from_init_storage(
+        request.getfixturevalue(data_uri),
+        1,
+        _ts_value_schema.empty_table(),
+    )
+    adapter = adapter_from_data_source(data_source)
+    assert adapter.order_by_args == []
+
+    adapter.append_partition(0, pa.table({"ts": [10, 20], "value": [1.0, 2.0]}))
+    result = adapter.read()
+    assert set(result["ts"].tolist()) == {10, 20}
+
+
+def test_order_by_table_name_hash() -> None:
+    """get_table_name incorporates the primary_key into the hash — tables with different
+    primary_key columns get different names. order_by_args is read-time only and does
+    not affect the hash. This is a pure unit test: no database is needed."""
+    structure = TableStructure.from_arrow_table(_ts_value_schema.empty_table())
+
+    def make_ds(primary_key: Optional[list[str]]) -> DataSource[TableStructure]:
+        params: dict[str, Any] = {}
+        if primary_key is not None:
+            params["primary_key"] = primary_key
+        return DataSource(
+            management=Management.writable,
+            mimetype="application/x-tiled-sql-table",
+            structure_family=StructureFamily.table,
+            structure=structure,
+            parameters=params,
+            assets=[],
+        )
+
+    # No primary_key → same table name regardless of order_by_args (read-time param)
+    assert SQLAdapter.get_table_name(make_ds(None)) == SQLAdapter.get_table_name(
+        make_ds(None)
+    ), "Same schema and no primary_key should always produce the same table name"
+
+    # Different primary_key columns → different table names
+    assert SQLAdapter.get_table_name(make_ds(["ts"])) != SQLAdapter.get_table_name(
+        make_ds(["value"])
+    ), "Different primary_key columns should produce different table names"
+
+    # primary_key vs no primary_key → different table names
+    assert SQLAdapter.get_table_name(make_ds(["ts"])) != SQLAdapter.get_table_name(
+        make_ds(None)
+    ), "primary_key set vs unset should produce different table names"
+
+
+@pytest.mark.parametrize("data_uri", ["sqlite_uri", "duckdb_uri", "postgres_uri"])
+def test_order_by_column_not_in_schema_raises(
+    data_uri: str,
+    data_source_from_init_storage: Callable[..., DataSource[TableStructure]],
+    request: pytest.FixtureRequest,
+) -> None:
+    """Passing an order_by_args column that does not exist in the schema should raise
+    a ValueError immediately on adapter construction."""
+    data_source = data_source_from_init_storage(
+        request.getfixturevalue(data_uri),
+        1,
+        _ts_val_schema.empty_table(),
+    )
+    with pytest.raises(ValueError, match="nonexistent_column"):
+        adapter_from_data_source(
+            data_source,
+            order_by_args=[{"column": "nonexistent_column", "direction": "asc"}],
+        )
+
+
+@pytest.mark.parametrize("data_uri", ["sqlite_uri", "duckdb_uri", "postgres_uri"])
+def test_order_by_invalid_direction_raises(
+    data_uri: str,
+    data_source_from_init_storage: Callable[..., DataSource[TableStructure]],
+    request: pytest.FixtureRequest,
+) -> None:
+    """Passing an invalid direction string should raise a ValueError."""
+    data_source = data_source_from_init_storage(
+        request.getfixturevalue(data_uri),
+        1,
+        _ts_val_schema.empty_table(),
+    )
+    with pytest.raises(ValueError, match="direction"):
+        adapter_from_data_source(
+            data_source,
+            order_by_args=[{"column": "ts", "direction": "sideways"}],
+        )
+
+
+@pytest.mark.parametrize("data_uri", ["sqlite_uri", "duckdb_uri", "postgres_uri"])
+def test_primary_key_enforces_uniqueness(
+    data_uri: str,
+    data_source_from_init_storage: Callable[..., DataSource[TableStructure]],
+    request: pytest.FixtureRequest,
+) -> None:
+    """When primary_key is set, init_storage creates a unique index. Appending a
+    duplicate (dataset_id, primary_key) combination must raise an error.
+
+    Note: DuckDB's ADBC driver does not enforce unique constraints during adbc_ingest,
+    so duplicates are silently accepted on that backend. The test is marked xfail for
+    duckdb_uri to document this known limitation.
+    """
+    if data_uri == "duckdb_uri":
+        pytest.xfail(
+            "DuckDB ADBC adbc_ingest does not enforce unique index constraints"
+        )
+    data_source = data_source_from_init_storage(
+        request.getfixturevalue(data_uri),
+        1,
+        _ts_val_schema.empty_table(),
+        {"primary_key": ["ts"]},
+    )
+    adapter = adapter_from_data_source(data_source)
+    adapter.append_partition(0, pa.table({"ts": [10, 20, 30], "val": [1, 2, 3]}))
+
+    # Attempting to append a duplicate ts value must fail
+    with pytest.raises(Exception):
+        adapter.append_partition(0, pa.table({"ts": [10], "val": [99]}))
+
+
+@pytest.mark.parametrize("data_uri", ["sqlite_uri", "duckdb_uri", "postgres_uri"])
+def test_order_by_args_with_primary_key(
+    data_uri: str,
+    data_source_from_init_storage: Callable[..., DataSource[TableStructure]],
+    request: pytest.FixtureRequest,
+) -> None:
+    """order_by_args and primary_key can be combined: the unique index is created from
+    primary_key, and reads are sorted by order_by_args.
+
+    The duplicate-rejection assertion is xfail for duckdb_uri because DuckDB's ADBC
+    driver does not enforce unique constraints during adbc_ingest.
+    """
+    data_source = data_source_from_init_storage(
+        request.getfixturevalue(data_uri),
+        1,
+        _ts_val_schema.empty_table(),
+        {"primary_key": ["ts"]},
+    )
+    adapter = adapter_from_data_source(
+        data_source, order_by_args=[{"column": "ts", "direction": "asc"}]
+    )
+    adapter.append_partition(0, pa.table({"ts": [30, 10, 20], "val": [3, 1, 2]}))
+
+    result = adapter.read()
+    assert result["ts"].tolist() == [10, 20, 30]
+    assert result["val"].tolist() == [1, 2, 3]
+
+    # Duplicate must be rejected — xfail on DuckDB (ADBC does not enforce unique constraints)
+    if data_uri == "duckdb_uri":
+        pytest.xfail(
+            "DuckDB ADBC adbc_ingest does not enforce unique index constraints"
+        )
+    with pytest.raises(Exception):
+        adapter.append_partition(0, pa.table({"ts": [10], "val": [99]}))
+
+
+@pytest.mark.parametrize("data_uri", ["duckdb_uri", "postgres_uri"])
+@pytest.mark.parametrize(
+    "arrow_type",
+    [
+        pa.list_(pa.int32()),
+        pa.large_list(pa.float64()),
+        pa.list_(pa.string()),
+    ],
+)
+def test_order_by_nested_type_raises(
+    data_uri: str,
+    arrow_type: pa.DataType,
+    data_source_from_init_storage: Callable[..., DataSource[TableStructure]],
+    request: pytest.FixtureRequest,
+) -> None:
+    """Columns with nested Arrow types (list, large_list) cannot be sorted in SQL
+    and must be rejected with a ValueError when used in order_by_args.
+    Tested on DuckDB and Postgres only — SQLite does not support nested column types."""
+    schema = pa.schema([pa.field("id", pa.int64()), pa.field("nested", arrow_type)])
+    data_source = data_source_from_init_storage(
+        request.getfixturevalue(data_uri), 1, schema.empty_table()
+    )
+    with pytest.raises(ValueError, match="nested"):
+        adapter_from_data_source(
+            data_source,
+            order_by_args=[{"column": "nested", "direction": "asc"}],
+        )
+
+
+@pytest.mark.parametrize("data_uri", ["sqlite_uri", "duckdb_uri", "postgres_uri"])
+@pytest.mark.parametrize(
+    "arrow_type, requires_nested_support",
+    [
+        (pa.float32(), False),
+        (pa.float64(), False),
+        # list types: only DuckDB and Postgres support them as column types
+        (pa.list_(pa.int32()), True),
+        (pa.large_list(pa.float64()), True),
+    ],
+)
+def test_primary_key_invalid_type_raises(
+    data_uri: str,
+    arrow_type: pa.DataType,
+    requires_nested_support: bool,
+    data_source_from_init_storage: Callable[..., DataSource[TableStructure]],
+    request: pytest.FixtureRequest,
+) -> None:
+    """Floating-point and nested columns must be rejected as primary_key both at
+    init_storage time and at adapter construction time.
+
+    Nested-type cases are skipped on sqlite_uri because SQLite does not support
+    list/large_list column types at all."""
+    if requires_nested_support and data_uri == "sqlite_uri":
+        pytest.skip("SQLite does not support nested (list) column types")
+
+    data_uri_val = request.getfixturevalue(data_uri)
+    schema = pa.schema([pa.field("id", pa.int64()), pa.field("bad_col", arrow_type)])
+
+    # init_storage must reject it before touching the DB
+    storage = cast(SQLStorage, parse_storage(data_uri_val))
+    register_storage(storage)
+    structure = TableStructure.from_arrow_table(schema.empty_table())
+    ds_with_pk = DataSource(
+        management=Management.writable,
+        mimetype="application/x-tiled-sql-table",
+        structure_family=StructureFamily.table,
+        structure=structure,
+        parameters={"primary_key": ["bad_col"]},
+        assets=[],
+    )
+    with pytest.raises(ValueError, match="bad_col"):
+        SQLAdapter.init_storage(data_source=ds_with_pk, storage=storage)
+    storage.dispose()
+    unregister_storage(storage)
+
+    # __init__ must also reject it independently
+    data_source = data_source_from_init_storage(data_uri_val, 1, schema.empty_table())
+    with pytest.raises(ValueError, match="bad_col"):
+        adapter_from_data_source(data_source, primary_key=["bad_col"])

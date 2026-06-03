@@ -23,6 +23,7 @@ __all__ = [
     "Storage",
     "get_storage",
     "parse_storage",
+    "unregister_storage",
 ]
 
 
@@ -378,6 +379,11 @@ _STORAGE: Dict[str, Storage] = {}
 def register_storage(storage: Storage) -> None:
     "Stash Storage for later lookup by URI."
     _STORAGE[storage.uri] = storage
+
+
+def unregister_storage(storage: Storage) -> None:
+    "Remove Storage from the registry (call after dispose to release all references)."
+    _STORAGE.pop(storage.uri, None)
 
 
 def get_storage(uri: str) -> Storage:
