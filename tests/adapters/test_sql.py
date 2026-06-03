@@ -1166,3 +1166,80 @@ def test_order_by_args_with_primary_key(
         )
     with pytest.raises(Exception):
         adapter.append_partition(0, pa.table({"ts": [10], "val": [99]}))
+
+
+@pytest.mark.parametrize(
+    "arrow_type",
+    [
+        pa.list_(pa.int32()),
+        pa.large_list(pa.float64()),
+        pa.list_(pa.string()),
+    ],
+)
+def test_order_by_nested_type_raises(
+    arrow_type: pa.DataType,
+    duckdb_uri: str,
+    data_source_from_init_storage: Callable[..., DataSource[TableStructure]],
+) -> None:
+    """Columns with nested Arrow types (list, large_list) cannot be sorted in SQL
+    and must be rejected with a ValueError when used in order_by_args.
+    Tested on DuckDB only because SQLite does not support nested column types."""
+    schema = pa.schema([pa.field("id", pa.int64()), pa.field("nested", arrow_type)])
+    data_source = data_source_from_init_storage(duckdb_uri, 1, schema.empty_table())
+    with pytest.raises(ValueError, match="nested"):
+        adapter_from_data_source(
+            data_source,
+            order_by_args=[{"column": "nested", "direction": "asc"}],
+        )
+
+
+@pytest.mark.parametrize("data_uri", ["sqlite_uri", "duckdb_uri", "postgres_uri"])
+@pytest.mark.parametrize(
+    "arrow_type, requires_nested_support",
+    [
+        (pa.float32(), False),
+        (pa.float64(), False),
+        # list types: only DuckDB and Postgres support them as column types
+        (pa.list_(pa.int32()), True),
+        (pa.large_list(pa.float64()), True),
+    ],
+)
+def test_primary_key_invalid_type_raises(
+    data_uri: str,
+    arrow_type: pa.DataType,
+    requires_nested_support: bool,
+    data_source_from_init_storage: Callable[..., DataSource[TableStructure]],
+    request: pytest.FixtureRequest,
+) -> None:
+    """Floating-point and nested columns must be rejected as primary_key both at
+    init_storage time and at adapter construction time.
+
+    Nested-type cases are skipped on sqlite_uri because SQLite does not support
+    list/large_list column types at all."""
+    if requires_nested_support and data_uri == "sqlite_uri":
+        pytest.skip("SQLite does not support nested (list) column types")
+
+    data_uri_val = request.getfixturevalue(data_uri)
+    schema = pa.schema([pa.field("id", pa.int64()), pa.field("bad_col", arrow_type)])
+
+    # init_storage must reject it before touching the DB
+    storage = cast(SQLStorage, parse_storage(data_uri_val))
+    register_storage(storage)
+    structure = TableStructure.from_arrow_table(schema.empty_table())
+    ds_with_pk = DataSource(
+        management=Management.writable,
+        mimetype="application/x-tiled-sql-table",
+        structure_family=StructureFamily.table,
+        structure=structure,
+        parameters={"primary_key": ["bad_col"]},
+        assets=[],
+    )
+    with pytest.raises(ValueError, match="bad_col"):
+        SQLAdapter.init_storage(data_source=ds_with_pk, storage=storage)
+    storage.dispose()
+    unregister_storage(storage)
+
+    # __init__ must also reject it independently
+    data_source = data_source_from_init_storage(data_uri_val, 1, schema.empty_table())
+    with pytest.raises(ValueError, match="bad_col"):
+        adapter_from_data_source(data_source, primary_key=["bad_col"])

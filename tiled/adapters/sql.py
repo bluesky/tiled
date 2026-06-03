@@ -73,6 +73,30 @@ class _OrderByArgs(TypedDict):
     direction: Literal["asc", "desc"]
 
 
+def _is_orderable_type(arrow_type: pyarrow.DataType) -> bool:
+    """Return True if the Arrow type can be used in a SQL ORDER BY clause.
+
+    Nested types (list, struct, map) cannot be sorted in SQL.
+    """
+    return not (
+        pyarrow.types.is_list(arrow_type)
+        or pyarrow.types.is_large_list(arrow_type)
+        or pyarrow.types.is_fixed_size_list(arrow_type)
+        or pyarrow.types.is_struct(arrow_type)
+        or pyarrow.types.is_map(arrow_type)
+    )
+
+
+def _is_primary_key_type(arrow_type: pyarrow.DataType) -> bool:
+    """Return True if the Arrow type is suitable for use as a primary key column.
+
+    In addition to the non-orderable nested types, floating-point columns are
+    rejected: NaN != NaN semantics and precision issues make float primary keys
+    almost always a mistake.
+    """
+    return _is_orderable_type(arrow_type) and not pyarrow.types.is_floating(arrow_type)
+
+
 class SQLAdapter(Adapter[TableStructure]):
     """SQLAdapter Class
 
@@ -114,9 +138,31 @@ class SQLAdapter(Adapter[TableStructure]):
         self.primary_key: List[str] = primary_key or []
 
         for arg in self.order_by_args:
-            if arg["column"] not in self.structure().columns:
+            column = arg["column"]
+            direction = arg["direction"]
+            if column not in self.structure().columns:
                 raise ValueError(
-                    f"order_by column '{arg['column']}' is not in the structure columns"
+                    f"order_by column '{column}' is not in the structure columns"
+                )
+            if direction not in ("asc", "desc"):
+                raise ValueError(
+                    f"order_by direction must be 'asc' or 'desc', got '{direction}'"
+                )
+            arrow_type = self.structure().arrow_schema_decoded.field(column).type
+            if not _is_orderable_type(arrow_type):
+                raise ValueError(
+                    f"order_by column '{column}' has type {arrow_type} which cannot be sorted in SQL"
+                )
+        for key in self.primary_key:
+            if key not in self.structure().columns:
+                raise ValueError(
+                    f"primary_key column '{key}' is not in the structure columns"
+                )
+            arrow_type = self.structure().arrow_schema_decoded.field(key).type
+            if not _is_primary_key_type(arrow_type):
+                raise ValueError(
+                    f"primary_key column '{key}' has type {arrow_type} which is not suitable "
+                    f"as a primary key (nested types and floating-point types are not allowed)"
                 )
             if arg["direction"] not in ("asc", "desc"):
                 raise ValueError(
@@ -193,6 +239,12 @@ class SQLAdapter(Adapter[TableStructure]):
                 if key not in data_source.structure.columns:
                     raise ValueError(
                         f"primary_key column '{key}' is not in the structure columns"
+                    )
+                arrow_type = data_source.structure.arrow_schema_decoded.field(key).type
+                if not _is_primary_key_type(arrow_type):
+                    raise ValueError(
+                        f"primary_key column '{key}' has type {arrow_type} which is not suitable "
+                        f"as a primary key (nested types and floating-point types are not allowed)"
                     )
 
         with closing(storage.connect()) as conn:
