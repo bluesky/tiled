@@ -939,8 +939,6 @@ def get_router(
 
         structure = entry.structure()
 
-        import ragged
-
         from ..structures.ragged import CanonicalRaggedArray, RaggedSlicingError
 
         if block == () and len(structure.shape) > 0:

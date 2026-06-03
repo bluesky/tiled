@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import itertools
 import sys
-from typing import TYPE_CHECKING, Any
 
 if sys.version_info >= (3, 11):
     from typing import Self
@@ -10,68 +8,29 @@ else:
     from typing_extensions import Self
 
 import copy
-import hashlib
-import logging
-import re
 from collections.abc import Set
-from contextlib import closing
-from pathlib import Path
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    Callable,
-    Iterator,
-    List,
-    Literal,
-    Optional,
-    Sequence,
-    Tuple,
-    Union,
-    cast,
-)
-from urllib.parse import quote_plus
+from typing import Any, List, Optional, Tuple
 
 import awkward
 import numpy
-import pandas
 import pyarrow
 import ragged
-from sqlalchemy.sql.compiler import RESERVED_WORDS
 
 from ..catalog.orm import Node
 from ..ndslice import NDBlock, NDSlice
-from ..storage import (
-    EmbeddedSQLStorage,
-    FileStorage,
-    RemoteSQLStorage,
-    SQLStorage,
-    Storage,
-    get_storage,
-)
+from ..storage import EmbeddedSQLStorage, RemoteSQLStorage, SQLStorage, Storage
 from ..structures.core import Spec, StructureFamily
-from ..structures.data_source import Asset, DataSource
+from ..structures.data_source import DataSource
 from ..structures.ragged import (
     CanonicalRaggedArray,
     RaggedCompatibleType,
-    RaggedSlicingError,
     RaggedStructure,
     make_ragged_array,
 )
 from ..structures.table import TableStructure
 from ..type_aliases import JSON
-from ..utils import path_from_uri
 from .core import Adapter
-from .resource_cache import with_resource_cache
 from .sql import SQLAdapter
-from .utils import init_adapter_from_catalog
-
-if TYPE_CHECKING:
-    from collections.abc import Iterable
-
-    import awkward
-    from numpy.typing import NDArray
-
-    from tiled.type_aliases import JSON
 
 
 class RaggedAdapter(Adapter[RaggedStructure]):
@@ -115,9 +74,9 @@ class RaggedAdapter(Adapter[RaggedStructure]):
     def read_block(self, block: NDBlock, slice: NDSlice | None = None) -> ragged.array:
         """Read a single partition block of the ragged array, possibly sliced."""
 
-        data = make_ragged_array(
-            self._array, slice=block.slice_from_chunks(self._structure.chunks)
-        )
+        fixed_chunks = self._structure.chunks[: self._structure.ndim_fixed]
+        block_slice = block.slice_from_chunks(fixed_chunks)  # type: ignore
+        data = make_ragged_array(self._array, slice=block_slice)
 
         return make_ragged_array(data, slice=slice)
 
@@ -199,7 +158,7 @@ class RaggedSQLAdapter(Adapter[RaggedStructure]):
 
     @classmethod
     def from_catalog(
-        cls, data_source: DataSource[RaggedStructure], node: Node, **kwargs
+        cls, data_source: DataSource[RaggedStructure], node: Node, **kwargs: Any
     ) -> Self:
         tabular_data_source = cls._get_tabular_data_source(data_source)
         tabular_adapter = SQLAdapter.from_catalog(tabular_data_source, node)
@@ -225,8 +184,8 @@ class RaggedSQLAdapter(Adapter[RaggedStructure]):
             for row in rows
         ]
         awk_arrays = [
-            awkward.from_buffers(form, l, b)
-            for l, b in zip(self._structure.chunks[0], buffers)
+            awkward.from_buffers(form, length, buffer)
+            for length, buffer in zip(self._structure.chunks[0], buffers)
         ]
 
         return make_ragged_array(awkward.concatenate(awk_arrays), slice=slice)
@@ -239,9 +198,10 @@ class RaggedSQLAdapter(Adapter[RaggedStructure]):
         Slices the whole array to get this block and then slices within the block
         """
 
-        array = self.read(slice=block.slice_from_chunks(self._structure.chunks))
+        fixed_chunks = self._structure.chunks[: self._structure.ndim_fixed]
+        block_slice = block.slice_from_chunks(fixed_chunks)  # type: ignore
 
-        return make_ragged_array(array, slice=slice)
+        return make_ragged_array(self.read(slice=block_slice), slice=slice)
 
     def write(self, data: CanonicalRaggedArray) -> None:
         self.write_block(data, block=NDBlock(0))

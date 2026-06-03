@@ -1,23 +1,16 @@
 import builtins
-import itertools
-from collections import namedtuple
-from collections.abc import Callable
 from types import SimpleNamespace
 from typing import cast
 
 import awkward as ak
 import numpy as np
 import orjson
-import pyarrow as pa
 import pyarrow.feather
 import pyarrow.parquet
 import pytest
 import ragged
 
-from tests.adapters.test_sql import adapter_duckdb_one_partition  # noqa: F401
-from tiled.adapters.mapping import MapAdapter
 from tiled.adapters.ragged import RaggedSQLAdapter
-from tiled.adapters.sql import SQLAdapter
 from tiled.catalog import in_memory
 from tiled.client import Context, from_context, record_history
 from tiled.client.utils import ClientError
@@ -28,18 +21,17 @@ from tiled.serialization.ragged import (
     to_zipped_buffers,
 )
 from tiled.server.app import build_app
-from tiled.storage import SQLStorage, get_storage, parse_storage, register_storage
+from tiled.storage import SQLStorage, parse_storage, register_storage
 from tiled.structures.core import StructureFamily
 from tiled.structures.data_source import DataSource, Management
 from tiled.structures.ragged import RaggedStructure, make_ragged_array
-from tiled.structures.table import TableStructure
-from tiled.utils import APACHE_ARROW_FILE_MIME_TYPE, safe_json_dump
+from tiled.utils import APACHE_ARROW_FILE_MIME_TYPE
 
 rng = np.random.default_rng(42)
 
 # Explicitly define a variety of test arrays, covering different shapes and forms in Awkward
 
-## First two dimensions are fixed, shape = (3, 2, None)
+# First two dimensions are fixed, shape = (3, 2, None)
 # RegularForm(size=2)
 # └── ListOffsetForm
 #     └── NumpyForm(int64)
@@ -51,7 +43,7 @@ node1 = ak.contents.ListOffsetArray(
 node0 = ak.contents.RegularArray(node1, size=2)
 ragged_3x2xNone = ragged.array(node0)
 
-## Pure ListForm, shape = (4, None)
+# Pure ListForm, shape = (4, None)
 # ListForm
 # └── NumpyForm(int64)
 node1 = ak.contents.NumpyArray(np.arange(12))
@@ -62,7 +54,7 @@ node0 = ak.contents.ListArray(
 )
 ragged_4xNone_listform = ragged.array(node0)
 
-## Overlapping ListForms (pathological)
+# Overlapping ListForms (pathological)
 # The original ListForm:
 #    content: [0, 1, 2, 3, 4, 5]
 # Represents two lists referenceing the same data buffer:
@@ -82,7 +74,7 @@ node0 = ak.contents.ListArray(
 )
 ragged_overlapping_listforms = ragged.array(node0)
 
-## Pure tensor represented by RegularArrays, shape = (8, 3, 2)
+# Pure tensor represented by RegularArrays, shape = (8, 3, 2)
 # RegularForm(size=3)
 # └── RegularForm(size=2)
 #     └── NumpyForm(int64)
@@ -91,13 +83,13 @@ node1 = ak.contents.RegularArray(content=node2, size=2)
 node0 = ak.contents.RegularArray(content=node1, size=3)
 tensor_8x3x2_regular = ragged.array(node0)
 
-## RegularArray over NumpyForm(inner_shape=(3, 2)), shape = (4, 3, 2)
+# RegularArray over NumpyForm(inner_shape=(3, 2)), shape = (4, 3, 2)
 # RegularForm(size=4)
 # └── NumpyForm(int64, inner_shape=(3, 2))
 node1 = ak.contents.NumpyArray(np.arange(24).reshape(4, 3, 2))
 tensor_4x3x2_numpy_inner_shape = ragged.array(node1)
 
-## Array with mixed forms #1, shape = (3, None, 2, None)
+# Array with mixed forms #1, shape = (3, None, 2, None)
 # ListOffsetForm
 # └── RegularForm(size=2)
 #     └── ListForm
@@ -115,7 +107,7 @@ node0 = ak.contents.ListOffsetArray(
 )
 ragged_3xNonex2xNone = ragged.array(node0)
 
-## Array with mixed forms #2, shape = (2, None, 3, None)
+# Array with mixed forms #2, shape = (2, None, 3, None)
 # ListOffsetForm
 # └── RegularForm(size=3)
 #     └── ListOffsetForm
@@ -132,7 +124,7 @@ node0 = ak.contents.ListOffsetArray(
 )
 ragged_2xNonex3xNone = ragged.array(node0)
 
-## Array with mixed forms #3 (ListForms only), shape = (2, None, 3, None)
+# Array with mixed forms #3 (ListForms only), shape = (2, None, 3, None)
 # ListForm
 # └── RegularForm(size=3)
 #     └── ListForm
@@ -151,7 +143,7 @@ node0 = ak.contents.ListArray(
 )
 ragged_2xNonex3xNone_listforms = ragged.array(node0)
 
-## Array with mixed forms #4, shape = (4, None, None, 3, 2)
+# Array with mixed forms #4, shape = (4, None, None, 3, 2)
 # ListOffsetForm
 # └── ListForm
 #     └── RegularForm(size=3)
@@ -171,7 +163,7 @@ node0 = ak.contents.ListOffsetArray(
 )
 ragged_4xNonexNonex3x2 = ragged.array(node0)
 
-## Array with mixed forms #5, shape = (4, None, 3, 2)
+# Array with mixed forms #5, shape = (4, None, 3, 2)
 # leaf NumpyForm has inner_shape = (3, 2)
 node1 = ak.contents.NumpyArray(np.arange(7 * 3 * 2).reshape(7, 3, 2))
 node0 = ak.contents.ListOffsetArray(
@@ -180,7 +172,7 @@ node0 = ak.contents.ListOffsetArray(
 )
 ragged_4xNonex3x2 = ragged.array(node0)
 
-## Empty ragged axis, shape = (3, None)
+# Empty ragged axis, shape = (3, None)
 # ListOffsetForm
 # └── NumpyForm(int64)
 node1 = ak.contents.NumpyArray(np.array([], dtype=np.int64))
@@ -190,7 +182,7 @@ node0 = ak.contents.ListOffsetArray(
 )
 ragged_3xNone_empty = ragged.array(node0)
 
-## Mixed empty/non-empty ragged axis, shape = (3, None)
+# Mixed empty/non-empty ragged axis, shape = (3, None)
 # ListOffsetForm
 # └── NumpyForm(int64)
 node1 = ak.contents.NumpyArray(np.arange(3))
@@ -200,14 +192,14 @@ node0 = ak.contents.ListOffsetArray(
 )
 ragged_3xNone_mixed_empty = ragged.array(node0)
 
-## Size-1 RegularArray, shape = (5, 1)
+# Size-1 RegularArray, shape = (5, 1)
 # RegularForm(size=1)
 # └── NumpyForm(int64)
 node1 = ak.contents.NumpyArray(np.arange(5))
 node0 = ak.contents.RegularArray(content=node1, size=1)
 ragged_5x1 = ragged.array(node0)
 
-## Ragged with size-1 RegularArray, shape = (2, None, 1, None)
+# Ragged with size-1 RegularArray, shape = (2, None, 1, None)
 # ListOffsetForm
 # └── RegularForm(size=1)
 #     └── ListOffsetForm

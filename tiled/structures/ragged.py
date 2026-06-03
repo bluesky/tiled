@@ -2,16 +2,7 @@ from __future__ import annotations
 
 import sys
 from dataclasses import dataclass
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    Iterable,
-    NewType,
-    Optional,
-    Union,
-    cast,
-    runtime_checkable,
-)
+from typing import Iterable, NewType, Optional, Union, cast, runtime_checkable
 
 if sys.version_info >= (3, 11):
     from typing import Self
@@ -27,9 +18,6 @@ from ..ndslice import NDSlice
 from ..type_aliases import JSON
 from .array import BuiltinDtype, StructDtype
 from .root import Structure
-
-if TYPE_CHECKING:
-    from collections.abc import Iterable, Mapping
 
 RaggedCompatibleType = Union[
     ragged.array, awkward.Array, numpy.ndarray, SupportsDLPack, Iterable
@@ -77,7 +65,7 @@ class RaggedStructure(Structure):
     data_type: BuiltinDtype | StructDtype
     shape: tuple[int | None, ...]
     size: int
-    chunks: tuple[tuple[int, ...] | None, ...]
+    chunks: tuple[tuple[int, ...], *tuple[Union[tuple[int, ...], None], ...]]
     dims: tuple[str, ...] | None = None
     resizable: bool | tuple[bool, ...] = False
 

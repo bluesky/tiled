@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import Iterable
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Union, cast
+from typing import Any, Union
 from urllib.parse import parse_qs, urlparse
 
 import httpx
@@ -10,15 +9,12 @@ import numpy as np
 import orjson
 import ragged
 
-from ..ndslice import NDBlock, NDSlice
+from ..ndslice import NDSlice
 from ..serialization.ragged import from_zipped_buffers, to_zipped_buffers
 from ..structures.core import STRUCTURE_TYPES
-from ..structures.ragged import RaggedCompatibleType, RaggedStructure, make_ragged_array
+from ..structures.ragged import RaggedCompatibleType, make_ragged_array
 from .base import BaseClient
 from .utils import export_util, handle_error, params_from_slice, retry_context
-
-if TYPE_CHECKING:
-    import awkward as ak
 
 
 class RaggedClient(BaseClient):

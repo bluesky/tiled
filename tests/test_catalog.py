@@ -214,9 +214,9 @@ async def test_metadata_index_is_used(example_data_adapter):
         assert len(results[0]) == 1
         assert expected_index in str(e)
     with record_explanations() as e:
-        results = await a.search(Key("nested.bool") == False).keys_page(
+        results = await a.search(Key("nested.bool") == False).keys_page(  # noqa: #712
             limit=5
-        )  # noqa: #712
+        )
         assert len(results[0]) == 1
         assert expected_index in str(e)
     await a.shutdown()

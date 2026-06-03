@@ -62,7 +62,6 @@ from ..mimetypes import (
     AWKWARD_BUFFERS_MIMETYPE,
     DEFAULT_ADAPTERS_BY_MIMETYPE,
     PARQUET_MIMETYPE,
-    RAGGED_PARQUET_MIMETYPE,
     RAGGED_SQL_MIMETYPE,
     SPARSE_BLOCKS_PARQUET_MIMETYPE,
     TILED_SQL_TABLE_MIMETYPE,
@@ -2116,8 +2115,9 @@ def key_present(query, tree):
     else:
         keys = query.key.split(".")
         condition = (
-            orm.Node.metadata_.op("#>")(sql_cast(keys, ARRAY(TEXT))) != None
-        )  # noqa: E711
+            orm.Node.metadata_.op("#>")(sql_cast(keys, ARRAY(TEXT)))
+            != None  # noqa: E711
+        )
     condition = condition if getattr(query, "exists", True) else not_(condition)
     return tree.new_variation(conditions=tree.conditions + [condition])
 
