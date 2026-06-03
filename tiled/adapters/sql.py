@@ -41,7 +41,6 @@ from .array import ArrayAdapter
 from .awkward import AwkwardAdapter
 
 # from .ragged import RaggedAdapter
-from .utils import init_adapter_from_catalog
 
 DIALECTS = Literal["postgresql", "sqlite", "duckdb"]
 TABLE_NAME_PATTERN = re.compile(r"^[a-z][a-z0-9_]*$")
@@ -409,7 +408,11 @@ class SQLAdapter(Adapter[TableStructure]):
         -------
         An iterator for the data in the associated database.
         """
-        yield from ((key, self[key]) for key in self._structure.columns)
+        yield from (
+            (key, adapter)
+            for key in self._structure.columns
+            if (adapter := self[key]) is not None
+        )
 
     def append_partition(
         self,

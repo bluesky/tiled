@@ -23,6 +23,7 @@ import numpy
 import ragged
 from ragged._typing import SupportsDLPack
 
+from ..ndslice import NDSlice
 from ..type_aliases import JSON
 from .array import BuiltinDtype, StructDtype
 from .root import Structure
@@ -299,13 +300,26 @@ def _canonicalize_awkward_layout(
     raise TypeError(f"Unsupported layout type: {type(layout)}")
 
 
-def make_ragged_array(array: RaggedCompatibleType) -> CanonicalRaggedArray:
+def make_ragged_array(
+    array: RaggedCompatibleType, slice: Optional[NDSlice] = None
+) -> CanonicalRaggedArray:
     """Best-effort conversion of any numeric iterable to a ``ragged`` array.
 
     This function converts the underlying Awkward layout of the ragged array to a canonical form
     with only ListOffsetForms for variable-length dimensions. This ensures that the array is in a
     consistent format that is compatible with the RaggedStructure representation and can be
     efficiently stored and processed.
+
+    Furthermore, if a slice is provided, it is applied to the array and only the relevant
+    part of the data is retained. If the slice is invalid for the given array shape,
+    a RaggedSlicingError is raised.
+
+    Parameters
+    ----------
+    array : RaggedCompatibleType
+        The input array-like object to be converted to a ragged array.
+    slice : NDSlice, optional
+        An optional NDSlice to apply to the array.
     """
 
     if isinstance(array, ragged.array):
@@ -323,6 +337,20 @@ def make_ragged_array(array: RaggedCompatibleType) -> CanonicalRaggedArray:
         array = ragged.array(list(array))
 
     array = ragged.array(_canonicalize_awkward_layout(array._impl.layout))
+
+    if slice:
+        try:
+            array = array[slice]
+
+        except IndexError as e:
+            if "cannot slice" in str(e):
+                raise RaggedSlicingError(
+                    f"Invalid slice {slice} for the given ragged array with shape {array.shape}."
+                ) from e
+
+        # Drop data that are not included in the slice from the buffers
+        if array.ndim > 0:
+            array = make_ragged_array(awkward.to_packed(array._impl))
 
     return cast(CanonicalRaggedArray, array)
 
