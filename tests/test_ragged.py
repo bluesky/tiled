@@ -291,9 +291,11 @@ chunkable_arrays = [
     ),
     ragged.array(
         [
-            *[rng.random(size=rng.integers(0, 10)) for _ in range(1, 5)],
+            *[rng.random(size=rng.integers(0, 10)) for _ in range(5)],
             rng.random(size=chunkable_size),
-            *[rng.random(size=rng.integers(0, 10)) for _ in range(1, 15)],
+            *[rng.random(size=rng.integers(0, 10)) for _ in range(10)],
+            rng.random(size=0),  # test empty arrays in between
+            *[rng.random(size=rng.integers(0, 10)) for _ in range(5)],
         ],
         dtype=np.float32,
     ),
@@ -315,7 +317,7 @@ chunkable_arrays = [
     ),
     ragged.array(
         [
-            *[rng.random(size=rng.integers(0, 10)) for _ in range(5, 20)],
+            *[rng.random(size=rng.integers(0, 10)) for _ in range(20)],
             rng.random(size=chunkable_size),
         ],
         dtype=np.float32,
@@ -455,22 +457,40 @@ def test_slicing(client, name):
     sliced_response_size = len(h.responses[0].content)
     assert sliced_response_size < full_response_size
 
+    # slice at first dimension
+    with record_history() as h:
+        sliced_result = rac[:1]
+    assert ak.array_equal(sliced_result._impl, array[:1]._impl)
+    assert len(h.responses) == 1  # sanity check
+    sliced_response_size = len(h.responses[0].content)
+    assert sliced_response_size < full_response_size
+
     if len(array.shape) < 2:
-        # next slices will produce expected errors
+        with pytest.raises(ClientError, match="Cannot apply the requested slice"):
+            rac[:, 0]
         return
+
+    # index at second dimension
+    with record_history() as h:
+        # Some arrays have empty ragged axes, so indexing at the second dimension is invalid
+        if name in (
+            "ragged_3xNonex2xNone",
+            "ragged_3xNone_mixed_empty",
+            "ragged_3xNone_empty",
+        ):
+            with pytest.raises(ClientError, match="Cannot apply the requested slice"):
+                rac[:, 0]
+            return
+        sliced_result = rac[:, 0]
+    assert ak.array_equal(sliced_result._impl, array[:, 0]._impl)
+    assert len(h.responses) == 1  # sanity check
+    sliced_response_size = len(h.responses[0].content)
+    assert sliced_response_size < full_response_size
 
     # index at first and second dimension
     with record_history() as h:
         sliced_result = rac[1, 0]
     assert ak.array_equal(sliced_result._impl, array[1, 0]._impl)
-    assert len(h.responses) == 1  # sanity check
-    sliced_response_size = len(h.responses[0].content)
-    assert sliced_response_size < full_response_size
-
-    # index at second dimension
-    with record_history() as h:
-        sliced_result = rac[:, 0]
-    assert ak.array_equal(sliced_result._impl, array[:, 0]._impl)
     assert len(h.responses) == 1  # sanity check
     sliced_response_size = len(h.responses[0].content)
     assert sliced_response_size < full_response_size
@@ -560,77 +580,3 @@ def test_export_parquet(tmpdir, client, name):
         actual = pyarrow.parquet.read_table(filepath)
         expected = ak.to_arrow_table(array[1]._impl)
         assert actual == expected
-
-
-# NOTE: Arrow seems to only accept 2-dimensional arrays
-
-arrow_keys = "a", "b"
-arrow_data_0 = [
-    pa.array([rng.random(size=rng.integers(1, 50)) for _ in range(3)]),
-    pa.array([rng.random(size=rng.integers(1, 50)) for _ in range(3)]),
-]
-
-arrow_data_1 = [
-    pa.array([rng.random(size=rng.integers(1, 50)) for _ in range(6)]),
-    pa.array([rng.random(size=rng.integers(1, 50)) for _ in range(6)]),
-]
-
-arrow_batch_0 = pa.record_batch(arrow_data_0, arrow_keys)
-arrow_batch_n = pa.record_batch(arrow_data_1, arrow_keys)
-
-
-@pytest.fixture
-def data_source_from_init_storage() -> Callable[[str, int], DataSource[TableStructure]]:
-    def _data_source_from_init_storage(
-        data_uri: str, num_partitions: int
-    ) -> DataSource[TableStructure]:
-        table = pa.Table.from_arrays(arrow_data_0, arrow_keys)
-        structure = TableStructure.from_arrow_table(table, npartitions=num_partitions)
-        data_source = DataSource(
-            management=Management.writable,
-            mimetype="application/x-tiled-sql-table",
-            structure_family=StructureFamily.table,
-            structure=structure,
-            assets=[],
-        )
-
-        storage = cast("SQLStorage", parse_storage(data_uri))
-        register_storage(storage)
-        return SQLAdapter.init_storage(data_source=data_source, storage=storage)
-
-    return _data_source_from_init_storage
-
-
-@pytest.fixture
-def context_from_adapter(
-    adapter_duckdb_one_partition,  # noqa: F811
-):
-    table = pa.Table.from_batches([arrow_batch_0, arrow_batch_n])
-    adapter_duckdb_one_partition.append_partition(0, table)
-    adapter = MapAdapter({"foo": adapter_duckdb_one_partition})
-    app = build_app(adapter)
-    with Context.from_app(app) as context:
-        yield context
-
-
-@pytest.fixture
-def client_from_adapter(context_from_adapter):
-    return from_context(context_from_adapter, include_data_sources=True)
-
-
-@pytest.mark.parametrize("name", arrow_keys)
-def test_read_from_sql(client_from_adapter, name: str) -> None:
-    index = arrow_keys.index(name)
-    expected = ragged.array(
-        [*arrow_data_0[index].tolist(), *arrow_data_1[index].tolist()]
-    )
-    client = client_from_adapter[f"foo/{name}"]
-
-    result = client.read()
-    assert ak.array_equal(result._impl, expected._impl)
-
-    result = client[1]
-    assert ak.array_equal(result._impl, expected[1]._impl)
-
-    result = client[2:5, 0]
-    assert ak.array_equal(result._impl, expected[2:5, 0]._impl)

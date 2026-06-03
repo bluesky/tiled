@@ -52,7 +52,7 @@ def adapter_from_data_source(
     """Construct a SQLAdapter from an already-initialised DataSource.
 
     Extra keyword arguments are forwarded to SQLAdapter.__init__, making it
-    easy to pass order_by_column, unique_ordering, etc. without repeating the
+    easy to pass order_by_args, primary_key, etc. without repeating the
     four positional arguments every time.
     """
     return SQLAdapter(

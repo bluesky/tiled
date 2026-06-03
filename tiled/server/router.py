@@ -864,12 +864,21 @@ def get_router(
         )
         structure_family = entry.structure_family
 
-        import ragged
+        from ..structures.ragged import CanonicalRaggedArray, RaggedSlicingError
 
-        with record_timing(request.state.metrics, "read"):
-            ragged_array: ragged.array = await ensure_awaitable(entry.read, slice)
+        try:
+            with record_timing(request.state.metrics, "read"):
+                array: CanonicalRaggedArray = await ensure_awaitable(entry.read, slice)
+        except RaggedSlicingError as err:
+            raise HTTPException(
+                status_code=HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=(
+                    "Cannot apply the requested slice to the given ragged array. "
+                    "Try reading the entire array and slice it on the client side instead."
+                ),
+            ) from err
 
-        if ragged_array._impl.nbytes > settings.response_bytesize_limit:
+        if array._impl.nbytes > settings.response_bytesize_limit:
             raise HTTPException(
                 status_code=HTTP_400_BAD_REQUEST,
                 detail=(
@@ -882,7 +891,7 @@ def get_router(
                 return await construct_data_response(
                     structure_family,
                     serialization_registry,
-                    ragged_array,
+                    array,
                     entry.metadata(),
                     request,
                     format,
@@ -905,7 +914,6 @@ def get_router(
         path: str,
         block: NDBlock = Depends(parse_block_param),
         slice: NDSlice = Depends(parse_slice_param),
-        expected_shape=Depends(expected_shape),
         format: Optional[str] = None,
         filename: Optional[str] = None,
         settings: Settings = Depends(get_settings),
@@ -933,6 +941,8 @@ def get_router(
 
         import ragged
 
+        from ..structures.ragged import CanonicalRaggedArray, RaggedSlicingError
+
         if block == () and len(structure.shape) > 0:
             raise HTTPException(
                 status_code=HTTP_422_UNPROCESSABLE_CONTENT,
@@ -947,16 +957,24 @@ def get_router(
             )
         try:
             with record_timing(request.state.metrics, "read"):
-                ragged_array: ragged.array = await ensure_awaitable(
+                array: CanonicalRaggedArray = await ensure_awaitable(
                     entry.read_block, block, slice
                 )
+        except RaggedSlicingError as err:
+            raise HTTPException(
+                status_code=HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=(
+                    "Cannot apply the requested slice to the given block of the ragged array. "
+                    "Try reading the entire array and slice it on the client side instead."
+                ),
+            ) from err
         except IndexError:
             raise HTTPException(
                 status_code=HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Block index out of range",
             )
 
-        if ragged_array._impl.nbytes > settings.response_bytesize_limit:
+        if array._impl.nbytes > settings.response_bytesize_limit:
             raise HTTPException(
                 status_code=HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=(
@@ -969,7 +987,7 @@ def get_router(
                 return await construct_data_response(
                     entry.structure_family,
                     serialization_registry,
-                    ragged_array,
+                    array,
                     entry.metadata(),
                     request,
                     format,

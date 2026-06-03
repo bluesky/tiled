@@ -50,7 +50,12 @@ from ..storage import (
 )
 from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import Asset, DataSource
-from ..structures.ragged import CanonicalRaggedArray, RaggedStructure, make_ragged_array
+from ..structures.ragged import (
+    CanonicalRaggedArray,
+    RaggedSlicingError,
+    RaggedStructure,
+    make_ragged_array,
+)
 from ..structures.table import TableStructure
 from ..type_aliases import JSON
 from ..utils import path_from_uri
@@ -169,7 +174,10 @@ class RaggedSQLAdapter(Adapter[RaggedStructure]):
             structure_family=StructureFamily.table,
             structure=TableStructure.from_dict(empty_table_dict),
             parameters=data_source.parameters
-            | {"order_by_column": "chunk_index", "unique_ordering": True},
+            | {
+                "order_by_args": [{"column": "chunk_index", "direction": "asc"}],
+                "primary_key": ["chunk_index"],
+            },
             properties=data_source.properties,
             mimetype="application/x-tiled-sql-table",
             assets=data_source.assets,
@@ -235,7 +243,21 @@ class RaggedSQLAdapter(Adapter[RaggedStructure]):
 
         array = make_ragged_array(awkward.concatenate(awk_arrays))
 
-        return array[slice] if slice else array
+        if slice:
+            try:
+                array = array[slice]
+
+            except IndexError as e:
+                if "cannot slice" in str(e):
+                    raise RaggedSlicingError(
+                        f"Invalid slice {slice} for the given ragged array with shape {array.shape}."
+                    ) from e
+
+            # Drop data that are not included in the slice from the buffers
+            if array.ndim > 0:
+                array = make_ragged_array(awkward.to_packed(array._impl))
+
+        return array
 
     def read_block(
         self, block: NDBlock, slice: NDSlice | None = None
@@ -247,7 +269,21 @@ class RaggedSQLAdapter(Adapter[RaggedStructure]):
 
         array = self.read(slice=block.slice_from_chunks(self._structure.chunks))
 
-        return array[slice] if slice else array
+        if slice:
+            try:
+                array = array[slice]
+
+            except IndexError as e:
+                if "cannot slice" in str(e):
+                    raise RaggedSlicingError(
+                        f"Invalid slice {slice} for the given ragged array with shape {array.shape}."
+                    ) from e
+
+            # Drop data that are not included in the slice from the buffers
+            if array.ndim > 0:
+                array = make_ragged_array(awkward.to_packed(array._impl))
+
+        return array
 
     def write(self, data: CanonicalRaggedArray) -> None:
         self.write_block(data, block=NDBlock(0))
