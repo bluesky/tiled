@@ -7,12 +7,13 @@ from urllib.parse import parse_qs, urlparse
 
 import httpx
 import numpy as np
+import orjson
 import ragged
 
-from ..ndslice import NDBlock
+from ..ndslice import NDBlock, NDSlice
 from ..serialization.ragged import from_zipped_buffers, to_zipped_buffers
 from ..structures.core import STRUCTURE_TYPES
-from ..structures.ragged import RaggedStructure, make_ragged_array
+from ..structures.ragged import RaggedCompatibleType, RaggedStructure, make_ragged_array
 from .base import BaseClient
 from .utils import export_util, handle_error, params_from_slice, retry_context
 
@@ -21,15 +22,21 @@ if TYPE_CHECKING:
 
 
 class RaggedClient(BaseClient):
-    def write(self, array: ragged.array | ak.Array | Iterable[Iterable]):
+    def write(self, array: RaggedCompatibleType, persist=True):
         """Write a ragged array in full.
 
         Parameters
         ----------
-        array: ragged.array | ak.Array | Iterable[Iterable]
+        array: RaggedCompatibleType
             The array to write. Can be a ragged.array or compatible awkward.Array,
             or any list-of-lists structure with consistent dimensions.
+        persist: bool
+            Whether to persist the changes on server storage. If False, the update is still
+            streamed to subscribed listeners, but the server may choose not to save the changes.
         """
+        if not persist:
+            raise NotImplementedError("Only persist=True is currently supported")
+
         array = make_ragged_array(array)
         for attempt in retry_context():
             with attempt:
@@ -45,43 +52,45 @@ class RaggedClient(BaseClient):
 
     def write_block(
         self,
-        array_part: ragged.array | ak.Array | list[list] | np.ndarray,
-        block: Any,
-        persist: bool = True,
+        array: RaggedCompatibleType,
+        block: Union[int, tuple[int, ...]],
+        persist=True,
     ):
         """Write a block of ragged array data.
 
         Parameters
         ----------
-        array_part: ragged.array | ak.Array | Iterable[Iterable]
+        array: RaggedCompatibleType
             The array to write. Can be a ragged.array or compatible awkward.Array,
             or any list-of-lists structure with consistent dimensions.
-        block: NDBlock
-            The block to write to. Must be a non-negative integer less than the number of partitions.
-        persist: bool, optional
-            Whether to persist the changes. Default is True.
+        block: int or tuple[int, ...]
+            The block to write to. Must be a non-negative integer less than the number of
+            partitions or a tuple of such integers, one for each partitioned dimension.
+        persist: bool
+            Whether to persist the changes on server storage. If False, the update is still
+            streamed to subscribed listeners, but the server may choose not to save the changes.
         """
-        if not isinstance(block, NDBlock):
-            block = NDBlock(block)
-        block_str = block.expand_for_shape(
-            self.structure().shape_from_chunks
-        ).to_numpy_str()
+
+        if not isinstance(block, int):
+            raise NotImplementedError(
+                "Only single-block writes are currently supported"
+            )
+        if not persist:
+            raise NotImplementedError("Only persist=True is currently supported")
 
         url_path = self.item["links"]["block"]
         params: dict[str, Any] = {
             **parse_qs(urlparse(url_path).query),
-            "block": block_str,
-        }  # , **params_from_slice(slice)}
-        if persist is False:
-            # Extend the query only for non-default behavior.
-            params["persist"] = persist
+            "block": str(block),
+        }
+
         for attempt in retry_context():
             with attempt:
                 handle_error(
                     self.context.http_client.put(
                         url_path,
                         content=to_zipped_buffers(
-                            mimetype="application/zip", array=array_part, metadata={}
+                            mimetype="application/zip", array=array, metadata={}
                         ),
                         headers={"Content-Type": "application/zip"},
                         params=params,
@@ -90,7 +99,7 @@ class RaggedClient(BaseClient):
 
     def patch(
         self,
-        array: ragged.array | ak.Array | Iterable[Iterable],
+        array: RaggedCompatibleType,
         offset: Union[int, tuple[int, ...]],
         extend=False,
         persist=True,
@@ -99,7 +108,7 @@ class RaggedClient(BaseClient):
 
         Parameters
         ----------
-        array : ragged.array | ak.Array | Iterable[Iterable]
+        array : RaggedCompatibleType
             The data to write
         offset : int | tuple[int, ...]
             Where to place this data in the array
@@ -168,8 +177,7 @@ class RaggedClient(BaseClient):
         self._structure = structure_type.from_json(new_structure)
 
     def read(self, slice: Any | None = None) -> ragged.array:
-        """
-        Access the entire array, or optionally a slice of it.
+        """Read the entire array, or optionally a slice of it.
 
         Parameters
         ----------
@@ -181,60 +189,26 @@ class RaggedClient(BaseClient):
 
         if slice:
             url_params.update(**params_from_slice(slice))
-            # the metadata of a sliced array isn't easy to determine mathematically,
-            # we should expect the server to respond with new structure information.
+
+        if is_scalar := (self.ndim == 0) or NDSlice(slice).is_scalar(self.shape):
+            accept_header = "application/json"
+        else:
+            accept_header = "application/zip"
 
         for attempt in retry_context():
             with attempt:
                 content = handle_error(
                     self.context.http_client.get(
                         url_path,
-                        headers={"Accept": "application/zip"},
+                        headers={"Accept": accept_header},
                         params=url_params,
                     )
                 ).read()
 
-        return from_zipped_buffers(buffer=content, dtype=self.dtype)
+        if is_scalar:
+            return ragged.array(orjson.loads(content))
 
-    def read_block(self, block: Any, slice: Any | None = None) -> ragged.array:
-        """
-        Access data for one block of the partitioned array.
-
-        Optionally, access only a slice *within* the partition.
-
-        Parameters
-        ----------
-        block: NDBlock | int
-            The block(s) to read.
-        slice: Any, optional
-            A tuple of slice objects.
-        """
-        if not isinstance(block, NDBlock):
-            block = NDBlock(block)
-        block_str = block.expand_for_shape(
-            self.structure().shape_from_chunks
-        ).to_numpy_str()
-
-        url_path = self.item["links"]["block"]
-        url_params: dict[str, Any] = {
-            **parse_qs(urlparse(url_path).query),
-            "block": block_str,
-        }
-
-        if slice:
-            url_params.update(**params_from_slice(slice))
-
-        for attempt in retry_context():
-            with attempt:
-                content = handle_error(
-                    self.context.http_client.get(
-                        url_path,
-                        headers={"Accept": "application/zip"},
-                        params=url_params,
-                    )
-                ).read()
-
-        return from_zipped_buffers(buffer=content, dtype=self.dtype)
+        return from_zipped_buffers(buffer=content, structure=self.structure())
 
     def __getitem__(self, _slice: Any) -> ragged.array:
         """
@@ -254,8 +228,7 @@ class RaggedClient(BaseClient):
         slice: Any | None = None,
         format: str | None = None,
     ):
-        """
-        Download data in some format and write to a file.
+        """Download data in some format and write to a file.
 
         Parameters
         ----------
@@ -268,13 +241,12 @@ class RaggedClient(BaseClient):
         slice: Any, optional
             A tuple of slice objects.
         """
-        params = params_from_slice(slice)
         return export_util(
             filepath,
             format,
             self.context.http_client.get,
             self.item["links"]["full"],
-            params=params,
+            params=params_from_slice(slice),
         )
 
     @property

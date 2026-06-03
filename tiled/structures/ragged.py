@@ -21,7 +21,9 @@ from .root import Structure
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
 
-RaggedLikeType = Union[ragged.array, ak.Array, numpy.ndarray, SupportsDLPack, Iterable]
+RaggedCompatibleType = Union[
+    ragged.array, ak.Array, numpy.ndarray, SupportsDLPack, Iterable
+]
 CanonicalRaggedArray = NewType("CanonicalRaggedArray", ragged.array)
 
 _SupportsDLPack = runtime_checkable(cast("type[SupportsDLPack]", SupportsDLPack))
@@ -82,7 +84,7 @@ class RaggedStructure(Structure):
     @classmethod
     def from_array(
         cls,
-        array: RaggedLikeType,
+        array: RaggedCompatibleType,
         shape: tuple[int | None, ...] | None = None,
         chunks: tuple[tuple[int, ...] | None, ...] | None = None,
         dims: tuple[str, ...] | None = None,
@@ -91,7 +93,7 @@ class RaggedStructure(Structure):
 
         Parameters
         ----------
-        array : RaggedLikeType
+        array : RaggedCompatibleType
             The array-like object to extract information from.
         shape : tuple[int | None, ...] | None, optional
             The shape of the array. If None, the shape is inferred from the array.
@@ -279,7 +281,7 @@ def _canonicalize_awkward_layout(layout: ak.contents.Content) -> ak.contents.Con
     raise TypeError(f"Unsupported layout type: {type(layout)}")
 
 
-def make_ragged_array(array: RaggedLikeType) -> CanonicalRaggedArray:
+def make_ragged_array(array: RaggedCompatibleType) -> CanonicalRaggedArray:
     """Best-effort conversion of any numeric iterable to a ``ragged`` array.
 
     This function converts the underlying Awkward layout of the ragged array to a canonical form

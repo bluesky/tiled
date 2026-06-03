@@ -1617,9 +1617,7 @@ class CatalogArrayAdapter(CatalogNodeAdapter):
         elif entry.structure_family == "sparse":
             data = await ensure_awaitable(deserializer, body)
         elif entry.structure_family == "ragged":
-            dtype = entry.structure().data_type.to_numpy_dtype()
-            shape = entry.structure().shape
-            data = await ensure_awaitable(deserializer, body, dtype, shape)
+            data = await ensure_awaitable(deserializer, body, entry.structure())
         else:
             raise NotImplementedError(entry.structure_family)
         return await ensure_awaitable((await self.get_adapter()).write, data)
@@ -1700,13 +1698,7 @@ class CatalogRaggedAdapter(CatalogArrayAdapter):
     async def write_block(
         self, block, media_type, deserializer, entry, body, persist=True
     ):
-        if entry.structure_family != "ragged":
-            return await super().write_block(
-                block, media_type, deserializer, entry, body, persist
-            )
-        dtype = entry.structure().data_type.to_numpy_dtype()
-        shape = entry.structure().shape
-        data = await ensure_awaitable(deserializer, body, dtype, shape)
+        data = await ensure_awaitable(deserializer, body, entry.structure())
         return await ensure_awaitable(
             (await self.get_adapter()).write_block, data, block
         )
@@ -1718,8 +1710,7 @@ class CatalogRaggedAdapter(CatalogArrayAdapter):
             await self._stream(media_type, entry, body, shape, offset=offset)
         if not persist:
             return entry.structure()
-        dtype = entry.structure().data_type.to_numpy_dtype()
-        data = await ensure_awaitable(deserializer, body, dtype, shape)
+        data = await ensure_awaitable(deserializer, body, entry.structure())
 
         async with self.context.session() as db:
             new_structure = await ensure_awaitable(

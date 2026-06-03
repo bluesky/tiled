@@ -840,7 +840,6 @@ def get_router(
         request: Request,
         path: str,
         slice: NDSlice = Depends(parse_slice_param),
-        expected_shape=Depends(expected_shape),
         format: Optional[str] = None,
         filename: Optional[str] = None,
         settings: Settings = Depends(get_settings),
@@ -956,11 +955,6 @@ def get_router(
                 status_code=HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Block index out of range",
             )
-        if (expected_shape is not None) and (expected_shape != ragged_array.shape):
-            raise HTTPException(
-                status_code=HTTP_422_UNPROCESSABLE_CONTENT,
-                detail=f"The expected_shape {expected_shape} does not match the actual shape {ragged_array.shape}",
-            )
 
         if ragged_array._impl.nbytes > settings.response_bytesize_limit:
             raise HTTPException(
@@ -1010,20 +1004,20 @@ def get_router(
             {StructureFamily.ragged},
             getattr(request.app.state, "access_policy", None),
         )
-        body = await request.body()
         if not hasattr(entry, "write"):
             raise HTTPException(
                 status_code=HTTP_405_METHOD_NOT_ALLOWED,
                 detail="This node cannot accept array data.",
             )
+
         media_type = request.headers["content-type"]
-        if entry.structure_family == "ragged":
-            deserializer = deserialization_registry.dispatch("ragged", media_type)
-        else:
-            raise NotImplementedError(entry.structure_family)
+        deserializer = deserialization_registry.dispatch("ragged", media_type)
+
+        body = await request.body()
         await ensure_awaitable(
             entry.write, media_type, deserializer, entry, body, persist
         )
+
         return json_or_msgpack(request, None)
 
     @router.put("/ragged/block/{path:path}")
@@ -1054,17 +1048,17 @@ def get_router(
         if not hasattr(entry, "write_block"):
             raise HTTPException(
                 status_code=HTTP_405_METHOD_NOT_ALLOWED,
-                detail="This node cannot accept array data.",
+                detail="This node cannot accept blocks of ragged array data.",
             )
 
-        body = await request.body()
         media_type = request.headers["content-type"]
-        deserializer = deserialization_registry.dispatch(
-            entry.structure_family, media_type
-        )
+        deserializer = deserialization_registry.dispatch("ragged", media_type)
+
+        body = await request.body()
         await ensure_awaitable(
             entry.write_block, block, media_type, deserializer, entry, body, persist
         )
+
         return json_or_msgpack(request, None)
 
     @router.patch("/ragged/full/{path:path}")

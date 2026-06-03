@@ -1,3 +1,4 @@
+import builtins
 import itertools
 from collections import namedtuple
 from collections.abc import Callable
@@ -6,6 +7,7 @@ from typing import cast
 
 import awkward as ak
 import numpy as np
+import orjson
 import pyarrow as pa
 import pyarrow.feather
 import pyarrow.parquet
@@ -20,8 +22,6 @@ from tiled.catalog import in_memory
 from tiled.client import Context, from_context, record_history
 from tiled.client.utils import ClientError
 from tiled.serialization.ragged import (
-    _construct_ragged,
-    _deconstruct_ragged,
     from_json,
     from_zipped_buffers,
     to_json,
@@ -33,7 +33,7 @@ from tiled.structures.core import StructureFamily
 from tiled.structures.data_source import DataSource, Management
 from tiled.structures.ragged import RaggedStructure, make_ragged_array
 from tiled.structures.table import TableStructure
-from tiled.utils import APACHE_ARROW_FILE_MIME_TYPE
+from tiled.utils import APACHE_ARROW_FILE_MIME_TYPE, safe_json_dump
 
 rng = np.random.default_rng(42)
 
@@ -225,11 +225,13 @@ node0 = ak.contents.ListOffsetArray(
 ragged_2xNonex1xNone = ragged.array(node0)
 
 arrays = {
-    # # "empty_1d": ragged.array([]),      # awkward.to_parquet raises on `0 * unknown` type
-    # # "empty_nd": ragged.array([[], [], []]),  # round-trips with unknown element type, not float64
+    # "empty_1d": ragged.array([]),      # awkward.to_parquet raises on `0 * unknown` type
+    # "empty_nd": ragged.array([[], [], []]),  # round-trips with unknown element type, not float64
     "numpy_1d": ragged.array(rng.random(10)),
     "ragged_2d": ragged.array([rng.random(3), rng.random(5), rng.random(8)]),
-    "numpy_2d": ragged.array([rng.random((3, 5))]),
+    "numpy_2d": ragged.array(
+        [rng.random((3, 5)), rng.random((2, 4)), rng.random((4, 2))]
+    ),
     "numpy_3d": ragged.array(rng.random((2, 3, 4))),
     "numpy_4d": rng.random((2, 3, 2, 3)),  # testing numpy conversion path
     "regular_1d": ragged.array(rng.random(10).tolist()),
@@ -289,9 +291,9 @@ chunkable_arrays = [
     ),
     ragged.array(
         [
-            *[rng.random(size=rng.integers(0, 10)) for _ in range(5)],
+            *[rng.random(size=rng.integers(0, 10)) for _ in range(1, 5)],
             rng.random(size=chunkable_size),
-            *[rng.random(size=rng.integers(0, 10)) for _ in range(15)],
+            *[rng.random(size=rng.integers(0, 10)) for _ in range(1, 15)],
         ],
         dtype=np.float32,
     ),
@@ -313,7 +315,7 @@ chunkable_arrays = [
     ),
     ragged.array(
         [
-            *[rng.random(size=rng.integers(0, 10)) for _ in range(20)],
+            *[rng.random(size=rng.integers(0, 10)) for _ in range(5, 20)],
             rng.random(size=chunkable_size),
         ],
         dtype=np.float32,
@@ -336,7 +338,7 @@ def sql_storage(request):
 
 
 @pytest.fixture(scope="module")
-def module_client(tmpdir_module):
+def client(tmpdir_module):
     """Module-scoped client with all test arrays pre-written under their own keys."""
     catalog = in_memory(
         writable_storage=[
@@ -347,25 +349,22 @@ def module_client(tmpdir_module):
     app = build_app(catalog)
     with Context.from_app(app) as context:
         client = from_context(context)
+
+        # Write all simple test arrays
+        simple = client.create_container("simple")
         for name, array in arrays.items():
-            client.write_ragged(array, key=name)
-        yield client
+            simple.write_ragged(array, key=name)
 
-
-@pytest.fixture(scope="module")
-def chunking_client(tmpdir_module):
-    """Module-scoped client with all partitionable arrays pre-written under their own keys."""
-    catalog = in_memory(writable_storage=str(tmpdir_module))
-    app = build_app(catalog)
-    with Context.from_app(app) as context:
-        client = from_context(context)
-        max_partition_bytes = (chunkable_size * np.float32(0).nbytes) + (
-            2 * np.int64(0).nbytes
-        )
+        # Write partitionable (chunked) arrays
+        chunked = client.create_container("chunked")
+        max_partition_bytes = (chunkable_size * np.float32(0).nbytes) + 2 * np.int64(
+            0
+        ).nbytes
         for i, array in enumerate(chunkable_arrays):
-            client.write_ragged(
+            chunked.write_ragged(
                 array, key=f"partitionable_{i}", max_partition_bytes=max_partition_bytes
             )
+
         yield client
 
 
@@ -385,7 +384,6 @@ def test_awkward_form_from_structure(name):
 
 @pytest.mark.parametrize("name", arrays.keys())
 def test_adapter_read_write_patch(name, sql_storage):
-    node = SimpleNamespace(metadata_={}, specs=[])
     array = make_ragged_array(arrays[name])
     structure = RaggedStructure.from_array(array)
     data_source = DataSource(
@@ -398,6 +396,7 @@ def test_adapter_read_write_patch(name, sql_storage):
     data_source = RaggedSQLAdapter.init_storage(
         data_source=data_source, storage=sql_storage
     )
+    node = SimpleNamespace(metadata_={}, specs=[])
     adp = RaggedSQLAdapter.from_catalog(data_source, node)
 
     # Write the array, read it back, and check for equality
@@ -418,33 +417,23 @@ def test_adapter_read_write_patch(name, sql_storage):
 @pytest.mark.parametrize("name", arrays.keys())
 def test_serialization_roundtrip(name):
     array = make_ragged_array(arrays[name])
-
-    # Test reduced/flattened numpy array.
-    _array, _offsets, _shape = _deconstruct_ragged(array)
-    array_from_flattened = _construct_ragged(
-        _array, dtype=_array.dtype.type, offsets=_offsets, shape=_shape
-    )
-    assert ak.array_equal(array._impl, array_from_flattened._impl)
+    structure = RaggedStructure.from_array(array)
 
     # Test JSON serialization.
     json_contents = to_json("application/json", array, metadata={})
-    array_from_json = from_json(
-        json_contents, dtype=array.dtype.type, offsets=_offsets, shape=_shape
-    )
+    array_from_json = from_json(json_contents, structure=structure)
     assert ak.array_equal(array._impl, array_from_json._impl)
 
     # Test flattened octet-stream serialization.
     octet_stream_contents = to_zipped_buffers("application/zip", array, metadata={})
-    array_from_octet_stream = from_zipped_buffers(
-        octet_stream_contents, dtype=array.dtype.type
-    )
+    array_from_octet_stream = from_zipped_buffers(octet_stream_contents, None)
     assert ak.array_equal(array._impl, array_from_octet_stream._impl)
 
 
 @pytest.mark.parametrize("name", arrays.keys())
-def test_slicing(module_client, name):
+def test_slicing(client, name):
     array = make_ragged_array(arrays[name])
-    rac = module_client[name]
+    rac = client["simple"][name]
 
     # Read the data back out from the RaggedClient, progressively sliced.
     result = rac.read()
@@ -488,9 +477,9 @@ def test_slicing(module_client, name):
 
 
 @pytest.mark.parametrize("i", range(len(chunkable_arrays)))
-def test_chunking(chunking_client, i: int):
+def test_chunking(client, i: int):
     array = ragged.array(chunkable_arrays[i])
-    rac = chunking_client[f"partitionable_{i}"]
+    rac = client["chunked"][f"partitionable_{i}"]
 
     # need to add a little bit to account for Awkward metadata
     assert len(rac.chunks[0]) > 1
@@ -498,11 +487,11 @@ def test_chunking(chunking_client, i: int):
     divisions = np.cumsum((0, *rac.chunks[0]))
     starts, stops = divisions[:-1], divisions[1:]
     for j, (start, stop) in enumerate(zip(starts, stops, strict=True)):
-        part = rac.read_block((j, 0))
+        part = rac.read(slice=(builtins.slice(start, stop),))
         assert ak.array_equal(part._impl, array[start:stop]._impl)
 
-        part = rac.read_block((j, 0), slice=(slice(None), slice(0, 4)))
-        assert ak.array_equal(part._impl, array[start:stop, slice(0, 4)]._impl)
+        part = rac.read(slice=(builtins.slice(start, stop), builtins.slice(0, 4)))
+        assert ak.array_equal(part._impl, array[start:stop, 0:4]._impl)
 
     full = rac.read()
     assert ak.array_equal(full._impl, array._impl)
@@ -512,28 +501,27 @@ def test_chunking(chunking_client, i: int):
 
 
 @pytest.mark.parametrize("name", arrays.keys())
-def test_export_json(tmpdir, module_client, name):
+def test_export_json(tmpdir, client, name):
     array = ragged.array(arrays[name])
-    rac = module_client[name]
+    rac = client["simple"][name]
 
     filepath = tmpdir / "actual.json"
     rac.export(str(filepath), format="application/json")
     actual = filepath.read_text(encoding="utf-8")
     assert actual == ak.to_json(array._impl)
 
+    rac.export(str(filepath), slice=(1,), format="application/json")
+    actual = filepath.read_text(encoding="utf-8")
     if array[1].ndim == 0:
-        with pytest.raises(ClientError):
-            rac.export(str(filepath), slice=(1,), format="application/json")
+        assert actual == orjson.dumps(array[1]._impl.item()).decode("utf-8")
     else:
-        rac.export(str(filepath), slice=(1,), format="application/json")
-        actual = filepath.read_text(encoding="utf-8")
         assert actual == ak.to_json(array[1]._impl)
 
 
 @pytest.mark.parametrize("name", arrays.keys())
-def test_export_arrow(tmpdir, module_client, name):
+def test_export_arrow(tmpdir, client, name):
     array = ragged.array(arrays[name])
-    rac = module_client[name]
+    rac = client["simple"][name]
 
     filepath = tmpdir / "actual.arrow"
     rac.export(str(filepath), format=APACHE_ARROW_FILE_MIME_TYPE)
@@ -552,9 +540,9 @@ def test_export_arrow(tmpdir, module_client, name):
 
 
 @pytest.mark.parametrize("name", arrays.keys())
-def test_export_parquet(tmpdir, module_client, name):
+def test_export_parquet(tmpdir, client, name):
     array = ragged.array(arrays[name])
-    rac = module_client[name]
+    rac = client["simple"][name]
 
     filepath = tmpdir / "actual.parquet"
     rac.export(str(filepath), format="application/x-parquet")
