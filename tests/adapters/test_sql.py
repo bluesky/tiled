@@ -1168,6 +1168,7 @@ def test_order_by_args_with_primary_key(
         adapter.append_partition(0, pa.table({"ts": [10], "val": [99]}))
 
 
+@pytest.mark.parametrize("data_uri", ["duckdb_uri", "postgres_uri"])
 @pytest.mark.parametrize(
     "arrow_type",
     [
@@ -1177,15 +1178,18 @@ def test_order_by_args_with_primary_key(
     ],
 )
 def test_order_by_nested_type_raises(
+    data_uri: str,
     arrow_type: pa.DataType,
-    duckdb_uri: str,
     data_source_from_init_storage: Callable[..., DataSource[TableStructure]],
+    request: pytest.FixtureRequest,
 ) -> None:
     """Columns with nested Arrow types (list, large_list) cannot be sorted in SQL
     and must be rejected with a ValueError when used in order_by_args.
-    Tested on DuckDB only because SQLite does not support nested column types."""
+    Tested on DuckDB and Postgres only — SQLite does not support nested column types."""
     schema = pa.schema([pa.field("id", pa.int64()), pa.field("nested", arrow_type)])
-    data_source = data_source_from_init_storage(duckdb_uri, 1, schema.empty_table())
+    data_source = data_source_from_init_storage(
+        request.getfixturevalue(data_uri), 1, schema.empty_table()
+    )
     with pytest.raises(ValueError, match="nested"):
         adapter_from_data_source(
             data_source,
