@@ -1694,9 +1694,40 @@ class CatalogAwkwardAdapter(CatalogNodeAdapter):
 
 
 class CatalogRaggedAdapter(CatalogArrayAdapter):
+    def make_ws_schema(self):
+        return {
+            "type": "ragged-schema",
+            "version": 1,
+            "data_type": dataclasses.asdict(self.structure().data_type),
+        }
+
+    async def _stream(self, media_type, entry, body, shape, block=None, offset=None):
+        sequence = await self.context.streaming_cache.incr_seq(self.node.id)
+        metadata = {
+            "type": "ragged-data",
+            "sequence": sequence,
+            "timestamp": datetime.now().isoformat(),
+            "mimetype": media_type,
+            "shape": shape,
+            "offset": offset,
+            "block": block,
+        }
+        await self.context.streaming_cache.set(
+            self.node.id, sequence, metadata, payload=body
+        )
+
     async def write_block(
         self, block, media_type, deserializer, entry, body, persist=True
     ):
+        # Unlike regular arrays, ragged structures have variable-length
+        # dimensions (None) so we cannot compute a per-block shape via
+        # block.shape_from_chunks(). Stream the full structure shape instead.
+        if self.context.streaming_cache:
+            await self._stream(
+                media_type, entry, body, entry.structure().shape, block=block
+            )
+        if not persist:
+            return None
         data = await ensure_awaitable(deserializer, body, entry.structure())
         return await ensure_awaitable(
             (await self.get_adapter()).write_block, data, block

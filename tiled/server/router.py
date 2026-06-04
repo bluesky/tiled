@@ -817,6 +817,7 @@ def get_router(
             {
                 StructureFamily.array,
                 StructureFamily.container,
+                StructureFamily.ragged,
                 StructureFamily.sparse,
                 StructureFamily.table,
             },

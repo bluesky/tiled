@@ -31,19 +31,22 @@ class RaggedClient(BaseClient):
             Whether to persist the changes on server storage. If False, the update is still
             streamed to subscribed listeners, but the server may choose not to save the changes.
         """
-        if not persist:
-            raise NotImplementedError("Only persist=True is currently supported")
-
         array = make_ragged_array(array)
+        url_path = self.item["links"]["full"]
+        params: dict[str, Any] = {**parse_qs(urlparse(url_path).query)}
+        if persist is False:
+            # Extend the query only for non-default behavior.
+            params["persist"] = persist
         for attempt in retry_context():
             with attempt:
                 handle_error(
                     self.context.http_client.put(
-                        self.item["links"]["full"],
+                        url_path,
                         content=to_zipped_buffers(
                             mimetype="application/zip", array=array, metadata={}
                         ),
                         headers={"Content-Type": "application/zip"},
+                        params=params,
                     )
                 )
 
@@ -68,15 +71,14 @@ class RaggedClient(BaseClient):
             streamed to subscribed listeners, but the server may choose not to save the changes.
         """
 
-        if not persist:
-            raise NotImplementedError("Only persist=True is currently supported")
-
         block_tuple = (block,) if isinstance(block, int) else tuple(block)
         url_path = self.item["links"]["block"]
         params: dict[str, Any] = {
             **parse_qs(urlparse(url_path).query),
             "block": ",".join(map(str, block_tuple)),
         }
+        if persist is False:
+            params["persist"] = persist
 
         for attempt in retry_context():
             with attempt:

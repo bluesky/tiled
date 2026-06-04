@@ -78,9 +78,11 @@ def _copy_sparse(source, dest, on_conflict):
 
 
 def _copy_ragged(source, dest, on_conflict):
-    # Ragged arrays do not have read_block; read whole array and write it.
-    # The first chunk is written via write(); subsequent chunks (if any)
-    # are appended via patch(extend=True).
+    # Ragged arrays do not have read_block; read the whole array and write it
+    # in a single chunk. Note: this does not preserve the source's chunking;
+    # if the source has N chunks, the destination will have 1. Preserving
+    # chunk boundaries would require reading per-chunk slices and appending
+    # with patch(extend=True), which is feasible but not implemented here.
     array = source.read()
     dest.write(array)
 
