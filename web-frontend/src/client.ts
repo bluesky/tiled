@@ -1,20 +1,68 @@
 import axios from "axios";
 import { components } from "./openapi_schemas";
 
-const axiosInstance = axios.create();
+export const axiosInstance = axios.create();
+
+// Transform absolute URLs in "links" fields to relative paths so the UI
+// works regardless of the origin the server reports.
+function toRelativePath(urlString: string): string {
+  try {
+    const url = new URL(urlString);
+    return url.pathname + url.search + url.hash;
+  } catch {
+    return urlString;
+  }
+}
+
+function transformLinks(data: any): any {
+  if (typeof data === "object" && data !== null) {
+    const transformed: any = Array.isArray(data) ? [] : {};
+    for (const key in data) {
+      if (key === "links" && typeof data[key] === "object") {
+        transformed[key] = {};
+        for (const linkKey in data[key]) {
+          const linkValue = data[key][linkKey];
+          transformed[key][linkKey] =
+            typeof linkValue === "string"
+              ? toRelativePath(linkValue)
+              : linkValue;
+        }
+      } else {
+        transformed[key] = transformLinks(data[key]);
+      }
+    }
+    return transformed;
+  }
+  return data;
+}
+
+axiosInstance.interceptors.response.use(
+  (response) => {
+    // Skip JSON transformation for binary response types — transformLinks
+    // would corrupt ArrayBuffer/Blob data by treating them as plain objects.
+    const rt = response.config.responseType;
+    if (rt === "blob" || rt === "arraybuffer") {
+      return response;
+    }
+    response.data = transformLinks(response.data);
+    return response;
+  },
+  (error) => Promise.reject(error),
+);
+
+type SearchResponse =
+  components["schemas"]["Response_List_tiled.server.router.Resource_NodeAttributes__dict__dict____PaginationLinks__dict_"];
 
 export const search = async (
   apiURL: string,
   segments: string[],
   signal: AbortSignal,
   fields: string[] = [],
-  selectMetadata: any = null,
+  selectMetadata: string | null = null,
   pageOffset: number = 0,
   pageLimit: number = 100,
   sort: string | null = null,
-): Promise<
-  components["schemas"]["Response_List_tiled.server.router.Resource_NodeAttributes__dict__dict____PaginationLinks__dict_"]
-> => {
+): Promise<SearchResponse> => {
   let url = `${apiURL}/search/${segments.join(
     "/",
   )}?page[offset]=${pageOffset}&page[limit]=${pageLimit}&fields=${fields.join(
@@ -27,6 +75,29 @@ export const search = async (
     url = url.concat(`&sort=${encodeURIComponent(sort)}`);
   }
   const response = await axiosInstance.get(url, { signal: signal });
+  return response.data;
+};
+
+// Fetch a search page using a pre-built URL (e.g. a cursor URL from links.next).
+// Extra params (fields, select_metadata, sort) are appended if provided.
+export const searchByUrl = async (
+  url: string,
+  signal: AbortSignal,
+  fields: string[] = [],
+  selectMetadata: string | null = null,
+  sort: string | null = null,
+): Promise<SearchResponse> => {
+  let fullUrl = url;
+  if (fields.length > 0) {
+    fullUrl += `&fields=${fields.join("&fields=")}`;
+  }
+  if (selectMetadata !== null) {
+    fullUrl = fullUrl.concat(`&select_metadata=${selectMetadata}`);
+  }
+  if (sort) {
+    fullUrl = fullUrl.concat(`&sort=${encodeURIComponent(sort)}`);
+  }
+  const response = await axiosInstance.get(fullUrl, { signal });
   return response.data;
 };
 
@@ -48,8 +119,6 @@ export const metadata = async (
 };
 
 export const about = async (): Promise<components["schemas"]["About"]> => {
-  const response = await axiosInstance.get("/");
+  const response = await axiosInstance.get("/api/v1/");
   return response.data;
 };
-
-export { axiosInstance };

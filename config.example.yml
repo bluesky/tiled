@@ -206,6 +206,15 @@ authentication:
   #       client_id: YOUR_CLIENT_ID_HERE
   #       client_secret: ${OIDC_CLIENT_SECRET}
   #       well_known_uri: https://accounts.google.com/.well-known/openid-configuration
+  #
+  #       # REQUIRED for browser-based login (Web UI). After the OIDC provider
+  #       # authenticates the user, Tiled redirects to this URL with tokens in
+  #       # the query string. Point it at your UI's auth-callback route:
+  #       #   https://<BASE_URL>/ui/auth-callback
+  #       # Without this, the browser will see raw JSON tokens instead of being
+  #       # redirected back to the UI.
+  #       # Not needed for CLI-only (device flow) deployments.
+  #       redirect_on_success: https://<BASE_URL>/ui/auth-callback
 
 
   # OPTION 3 — Development / demo only: dictionary of hardcoded passwords

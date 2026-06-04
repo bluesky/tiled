@@ -9,17 +9,65 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Added
 
-- Support for slicing arrays backed by multipart adapters with modified shapes
+- Rich progress bar shown during multi-chunk array, dataframe, and dataset
+  fetches. The bar is transient and only appears in interactive sessions
+  (REPL, IPython, Jupyter). It can be disabled per-context or globally.
+  Jupyter notebooks use Rich's HTML display path to avoid duplicate lines.
+- Animated retry spinner shown on stderr whenever a stamina retry is scheduled
+  for any tiled client request (connection failures, 5xx errors, 429 rate limits).
+  The spinner is animated in Jupyter notebooks as well as TTY terminals.
+- Respect the `Retry-After` header on HTTP 429 (Too Many Requests) responses.
 - Support for interacting with irregular-shaped numeric arrays via
   [`ragged`](https://github.com/scikit-hep/ragged).
 
+
+## v0.2.11 (2026-05-27)
+
+### Added
+
+- Utility methods for fetching chunked arrays for a given slice.
+- Added `max_connections` parameter to `Context` (and `Context.from_app`) to
+  cap the number of simultaneous outgoing HTTP connections and concurrent
+  data-fetch requests (array chunks, dataframe partitions) issued by dask
+  workers. The default is 16. This prevents spike loads on the server when
+  computing large dask arrays or dataframes. The limit is enforced by both an
+  `httpx.Limits` connection pool on the HTTP client and a `threading.Semaphore`
+  acquired inside `_get_slice`, `_get_block`, and `_get_partition`.
+- Deterministic row ordering in SQL-based adapters when `order_by_args` is
+  specified in the data source parameters; the `primary_key` parameter allows
+  to enforce the uniqueness of rows in the table.
+
+
+## v0.2.10 (2026-05-22)
+
+### Added
+
+- Cursor-based pagination for catalog containers on the default sort order.
+  The server now uses the node `id` as an opaque cursor, eliminating the
+  duplicate-and-skip problem that offset pagination suffers when items are
+  inserted concurrently. Non-default sort orders continue to use offset
+  pagination. Clients that supply `page[offset]` on the default sort are
+  transparently migrated to cursor pagination from the second page onward.
+  The new `page[cursor]` query parameter is accepted alongside the existing
+  `page[offset]` and `page[limit]` parameters; supplying both at once is
+  rejected with HTTP 400.
+- Support for slicing arrays backed by multipart adapters with modified shapes
+- OIDC Authenticator for Azure Entra
+- Add more administrative CLI commands centered around the creation of service
+  principals and their API keys
+- Including `metadata` field in NodeTabs item fetch for spec views in the web UI
+
 ### Fixed
 
+- Display of color images in the web UI array viewer.
+- JSON serialization of tables now correctly handles numpy scalar types
+  (e.g. `float32`, `int64`), pandas nullable types (`pd.NA`), `NaT`, and
+  `Timestamp` when using the `orjson` backend.
 - A `mount_node` referencing a nonexistent path in the database no longer causes
   silent data corruption. The server now raises a clear error at startup if the
   mount node does not exist.
 - Writing chunked (dask) arrays with single chunk along all dimensions
-- OIDC authenticator was not quite compfixedliant and was incompatible with
+- OIDC authenticator was not quite compliant and was incompatible with
   at least some providers including Azure and ORCID.
 - Improved performance of reading zarr arrays when slicing by avoiding reading
   the full arrays into memory, but using slice composition instead.
@@ -36,9 +84,17 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - CSVArrayAdapter supports reading heterogenous tables as structured arrays
 - Stream updates are processed using a single worker thread, by
   default, in order to guarantee that they are processed in order.
+- WebUI: fetch grayscale images as `application/octet-stream` instead of
+  `image/png` and apply optional colormap and log-normalization client-side.
+- WebUI: reduce the number of significant digits to 4 when displaying numeric
+  values.
 
 ### Added
 
+- Authentication support in the web UI: login page with password and OIDC
+  provider support, token persistence with automatic refresh, authenticated
+  image loading and file downloads, and user menu with logout.
+- Tests for the WebSocket endpoints that stream tabular data.
 - New server config option `create_mount_nodes_if_not_exist` (default `false`)
   that auto-creates missing intermediate container nodes when a `mount_node`
   path does not exist in the database. Also settable via the

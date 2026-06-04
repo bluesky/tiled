@@ -130,16 +130,18 @@ class _DaskArrayClient(BaseClient):
             "expected_shape": ",".join(map(str, exp_shape)) or "scalar",
         }
         params = params | ({"slice": block_slice.to_numpy_str()} if block_slice else {})
-        for attempt in retry_context():
-            with attempt:
-                content = handle_error(
-                    self.context.http_client.get(
-                        url_path,
-                        headers={"Accept": media_type},
-                        params=params,
-                    )
-                ).read()
-
+        with self.context.throttle():
+            for attempt in retry_context(self.context):
+                with attempt:
+                    content = handle_error(
+                        self.context.http_client.get(
+                            url_path,
+                            headers={"Accept": media_type},
+                            params=params,
+                        )
+                    ).read()
+        if (ps := self.context.progress_state) is not None:
+            ps.advance()
         return numpy.frombuffer(content, dtype=self.dtype).reshape(exp_shape)
 
     def _get_slice(self, slice: NDSlice):
@@ -176,16 +178,18 @@ class _DaskArrayClient(BaseClient):
             "expected_shape": ",".join(map(str, exp_shape)) or "scalar",
         }
         params = params | ({"slice": slice.to_numpy_str()} if slice else {})
-        for attempt in retry_context():
-            with attempt:
-                content = handle_error(
-                    self.context.http_client.get(
-                        url_path,
-                        headers={"Accept": media_type},
-                        params=params,
-                    )
-                ).read()
-
+        with self.context.throttle():
+            for attempt in retry_context(self.context):
+                with attempt:
+                    content = handle_error(
+                        self.context.http_client.get(
+                            url_path,
+                            headers={"Accept": media_type},
+                            params=params,
+                        )
+                    ).read()
+        if (ps := self.context.progress_state) is not None:
+            ps.advance()
         return numpy.frombuffer(content, dtype=self.dtype).reshape(exp_shape)
 
     def read_block(self, block, slice=None):
@@ -212,6 +216,30 @@ class _DaskArrayClient(BaseClient):
             shape=exp_shape,
         )
         return dask_array
+
+    def fetch_count(self, slice=None) -> int:
+        """Return the number of HTTP requests that read(slice) will make.
+
+        Mirrors the split logic in read() so that callers (e.g. CompositeClient)
+        can compute an accurate progress-bar total without triggering any fetches.
+        """
+        arr_slice = NDSlice(slice).expand_for_shape(self.shape)
+        exp_shape = arr_slice.shape_after_slice(self.shape)
+        if 0 in exp_shape:
+            return 0
+        total_bytes = math.prod(exp_shape) * self.dtype.itemsize
+        if total_bytes < self.RESPONSE_BYTESIZE_LIMIT:
+            return 1
+        chunk_bounds = tuple(
+            tuple(itertools.accumulate(axis_chunks, initial=0))
+            for axis_chunks in self.chunks
+        )
+        indexed_slices = split_slice(
+            arr_slice,
+            max_size=self.RESPONSE_BYTESIZE_LIMIT // self.dtype.itemsize,
+            pref_splits=chunk_bounds,
+        )
+        return len(indexed_slices)
 
     def read(self, slice=None):
         """Access the entire array or its slice
@@ -498,7 +526,10 @@ class DaskArrayClient(_DaskArrayClient):
 
     def compute(self):
         "Alias to client.read().compute()"
-        return self.read().compute()
+        dask_arr = self.read()
+        n = math.prod(len(c) for c in dask_arr.chunks)
+        with self.context.tracking_progress(total=n):
+            return dask_arr.compute()
 
 
 class ArrayClient(DaskArrayClient):
@@ -508,7 +539,10 @@ class ArrayClient(DaskArrayClient):
         """
         Access the entire array or a slice.
         """
-        return super().read(slice).compute()
+        dask_arr = super().read(slice)
+        n = self.fetch_count(slice)
+        with self.context.tracking_progress(total=n):
+            return dask_arr.compute()
 
     def read_block(self, block, slice=None):
         """

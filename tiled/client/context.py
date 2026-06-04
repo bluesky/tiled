@@ -2,9 +2,11 @@ import getpass
 import os
 import re
 import sys
+import threading
 import time
 import urllib.parse
 import warnings
+from contextlib import contextmanager
 from pathlib import Path
 from typing import List, Literal, Optional
 from urllib.parse import parse_qs, urlparse
@@ -23,6 +25,7 @@ from .transport import Transport
 from .utils import (
     DEFAULT_TIMEOUT_PARAMS,
     MSGPACK_MIME_TYPE,
+    StandaloneRetryIndicator,
     handle_error,
     polling_retry_context,
     retry_context,
@@ -30,6 +33,10 @@ from .utils import (
 
 USER_AGENT = f"python-tiled/{tiled_version}"
 API_KEY_AUTH_HEADER_PATTERN = re.compile(r"^Apikey (\w+)$")
+# Default cap on simultaneous outgoing HTTP connections and in-flight
+# data-fetch requests.  Keeps spike loads on the server bounded while
+# still allowing reasonable parallelism from dask's threaded scheduler.
+MAX_CONCURRENT_CONNECTIONS = 16
 
 
 def raise_if_cannot_prompt():
@@ -138,8 +145,15 @@ def prompt_for_credentials(http_client, providers: List[AboutAuthenticationProvi
     elif mode == "external":
         # Display link and access code, and try to open web browser.
         # Block while polling the server awaiting confirmation of authorization.
+        scopes = " ".join(
+            sorted({"openid", "offline_access"} | set(spec.extra_scopes or []))
+        )
         tokens = device_code_grant(
-            http_client, auth_endpoint, client_id, token_endpoint
+            http_client,
+            auth_endpoint,
+            client_id,
+            token_endpoint,
+            scopes,
         )
     else:
         raise ValueError(f"Server has unknown authentication mechanism {mode!r}")
@@ -166,6 +180,8 @@ class Context:
         verify=True,
         app=None,
         raise_server_exceptions=True,
+        max_connections=MAX_CONCURRENT_CONNECTIONS,
+        show_progress=None,
     ):
         # The uri is expected to reach the root API route.
         uri = httpx.URL(uri)
@@ -217,9 +233,13 @@ class Context:
             timeout = httpx.Timeout(**DEFAULT_TIMEOUT_PARAMS)
         if cache is UNSET:
             cache = None
+        limits = httpx.Limits(
+            max_connections=max_connections,
+            max_keepalive_connections=max_connections,
+        )
         if app is None:
             client = httpx.Client(
-                transport=Transport(cache=cache),
+                transport=Transport(cache=cache, limits=limits),
                 verify=verify,
                 timeout=timeout,
                 follow_redirects=True,
@@ -228,9 +248,17 @@ class Context:
             client.headers = headers
         else:
             # Set up an ASGI client.
-            # Because we have been handed an app, we can infer that
-            # starlette is available.
+            # Because we have been handed an app, we can infer that starlette is available.
             from starlette.testclient import TestClient
+
+            # Note: neither `timeout` nor `limits` (max_connections) are
+            # enforced in ASGI mode.  Starlette's _TestClientTransport
+            # dispatches requests in-process via anyio and bypasses the real
+            # HTTP stack entirely, so there is no I/O wait for timeouts to
+            # fire and no TCP connections for the pool limit to count.
+            # The semaphore (_concurrent_request_semaphore) is still
+            # effective because it is enforced in Python before the request
+            # is dispatched, regardless of transport.
 
             base_uri = f"{uri.scheme}://{uri.netloc}"
             # verify parameter is dropped, as there is no SSL in ASGI mode
@@ -250,8 +278,6 @@ class Context:
             # We are abusing it slightly to enable interactive use of the
             # TestClient.
 
-            import threading
-
             # The threading module has its own (internal) atexit
             # mechanism that runs at thread shutdown, prior to the atexit
             # mechanism that runs at interpreter shutdown.
@@ -263,13 +289,33 @@ class Context:
         self._verify = verify
         self._cache = cache
         self._token_cache = Path(TILED_CACHE_DIR / "tokens")
+        # Semaphore that caps the number of concurrent data-fetch requests
+        # (array blocks, dataframe partitions, etc.) issued by dask workers.
+        # This is intentionally separate from the HTTP connection pool limit so
+        # that it can be tuned independently; by default it mirrors the pool size.
+        self._max_connections = max_connections
+        self._concurrent_request_semaphore = threading.Semaphore(max_connections)
+        # Slot used by tracking_progress(). Set to a ProgressState instance
+        # while a tracked .compute() is running; None at all other times.
+        # Assignment of a Python reference is atomic, so dask worker threads
+        # can safely read this without a lock.
+        self._progress_state = None
+        # Whether to show a rich progress bar during multi-chunk fetches.
+        # None means use the TILED_SHOW_PROGRESS env var (default True).
+        if show_progress is None:
+            show_progress = os.getenv(
+                "TILED_SHOW_PROGRESS", "1"
+            ).strip().lower() not in ("0", "false", "no")
+        self.show_progress = show_progress
+        # Lazy-initialized StandaloneRetryIndicator (set by signal_retry)
+        self._retry_indicator = None
 
         # Make an initial "safe" request to:
         # (1) Get the server_info.
         # (2) Let the server set the CSRF cookie.
         # No authentication has been set up yet, so these requests will be unauthenticated.
         # https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#double-submit-cookie
-        for attempt in retry_context():
+        for attempt in retry_context(self):
             with attempt:
                 server_info = handle_error(
                     self.http_client.get(
@@ -288,6 +334,17 @@ class Context:
         self.client_id = (
             self.server_info.authentication.providers[0].links.get("client_id")
             if len(self.server_info.authentication.providers) == 1
+            else None
+        )
+        provider = (
+            self.server_info.authentication.providers[0]
+            if len(self.server_info.authentication.providers) == 1
+            else None
+        )
+        extra_scopes = getattr(provider, "extra_scopes", None) or []
+        self.scopes = (
+            " ".join(sorted({"openid", "offline_access"} | set(extra_scopes)))
+            if extra_scopes
             else None
         )
         # To determine httpx.Auth used by Tiled client is TiledAuth(internal) or external Auth
@@ -343,6 +400,7 @@ class Context:
             self._token_cache,
             self.server_info,
             self.cache,
+            self._concurrent_request_semaphore._value,
         )
 
     def __setstate__(self, state):
@@ -357,6 +415,7 @@ class Context:
             token_cache,
             server_info,
             cache,
+            max_connections,
         ) = state
         if state_tiled_version != tiled_version:
             raise TypeError(
@@ -370,9 +429,13 @@ class Context:
             cookies.set(
                 cookie.name, cookie.value, domain=cookie.domain, path=cookie.path
             )
+        limits = httpx.Limits(
+            max_connections=max_connections,
+            max_keepalive_connections=max_connections,
+        )
         self.http_client = httpx.Client(
             verify=verify,
-            transport=Transport(cache=cache),
+            transport=Transport(cache=cache, limits=limits),
             cookies=cookies,
             timeout=timeout,
             headers=headers,
@@ -383,6 +446,237 @@ class Context:
         self._cache = cache
         self._verify = verify
         self.server_info = server_info
+        self._max_connections = max_connections
+        self._concurrent_request_semaphore = threading.Semaphore(max_connections)
+        self._progress_state = None
+        self._retry_indicator = None
+        # Intentionally False: unpickled contexts run in dask workers which
+        # are not interactive and should never render progress bars.
+        self.show_progress = False
+
+    @property
+    def progress_state(self):
+        """Read-only access to the active progress state, or None."""
+        return self._progress_state
+
+    @contextmanager
+    def tracking_progress(self, total):
+        """Context manager that displays a rich progress bar during a multi-chunk fetch.
+
+        While the context is active, :attr:`progress_state` is set to a
+        ``ProgressState`` instance so that fetch methods
+        (``_get_slice``, ``_get_block``, ``_get_partition``) can advance the bar
+        and show a retry indicator.  The slot is reset to ``None`` on exit.
+
+        A bar is shown only when :attr:`show_progress` is True *and*
+        ``total > 1`` *and* the session is interactive.  Otherwise this is a
+        no-op context manager.
+
+        Parameters
+        ----------
+        total : int
+            Number of fetch tasks (chunks / partitions) expected.
+
+        Example
+        -------
+        >>> dask_arr = client.read()          # returns dask array, no fetch yet
+        >>> n = math.prod(len(c) for c in dask_arr.chunks)
+        >>> with context.tracking_progress(total=n):
+        ...     result = dask_arr.compute()
+        """
+        from .utils import is_interactive, is_jupyter
+
+        if total <= 1 or not self.show_progress or not is_interactive():
+            yield
+            return
+
+        # If an outer progress bar is already active, defer to it (no nested bars).
+        if self._progress_state is not None:
+            yield
+            return
+
+        if is_jupyter():
+            yield from self._tracking_progress_jupyter(total)
+        else:
+            yield from self._tracking_progress_terminal(total)
+
+    def _tracking_progress_jupyter(self, total):
+        """Progress bar for Jupyter notebooks using ipywidgets.IntProgress.
+
+        Avoids Rich's Live/Console entirely in Jupyter to prevent the blank-line
+        and ZMQ socket issues that arise from Rich's ipython_display() path.
+        """
+        try:
+            import ipywidgets as widgets
+            from IPython.display import display
+        except ImportError:
+            # ipywidgets not available — fall back to terminal path
+            yield from self._tracking_progress_terminal(total)
+            return
+
+        bar = widgets.IntProgress(
+            value=0,
+            min=0,
+            max=total,
+            description="Fetching:",
+            style={"description_width": "initial"},
+            layout=widgets.Layout(width="300px", height="16px", flex="0 0 auto"),
+        )
+        label = widgets.HTML(
+            f"<span style='font-size:var(--jp-widgets-font-size)'>0/{total} -:--:--</span>",
+            layout=widgets.Layout(width="180px"),
+        )
+        box = widgets.HBox(
+            [bar, label],
+            layout=widgets.Layout(align_items="center"),
+        )
+        display(box)
+
+        # Minimal ProgressState-compatible shim backed by the ipywidget
+        class _JupyterProgressState:
+            __slots__ = ("_bar", "_label", "_total", "_completed", "_start")
+
+            def __init__(self, bar, label, total):
+                self._bar = bar
+                self._label = label
+                self._total = total
+                self._completed = 0
+                self._start = None
+
+            def _fmt(self, suffix=""):
+                import time
+
+                count = f"{self._completed}/{self._total}"
+                if self._completed == 0 or self._start is None:
+                    eta = "-:--:--"
+                else:
+                    elapsed = time.monotonic() - self._start
+                    rate = self._completed / elapsed
+                    remaining_secs = (self._total - self._completed) / rate
+                    h, rem = divmod(int(remaining_secs), 3600)
+                    m, s = divmod(rem, 60)
+                    eta = f"{h}:{m:02d}:{s:02d}" if h else f"0:{m:02d}:{s:02d}"
+                text = f"{count} {eta}{suffix}"
+                return (
+                    f"<span style='font-size:var(--jp-widgets-font-size)'>{text}</span>"
+                )
+
+            def advance(self):
+                import time
+
+                if self._start is None:
+                    self._start = time.monotonic()
+                self._completed += 1
+                self._bar.value = self._completed
+                self._label.value = self._fmt()
+
+            def show_retrying(self):
+                self._label.value = self._fmt(" Retrying…")
+
+            def hide_retrying(self):
+                self._label.value = self._fmt()
+
+        state = _JupyterProgressState(bar, label, total)
+        self._progress_state = state
+        try:
+            yield state
+            # Top up in case dask.distributed workers dropped advance() calls
+            remaining = total - state._completed
+            for _ in range(remaining):
+                state.advance()
+        finally:
+            box.close()
+            self._progress_state = None
+
+    def _tracking_progress_terminal(self, total):
+        """Progress bar for terminal / IPython terminal using Rich Live."""
+        from rich.console import Console
+        from rich.live import Live
+        from rich.progress import (
+            BarColumn,
+            MofNCompleteColumn,
+            Progress,
+            TimeRemainingColumn,
+        )
+        from rich.spinner import Spinner
+
+        from .utils import ProgressState
+
+        # force_terminal so the bar renders even though IPython replaces
+        # stderr with a non-TTY stream in the terminal.
+        console = Console(stderr=True, force_terminal=True)
+        progress = Progress(
+            "[progress.description]{task.description}",
+            BarColumn(),
+            MofNCompleteColumn(),
+            TimeRemainingColumn(),
+            console=console,
+        )
+        task_id = progress.add_task("Fetching data…", total=total)
+        spinner = Spinner("dots", text="[yellow]Retrying…[/yellow]")
+        state = ProgressState(progress, task_id, spinner)
+
+        with Live(progress, transient=True, console=console) as live:
+            state._live = live
+            self._progress_state = state
+            try:
+                yield state
+            finally:
+                # Top up in case dask.distributed workers dropped advance() calls
+                completed = progress.tasks[task_id].completed
+                remaining = total - completed
+                if remaining > 0:
+                    progress.advance(task_id, remaining)
+                self._progress_state = None
+
+    @property
+    def retry_indicator(self):
+        """Read-only access to the active standalone retry indicator, or None."""
+        return self._retry_indicator
+
+    def signal_retry(self):
+        """Signal that a retry is in progress.
+
+        Shows a retry indicator: a spinner below the active progress bar if one
+        is running, or a standalone animated spinner otherwise.  Always called
+        from the main thread (enforced internally).
+        """
+        if (ps := self._progress_state) is not None:
+            ps.show_retrying()
+        else:
+            # Always show retry notice regardless of show_progress / is_interactive().
+            # Silently retrying without any feedback is confusing in every context.
+            if self._retry_indicator is None:
+                self._retry_indicator = StandaloneRetryIndicator()
+            self._retry_indicator.show()
+
+    def signal_retry_resolved(self):
+        """Signal that retries have resolved — hide any retry indicator."""
+        if (ps := self._progress_state) is not None:
+            ps.hide_retrying()
+        if self._retry_indicator is not None:
+            self._retry_indicator.reset()
+            self._retry_indicator = None
+
+    def throttle(self):
+        """Context manager that throttles concurrent data-fetch requests.
+
+        Acquires the internal connection semaphore on entry and releases it on
+        exit.  Fetch methods (``_get_block``, ``_get_slice``,
+        ``_get_partition``) use this to cap the number of simultaneous
+        outgoing HTTP requests to the limit set by ``max_connections``.
+
+        Example
+        -------
+        >>> with self.context.throttle():
+        ...     response = self.context.http_client.get(url)
+        """
+        return self._concurrent_request_semaphore
+
+    @property
+    def max_connections(self):
+        """Maximum number of concurrent data-fetch requests."""
+        return self._max_connections
 
     @classmethod
     def from_any_uri(
@@ -395,6 +689,8 @@ class Context:
         timeout=None,
         verify=True,
         app=None,
+        max_connections=MAX_CONCURRENT_CONNECTIONS,
+        show_progress=None,
     ):
         """
         Accept a URI to a specific node.
@@ -448,6 +744,8 @@ class Context:
             timeout=timeout,
             verify=verify,
             app=app,
+            max_connections=max_connections,
+            show_progress=show_progress,
         )
         return context, node_path_parts
 
@@ -462,6 +760,8 @@ class Context:
         api_key=UNSET,
         raise_server_exceptions=True,
         uri=None,
+        max_connections=MAX_CONCURRENT_CONNECTIONS,
+        show_progress=None,
     ):
         """
         Construct a Context around a FastAPI app. Primarily for testing.
@@ -474,6 +774,8 @@ class Context:
             timeout=timeout,
             app=app,
             raise_server_exceptions=raise_server_exceptions,
+            max_connections=max_connections,
+            show_progress=show_progress,
         )
         if api_key is UNSET:
             if not context.server_info.authentication.providers:
@@ -526,7 +828,7 @@ class Context:
         """
         if not self.api_key:
             raise RuntimeError("Not API key is configured for the client.")
-        for attempt in retry_context():
+        for attempt in retry_context(self):
             with attempt:
                 return handle_error(
                     self.http_client.get(
@@ -569,7 +871,7 @@ class Context:
                 "support generating additional API keys."
             )
 
-        for attempt in retry_context():
+        for attempt in retry_context(self):
             with attempt:
                 return handle_error(
                     self.http_client.post(
@@ -599,7 +901,7 @@ class Context:
             (Any additional characters passed will be truncated.)
         """
         url_path = self.server_info.authentication.links.apikey
-        for attempt in retry_context():
+        for attempt in retry_context(self):
             with attempt:
                 handle_error(
                     self.http_client.delete(
@@ -709,7 +1011,9 @@ class Context:
             temp_auth.sync_clear_token("refresh_token")
             # Store tokens in memory only, with no syncing to disk.
             token_directory = None
-        auth = TiledAuth(refresh_url, csrf_token, token_directory)
+        auth = TiledAuth(
+            refresh_url, csrf_token, token_directory, self.client_id, self.scopes
+        )
         auth.sync_tokens(tokens)
         self.http_client.auth = auth
 
@@ -770,7 +1074,11 @@ class Context:
         # We have to make an HTTP request to let the server validate whether we
         # have a valid session.
         self.http_client.auth = TiledAuth(
-            refresh_url, csrf_token, token_directory, self.client_id
+            refresh_url,
+            csrf_token,
+            token_directory,
+            self.client_id,
+            self.scopes,
         )
         # This will either:
         # * Use an access_token and succeed.
@@ -809,8 +1117,9 @@ class Context:
             refresh_token,
             csrf_token,
             self.http_client.auth.client_id,
+            self.http_client.auth.scopes,
         )
-        for attempt in retry_context():
+        for attempt in retry_context(self):
             with attempt:
                 token_response = self.http_client.send(refresh_request, auth=None)
                 if token_response.status_code == httpx.codes.UNAUTHORIZED:
@@ -824,7 +1133,7 @@ class Context:
 
     def whoami(self):
         "Return information about the currently-authenticated user or service."
-        for attempt in retry_context():
+        for attempt in retry_context(self):
             with attempt:
                 return handle_error(
                     self.http_client.get(
@@ -844,7 +1153,7 @@ class Context:
 
         # Revoke the current session.
         refresh_token = self.http_client.auth.sync_get_token("refresh_token")
-        for attempt in retry_context():
+        for attempt in retry_context(self):
             with attempt:
                 if self.client_id:
                     id_token = self.http_client.auth.sync_get_token("id_token")
@@ -884,7 +1193,7 @@ class Context:
 
         This may be done to ensure that a possibly-leaked refresh token cannot be used.
         """
-        for attempt in retry_context():
+        for attempt in retry_context(self):
             with attempt:
                 handle_error(
                     self.http_client.delete(
@@ -911,7 +1220,7 @@ class Admin:
             "offset": offset,
             "limit": limit,
         }
-        for attempt in retry_context():
+        for attempt in retry_context(self.context):
             with attempt:
                 return handle_error(
                     self.context.http_client.get(url_path, params=params)
@@ -919,7 +1228,7 @@ class Admin:
 
     def show_principal(self, uuid):
         "Show one Principal (user or service) in the authentication database."
-        for attempt in retry_context():
+        for attempt in retry_context(self.context):
             with attempt:
                 return handle_error(
                     self.context.http_client.get(
@@ -950,7 +1259,7 @@ class Admin:
             Restrict the access available to the API key by listing specific tags.
             By default, this will have no limits on access tags.
         """
-        for attempt in retry_context():
+        for attempt in retry_context(self.context):
             with attempt:
                 return handle_error(
                     self.context.http_client.post(
@@ -978,7 +1287,7 @@ class Admin:
             Specify the role (e.g. user or admin)
         """
         url_path = f"{self.base_url}/auth/principal"
-        for attempt in retry_context():
+        for attempt in retry_context(self.context):
             with attempt:
                 return handle_error(
                     self.context.http_client.post(
@@ -1003,7 +1312,7 @@ class Admin:
             (Any additional characters passed will be truncated.)
         """
         url_path = f"{self.base_url}/auth/principal/{uuid}/apikey"
-        for attempt in retry_context():
+        for attempt in retry_context(self.context):
             with attempt:
                 return handle_error(
                     self.context.http_client.delete(
@@ -1061,39 +1370,60 @@ def device_code_grant(
     for attempt in retry_context():
         with attempt:
             if client_id and token_endpoint:
+                # The device code will be given to the external OIDC provider.
                 oauth2_spec = True
-                uri = "verification_uri_complete"
                 verification_response = http_client.post(
                     auth_endpoint,
                     data={"client_id": client_id, "scope": scopes},
                 )
+                handle_error(verification_response)
+                verification = verification_response.json()
+                keys = [
+                    "verification_uri_complete",  # includes code
+                    "verification_uri",
+                    "verification_url",  # non-standard Entra
+                ]
+                for key in keys:
+                    verification_uri = verification.get(key)
+                    if verification_uri:
+                        break
+                else:
+                    raise KeyError(
+                        "Verification response is missing expected keys. "
+                        f"Expected one of {keys}. Got: {verification}"
+                    )
 
             else:
+                # The device code will be given to Tiled's own implementation
+                # of device code flow. Tiled will do authorization code from with the
+                # external providers. (This handles cases that ORCID and Globus that do
+                # not support device code flow.)
                 oauth2_spec = False
-                uri = "authorization_uri"
                 verification_response = http_client.post(auth_endpoint)
-            handle_error(verification_response)
-    verification = verification_response.json()
-    authorization_uri = verification[uri]
+                handle_error(verification_response)
+                verification = verification_response.json()
+                token_endpoint = verification["authorization_uri"]
+                verification_uri = verification["verification_uri"]
     print(
         f"""
 You have {int(verification['expires_in']) // 60} minutes to visit this URL
 
-{authorization_uri}
+{verification_uri}
 
 and enter the code:
 
 {verification['user_code']}
 
-"""
+""",
+        end="",
     )
     import webbrowser
 
-    webbrowser.open(authorization_uri)
-    deadline = verification["expires_in"] + time.monotonic()
+    webbrowser.open(verification_uri)
+    deadline = float(verification["expires_in"]) + time.monotonic()
     print("Waiting...", end="", flush=True)
     while True:
-        time.sleep(verification["interval"])
+        time.sleep(float(verification["interval"]))
         if time.monotonic() > deadline:
             raise Exception("Deadline expired.")
         for attempt in polling_retry_context(timeout=verification["expires_in"]):
@@ -1111,7 +1441,7 @@ and enter the code:
                     )
                 else:
                     access_response = http_client.post(
-                        verification["verification_uri"],
+                        token_endpoint,
                         json={
                             "device_code": verification["device_code"],
                             "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
@@ -1126,10 +1456,21 @@ and enter the code:
                     )
                     if access_response_error == "authorization_pending":
                         print(".", end="", flush=True)
-                        time.sleep(verification["interval"])
-                        access_response.raise_for_status()
+                        # Don't raise -- this is expected during polling.
+                        # Just break out of the retry context and let the
+                        # outer while loop sleep and try again.
+                        break
+                    # Other 400 errors are genuine failures.
+                    access_response.raise_for_status()
                 handle_error(access_response)
-        print("")
-        break
+        else:
+            # The for/else means we exhausted retries without break.
+            # This happens when handle_error(access_response) succeeds,
+            # meaning we got a successful response.
+            print("\n")
+            break
+        # We broke out of the for loop due to authorization_pending.
+        # Continue the outer while loop to poll again.
+        continue
     tokens = access_response.json()
     return tokens

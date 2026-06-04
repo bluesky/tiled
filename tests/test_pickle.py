@@ -38,6 +38,20 @@ def test_pickle_context(server_url):
         pickle.loads(pickle.dumps(context))
 
 
+def test_pickle_context_preserves_max_connections(server_url):
+    """max_connections survives a pickle/unpickle round-trip."""
+    try:
+        httpx.get(server_url).raise_for_status()
+    except Exception:
+        raise pytest.skip(f"Could not connect to {server_url}")
+    with Context.from_any_uri(server_url, api_key="secret", max_connections=3)[
+        0
+    ] as context:
+        assert context.max_connections == 3
+        restored = pickle.loads(pickle.dumps(context))
+        assert restored.max_connections == 3
+
+
 @pytest.mark.parametrize("structure_clients", ["numpy", "dask"])
 def test_pickle_clients(server_url, structure_clients, tmpdir):
     try:

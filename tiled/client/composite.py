@@ -158,46 +158,78 @@ class CompositeClient(Container):
         import pandas
         import xarray
 
-        array_dims = {}
-        data_vars = {}
-        for part, item in self.get_contents().items():
-            # Read all or selective arrays/columns.
-            if item["attributes"]["structure_family"] in {
-                StructureFamily.array,
-                StructureFamily.sparse,
-            }:
+        from .array import ArrayClient
+
+        contents = self.get_contents()
+
+        # Count total eagerly-fetched requests for the progress bar.
+        # Array/sparse: eager when the client is ArrayClient (the numpy subclass);
+        # DaskArrayClient (the base) returns a lazy dask array — nothing fetched yet.
+        # Note: ArrayClient inherits DaskArrayClient, so check the eager subclass first.
+        # ArrayClient.fetch_count() mirrors read()'s split_slice logic exactly,
+        # giving the true number of HTTP requests (1 for small arrays, N sub-slices
+        # for large ones), rather than the dask chunk-boundary count.
+        # Table: always eager (npartitions fetches).
+        # Awkward: always eager (1 fetch).
+        total_fetches = 0
+        for part, item in contents.items():
+            sf = item["attributes"]["structure_family"]
+            if sf in {StructureFamily.array, StructureFamily.sparse}:
                 if (variables is None) or (part in variables):
                     array_client = self.base[part]
-                    data_vars[part] = array_client.read()  # [Dask]ArrayClient
-                    array_dims[part] = array_client.dims
-            elif item["attributes"]["structure_family"] == StructureFamily.awkward:
+                    if isinstance(array_client, ArrayClient):
+                        total_fetches += array_client.fetch_count()
+            elif sf == StructureFamily.awkward:
                 if (variables is None) or (part in variables):
-                    try:
-                        data_vars[part] = self.base[part].read().to_numpy()
-                    except ValueError as e:
-                        raise ValueError(
-                            f"Failed to convert awkward array to numpy: {e}"
-                        ) from e
-            elif item["attributes"]["structure_family"] == StructureFamily.table:
-                # For now, greedily load tabular data. We cannot know the shape
-                # of the columns without reading them. Future work may enable
-                # this to be lazy.
-                table_client = self.base[part]
-                columns = set(variables or table_client.columns).intersection(
-                    table_client.columns
-                )
-                df = table_client.read(list(columns))
-                if hasattr(df, "compute"):
-                    df = df.compute()
-                for column in columns:
-                    data_vars[column] = df[column].values
-                    # Convert (experimental) pandas.StringDtype to numpy's unicode string dtype
-                    if isinstance(data_vars[column].dtype, pandas.StringDtype):
-                        data_vars[column] = data_vars[column].astype("U")
-            else:
-                raise ValueError(
-                    f"Unsupported structure family: {item['attributes']['structure_family']}"
-                )
+                    total_fetches += 1
+            elif sf == StructureFamily.table:
+                structure = item["attributes"]["structure"]
+                columns = structure.get("columns", [])
+                requested = set(variables or columns).intersection(columns)
+                if requested:
+                    total_fetches += structure.get("npartitions", 1)
+
+        with self.context.tracking_progress(total=total_fetches):
+            array_dims = {}
+            data_vars = {}
+            for part, item in contents.items():
+                # Read all or selective arrays/columns.
+                if item["attributes"]["structure_family"] in {
+                    StructureFamily.array,
+                    StructureFamily.sparse,
+                }:
+                    if (variables is None) or (part in variables):
+                        array_client = self.base[part]
+                        data_vars[part] = array_client.read()
+                        array_dims[part] = array_client.dims
+                elif item["attributes"]["structure_family"] == StructureFamily.awkward:
+                    if (variables is None) or (part in variables):
+                        try:
+                            data_vars[part] = self.base[part].read().to_numpy()
+                        except ValueError as e:
+                            raise ValueError(
+                                f"Failed to convert awkward array to numpy: {e}"
+                            ) from e
+                elif item["attributes"]["structure_family"] == StructureFamily.table:
+                    # For now, greedily load tabular data. We cannot know the shape
+                    # of the columns without reading them. Future work may enable
+                    # this to be lazy.
+                    table_client = self.base[part]
+                    columns = set(variables or table_client.columns).intersection(
+                        table_client.columns
+                    )
+                    df = table_client.read(list(columns))
+                    if hasattr(df, "compute"):
+                        df = df.compute()
+                    for column in columns:
+                        data_vars[column] = df[column].values
+                        # Convert (experimental) pandas.StringDtype to numpy's unicode string dtype
+                        if isinstance(data_vars[column].dtype, pandas.StringDtype):
+                            data_vars[column] = data_vars[column].astype("U")
+                else:
+                    raise ValueError(
+                        f"Unsupported structure family: {item['attributes']['structure_family']}"
+                    )
 
         # Create xarray.Dataset from the data_vars dictionary
         is_dim0_consistent = (

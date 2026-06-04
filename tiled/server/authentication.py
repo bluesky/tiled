@@ -57,6 +57,7 @@ from ..authn_database import orm
 from ..authn_database.core import (
     create_service,
     create_user,
+    get_or_create_principal,
     latest_principal_activity,
     lookup_valid_api_key,
     lookup_valid_pending_session_by_device_code,
@@ -67,7 +68,8 @@ from ..type_aliases import AccessTags
 from ..utils import SHARE_TILED_PATH, SingleUserPrincipal
 from . import schemas
 from .connection_pool import get_database_session_factory
-from .core import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, json_or_msgpack
+from .core import json_or_msgpack
+from .dependencies import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
 from .protocols import ExternalAuthenticator, InternalAuthenticator, UserSessionState
 from .settings import Settings, get_settings
 from .utils import API_KEY_COOKIE_NAME, get_base_url
@@ -158,25 +160,21 @@ def decode_token(
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
+    # Try tiled-issued keys first (covers both normal auth and auth-code flow
+    # tokens issued via create_tokens_from_session).
+    for secret_key in secret_keys:
+        try:
+            payload = jwt.decode(token, secret_key, algorithms=[ALGORITHM])
+            return payload
+        except ExpiredSignatureError:
+            raise
+        except JWTError:
+            continue
+    # If none of the tiled keys worked, try the proxied authenticator
+    # (e.g. tokens issued directly by an OIDC provider in the device code flow).
     if proxied_authenticator:
         return proxied_authenticator.decode_token(token)
-    else:
-        # The first key in settings.secret_keys is used for *encoding*.
-        # All keys are tried for *decoding* until one works or they all
-        # fail. They supports key rotation.
-        for secret_key in secret_keys:
-            try:
-                payload = jwt.decode(token, secret_key, algorithms=[ALGORITHM])
-                break
-            except ExpiredSignatureError:
-                # Do not let this be caught below with the other JWTError types.
-                raise
-            except JWTError:
-                # Try the next key in the key rotation.
-                continue
-        else:
-            raise credentials_exception
-    return payload
+    raise credentials_exception
 
 
 async def get_api_key(
@@ -383,6 +381,24 @@ async def get_scopes_from_api_key(
         return scopes
 
 
+def _extract_scopes(
+    decoded_access_token: dict[str, Any],
+    authenticator: Optional[ProxiedOIDCAuthenticator],
+) -> set[str]:
+    """Extract scopes from a decoded access token.
+
+    Tiled-minted tokens (auth code flow) store scopes as a list under "scp".
+    OIDC-provider tokens (device code flow) store them as a space-separated
+    string under "scope".  Handle both.
+    """
+    if "scp" in decoded_access_token:
+        scp = decoded_access_token["scp"]
+        return set(scp) if isinstance(scp, list) else set(scp.split(" "))
+    if "scope" in decoded_access_token:
+        return set(decoded_access_token["scope"].split(" "))
+    return set()
+
+
 async def get_current_scopes(
     request: Request,
     decoded_access_token: Optional[dict[str, Any]] = Depends(get_decoded_access_token),
@@ -398,10 +414,25 @@ async def get_current_scopes(
                 api_key, settings, request.app.state.authenticated, db
             )
     elif decoded_access_token is not None:
+        token_scopes = _extract_scopes(decoded_access_token, settings.authenticator)
         if isinstance(settings.authenticator, ProxiedOIDCAuthenticator):
-            return set(decoded_access_token["scope"].split(" "))
-        else:
-            return decoded_access_token["scp"]
+            async with db_factory() as db:
+                principal_orm = (
+                    await db.execute(
+                        select(orm.Principal)
+                        .options(selectinload(orm.Principal.roles))
+                        .filter(
+                            orm.Principal.uuid
+                            == uuid_module.UUID(hex=decoded_access_token["sub"])
+                        )
+                    )
+                ).scalar()
+            if principal_orm:
+                role_scopes = set().union(
+                    *[role.scopes for role in principal_orm.roles]
+                )
+                return token_scopes | role_scopes
+        return token_scopes
     else:
         return PUBLIC_SCOPES if settings.allow_anonymous_access else NO_SCOPES
 
@@ -421,10 +452,7 @@ async def get_current_scopes_websocket(
                 api_key, settings, websocket.app.state.authenticated, db
             )
     elif decoded_access_token is not None:
-        if isinstance(settings.authenticator, ProxiedOIDCAuthenticator):
-            return set(decoded_access_token["scope"].split(" "))
-        else:
-            return decoded_access_token["scp"]
+        return _extract_scopes(decoded_access_token, settings.authenticator)
     else:
         return PUBLIC_SCOPES if settings.allow_anonymous_access else NO_SCOPES
 
@@ -476,12 +504,25 @@ async def authenticate_websocket_first_message(
         except Exception:
             return False, None, None, NO_SCOPES
         if isinstance(settings.authenticator, ProxiedOIDCAuthenticator):
-            principal = schemas.Principal(
-                uuid=uuid_module.UUID(hex=decoded["sub"]),
-                type=schemas.PrincipalType.external,
-                identities=[],
-            )
-            scopes = set(decoded["scope"].split(" "))
+            # Tiled-minted tokens (auth code flow) include "sub_typ" and "ids";
+            # Entra-minted tokens (device code flow) do not.
+            if "sub_typ" in decoded:
+                principal = schemas.Principal(
+                    uuid=uuid_module.UUID(hex=decoded["sub"]),
+                    type=decoded["sub_typ"],
+                    identities=[
+                        schemas.Identity(id=identity["id"], provider=identity["idp"])
+                        for identity in decoded["ids"]
+                    ],
+                )
+            else:
+                principal = schemas.Principal(
+                    uuid=uuid_module.UUID(hex=decoded["sub"]),
+                    type=schemas.PrincipalType.user,
+                    identities=[],
+                    access_token=access_token,
+                )
+            scopes = _extract_scopes(decoded, settings.authenticator)
         else:
             principal = schemas.Principal(
                 uuid=uuid_module.UUID(hex=decoded["sub"]),
@@ -490,8 +531,9 @@ async def authenticate_websocket_first_message(
                     schemas.Identity(id=identity["id"], provider=identity["idp"])
                     for identity in decoded["ids"]
                 ],
+                access_token=access_token,
             )
-            scopes = decoded["scp"]
+            scopes = set(decoded["scp"])
         return True, principal, None, scopes
     else:
         return False, None, None, NO_SCOPES
@@ -578,6 +620,7 @@ async def get_current_principal_from_api_key(
 async def get_current_principal_websocket(
     websocket: WebSocket,
     api_key: Optional[str] = Depends(get_api_key_websocket),
+    access_token: Optional[str] = Query(None),
     decoded_access_token: Optional[dict] = Depends(get_decoded_access_token_websocket),
     settings: Settings = Depends(get_settings),
     db_factory: Callable[[], Optional[AsyncSession]] = Depends(
@@ -595,14 +638,9 @@ async def get_current_principal_websocket(
             )
         return principal
     elif decoded_access_token is not None:
-        if isinstance(settings.authenticator, ProxiedOIDCAuthenticator):
-            return schemas.Principal(
-                uuid=uuid_module.UUID(hex=decoded_access_token["sub"]),
-                type=schemas.PrincipalType.external,
-                identities=[],
-            )
-        else:
-            return schemas.Principal(
+        if "sub_typ" in decoded_access_token:
+            # Token minted by Tiled's OAuth2 implementation
+            principal = schemas.Principal(
                 uuid=uuid_module.UUID(hex=decoded_access_token["sub"]),
                 type=decoded_access_token["sub_typ"],
                 identities=[
@@ -610,6 +648,25 @@ async def get_current_principal_websocket(
                     for identity in decoded_access_token["ids"]
                 ],
             )
+        else:
+            # Token minted by external OIDC provider
+            identity_id = (
+                decoded_access_token.get("user") or decoded_access_token["sub"]
+            )
+            provider = websocket.app.state.provider
+            async with db_factory() as db:
+                session = await get_or_create_principal(
+                    db,
+                    provider,
+                    identity_id,
+                )
+            principal = schemas.Principal(
+                uuid=session.principal.uuid,
+                type=schemas.PrincipalType.user,
+                identities=[schemas.Identity(id=identity_id, provider=provider)],
+                access_token=access_token,
+            )
+        return principal
     else:
         if settings.allow_anonymous_access:
             return None
@@ -657,26 +714,35 @@ async def get_current_principal(
                 detail="Invalid API key",
                 headers=headers_for_401(request, security_scopes),
             )
-    elif decoded_access_token is not None and not isinstance(
-        settings.authenticator, ProxiedOIDCAuthenticator
-    ):
-        principal = schemas.Principal(
-            uuid=uuid_module.UUID(hex=decoded_access_token["sub"]),
-            type=decoded_access_token["sub_typ"],
-            identities=[
-                schemas.Identity(id=identity["id"], provider=identity["idp"])
-                for identity in decoded_access_token["ids"]
-            ],
-        )
-    elif decoded_access_token is not None and isinstance(
-        settings.authenticator, ProxiedOIDCAuthenticator
-    ):
-        principal = schemas.Principal(
-            uuid=uuid_module.UUID(hex=decoded_access_token["sub"]),
-            type=schemas.PrincipalType.external,
-            identities=[],
-            access_token=access_token,
-        )
+    elif decoded_access_token is not None:
+        if "sub_typ" in decoded_access_token:
+            # Token minted by Tiled's OAuth2 implementation
+            principal = schemas.Principal(
+                uuid=uuid_module.UUID(hex=decoded_access_token["sub"]),
+                type=decoded_access_token["sub_typ"],
+                identities=[
+                    schemas.Identity(id=identity["id"], provider=identity["idp"])
+                    for identity in decoded_access_token["ids"]
+                ],
+            )
+        else:
+            # Token minted by external OIDC provider
+            identity_id = (
+                decoded_access_token.get("user") or decoded_access_token["sub"]
+            )
+            provider = request.app.state.provider
+            async with db_factory() as db:
+                principal = await get_or_create_principal(
+                    db,
+                    provider,
+                    identity_id,
+                )
+            principal = schemas.Principal(
+                uuid=principal.uuid,
+                type=schemas.PrincipalType.user,
+                identities=[schemas.Identity(id=identity_id, provider=provider)],
+                access_token=access_token,
+            )
     else:
         # No form of authentication is present.
         principal = None
@@ -894,11 +960,14 @@ def add_external_routes(
 
         redirect_uri = f"{get_base_url(request)}/auth/provider/{provider}/code"
 
+        scopes = {"openid", "offline_access"}
+        scopes.update(getattr(authenticator, "extra_scopes", []))
         params = {
             "client_id": authenticator.client_id,
             "response_type": "code",
-            "scope": "openid",
+            "scope": " ".join(sorted(scopes)),
             "redirect_uri": redirect_uri,
+            "prompt": "login",
         }
         if state:
             params["state"] = state
@@ -1595,12 +1664,6 @@ def authentication_router() -> APIRouter:
         request.state.endpoint = "auth"
         if principal is None:
             return json_or_msgpack(request, None)
-
-        if principal and principal.type == schemas.PrincipalType.external:
-            return json_or_msgpack(
-                request,
-                principal.model_dump(),
-            )
 
         # The principal from get_current_principal tells us everything that the
         # access_token carries around, but the database knows more than that.

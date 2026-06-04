@@ -265,6 +265,13 @@ def build_app(
     if SHARE_TILED_PATH:
         # If the distribution includes static assets, serve UI routes.
 
+        @app.get("/favicon.ico", include_in_schema=False)
+        async def favicon():
+            icon_path = Path(SHARE_TILED_PATH, "ui", "tiled-icon.ico")
+            if icon_path.is_file():
+                return FileResponse(icon_path)
+            raise HTTPException(status_code=HTTP_404_NOT_FOUND)
+
         @app.get("/ui/{path:path}")
         async def ui(
             path,
@@ -448,6 +455,8 @@ def build_app(
                 add_internal_routes(authentication_router, provider, authenticator)
             elif isinstance(authenticator, ExternalAuthenticator):
                 add_external_routes(authentication_router, provider, authenticator)
+                if isinstance(authenticator, ProxiedOIDCAuthenticator):
+                    app.state.provider = provider
             else:
                 raise ValueError(f"unknown authenticator type {type(authenticator)}")
             for custom_router in getattr(authenticator, "include_routers", []):
@@ -559,6 +568,21 @@ def build_app(
                     )
                     + API_KEY_MSG
                 )
+
+        # Warn if any external authenticator lacks redirect_on_success.
+        # Without it, browser-based OIDC login will show raw JSON tokens
+        # instead of redirecting back to the web UI.
+        for provider, authenticator in authenticators.items():
+            if isinstance(authenticator, ExternalAuthenticator):
+                if not getattr(authenticator, "redirect_on_success", None):
+                    logger.warning(
+                        f"External authenticator '{provider}' has no "
+                        f"'redirect_on_success' configured. Browser-based login "
+                        f"will return raw JSON tokens instead of redirecting to "
+                        f"the web UI. Set redirect_on_success to your UI's "
+                        f"auth-callback URL (e.g. "
+                        f"'https://example.com/ui/auth-callback')."
+                    )
 
         # Inject webhook_secret_keys into catalog contexts before startup tasks
         # run. When a 'webhooks:' config section is present, pass its

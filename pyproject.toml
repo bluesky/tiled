@@ -280,6 +280,8 @@ test = [
     "respx", # Mocking library for httpx
     "python3-saml",
     "types-cachetools",
+    "pytest-cov",
+    "pytest-xdist"
 ]
 dev = [
   { include-group = "test" },

@@ -13,7 +13,12 @@ class CannotRefreshAuthentication(Exception):
 
 class TiledAuth(httpx.Auth):
     def __init__(
-        self, refresh_url, csrf_token, token_directory, client_id: Optional[str] = None
+        self,
+        refresh_url,
+        csrf_token,
+        token_directory,
+        client_id: Optional[str] = None,
+        scopes: Optional[str] = None,
     ):
         self.refresh_url = refresh_url
         self.csrf_token = csrf_token
@@ -26,6 +31,7 @@ class TiledAuth(httpx.Auth):
         # self._async_lock = asyncio.Lock()
         self.tokens = {}
         self.client_id = client_id
+        self.scopes = scopes
 
     @staticmethod
     def _check_writable_token_directory(token_directory):
@@ -78,7 +84,7 @@ class TiledAuth(httpx.Auth):
     def sync_set_token(self, key, value):
         with self._sync_lock:
             if not isinstance(value, str):
-                raise ValueError("Expected string value, got {value!r}")
+                raise ValueError(f"Expected string value, got {value!r}")
             if self.token_directory is not None:
                 filepath = self.token_directory / key
                 filepath.touch(mode=0o600)  # Set permissions.
@@ -117,7 +123,11 @@ class TiledAuth(httpx.Auth):
                     "For a given client c, use c.context.authenticate()."
                 )
             token_request = build_refresh_request(
-                self.refresh_url, refresh_token, self.csrf_token, self.client_id
+                self.refresh_url,
+                refresh_token,
+                self.csrf_token,
+                self.client_id,
+                self.scopes,
             )
             token_response = yield token_request
             if token_response.status_code == httpx.codes.UNAUTHORIZED:
@@ -158,7 +168,11 @@ class TiledAuth(httpx.Auth):
 
 
 def build_refresh_request(
-    refresh_url, refresh_token, csrf_token, client_id: Optional[str] = None
+    refresh_url,
+    refresh_token,
+    csrf_token,
+    client_id: Optional[str] = None,
+    scopes: Optional[str] = None,
 ):
     if client_id:
         return httpx.Request(
@@ -168,6 +182,7 @@ def build_refresh_request(
                 "client_id": client_id,
                 "grant_type": "refresh_token",
                 "refresh_token": refresh_token,
+                **({"scope": scopes} if scopes else {}),
             },
             headers={"Content-Type": "application/x-www-form-urlencoded"},
         )
