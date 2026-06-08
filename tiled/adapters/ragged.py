@@ -9,6 +9,7 @@ else:
 
 import copy
 from collections.abc import Set
+from contextlib import closing
 from typing import Any
 
 import adbc_driver_manager
@@ -18,7 +19,7 @@ import pyarrow
 import ragged
 
 from ..catalog.orm import Node
-from ..ndslice import NDBlock, NDSlice
+from ..ndslice import NDBlock, NDSlice, block_for_slice
 from ..storage import EmbeddedSQLStorage, RemoteSQLStorage, SQLStorage, Storage
 from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import DataSource
@@ -163,9 +164,69 @@ class RaggedSQLAdapter(Adapter[RaggedStructure]):
             specs=node.specs,
         )
 
+    def _load_chunks(self, chunk_indexes: list[int]) -> list[dict[str, Any]]:
+        """Fetch SQL rows for the given chunk_indexes, ordered by chunk_index ASC.
+
+        Bypasses ``_read_full_table_or_partition`` so the chunk_index filter
+        is pushed into the SQL ``WHERE`` clause instead of being applied in
+        Python after a full scan.
+        """
+        if not chunk_indexes:
+            return []
+        tab = self._tabular_adapter
+        schema = tab.structure().arrow_schema_decoded
+        req_cols = list(schema.names)
+        in_list = ", ".join(str(int(i)) for i in chunk_indexes)
+        query = (
+            "SELECT "
+            + ", ".join(f'"{c.lower()}"' for c in req_cols)
+            + f' FROM "{tab.table_name}" '
+            f"WHERE _dataset_id={tab.dataset_id} "
+            f"AND chunk_index IN ({in_list}) "
+            f"ORDER BY chunk_index ASC"
+        )
+        with closing(tab.storage.connect()) as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(query)
+                data = cursor.fetch_arrow_table()
+            conn.commit()
+        if lwr_upr_case_mapping := {c.lower(): c for c in req_cols if c != c.lower()}:
+            data = data.rename_columns(lwr_upr_case_mapping)
+        target_schema = pyarrow.schema(
+            [schema.field(schema.get_field_index(name)) for name in req_cols]
+        )
+        rows: list[dict[str, Any]] = data.cast(target_schema).to_pylist()
+        return rows
+
     def read(self, slice: NDSlice | None = None) -> CanonicalRaggedArray:
-        "Read a slice of data from the ragged array."
-        rows = self._tabular_adapter._read_full_table_or_partition().to_pylist()
+        """Read a slice of data from the ragged array.
+
+        Only axis 0 is chunked, so ``tiled.ndslice.block_for_slice`` is invoked
+        on ``(chunks[0],)`` with the first slice component to pick the
+        ``chunk_index`` set to fetch from SQL; higher-axis components pass
+        through to ``make_ragged_array`` unchanged.
+        """
+        chunks0 = self._structure.chunks[0] or ()
+        slc = NDSlice(slice or ())
+        chunk_indexes = list(range(len(chunks0)))
+
+        if chunks0 and slc and NDSlice(slc[0]):
+            try:
+                block, adjusted = block_for_slice((chunks0,), NDSlice(slc[0]))
+            except IndexError:
+                pass  # out-of-bounds; let make_ragged_array raise a clear error
+            else:
+                b0 = block[0]
+                selected = (
+                    [b0]
+                    if isinstance(b0, int)
+                    else list(range(*b0.indices(len(chunks0))))
+                )
+                if selected:
+                    chunk_indexes = selected
+                    slc = NDSlice(adjusted[0], *slc[1:])
+
+        rows = self._load_chunks(chunk_indexes)
 
         # Each row in the table represents an awkward buffer; concatenate them together
         form = self._structure.awk_form  # awkward form should be the same for each row
@@ -177,12 +238,13 @@ class RaggedSQLAdapter(Adapter[RaggedStructure]):
             }
             for row in rows
         ]
+        selected_lengths = [chunks0[i] for i in chunk_indexes]
         awk_arrays = [
             awkward.from_buffers(form, length, buffer)
-            for length, buffer in zip(self._structure.chunks[0] or (), buffers)
+            for length, buffer in zip(selected_lengths, buffers)
         ]
 
-        return make_ragged_array(awkward.concatenate(awk_arrays), slice=slice)
+        return make_ragged_array(awkward.concatenate(awk_arrays), slice=slc)
 
     def write(self, data: CanonicalRaggedArray) -> None:
         self.write_block(data, block=NDBlock(0))
