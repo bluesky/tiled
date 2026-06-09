@@ -31,6 +31,7 @@ from tiled.structures.ragged import (
     RaggedRegularizationError,
     RaggedStructure,
     make_ragged_array,
+    ragged_to_dense,
 )
 from tiled.utils import APACHE_ARROW_FILE_MIME_TYPE, Conflicts
 
@@ -432,6 +433,41 @@ def test_awkward_form_from_structure(name):
 
         with pytest.raises(RaggedRegularizationError):
             make_ragged_array(arrays[name], shape=(3, 2, 5))
+
+
+def test_ragged_to_dense():
+    # 1D rectangular input is returned unchanged (no padding needed).
+    rect = ragged.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
+    out = ragged_to_dense(rect)
+    assert isinstance(out, np.ndarray)
+    assert out.shape == (2, 3)
+    np.testing.assert_array_equal(out, [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
+
+    # Ragged inner dim is padded with NaN to the max length.
+    ragged_arr = ragged.array([[1, 2, 3], [4], [5, 6]])
+    out = ragged_to_dense(ragged_arr)
+    assert out.shape == (3, 3)
+    assert np.issubdtype(out.dtype, np.floating)  # int upcast for NaN
+    expected = np.array(
+        [
+            [1.0, 2.0, 3.0],
+            [4.0, np.nan, np.nan],
+            [5.0, 6.0, np.nan],
+        ]
+    )
+    np.testing.assert_array_equal(out, expected)
+
+    # 3D ragged: both inner dims independently padded.
+    nested = ragged.array([[[1.0, 2.0], [3.0]], [[4.0]]])
+    out = ragged_to_dense(nested)
+    assert out.shape == (2, 2, 2)
+    expected = np.array(
+        [
+            [[1.0, 2.0], [3.0, np.nan]],
+            [[4.0, np.nan], [np.nan, np.nan]],
+        ]
+    )
+    np.testing.assert_array_equal(out, expected)
 
 
 @pytest.mark.parametrize("name", arrays.keys())

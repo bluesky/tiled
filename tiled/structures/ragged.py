@@ -417,6 +417,33 @@ def make_ragged_chunks(
     return chunks_0 + chunks_fixed + chunks_none
 
 
+def ragged_to_dense(array: CanonicalRaggedArray) -> numpy.ndarray:
+    """Convert a ragged array to a dense NumPy array by padding variable-length dimensions with NaNs.
+
+    The function iteratively pads each variable-length dimension to the maximum
+    length along that dimension, until all dimensions are fixed-size. The resulting array
+    is then converted to a NumPy array with NaNs filling the padded values.
+
+    Note: integer arrays will be upcast to float arrays to accommodate NaN padding values.
+    """
+    arr = array._impl
+
+    axis = 1
+    while True:
+        try:
+            lengths = awkward.num(arr, axis=axis)
+            max_len = int(awkward.max(lengths))
+        except Exception:
+            break
+
+        arr = awkward.pad_none(arr, max_len, axis=axis, clip=True)
+        axis += 1
+
+    arr = awkward.fill_none(arr, numpy.nan)
+
+    return awkward.to_numpy(arr)
+
+
 def is_ragged_compatible_form(form: awkward.forms.form.Form) -> bool:
     """Check if an Awkward Form represents a ragged (or a uniform) array structure."""
     if isinstance(form, awkward.forms.NumpyForm):
