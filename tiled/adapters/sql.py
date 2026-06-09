@@ -405,6 +405,15 @@ class SQLAdapter(Adapter[TableStructure]):
             except Exception as err:
                 errors.append(err)
 
+            # Defensive fallback. In practice this branch is unreachable via
+            # real SQL data: arrow list columns are uniformly typed, and
+            # ``ragged.array`` accepts every numeric or string-like jagged
+            # input that survives arrow round-trip (it even reinterprets
+            # bytes/strings as ``uint8`` rather than rejecting them). This
+            # path exists to handle hypothetical awkward forms (records,
+            # unions, etc.) that ragged cannot represent but that some
+            # future storage backend might surface. Not covered by tests
+            # because no real fixture can reach it.
             try:
                 from .awkward import AwkwardAdapter
 
@@ -412,6 +421,12 @@ class SQLAdapter(Adapter[TableStructure]):
             except Exception as err:
                 errors.append(err)
 
+            # Also defensive: ``AwkwardAdapter.from_array`` accepts essentially
+            # any ndarray content (including structured dtypes, void, object
+            # cells with dicts/None). For this branch to fire, all three of
+            # vstack / ragged / awkward must reject the input. No real SQL
+            # round-trip can produce such data today; logging here is purely
+            # to aid debugging if a future upstream change makes it reachable.
             logger.error(
                 "No adapter found that accepts object-array at key %s. (%s)",
                 key,
