@@ -279,6 +279,22 @@ def _slc_with_slc(slc1: builtins.slice, slc2: builtins.slice) -> builtins.slice:
     return builtins.slice(new_start, new_stop, new_step)
 
 
+def _is_scalar_slice(
+    slc: Union[int, builtins.slice], length: Optional[int] = None
+) -> bool:
+    "Best effort to check if a slice selects a single element (scalar) along one dimension"
+    if length is not None and isinstance(slc, builtins.slice):
+        start, stop, step = slc.indices(length)
+        return len(range(start, stop, step)) == 1
+
+    return isinstance(slc, int) or (
+        isinstance(slc, slice)
+        and slc.start is not None
+        and slc.stop is not None
+        and slc.stop == slc.start + 1
+    )
+
+
 def compose_slices(slc1: "NDSlice", slc2: "NDSlice") -> "NDSlice":
     """Compose two NDSlices
 
@@ -567,6 +583,12 @@ class NDSlice(tuple):
         "Convert all integer dims to slices of length 1 to preserve the dimensionality"
         return self.__class__(
             *(builtins.slice(s, s + 1, 1) if isinstance(s, int) else s for s in self)
+        )
+
+    def is_scalar(self, shape: tuple[int, ...]) -> bool:
+        "Check if this NDSlice selects a single element (scalar) from an array of the given shape"
+        return (len(self) == len(shape)) and all(
+            _is_scalar_slice(s, length=l) for s, l in zip(self, shape)
         )
 
 

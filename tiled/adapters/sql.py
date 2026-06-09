@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import copy
 import hashlib
 import logging
@@ -5,6 +7,7 @@ import re
 from collections.abc import Set
 from contextlib import closing
 from typing import (
+    TYPE_CHECKING,
     Any,
     Callable,
     Iterator,
@@ -18,6 +21,11 @@ from typing import (
     cast,
 )
 
+if TYPE_CHECKING:
+    from .ragged import RaggedAdapter
+    from .awkward import AwkwardAdapter
+
+import adbc_driver_manager
 import numpy
 import pandas
 import pyarrow
@@ -38,9 +46,6 @@ from ..structures.data_source import Asset, DataSource
 from ..structures.table import TableStructure
 from ..type_aliases import JSON
 from .array import ArrayAdapter
-from .awkward import AwkwardAdapter
-from .ragged import RaggedAdapter
-from .utils import init_adapter_from_catalog
 
 DIALECTS = Literal["postgresql", "sqlite", "duckdb"]
 TABLE_NAME_PATTERN = re.compile(r"^[a-z][a-z0-9_]*$")
@@ -101,6 +106,21 @@ def _is_primary_key_type(arrow_type: pyarrow.DataType) -> bool:
     almost always a mistake.
     """
     return _is_orderable_type(arrow_type) and not pyarrow.types.is_floating(arrow_type)
+
+
+def is_unique_violation(exc: adbc_driver_manager.Error) -> bool:
+    """Return True if ``exc`` is a SQL unique/PK constraint violation.
+
+    The ADBC postgres driver reports unique-violations as ``ProgrammingError``
+    rather than ``IntegrityError`` (the spec-mandated subclass). Both expose a
+    ``sqlstate`` attribute; per SQL:2008 all integrity-constraint violations
+    use SQLSTATE class ``23``. Fall back to ``isinstance(IntegrityError)`` when
+    SQLSTATE is unavailable (e.g. other drivers).
+    """
+    sqlstate = getattr(exc, "sqlstate", None) or ""
+    if sqlstate.startswith("23"):
+        return True
+    return isinstance(exc, adbc_driver_manager.IntegrityError)
 
 
 class SQLAdapter(Adapter[TableStructure]):
@@ -182,15 +202,6 @@ class SQLAdapter(Adapter[TableStructure]):
 
         super().__init__(structure, metadata=metadata, specs=specs)
 
-    def metadata(self) -> JSON:
-        """The metadata representing the actual data.
-
-        Returns
-        -------
-        The metadata representing the actual data.
-        """
-        return self._metadata
-
     @classmethod
     def supported_storage(cls) -> Set[type[Storage]]:
         return {SQLStorage, EmbeddedSQLStorage, RemoteSQLStorage}
@@ -214,8 +225,7 @@ class SQLAdapter(Adapter[TableStructure]):
         data_source: DataSource[TableStructure],
         path_parts: Optional[List[str]] = None,
     ) -> DataSource[TableStructure]:
-        """
-        Classmethod to initialize the list of assets for a given uri.
+        """Initialize (or update) a data source, including the list of assets, for given uri.
 
         Parameters
         ----------
@@ -326,7 +336,16 @@ class SQLAdapter(Adapter[TableStructure]):
         /,
         **kwargs: Optional[Any],
     ) -> "SQLAdapter":
-        return init_adapter_from_catalog(cls, data_source, node, **kwargs)
+        return cls(
+            data_source.assets[0].data_uri,
+            structure=data_source.structure,
+            table_name=data_source.parameters["table_name"],
+            dataset_id=data_source.parameters["dataset_id"],
+            order_by_args=data_source.parameters.get("order_by_args"),
+            primary_key=data_source.parameters.get("primary_key"),
+            metadata=node.metadata_,
+            specs=node.specs,
+        )
 
     def structure(self) -> TableStructure:
         return self._structure
@@ -348,7 +367,7 @@ class SQLAdapter(Adapter[TableStructure]):
 
     def __getitem__(
         self, key: str
-    ) -> Union[ArrayAdapter, AwkwardAdapter, RaggedAdapter]:
+    ) -> Union[ArrayAdapter, AwkwardAdapter, RaggedAdapter, None]:
         """Get the data for a specific key.
 
         Parameters
@@ -380,22 +399,41 @@ class SQLAdapter(Adapter[TableStructure]):
                 errors.append(err)
 
             try:
+                from .ragged import RaggedAdapter
+
                 return RaggedAdapter.from_array(array)
             except Exception as err:
                 errors.append(err)
 
+            # Defensive fallback. In practice this branch is unreachable via
+            # real SQL data: arrow list columns are uniformly typed, and
+            # ``ragged.array`` accepts every numeric or string-like jagged
+            # input that survives arrow round-trip (it even reinterprets
+            # bytes/strings as ``uint8`` rather than rejecting them). This
+            # path exists to handle hypothetical awkward forms (records,
+            # unions, etc.) that ragged cannot represent but that some
+            # future storage backend might surface. Not covered by tests
+            # because no real fixture can reach it.
             try:
+                from .awkward import AwkwardAdapter
+
                 return AwkwardAdapter.from_array(array)
             except Exception as err:
                 errors.append(err)
 
+            # Also defensive: ``AwkwardAdapter.from_array`` accepts essentially
+            # any ndarray content (including structured dtypes, void, object
+            # cells with dicts/None). For this branch to fire, all three of
+            # vstack / ragged / awkward must reject the input. No real SQL
+            # round-trip can produce such data today; logging here is purely
+            # to aid debugging if a future upstream change makes it reachable.
             logger.error(
                 "No adapter found that accepts object-array at key %s. (%s)",
                 key,
                 errors,
             )
-            # fallback to string representation conversion in ArrayAdapter
 
+        # fallback to string representation conversion in ArrayAdapter
         return ArrayAdapter.from_array(array)
 
     def items(
@@ -407,7 +445,11 @@ class SQLAdapter(Adapter[TableStructure]):
         -------
         An iterator for the data in the associated database.
         """
-        yield from ((key, self[key]) for key in self._structure.columns)
+        yield from (
+            (key, adapter)
+            for key in self._structure.columns
+            if (adapter := self[key]) is not None
+        )
 
     def append_partition(
         self,
@@ -646,6 +688,12 @@ def arrow_field_to_pg_type(field: Union[pyarrow.Field, pyarrow.DataType]) -> str
         if pyarrow.types.is_large_list(arrow_type):
             value_type = _resolve_type(arrow_type.value_type)
             return f"{value_type} ARRAY"
+
+        # Handle Awkward byte arrays
+        from awkward._connect.pyarrow.extn_types import AwkwardArrowType
+
+        if isinstance(arrow_type, AwkwardArrowType):
+            return "BYTEA"
 
         # TODO Consider adding support for these types, with testing.
 

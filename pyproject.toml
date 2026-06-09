@@ -352,6 +352,9 @@ exclude = '''
 )
 '''
 
+[tool.isort]
+profile = "black"
+
 [tool.coverage.run]
 data_file = "/tmp/tiled.coverage"
 

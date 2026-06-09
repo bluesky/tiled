@@ -6,7 +6,6 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## Unreleased
 
-
 ### Added
 
 - Rich progress bar shown during multi-chunk array, dataframe, and dataset

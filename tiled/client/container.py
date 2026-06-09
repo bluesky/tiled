@@ -1003,9 +1003,9 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         specs=None,
         access_tags=None,
         max_partition_bytes=None,
+        appendable=True,
     ):
-        """
-        Write a ragged array.
+        """Write a ragged array.
 
         Parameters
         ----------
@@ -1025,9 +1025,10 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         max_partition_bytes: int, optional
             Maximum number of bytes per partition.
         """
-        import awkward
+        if not appendable:
+            raise NotImplementedError("appendable=False is not yet implemented")
+
         import numpy
-        import ragged
 
         from tiled.structures.ragged import (
             RaggedStructure,
@@ -1045,7 +1046,9 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             StructureFamily.ragged,
             [
                 DataSource(
-                    structure=structure, structure_family=StructureFamily.ragged
+                    structure=structure,
+                    structure_family=StructureFamily.ragged,
+                    mimetype="application/x-ragged+sql",
                 ),
             ],
             key=key,
@@ -1057,13 +1060,9 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             client.write(array)
         else:
             divisions = numpy.cumsum((0, *structure.chunks[0]))
-            starts = divisions[:-1]
-            stops = divisions[1:]
-            shape_rest = (0,) * (len(structure.shape) - 1)
+            starts, stops = divisions[:-1], divisions[1:]
             for block_id, (start, stop) in enumerate(zip(starts, stops, strict=True)):
-                block_data = awkward.to_packed(array[start:stop]._impl)
-                block_slice = (block_id,) + shape_rest
-                client.write_block(ragged.array(block_data), block=block_slice)
+                client.write_block(array[start:stop], block=block_id)
         return client
 
     def write_sparse(

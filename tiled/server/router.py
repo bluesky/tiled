@@ -817,6 +817,7 @@ def get_router(
             {
                 StructureFamily.array,
                 StructureFamily.container,
+                StructureFamily.ragged,
                 StructureFamily.sparse,
                 StructureFamily.table,
             },
@@ -840,7 +841,6 @@ def get_router(
         request: Request,
         path: str,
         slice: NDSlice = Depends(parse_slice_param),
-        expected_shape=Depends(expected_shape),
         format: Optional[str] = None,
         filename: Optional[str] = None,
         settings: Settings = Depends(get_settings),
@@ -865,12 +865,21 @@ def get_router(
         )
         structure_family = entry.structure_family
 
-        import ragged
+        from ..structures.ragged import CanonicalRaggedArray, RaggedSlicingError
 
-        with record_timing(request.state.metrics, "read"):
-            ragged_array: ragged.array = await ensure_awaitable(entry.read, slice)
+        try:
+            with record_timing(request.state.metrics, "read"):
+                array: CanonicalRaggedArray = await ensure_awaitable(entry.read, slice)
+        except RaggedSlicingError as err:
+            raise HTTPException(
+                status_code=HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=(
+                    "Cannot apply the requested slice to the given ragged array. "
+                    "Try reading the entire array and slice it on the client side instead."
+                ),
+            ) from err
 
-        if ragged_array._impl.nbytes > settings.response_bytesize_limit:
+        if array._impl.nbytes > settings.response_bytesize_limit:
             raise HTTPException(
                 status_code=HTTP_400_BAD_REQUEST,
                 detail=(
@@ -883,7 +892,7 @@ def get_router(
                 return await construct_data_response(
                     structure_family,
                     serialization_registry,
-                    ragged_array,
+                    array,
                     entry.metadata(),
                     request,
                     format,
@@ -895,96 +904,6 @@ def get_router(
             raise HTTPException(
                 status_code=HTTP_406_NOT_ACCEPTABLE, detail=err.args[0]
             ) from err
-
-    @router.get(
-        "/ragged/block/{path:path}",
-        response_model=schemas.Response,
-        name="ragged block",
-    )
-    async def get_ragged_block(
-        request: Request,
-        path: str,
-        block: NDBlock = Depends(parse_block_param),
-        slice: NDSlice = Depends(parse_slice_param),
-        expected_shape=Depends(expected_shape),
-        format: Optional[str] = None,
-        filename: Optional[str] = None,
-        settings: Settings = Depends(get_settings),
-        principal: Optional[Principal] = Depends(get_current_principal),
-        root_tree=Depends(get_root_tree),
-        session_state: dict = Depends(get_session_state),
-        authn_access_tags: Optional[AccessTags] = Depends(get_current_access_tags),
-        authn_scopes: Scopes = Depends(get_current_scopes),
-        _=Security(check_scopes, scopes=["read:data"]),
-    ):
-        entry = await get_entry(
-            path=path,
-            security_scopes=["read:data"],
-            principal=principal,
-            authn_access_tags=authn_access_tags,
-            authn_scopes=authn_scopes,
-            root_tree=root_tree,
-            session_state=session_state,
-            metrics=request.state.metrics,
-            structure_families={StructureFamily.ragged},
-            access_policy=getattr(request.app.state, "access_policy", None),
-        )
-
-        structure = entry.structure()
-
-        import ragged
-
-        if block == () and len(structure.shape) > 0:
-            raise HTTPException(
-                status_code=HTTP_422_UNPROCESSABLE_CONTENT,
-                detail=f"Requested scalar but shape is {structure.shape}",
-            )
-        if not block.is_valid_for_shape(structure.shape_from_chunks):
-            raise HTTPException(
-                status_code=HTTP_422_UNPROCESSABLE_CONTENT,
-                detail=(
-                    f"Block parameter is not valid for {structure.chunks} partitions."
-                ),
-            )
-        try:
-            with record_timing(request.state.metrics, "read"):
-                ragged_array: ragged.array = await ensure_awaitable(
-                    entry.read_block, block, slice
-                )
-        except IndexError:
-            raise HTTPException(
-                status_code=HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Block index out of range",
-            )
-        if (expected_shape is not None) and (expected_shape != ragged_array.shape):
-            raise HTTPException(
-                status_code=HTTP_422_UNPROCESSABLE_CONTENT,
-                detail=f"The expected_shape {expected_shape} does not match the actual shape {ragged_array.shape}",
-            )
-
-        if ragged_array._impl.nbytes > settings.response_bytesize_limit:
-            raise HTTPException(
-                status_code=HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=(
-                    f"Response would exceed {settings.response_bytesize_limit}. "
-                    "Use slicing ('?slice=...') to request smaller chunks."
-                ),
-            )
-        try:
-            with record_timing(request.state.metrics, "pack"):
-                return await construct_data_response(
-                    entry.structure_family,
-                    serialization_registry,
-                    ragged_array,
-                    entry.metadata(),
-                    request,
-                    format,
-                    specs=getattr(entry, "specs", []),
-                    expires=getattr(entry, "content_stale_at", None),
-                    filename=filename,
-                )
-        except UnsupportedMediaTypes as err:
-            raise HTTPException(status_code=HTTP_406_NOT_ACCEPTABLE, detail=err.args[0])
 
     @router.put("/ragged/full/{path:path}")
     async def put_ragged_full(
@@ -1010,20 +929,20 @@ def get_router(
             {StructureFamily.ragged},
             getattr(request.app.state, "access_policy", None),
         )
-        body = await request.body()
         if not hasattr(entry, "write"):
             raise HTTPException(
                 status_code=HTTP_405_METHOD_NOT_ALLOWED,
                 detail="This node cannot accept array data.",
             )
+
         media_type = request.headers["content-type"]
-        if entry.structure_family == "ragged":
-            deserializer = deserialization_registry.dispatch("ragged", media_type)
-        else:
-            raise NotImplementedError(entry.structure_family)
+        deserializer = deserialization_registry.dispatch("ragged", media_type)
+
+        body = await request.body()
         await ensure_awaitable(
             entry.write, media_type, deserializer, entry, body, persist
         )
+
         return json_or_msgpack(request, None)
 
     @router.put("/ragged/block/{path:path}")
@@ -1054,18 +973,78 @@ def get_router(
         if not hasattr(entry, "write_block"):
             raise HTTPException(
                 status_code=HTTP_405_METHOD_NOT_ALLOWED,
-                detail="This node cannot accept array data.",
+                detail="This node cannot accept blocks of ragged array data.",
+            )
+
+        media_type = request.headers["content-type"]
+        deserializer = deserialization_registry.dispatch("ragged", media_type)
+
+        body = await request.body()
+        await ensure_awaitable(
+            entry.write_block, block, media_type, deserializer, entry, body, persist
+        )
+
+        return json_or_msgpack(request, None)
+
+    @router.patch("/ragged/full/{path:path}")
+    async def patch_ragged_full(
+        request: Request,
+        path: str,
+        shape=Depends(shape_param),
+        offset=Depends(offset_param),
+        extend: bool = Query(
+            False, description="Extend the array shape to fit the new data"
+        ),
+        persist: bool = Query(True, description="Persist data to storage"),
+        principal: Optional[Principal] = Depends(get_current_principal),
+        root_tree=Depends(get_root_tree),
+        session_state: dict = Depends(get_session_state),
+        authn_access_tags: Optional[AccessTags] = Depends(get_current_access_tags),
+        authn_scopes: Scopes = Depends(get_current_scopes),
+        _=Security(check_scopes, scopes=["write:data"]),
+    ):
+        if extend and not persist:
+            msg = (
+                "Cannot PATCH a ragged array with both parameters"
+                " extend=True and persist=False."
+                " To extend the array, you must persist the changes."
+                " To skip persisting the changes, you must not extend the array."
+            )
+            raise HTTPException(status_code=HTTP_400_BAD_REQUEST, detail=msg)
+
+        entry = await get_entry(
+            path,
+            ["write:data"],
+            principal,
+            authn_access_tags,
+            authn_scopes,
+            root_tree,
+            session_state,
+            request.state.metrics,
+            {StructureFamily.ragged},
+            getattr(request.app.state, "access_policy", None),
+        )
+        if not hasattr(entry, "patch"):
+            raise HTTPException(
+                status_code=HTTP_405_METHOD_NOT_ALLOWED,
+                detail="This node does not support patching ragged array data.",
             )
 
         body = await request.body()
         media_type = request.headers["content-type"]
-        deserializer = deserialization_registry.dispatch(
-            entry.structure_family, media_type
+        deserializer = deserialization_registry.dispatch("ragged", media_type)
+        structure = await ensure_awaitable(
+            entry.patch,
+            shape,
+            offset,
+            extend,
+            media_type,
+            deserializer,
+            entry,
+            body,
+            persist,
         )
-        await ensure_awaitable(
-            entry.write_block, block, media_type, deserializer, entry, body, persist
-        )
-        return json_or_msgpack(request, None)
+        return json_or_msgpack(request, structure)
 
     @router.get(
         "/table/partition/{path:path}",

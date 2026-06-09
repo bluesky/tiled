@@ -8,6 +8,7 @@ import h5py
 import numpy
 import pandas
 import pytest
+import ragged
 import sparse
 import tifffile
 
@@ -23,10 +24,16 @@ from tiled.server.app import build_app
 
 @contextlib.contextmanager
 def client_factory(readable_storage=None):
-    with tempfile.TemporaryDirectory() as tempdir:
+    # ``ignore_cleanup_errors=True`` (Python 3.10+) lets TemporaryDirectory
+    # tolerate Windows ``WinError 32`` when duckdb's ADBC connection has not
+    # yet released its file handle by the time the tempdir is cleaned up.
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tempdir:
         catalog = in_memory(
             named_memory=str(uuid.uuid4())[:8],
-            writable_storage=str(tempdir),
+            writable_storage=[
+                str(tempdir),
+                f"duckdb:///{tempdir}/data.duckdb",
+            ],
             readable_storage=readable_storage,
         )
         app = build_app(catalog)
@@ -74,6 +81,13 @@ def populate_internal(client):
         coords=numpy.array([[2, 5]]), data=numpy.array([1.3, 7.5]), shape=(10,)
     )
     client.write_sparse(key="e", coords=coo.coords, data=coo.data, shape=coo.shape)
+    # ragged
+    client.write_ragged(
+        ragged.array([[1.1, 2.2], [3.3], [4.4, 5.5, 6.6]]),
+        key="f",
+        metadata={"color": "red"},
+        specs=["alpha"],
+    )
 
     # nested
     container = client.create_container("c")
@@ -85,6 +99,12 @@ def populate_internal(client):
         awkward.Array([1, [2, 3]]), key="D", metadata={"color": "red"}, specs=["alpha"]
     )
     container.write_sparse(key="E", coords=coo.coords, data=coo.data, shape=coo.shape)
+    container.write_ragged(
+        ragged.array([[1.1, 2.2], [3.3], [4.4, 5.5, 6.6]]),
+        key="F",
+        metadata={"color": "red"},
+        specs=["alpha"],
+    )
 
 
 def test_copy_internal():

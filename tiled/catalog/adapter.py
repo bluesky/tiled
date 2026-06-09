@@ -62,7 +62,7 @@ from ..mimetypes import (
     AWKWARD_BUFFERS_MIMETYPE,
     DEFAULT_ADAPTERS_BY_MIMETYPE,
     PARQUET_MIMETYPE,
-    RAGGED_MIMETYPE,
+    RAGGED_SQL_MIMETYPE,
     SPARSE_BLOCKS_PARQUET_MIMETYPE,
     TILED_SQL_TABLE_MIMETYPE,
     ZARR_MIMETYPE,
@@ -118,7 +118,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_CREATION_MIMETYPE = {
     StructureFamily.array: ZARR_MIMETYPE,
     StructureFamily.awkward: AWKWARD_BUFFERS_MIMETYPE,
-    StructureFamily.ragged: RAGGED_MIMETYPE,
+    StructureFamily.ragged: RAGGED_SQL_MIMETYPE,
     StructureFamily.sparse: SPARSE_BLOCKS_PARQUET_MIMETYPE,
     StructureFamily.table: PARQUET_MIMETYPE,
 }
@@ -130,8 +130,8 @@ STORAGE_ADAPTERS_BY_MIMETYPE = OneShotCachedMap[str, type](
             "...adapters.zarr", __name__
         ).ZarrArrayAdapter,
         AWKWARD_BUFFERS_MIMETYPE: lambda: importlib.import_module(
-            "...adapters.awkward_buffers", __name__
-        ).AwkwardBuffersAdapter,
+            "...adapters.awkward", __name__
+        ).AwkwardAdapter,
         PARQUET_MIMETYPE: lambda: importlib.import_module(
             "...adapters.parquet", __name__
         ).ParquetDatasetAdapter,
@@ -147,9 +147,9 @@ STORAGE_ADAPTERS_BY_MIMETYPE = OneShotCachedMap[str, type](
         TILED_SQL_TABLE_MIMETYPE: lambda: importlib.import_module(
             "...adapters.sql", __name__
         ).SQLAdapter,
-        RAGGED_MIMETYPE: lambda: importlib.import_module(
-            "...adapters.ragged_parquet", __name__
-        ).RaggedParquetAdapter,
+        RAGGED_SQL_MIMETYPE: lambda: importlib.import_module(
+            "...adapters.ragged", __name__
+        ).RaggedSQLAdapter,
     }
 )
 
@@ -1616,9 +1616,7 @@ class CatalogArrayAdapter(CatalogNodeAdapter):
         elif entry.structure_family == "sparse":
             data = await ensure_awaitable(deserializer, body)
         elif entry.structure_family == "ragged":
-            dtype = entry.structure().data_type.to_numpy_dtype()
-            shape = entry.structure().shape
-            data = await ensure_awaitable(deserializer, body, dtype, shape)
+            data = await ensure_awaitable(deserializer, body, entry.structure())
         else:
             raise NotImplementedError(entry.structure_family)
         return await ensure_awaitable((await self.get_adapter()).write, data)
@@ -1696,19 +1694,87 @@ class CatalogAwkwardAdapter(CatalogNodeAdapter):
 
 
 class CatalogRaggedAdapter(CatalogArrayAdapter):
+    def make_ws_schema(self):
+        return {
+            "type": "ragged-schema",
+            "version": 1,
+            "data_type": dataclasses.asdict(self.structure().data_type),
+        }
+
+    async def _stream(self, media_type, entry, body, shape, block=None, offset=None):
+        sequence = await self.context.streaming_cache.incr_seq(self.node.id)
+        metadata = {
+            "type": "ragged-data",
+            "sequence": sequence,
+            "timestamp": datetime.now().isoformat(),
+            "mimetype": media_type,
+            "shape": shape,
+            "offset": offset,
+            "block": block,
+        }
+        await self.context.streaming_cache.set(
+            self.node.id, sequence, metadata, payload=body
+        )
+
     async def write_block(
         self, block, media_type, deserializer, entry, body, persist=True
     ):
-        if entry.structure_family != "ragged":
-            return await super().write_block(
-                block, media_type, deserializer, entry, body, persist
+        # Unlike regular arrays, ragged structures have variable-length
+        # dimensions (None) so we cannot compute a per-block shape via
+        # block.shape_from_chunks(). Stream the full structure shape instead.
+        if self.context.streaming_cache:
+            await self._stream(
+                media_type, entry, body, entry.structure().shape, block=block
             )
-        dtype = entry.structure().data_type.to_numpy_dtype()
-        shape = entry.structure().shape
-        data = await ensure_awaitable(deserializer, body, dtype, shape)
+        if not persist:
+            return None
+        data = await ensure_awaitable(deserializer, body, entry.structure())
         return await ensure_awaitable(
             (await self.get_adapter()).write_block, data, block
         )
+
+    async def patch(
+        self, shape, offset, extend, media_type, deserializer, entry, body, persist=True
+    ):
+        if self.context.streaming_cache:
+            await self._stream(media_type, entry, body, shape, offset=offset)
+        if not persist:
+            return entry.structure()
+        data = await ensure_awaitable(deserializer, body, entry.structure())
+
+        async with self.context.session() as db:
+            new_structure = await ensure_awaitable(
+                (await self.get_adapter()).patch, data, offset, extend
+            )
+            node = await db.get(orm.Node, self.node.id)
+            if len(node.data_sources) != 1:
+                raise NotImplementedError("Only handles one data source")
+            data_source = node.data_sources[0]
+            structure_row = await db.get(orm.Structure, data_source.structure_id)
+
+            # Get the current structure row, update the shape, and write it back
+            structure_dict = copy.deepcopy(structure_row.structure)
+            structure_dict["shape"], structure_dict["chunks"] = (
+                new_structure.shape,
+                new_structure.chunks,
+            )
+            new_structure_id = compute_structure_id(structure_dict)
+            statement = (
+                self.insert(orm.Structure)
+                .values(
+                    id=new_structure_id,
+                    structure=structure_dict,
+                )
+                .on_conflict_do_nothing(index_elements=["id"])
+            )
+            await db.execute(statement)
+            new_structure = await db.get(orm.Structure, new_structure_id)
+            data_source.structure = new_structure
+            data_source.structure_id = new_structure_id
+            db.add(data_source)
+            await db.commit()
+
+            return structure_dict
 
 
 class CatalogSparseAdapter(CatalogArrayAdapter):
