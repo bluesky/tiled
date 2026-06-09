@@ -27,7 +27,11 @@ from tiled.storage import SQLStorage, parse_storage, register_storage
 from tiled.structures.array import BuiltinDtype
 from tiled.structures.core import StructureFamily
 from tiled.structures.data_source import DataSource, Management
-from tiled.structures.ragged import RaggedStructure, make_ragged_array
+from tiled.structures.ragged import (
+    RaggedRegularizationError,
+    RaggedStructure,
+    make_ragged_array,
+)
 from tiled.utils import APACHE_ARROW_FILE_MIME_TYPE, Conflicts
 
 rng = np.random.default_rng(42)
@@ -233,6 +237,21 @@ arrays = {
     "regular_2d": ragged.array(rng.random((3, 5)).tolist()),
     "regular_3d": ragged.array(rng.random((2, 3, 4)).tolist()),
     "regular_4d": ragged.array(rng.random((2, 3, 2, 3)).tolist()),
+    "regularizable_2d_3x5": ragged.array([rng.random(5)] * 3),
+    "regularizable_3d_3x5x2": ragged.array([rng.random((5, 2))] * 3),
+    "regularizable_3d_3x5xNone": ragged.array(
+        [
+            [rng.random(rng.integers(low=0, high=5, size=1).item()) for _ in range(5)]
+            for _ in range(3)
+        ]
+    ),
+    "regularizable_3d_3xNonex5": ragged.array(
+        [
+            [rng.random(5) for _ in range(3)],
+            [rng.random(5) for _ in range(2)],
+            [rng.random(5) for _ in range(1)],
+        ]
+    ),
     # testing list-of-lists conversion path
     "ragged_a": [
         rng.random(3),
@@ -377,6 +396,42 @@ def test_awkward_form_from_structure(name):
 
     for key, val in form.expected_from_buffers().items():
         assert buffers[key].dtype == val
+
+    if "regularizable" in name and "None" not in name:
+        # Fully regularizable arrays
+        array = make_ragged_array(arrays[name], regularize=False)
+        structure = RaggedStructure.from_array(array)
+        assert None in structure.shape
+
+        array = make_ragged_array(arrays[name], regularize=True)
+        structure = RaggedStructure.from_array(array)
+        assert None not in structure.shape
+
+    elif name == "regularizable_3d_3x5xNone":
+        # Partially regularizable arrays
+        array = make_ragged_array(arrays[name], regularize=False)
+        structure = RaggedStructure.from_array(array)
+        assert structure.shape == (3, None, None)
+
+        array = make_ragged_array(arrays[name], regularize=True)
+        structure = RaggedStructure.from_array(array)
+        assert structure.shape == (3, 5, None)
+
+    elif name == "regularizable_3d_3xNonex5":
+        # Partially regularizable arrays
+        array = make_ragged_array(arrays[name], regularize=False)
+        structure = RaggedStructure.from_array(array)
+        assert structure.shape == (3, None, None)
+
+        array = make_ragged_array(arrays[name], regularize=True)
+        structure = RaggedStructure.from_array(array)
+        assert structure.shape == (3, None, 5)
+
+        array = make_ragged_array(arrays[name], shape=(3, None, 5))
+        assert structure.shape == (3, None, 5)
+
+        with pytest.raises(RaggedRegularizationError):
+            make_ragged_array(arrays[name], shape=(3, 2, 5))
 
 
 @pytest.mark.parametrize("name", arrays.keys())

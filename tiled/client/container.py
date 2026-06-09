@@ -1025,6 +1025,9 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         max_partition_bytes: int, optional
             Maximum number of bytes per partition.
         """
+        if not appendable:
+            raise NotImplementedError("appendable=False is not yet implemented")
+
         import numpy
 
         from tiled.structures.ragged import (

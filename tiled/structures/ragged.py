@@ -31,6 +31,13 @@ class RaggedSlicingError(ValueError):
     pass
 
 
+class RaggedRegularizationError(ValueError):
+    """Raised when attempting to regularize a ragged array along a dimension that
+    cannot be regularized."""
+
+    pass
+
+
 _SupportsDLPack = runtime_checkable(cast("type[SupportsDLPack]", SupportsDLPack))
 
 
@@ -216,6 +223,7 @@ class RaggedStructure(Structure):
 
 def _canonicalize_awkward_layout(
     layout: awkward.contents.Content,
+    regularize: bool = False,
 ) -> awkward.contents.Content:
     """Make a canonical Awkward layout with only ListOffsetForms for variable-length dimensions.
 
@@ -293,7 +301,10 @@ def _canonicalize_awkward_layout(
 
 
 def make_ragged_array(
-    array: RaggedCompatibleType, slice: Optional[NDSlice] = None
+    array: RaggedCompatibleType,
+    shape: Optional[tuple[int | None, ...]] = None,
+    slice: Optional[NDSlice] = None,
+    regularize: bool = False,
 ) -> CanonicalRaggedArray:
     """Best-effort conversion of any numeric iterable to a ``ragged`` array.
 
@@ -310,8 +321,15 @@ def make_ragged_array(
     ----------
     array : RaggedCompatibleType
         The input array-like object to be converted to a ragged array.
+    shape : tuple[int | None, ...], optional
+        The desired shape of the output ragged array. If None, the shape is inferred from the input
+        array; any dimensions with variable length are represented as None.
     slice : NDSlice, optional
         An optional NDSlice to apply to the array.
+    regularize : bool, optional
+        Whether to attempt to convert the array to a regular (non-ragged) array along any and all
+        dimensions, if possible. the `shape` parameter, if specified, takes precedence over `regularize`
+        and will only regularize dimensions explicitly marked as fixed-size in the `shape`.
     """
 
     if isinstance(array, ragged.array):
@@ -328,7 +346,27 @@ def make_ragged_array(
     else:
         array = ragged.array(list(array))
 
-    array = ragged.array(_canonicalize_awkward_layout(array._impl.layout))
+    ndims = array.ndim
+    if shape is not None and len(shape) != ndims:
+        raise ValueError(
+            f"Desired shape {shape} has different number of dimensions than the input array, {array.shape}"
+        )
+
+    array = _canonicalize_awkward_layout(array._impl.layout)
+
+    if shape or regularize:
+        for dim in reversed(range(1, ndims)):
+            if shape and shape[dim] is None:
+                continue
+            try:
+                array = awkward.to_regular(array, axis=dim)
+            except ValueError:
+                if shape and shape[dim] is not None:
+                    raise RaggedRegularizationError(
+                        f"Cannot regularize dimension {dim} to the desired shape {shape}"
+                    )
+
+    array = ragged.array(array)
 
     if slice:
         try:
@@ -347,31 +385,36 @@ def make_ragged_array(
     return cast(CanonicalRaggedArray, array)
 
 
-def make_ragged_chunks(array: ragged.array, limit_bytes: int) -> tuple[int, ...]:
+def make_ragged_chunks(
+    array: CanonicalRaggedArray, limit_bytes: int
+) -> tuple[int, ...]:
     """Row-wise partitioning of a ragged array into chunks of at most `limit_bytes` bytes."""
-    ak_array = awkward.Array(array._impl)
-    if ak_array.nbytes <= limit_bytes:
-        return ((len(ak_array),),) + (None,) * (ak_array.ndim - 1)
+    ndim_fixed = array.shape.index(None) if None in array.shape else len(array.shape)
+    chunks_none = (None,) * (array.ndim - ndim_fixed)
+    if array._impl.nbytes <= limit_bytes:
+        return tuple((sh,) for sh in array.shape[:ndim_fixed]) + chunks_none
 
-    # Work with boundary indices internally, convert to sizes at the end.
+    # Chunk along the leftmost dimension. Work with boundary indices internally, convert to sizes at the end.
     boundaries: list[int] = [0, cast("int", array.shape[0])]
     chunk_index = 0
 
     while chunk_index < len(boundaries) - 1:
         start, end = boundaries[chunk_index], boundaries[chunk_index + 1]
-        part = awkward.to_packed(ak_array[start:end])
+        part = awkward.to_packed(array._impl[start:end])
         if part.nbytes > limit_bytes:
             if end - start == 1:
-                msg = f"cannot partition individual rows to fit within {limit_bytes} bytes"
-                raise ValueError(msg)
+                raise ValueError(
+                    f"cannot partition individual rows to fit within {limit_bytes} bytes"
+                )
             mid = start + (end - start) // 2
             boundaries.insert(chunk_index + 1, mid)
         else:
             chunk_index += 1
 
-    return (tuple(end - start for start, end in zip(boundaries, boundaries[1:])),) + (
-        None,
-    ) * (ak_array.ndim - 1)
+    chunks_0 = (tuple(end - start for start, end in zip(boundaries, boundaries[1:])),)
+    chunks_fixed = tuple((sh,) for sh in array.shape[1:ndim_fixed])
+
+    return chunks_0 + chunks_fixed + chunks_none
 
 
 def is_ragged_compatible_form(form: awkward.forms.form.Form) -> bool:
