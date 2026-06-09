@@ -100,7 +100,12 @@ def to_zipped_buffers(
     with zipfile.ZipFile(file, "w", compresslevel=zipfile.ZIP_STORED) as fzip:
         for key, buf in buffers.items():
             fzip.writestr(key, buf.tobytes())
-        fzip.writestr("length", length.to_bytes(byteorder="big"))
+        # Encode as fixed 8-byte unsigned big-endian. We pin the byte length
+        # explicitly because Python 3.10's ``int.to_bytes`` requires it (the
+        # parameter only became optional in 3.11). 8 bytes is symmetric with
+        # ``int.from_bytes`` on the read side and accommodates any plausible
+        # awkward array length.
+        fzip.writestr("length", length.to_bytes(8, byteorder="big"))
         fzip.writestr("form", safe_json_dump(form.to_json()))
 
     return file.getvalue()
