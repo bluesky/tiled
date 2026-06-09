@@ -1,4 +1,3 @@
-from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional, Set, Tuple, Union
 
 import dask.dataframe
@@ -21,7 +20,7 @@ from tiled.adapters.protocols import (
 )
 from tiled.ndslice import NDSlice
 from tiled.server.schemas import Principal, PrincipalType
-from tiled.storage import DirectoryContainer, Storage
+from tiled.storage import Storage
 from tiled.structures.array import ArrayStructure, BuiltinDtype
 from tiled.structures.awkward import AwkwardStructure
 from tiled.structures.core import Spec, StructureFamily
@@ -108,7 +107,7 @@ class CustomAwkwardAdapter:
 
     def __init__(
         self,
-        container: DirectoryContainer,
+        container: dict[str, bytes],
         structure: AwkwardStructure,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
@@ -127,9 +126,6 @@ class CustomAwkwardAdapter:
     def read_buffers(self, form_keys: Optional[List[str]] = None) -> Dict[str, Any]:
         return {"a": 123}
 
-    def write(self, container: DirectoryContainer) -> None:
-        return None
-
     def specs(self) -> List[Spec]:
         return self._specs
 
@@ -141,12 +137,11 @@ def awkwardadapter_protocol_functions(
     adapter: AwkwardAdapter,
     slice: NDSlice,
     form_keys: Optional[List[str]],
-    container: DirectoryContainer,
+    container: dict[str, bytes],
 ) -> None:
     adapter.structure()
     adapter.read()
     adapter.read_buffers(form_keys)
-    adapter.write(container)
     adapter.specs()
     adapter.metadata()
 
@@ -155,15 +150,14 @@ def test_awkwardadapter_protocol(mocker: MockFixture) -> None:
     mock_call = mocker.patch.object(CustomAwkwardAdapter, "structure")
     mock_call2 = mocker.patch.object(CustomAwkwardAdapter, "read")
     mock_call3 = mocker.patch.object(CustomAwkwardAdapter, "read_buffers")
-    mock_call4 = mocker.patch.object(CustomAwkwardAdapter, "write")
-    mock_call5 = mocker.patch.object(CustomAwkwardAdapter, "specs")
-    mock_call6 = mocker.patch.object(CustomAwkwardAdapter, "metadata")
+    mock_call4 = mocker.patch.object(CustomAwkwardAdapter, "specs")
+    mock_call5 = mocker.patch.object(CustomAwkwardAdapter, "metadata")
 
     structure = AwkwardStructure(length=2, form={"a": "b"})
 
     metadata: JSON = {"foo": "bar"}
     anyslice = NDSlice(1, 1, 1)
-    container = DirectoryContainer(directory=Path("somedirectory"))
+    container = {"a": b"data"}
     form_keys = ["a", "b", "c"]
 
     anyawkwardadapter = CustomAwkwardAdapter(container, structure, metadata=metadata)
@@ -174,9 +168,8 @@ def test_awkwardadapter_protocol(mocker: MockFixture) -> None:
     mock_call.assert_called_once()
     mock_call2.assert_called_once()
     mock_call3.assert_called_once_with(form_keys)
-    mock_call4.assert_called_once_with(container)
+    mock_call4.assert_called_once()
     mock_call5.assert_called_once()
-    mock_call6.assert_called_once()
 
 
 class CustomSparseAdapter:
@@ -441,7 +434,7 @@ async def test_accesspolicy_protocol(mocker: MockFixture) -> None:
     structure = AwkwardStructure(length=2, form={"a": "b"})
 
     metadata: JSON = {"foo": "bar"}
-    container = DirectoryContainer(directory=Path("somedirectory"))
+    container = {"a": b"data"}
     principal = Principal(
         uuid="12345678124123412345678123456781", type=PrincipalType.user
     )

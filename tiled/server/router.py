@@ -1528,10 +1528,8 @@ def get_router(
         import awkward
 
         with record_timing(request.state.metrics, "read"):
-            container = await ensure_awaitable(entry.read)
-        structure = entry.structure()
-        components = (structure.form, structure.length, container)
-        array = awkward.from_buffers(*components)
+            array = await ensure_awaitable(entry.read)
+
         if array.nbytes > settings.response_bytesize_limit:
             raise HTTPException(
                 status_code=HTTP_400_BAD_REQUEST,
@@ -1541,6 +1539,7 @@ def get_router(
                 ),
             )
         try:
+            components = awkward.to_buffers(array)
             with record_timing(request.state.metrics, "pack"):
                 return await construct_data_response(
                     structure_family,
