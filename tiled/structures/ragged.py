@@ -247,6 +247,23 @@ def _canonicalize_awkward_layout(
     if isinstance(layout, awkward.contents.NumpyArray):
         return layout
 
+    # EmptyArray is a typeless leaf produced by ``ragged.array([])`` and any
+    # ListOffsetArray with no elements. Coerce to a concrete ``float64`` leaf
+    # so the structure can be represented with a NumpyForm and the storage
+    # layer has a concrete buffer dtype to round-trip.
+    #
+    # The use of float64 specifically matches the convention adopted by
+    # every library in the stack for "empty array with no declared dtype" --
+    # ``ragged.array([]).dtype`` is ``float64``, ``numpy.array([]).dtype`` is
+    # ``float64``, and ``awkward.to_numpy(EmptyArray())`` materializes a
+    # ``float64`` buffer. Callers who need an empty array with a specific
+    # non-float64 dtype should construct it from a typed numpy buffer
+    # (e.g. ``ragged.array(numpy.array([], dtype=numpy.int64))``), which
+    # produces a ``NumpyArray(int64)`` leaf -- not an ``EmptyArray`` -- and
+    # round-trips faithfully without entering this branch.
+    if isinstance(layout, awkward.contents.EmptyArray):
+        return awkward.contents.NumpyArray(numpy.empty(0, dtype=numpy.float64))
+
     # Convert ListArray -> ListOffsetArray
     if isinstance(layout, awkward.contents.ListArray):
         layout = layout.to_ListOffsetArray64()

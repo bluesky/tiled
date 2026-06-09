@@ -225,8 +225,8 @@ node0 = ak.contents.ListOffsetArray(
 ragged_2xNonex1xNone = ragged.array(node0)
 
 arrays = {
-    # "empty_1d": ragged.array([]),      # awkward.to_parquet raises on `0 * unknown` type
-    # "empty_nd": ragged.array([[], [], []]),  # round-trips with unknown element type, not float64
+    "empty_1d": ragged.array([]),
+    "empty_nd": ragged.array([[], [], []]),
     "numpy_1d": ragged.array(rng.random(10)),
     "ragged_2d": ragged.array([rng.random(3), rng.random(5), rng.random(8)]),
     "numpy_2d": ragged.array(
@@ -589,6 +589,10 @@ def test_slicing(client, name):
     assert len(h.responses) == 1  # sanity check
     full_response_size = len(h.responses[0].content)
 
+    if array.shape[0] < 2:
+        # No meaningful single-element slice for an array with fewer than 2 rows.
+        return
+
     # index at first dimension
     with record_history() as h:
         sliced_result = rac[1]
@@ -617,6 +621,7 @@ def test_slicing(client, name):
             "ragged_3xNonex2xNone",
             "ragged_3xNone_mixed_empty",
             "ragged_3xNone_empty",
+            "empty_nd",
         ):
             with pytest.raises(ClientError, match="Cannot apply the requested slice"):
                 rac[:, 0]
@@ -670,6 +675,9 @@ def test_export_json(tmpdir, client, name):
     actual = filepath.read_text(encoding="utf-8")
     assert actual == ak.to_json(array._impl)
 
+    if array.shape[0] < 2:
+        return  # No row-1 to slice for an array with fewer than 2 rows.
+
     rac.export(str(filepath), slice=(1,), format="application/json")
     actual = filepath.read_text(encoding="utf-8")
     if array[1].ndim == 0:
@@ -686,8 +694,13 @@ def test_export_arrow(tmpdir, client, name):
     filepath = tmpdir / "actual.arrow"
     rac.export(str(filepath), format=APACHE_ARROW_FILE_MIME_TYPE)
     actual = pyarrow.feather.read_table(filepath)
-    expected = ak.to_arrow_table(array._impl)
+    # The server stores the canonical form (EmptyArray content is coerced to
+    # float64), so compare against that rather than the raw input form.
+    expected = ak.to_arrow_table(make_ragged_array(array)._impl)
     assert actual == expected
+
+    if array.shape[0] < 2:
+        return  # No row-1 to slice for an array with fewer than 2 rows.
 
     if array[1].ndim == 0:
         with pytest.raises(ClientError):
@@ -695,7 +708,7 @@ def test_export_arrow(tmpdir, client, name):
     else:
         rac.export(str(filepath), slice=(1,), format=APACHE_ARROW_FILE_MIME_TYPE)
         actual = pyarrow.feather.read_table(filepath)
-        expected = ak.to_arrow_table(array[1]._impl)
+        expected = ak.to_arrow_table(make_ragged_array(array[1])._impl)
         assert actual == expected
 
 
@@ -708,8 +721,13 @@ def test_export_parquet(tmpdir, client, name):
     rac.export(str(filepath), format="application/x-parquet")
     # Test this against pyarrow
     actual = pyarrow.parquet.read_table(filepath)
-    expected = ak.to_arrow_table(array._impl)
+    # The server stores the canonical form (EmptyArray content is coerced to
+    # float64), so compare against that rather than the raw input form.
+    expected = ak.to_arrow_table(make_ragged_array(array)._impl)
     assert actual == expected
+
+    if array.shape[0] < 2:
+        return  # No row-1 to slice for an array with fewer than 2 rows.
 
     if array[1].ndim == 0:
         with pytest.raises(ClientError):
@@ -718,7 +736,7 @@ def test_export_parquet(tmpdir, client, name):
         rac.export(str(filepath), slice=(1,), format="application/x-parquet")
         # Test this against pyarrow
         actual = pyarrow.parquet.read_table(filepath)
-        expected = ak.to_arrow_table(array[1]._impl)
+        expected = ak.to_arrow_table(make_ragged_array(array[1])._impl)
         assert actual == expected
 
 
