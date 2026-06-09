@@ -213,17 +213,17 @@ class CompositeClient(Container):
                             ) from e
                 elif item["attributes"]["structure_family"] == StructureFamily.ragged:
                     if (variables is None) or (part in variables):
-                      array = self.base[part].read()  # RaggedArrayClient
-                      try:
-                          data_vars[part] = array._impl.to_numpy()
-                      except ValueError as e:
-                          from ..structures.ragged import ragged_to_dense
+                        array = self.base[part].read()  # RaggedArrayClient
+                        try:
+                            data_vars[part] = array._impl.to_numpy()
+                        except ValueError as e:
+                            from ..structures.ragged import ragged_to_dense
 
-                          data_vars[part] = ragged_to_dense(array)
-                          warnings.warn(
-                              f"Failed to convert ragged array to numpy: {e}. "
-                              "Returning as a dense array padded with NaNs."
-                          )
+                            data_vars[part] = ragged_to_dense(array)
+                            warnings.warn(
+                                f"Failed to convert ragged array to numpy: {e}. "
+                                "Returning as a dense array padded with NaNs."
+                            )
                 elif item["attributes"]["structure_family"] == StructureFamily.table:
                     # For now, greedily load tabular data. We cannot know the shape
                     # of the columns without reading them. Future work may enable
