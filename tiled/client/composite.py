@@ -212,13 +212,13 @@ class CompositeClient(Container):
                                 f"Failed to convert awkward array to numpy: {e}"
                             ) from e
                 elif item["attributes"]["structure_family"] == StructureFamily.ragged:
-                  if (variables is None) or (part in variables):
+                    if (variables is None) or (part in variables):
                       array = self.base[part].read()  # RaggedArrayClient
                       try:
                           data_vars[part] = array._impl.to_numpy()
                       except ValueError as e:
                           from ..structures.ragged import ragged_to_dense
-                
+
                           data_vars[part] = ragged_to_dense(array)
                           warnings.warn(
                               f"Failed to convert ragged array to numpy: {e}. "
