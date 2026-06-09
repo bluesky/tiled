@@ -129,6 +129,11 @@ def should_retry(exception: Exception) -> "bool | float":
             return True
         return exception.response.status_code >= 500
 
+    # An unsupported URL scheme (e.g. a typo'd 'htp://') is not transient;
+    # retrying will not fix it, so fail fast.
+    if isinstance(exception, httpx.UnsupportedProtocol):
+        return False
+
     # Otherwise retry on all httpx errors.
     return isinstance(exception, httpx.HTTPError)
 
