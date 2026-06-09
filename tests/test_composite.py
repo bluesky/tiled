@@ -380,12 +380,17 @@ def test_read_selective_with_dim0(context_for_reading, dim0):
         assert ds[var_name].dims[0] == dim0
 
 
-def test_read_jagged_ragged_raises(context):
+def test_read_jagged_ragged_pads(context):
     """A jagged (non-rectangular) ragged child cannot be converted to numpy
-    for xarray; ``read()`` should raise a helpful ValueError."""
+    directly; ``read()`` falls back to a NaN-padded dense array and warns."""
     client = from_context(context)
-    with pytest.raises(ValueError, match="Failed to convert ragged array 'rag'"):
-        client["x"].read(variables=["rag"])
+    with pytest.warns(UserWarning, match="Failed to convert ragged array"):
+        ds = client["x"].read(variables=["rag"])
+    assert "rag" in ds.data_vars
+    # NaN-padded dense rectangular array
+    values = ds["rag"].values
+    assert values.ndim >= 2
+    assert numpy.isnan(values).any()
 
 
 def test_read_regular_ragged(context_for_reading):
