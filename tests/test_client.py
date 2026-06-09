@@ -679,7 +679,9 @@ def test_should_not_retry_unsupported_protocol():
     """A bad URL scheme (e.g. 'htps://') must not trigger a retry loop."""
     from tiled.client.utils import should_retry
 
-    exc = httpx.UnsupportedProtocol("Request URL has an unsupported protocol 'htps://'.")
+    exc = httpx.UnsupportedProtocol(
+        "Request URL has an unsupported protocol 'htps://'."
+    )
     assert should_retry(exc) is False
 
 
