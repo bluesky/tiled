@@ -24,34 +24,22 @@ from tiled.server.app import build_app
 
 @contextlib.contextmanager
 def client_factory(readable_storage=None):
-    with tempfile.TemporaryDirectory() as tempdir:
-        duckdb_uri = f"duckdb:///{tempdir}/data.duckdb"
+    # ``ignore_cleanup_errors=True`` (Python 3.10+) lets TemporaryDirectory
+    # tolerate Windows ``WinError 32`` when duckdb's ADBC connection has not
+    # yet released its file handle by the time the tempdir is cleaned up.
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tempdir:
         catalog = in_memory(
             named_memory=str(uuid.uuid4())[:8],
             writable_storage=[
                 str(tempdir),
-                duckdb_uri,
+                f"duckdb:///{tempdir}/data.duckdb",
             ],
             readable_storage=readable_storage,
         )
         app = build_app(catalog)
-        try:
-            with Context.from_app(app) as context:
-                client = from_context(context)
-                yield client
-        finally:
-            # Dispose+unregister the duckdb storage so its connection releases
-            # the file handle before TemporaryDirectory cleanup. Required on
-            # Windows, where an open handle blocks rmtree with WinError 32.
-            from tiled.storage import get_storage, sanitize_uri, unregister_storage
-
-            try:
-                storage = get_storage(sanitize_uri(duckdb_uri)[0])
-            except KeyError:
-                pass
-            else:
-                storage.dispose()
-                unregister_storage(storage)
+        with Context.from_app(app) as context:
+            client = from_context(context)
+            yield client
 
 
 def populate_external(client, tmp_path):
