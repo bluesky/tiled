@@ -233,9 +233,11 @@ def get_router(
                     "mode": "external",
                     "links": {
                         "auth_endpoint": authenticator.device_authorization_endpoint,
+                        "authorize_endpoint": f"{base_url}/auth/provider/{provider}/authorize",
                         "client_id": authenticator.device_flow_client_id,
                         "token_endpoint": authenticator.token_endpoint,
                     },
+                    "extra_scopes": getattr(authenticator, "extra_scopes", []),
                     "confirmation_message": getattr(
                         authenticator, "confirmation_message", None
                     ),
