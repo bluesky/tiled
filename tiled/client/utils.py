@@ -1,6 +1,7 @@
 import builtins
 import logging
 import os
+import sys
 import uuid
 from collections import defaultdict
 from collections.abc import Hashable
@@ -14,10 +15,18 @@ from weakref import WeakValueDictionary
 import httpx
 import msgpack
 import stamina
+import stamina.instrumentation
 
 from ..structures.core import Spec
 from ..type_aliases import Chunks
 from ..utils import path_from_uri
+
+# Disable stamina's default retry logging hook.  Tiled handles its own retry
+# messages via the _LoggingAttempt wrapper (routed to tiled.client at DEBUG).
+# Other libraries that register their own stamina hooks are not affected —
+# only the built-in default hook (which emits "stamina.retry_scheduled" at
+# WARNING) is removed.
+stamina.instrumentation.set_on_retry_hooks([])
 
 MSGPACK_MIME_TYPE = "application/x-msgpack"
 
@@ -81,9 +90,12 @@ def handle_error(response):
         if response.status_code == httpx.codes.GONE:
             detail = response.reason_phrase
             raise KeyError(f"Unable to open object: likely a broken link. {detail}")
+        elif response.status_code == httpx.codes.TOO_MANY_REQUESTS:
+            # Let 429 propagate as-is so stamina can respect Retry-After.
+            raise
         elif response.status_code < httpx.codes.INTERNAL_SERVER_ERROR:
             # Include more detail that httpx does by default.
-            if response.headers["Content-Type"] == "application/json":
+            if response.headers.get("Content-Type") == "application/json":
                 detail = response.json().get("detail", "")
             else:
                 # This can happen when we get an error from a proxy,
@@ -102,9 +114,19 @@ class ClientError(httpx.HTTPStatusError):
         super().__init__(message=message, request=request, response=response)
 
 
-def should_retry(exception: Exception) -> bool:
-    # If the error is an HTTP status error, only retry on 5xx errors.
+def should_retry(exception: Exception) -> "bool | float":
     if isinstance(exception, httpx.HTTPStatusError):
+        if exception.response.status_code == 429:
+            # Respect Retry-After header from load balancer / server.
+            # Return the delay as a float so stamina uses it as the wait time.
+            retry_after = exception.response.headers.get("Retry-After")
+            if retry_after is not None:
+                try:
+                    return float(retry_after)
+                except (ValueError, TypeError):
+                    pass
+            # No Retry-After header; retry with default backoff.
+            return True
         return exception.response.status_code >= 500
 
     # Otherwise retry on all httpx errors.
@@ -135,10 +157,12 @@ class _LoggingAttempt:
     are not routed through the global stamina hook machinery.
     """
 
-    __slots__ = ("_attempt",)
+    __slots__ = ("_attempt", "_context", "_standalone")
 
-    def __init__(self, attempt):
+    def __init__(self, attempt, context=None, standalone=None):
         self._attempt = attempt
+        self._context = context
+        self._standalone = standalone
 
     @property
     def num(self):
@@ -158,17 +182,43 @@ class _LoggingAttempt:
                 self._attempt.next_wait,
                 exc_val,
             )
+            if self._context is not None:
+                self._context.signal_retry()
+            elif self._standalone is not None:
+                self._standalone.show()
         return result
 
 
-def retry_context():
+def retry_context(context=None):
     "Iterable that yields a context manager per retry attempt"
-    for attempt in stamina.retry_context(
+    # When no context is provided (e.g. from_any_uri probing the server before
+    # a Context object exists), we still want to show the retry indicator.
+    # Use a standalone indicator owned by this generator so cleanup is guaranteed.
+    standalone = StandaloneRetryIndicator() if context is None else None
+    it = stamina.retry_context(
         on=should_retry,
         attempts=TILED_RETRY_ATTEMPTS,
         timeout=TILED_RETRY_TIMEOUT,
-    ):
-        yield _LoggingAttempt(attempt)
+    ).__iter__()
+    try:
+        while True:
+            try:
+                attempt = next(it)
+            except StopIteration:
+                break
+            except KeyboardInterrupt:
+                # A KeyboardInterrupt raised during stamina's inter-attempt sleep
+                # would normally be swallowed by tenacity.  Re-raise it here so
+                # that Ctrl-C cancels all remaining retries immediately.
+                raise
+            yield _LoggingAttempt(attempt, context=context, standalone=standalone)
+    finally:
+        # Always clean up the retry indicator, whether the loop completed
+        # normally, was interrupted, or raised an exception.
+        if standalone is not None:
+            standalone.reset()
+        elif context is not None:
+            context.signal_retry_resolved()
 
 
 def should_poll_for_tokens(exception: Exception) -> bool:
@@ -484,3 +534,146 @@ def slices_to_dask_chunks(slice_dict, shape):
     )
 
     return dask_chunks
+
+
+def is_interactive():
+    """Return True when running in an interactive Python session (REPL, IPython, Jupyter)."""
+    import importlib.util
+
+    if importlib.util.find_spec("IPython"):
+        # IPython is installed
+        from IPython import get_ipython
+
+        if get_ipython():
+            return True  # This Python process is an IPython process
+
+    return hasattr(sys, "ps1")
+
+
+def is_jupyter():
+    """Return True when running inside a Jupyter notebook kernel."""
+    import importlib.util
+
+    if importlib.util.find_spec("IPython"):
+        # IPython is installed
+        from IPython import get_ipython
+
+        if ip := get_ipython():
+            if "ZMQInteractiveShell" in type(ip).__name__:
+                return True
+
+    return False
+
+
+class ProgressState:
+    """Holds progress bar state and retry indicator for fetch methods.
+
+    Fetch methods call ``advance()`` after each successful request and
+    ``show_retrying()`` / ``hide_retrying()`` around retries.
+    """
+
+    __slots__ = ("_progress", "_task_id", "_spinner", "_live", "_retrying")
+
+    def __init__(self, progress, task_id, spinner):
+        self._progress = progress
+        self._task_id = task_id
+        self._spinner = spinner
+        self._live = None
+        self._retrying = False
+
+    def advance(self):
+        """Advance the progress bar by one completed fetch."""
+        self._progress.advance(self._task_id)
+
+    def show_retrying(self):
+        """Show a spinner below the progress bar indicating a retry is in progress."""
+        if self._retrying:
+            return
+        self._retrying = True
+        if self._live is not None:
+            from rich.console import Group
+
+            self._live.update(Group(self._progress, self._spinner))
+
+    def hide_retrying(self):
+        """Remove the retry spinner, restoring the progress bar only."""
+        if not self._retrying:
+            return
+        self._retrying = False
+        if self._live is not None:
+            self._live.update(self._progress)
+
+
+class StandaloneRetryIndicator:
+    """Shows a spinner on stderr while retries are in progress.
+
+    On a TTY or in a Jupyter notebook: starts a Rich ``Live`` spinner on first
+    ``show()`` and stops it on ``reset()``.  The ``Live`` instance runs for the
+    full retry duration — created once, never flickered — because the
+    connection-retry path never interleaves with interactive prompts (auth
+    prompts come only after a successful connection).
+
+    On non-TTY stderr (CI, pipes): writes a plain "Retrying…" line once.
+
+    Only operates from the main thread so dask worker threads never write to
+    the terminal.
+    """
+
+    def __init__(self):
+        self._showing = False
+        self._live = None
+
+    @staticmethod
+    def _stderr_is_tty():
+        return hasattr(sys.stderr, "isatty") and sys.stderr.isatty()
+
+    def show(self):
+        """Start the spinner (or print plain text) on first call; no-op thereafter."""
+        import threading
+
+        if threading.current_thread() is not threading.main_thread():
+            return
+        if self._showing:
+            return
+        self._showing = True
+        if is_jupyter():
+            try:
+                import ipywidgets as widgets
+                from IPython.display import display
+
+                self._live = widgets.Label(value="⟳ Retrying…")
+                display(self._live)
+            except ImportError:
+                sys.stderr.write("Retrying…\n")
+                sys.stderr.flush()
+        elif self._stderr_is_tty():
+            from rich.console import Console
+            from rich.live import Live
+            from rich.spinner import Spinner
+
+            console = Console(stderr=True, highlight=False)
+            spinner = Spinner("dots", text="[yellow]Retrying…[/yellow]")
+            self._live = Live(spinner, console=console, transient=True)
+            self._live.start()
+        else:
+            sys.stderr.write("Retrying…\n")
+            sys.stderr.flush()
+
+    def reset(self):
+        """Stop the spinner (or no-op on non-TTY)."""
+        import threading
+
+        if threading.current_thread() is not threading.main_thread():
+            return
+        if not self._showing:
+            return
+        self._showing = False
+        if self._live is not None:
+            if is_jupyter():
+                try:
+                    self._live.close()
+                except Exception:
+                    pass
+            else:
+                self._live.stop()
+            self._live = None

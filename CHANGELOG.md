@@ -6,6 +6,21 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## Unreleased
 
+### Added
+
+- Rich progress bar shown during multi-chunk array, dataframe, and dataset
+  fetches. The bar is transient and only appears in interactive sessions
+  (REPL, IPython, Jupyter). It can be disabled per-context or globally.
+  Jupyter notebooks use Rich's HTML display path to avoid duplicate lines.
+- Animated retry spinner shown on stderr whenever a stamina retry is scheduled
+  for any tiled client request (connection failures, 5xx errors, 429 rate limits).
+  The spinner is animated in Jupyter notebooks as well as TTY terminals.
+- Respect the `Retry-After` header on HTTP 429 (Too Many Requests) responses.
+- Support for interacting with irregular-shaped numeric arrays via
+  [`ragged`](https://github.com/scikit-hep/ragged).
+
+
+## v0.2.11 (2026-05-27)
 
 ### Added
 
@@ -36,8 +51,6 @@ Write the date in place of the "Unreleased" in the case a new version is release
   `page[offset]` and `page[limit]` parameters; supplying both at once is
   rejected with HTTP 400.
 - Support for slicing arrays backed by multipart adapters with modified shapes
-- Support for interacting with irregular-shaped numeric arrays via
-  [`ragged`](https://github.com/scikit-hep/ragged).
 - OIDC Authenticator for Azure Entra
 - Add more administrative CLI commands centered around the creation of service
   principals and their API keys
