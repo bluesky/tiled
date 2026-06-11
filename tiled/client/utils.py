@@ -129,6 +129,14 @@ def should_retry(exception: Exception) -> "bool | float":
             return True
         return exception.response.status_code >= 500
 
+    # do not retry for unsupported protocol errors, eg "htps://"
+    if isinstance(exception, httpx.UnsupportedProtocol):
+        return False
+
+    # do not retry for local protocol errors, eg. carriage return in header value
+    if isinstance(exception, httpx.LocalProtocolError):
+        return False
+
     # Otherwise retry on all httpx errors.
     return isinstance(exception, httpx.HTTPError)
 

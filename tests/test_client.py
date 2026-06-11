@@ -675,6 +675,24 @@ def test_should_retry(status_code, headers, expected):
     assert should_retry(exc) == expected
 
 
+def test_should_not_retry_unsupported_protocol():
+    """A bad URL scheme (e.g. 'htps://') must not trigger a retry loop."""
+    from tiled.client.utils import should_retry
+
+    exc = httpx.UnsupportedProtocol(
+        "Request URL has an unsupported protocol 'htps://'."
+    )
+    assert should_retry(exc) is False
+
+
+def test_should_not_retry_local_protocol_error():
+    """An invalid request (e.g. illegal header value) must not trigger a retry loop."""
+    from tiled.client.utils import should_retry
+
+    exc = httpx.LocalProtocolError("Illegal header value b'a\\r\\nInjected: 1'")
+    assert should_retry(exc) is False
+
+
 def test_handle_error_lets_429_propagate():
     """handle_error does not convert 429 into ClientError — lets it propagate for retry."""
     from tiled.client.utils import handle_error
