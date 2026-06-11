@@ -12,7 +12,7 @@ class AwkwardStructure(Structure):
     form: dict
 
     @property
-    def awk_form(self) -> awkward.forms.Form:
+    def awkward_form(self) -> awkward.forms.Form:
         return awkward.forms.from_dict(self.form)
 
 

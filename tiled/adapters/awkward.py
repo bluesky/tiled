@@ -31,7 +31,7 @@ class AwkwardAdapter(Adapter[AwkwardStructure]):
     ):
         self._container = container
         self._array = awkward.from_buffers(
-            structure.awk_form, structure.length, container
+            structure.awkward_form, structure.length, container
         )
         super().__init__(structure=structure, metadata=metadata, specs=specs)
 
@@ -55,7 +55,7 @@ class AwkwardAdapter(Adapter[AwkwardStructure]):
     def read_buffers(self, form_keys: Optional[List[str]] = None) -> Dict[str, bytes]:
         keys = [
             key
-            for key in self._structure.awk_form.expected_from_buffers()
+            for key in self._structure.awkward_form.expected_from_buffers()
             if (form_keys is None)
             or any(key.startswith(form_key) for form_key in form_keys)
         ]
@@ -117,7 +117,7 @@ class AwkwardBuffersAdapter(Adapter[AwkwardStructure]):
         # Return all buffers as a dictionary mapping of form keys to bytes
         keys = [
             key
-            for key in self._structure.awk_form.expected_from_buffers()
+            for key in self._structure.awkward_form.expected_from_buffers()
             if (form_keys is None)
             or any(key.startswith(form_key) for form_key in form_keys)
         ]
@@ -126,7 +126,7 @@ class AwkwardBuffersAdapter(Adapter[AwkwardStructure]):
 
     def read(self) -> awkward.Array:
         array = awkward.from_buffers(
-            self._structure.awk_form, self._structure.length, self._container
+            self._structure.awkward_form, self._structure.length, self._container
         )
         return array
 
