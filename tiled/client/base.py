@@ -525,6 +525,13 @@ class BaseClient:
         >>> md['unwanted_key'] = DELETE_KEY
         >>> node.update_metadata(metadata=md)  # Update the copy on the server
         """
+
+        if metadata != None and not isinstance(metadata, dict):
+            raise ValueError(
+                f"Unsupported metadata type {metadata}. "
+                f"Acceptable values are of type dict."
+            )
+
         metadata_patch, specs_patch, access_blob_patch = self.build_metadata_patches(
             metadata=metadata,
             specs=specs,
