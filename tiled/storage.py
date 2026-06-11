@@ -2,8 +2,9 @@ import dataclasses
 import functools
 import os
 from abc import abstractmethod
+from collections.abc import Mapping
 from pathlib import Path
-from typing import TYPE_CHECKING, Dict, Literal, Optional, Union
+from typing import TYPE_CHECKING, Dict, Iterator, Literal, Optional, Union
 from urllib.parse import urlparse, urlunparse
 
 import sqlalchemy.pool
@@ -15,6 +16,7 @@ if TYPE_CHECKING:
     from obstore.store import AzureStore, GCSStore, LocalStore, S3Store
 
 __all__ = [
+    "DirectoryContainer",
     "EmbeddedSQLStorage",
     "RemoteSQLStorage",
     "FileStorage",
@@ -393,3 +395,31 @@ def get_storage(uri: str) -> Storage:
         uri, _, _ = ObjectStorage.parse_blob_uri(uri)
 
     return _STORAGE[uri]
+
+
+class DirectoryContainer(Mapping[str, bytes]):
+    """A storage container for byte-arrays representing Awkward Array buffers
+
+    Each buffer is stored as a separate file in a given directory, with the
+    filename corresponding to the form key.
+    """
+
+    def __init__(self, directory: Path):
+        self.directory = directory
+
+    def __getitem__(self, key: str) -> bytes:
+        with open(self.directory / key, "rb") as file:
+            return file.read()
+
+    def __setitem__(self, key: str, value: bytes) -> None:
+        with open(self.directory / key, "wb") as file:
+            file.write(value)
+
+    def __delitem__(self, key: str) -> None:
+        (self.directory / key).unlink(missing_ok=True)
+
+    def __iter__(self) -> Iterator[str]:
+        yield from (p.name for p in self.directory.iterdir())
+
+    def __len__(self) -> int:
+        return sum(1 for _ in self.__iter__())

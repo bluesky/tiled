@@ -65,7 +65,7 @@ DEFAULT_ADAPTERS_BY_MIMETYPE = OneShotCachedMap[str, type](
             "..adapters.zarr", __name__
         ).ZarrAdapter,
         AWKWARD_BUFFERS_MIMETYPE: lambda: importlib.import_module(
-            "..adapters.awkward_buffers", __name__
+            "..adapters.awkward", __name__
         ).AwkwardBuffersAdapter,
         APACHE_ARROW_FILE_MIME_TYPE: lambda: importlib.import_module(
             "..adapters.arrow", __name__

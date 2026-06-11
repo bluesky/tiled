@@ -15,7 +15,6 @@ from ..structures.core import Spec, StructureFamily
 from ..structures.sparse import SparseStructure
 from ..structures.table import TableStructure
 from ..type_aliases import JSON
-from .awkward_directory_container import DirectoryContainer
 
 
 class BaseAdapter(Protocol):
@@ -70,15 +69,11 @@ class AwkwardAdapter(BaseAdapter, Protocol):
         pass
 
     @abstractmethod
-    def read(self) -> NDArray[Any]:  # Are Slice and Array defined by numpy somewhere?
+    def read(self) -> NDArray[Any]:
         pass
 
     @abstractmethod
     def read_buffers(self, form_keys: Optional[List[str]] = None) -> Dict[str, Any]:
-        pass
-
-    @abstractmethod
-    def write(self, container: DirectoryContainer) -> None:
         pass
 
 
@@ -90,9 +85,7 @@ class SparseAdapter(BaseAdapter, Protocol):
         pass
 
     # TODO Fix slice (just like array)
-    def read(
-        self, slice: NDSlice
-    ) -> sparse.COO:  # Are Slice and Array defined by numpy somewhere?
+    def read(self, slice: NDSlice) -> sparse.COO:
         pass
 
     # TODO Fix slice (just like array)
