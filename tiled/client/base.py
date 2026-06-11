@@ -526,7 +526,7 @@ class BaseClient:
         >>> node.update_metadata(metadata=md)  # Update the copy on the server
         """
 
-        if metadata != None and not isinstance(metadata, dict):
+        if metadata is not None and not isinstance(metadata, dict):
             raise ValueError(
                 f"Unsupported metadata type {metadata}. "
                 f"Acceptable values are of type dict."
