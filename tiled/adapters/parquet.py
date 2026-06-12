@@ -30,15 +30,6 @@ class ParquetDatasetAdapter(Adapter[TableStructure]):
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
     ) -> None:
-        """
-
-        Parameters
-        ----------
-        data_uris :
-        structure :
-        metadata :
-        specs :
-        """
         # TODO Store data_uris instead and generalize to non-file schemes.
         if isinstance(data_uris, str):
             data_uris = [data_uris]
@@ -79,17 +70,6 @@ class ParquetDatasetAdapter(Adapter[TableStructure]):
         data_source: DataSource[TableStructure],
         path_parts: List[str],
     ) -> DataSource[TableStructure]:
-        """
-
-        Parameters
-        ----------
-        data_uri :
-        structure :
-
-        Returns
-        -------
-
-        """
         data_source = copy.deepcopy(data_source)  # Do not mutate caller input.
         data_uri = storage.uri + "".join(
             f"/{quote_plus(segment)}" for segment in path_parts
@@ -125,47 +105,15 @@ class ParquetDatasetAdapter(Adapter[TableStructure]):
         data.to_parquet(uri)
 
     def write(self, data: Union[dask.dataframe.DataFrame, pandas.DataFrame]) -> None:
-        """
-
-        Parameters
-        ----------
-        data :
-
-        Returns
-        -------
-
-        """
         if self.structure().npartitions != 1:
             raise NotImplementedError
         uri = self._partition_paths[0]
         data.to_parquet(uri)
 
     def read(self, *args: Any, **kwargs: Any) -> pandas.DataFrame:
-        """
-
-        Parameters
-        ----------
-        args :
-        kwargs :
-
-        Returns
-        -------
-
-        """
         return self.dataframe_adapter.read(*args, **kwargs)
 
     def read_partition(self, *args: Any, **kwargs: Any) -> pandas.DataFrame:
-        """
-
-        Parameters
-        ----------
-        args :
-        kwargs :
-
-        Returns
-        -------
-
-        """
         return self.dataframe_adapter.read_partition(*args, **kwargs)
 
     def get(self, key: str) -> Union[ArrayAdapter, None]:

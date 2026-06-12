@@ -16,6 +16,8 @@ Write the date in place of the "Unreleased" in the case a new version is release
   for any tiled client request (connection failures, 5xx errors, 429 rate limits).
   The spinner is animated in Jupyter notebooks as well as TTY terminals.
 - Respect the `Retry-After` header on HTTP 429 (Too Many Requests) responses.
+- Support for interacting with irregular-shaped numeric arrays via
+  [`ragged`](https://github.com/scikit-hep/ragged).
 - Fail fast instead of retrying on deterministic client request errors that a
   retry cannot fix: an unsupported URL scheme and an invalid request such as an
   illegal header value.

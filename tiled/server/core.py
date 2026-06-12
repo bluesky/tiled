@@ -320,6 +320,7 @@ async def construct_entries_response(
 DEFAULT_MEDIA_TYPES = {
     StructureFamily.array: {"*/*": "application/octet-stream", "image/*": "image/png"},
     StructureFamily.awkward: {"*/*": "application/zip"},
+    StructureFamily.ragged: {"*/*": "application/json"},
     StructureFamily.table: {"*/*": APACHE_ARROW_FILE_MIME_TYPE},
     StructureFamily.container: {"*/*": "application/x-hdf5"},
     StructureFamily.sparse: {"*/*": APACHE_ARROW_FILE_MIME_TYPE},
@@ -778,23 +779,30 @@ def get_websocket_envelope_formatter(
                 else:
                     # Transcode the payload to JSON.
                     metadata["content-type"] = "application/json"
-                    msg_type = metadata.get("type", "")
-                    if msg_type == "table-data":
-                        deserializer = deserialization_registry.dispatch(
-                            StructureFamily.table, media_type
-                        )
-                        df = deserializer(payload_bytes)
-                        payload_decoded = {col: df[col].tolist() for col in df}
-                    else:
-                        structure = entry.structure()
-                        deserializer = deserialization_registry.dispatch(
-                            StructureFamily.array, media_type
-                        )
-                        payload_decoded = deserializer(
-                            payload_bytes,
-                            structure.data_type.to_numpy_dtype(),
-                            metadata.get("shape"),
-                        )
+                msg_type = metadata.get("type", "")
+                if msg_type == "table-data":
+                    deserializer = deserialization_registry.dispatch(
+                        StructureFamily.table, media_type
+                    )
+                    df = deserializer(payload_bytes)
+                    payload_decoded = {col: df[col].tolist() for col in df}
+                elif msg_type == "ragged-data":
+                    structure = entry.structure()
+                    deserializer = deserialization_registry.dispatch(
+                        StructureFamily.ragged, media_type
+                    )
+                    ragged_array = deserializer(payload_bytes, structure)
+                    payload_decoded = ragged_array.tolist()
+                else:
+                    structure = entry.structure()
+                    deserializer = deserialization_registry.dispatch(
+                        StructureFamily.array, media_type
+                    )
+                    payload_decoded = deserializer(
+                        payload_bytes,
+                        structure.data_type.to_numpy_dtype(),
+                        metadata.get("shape"),
+                    )
                 metadata["payload"] = payload_decoded
             # Convert non-serializable schema objects (e.g. pyarrow.Schema)
             # to their string representation for JSON transport.

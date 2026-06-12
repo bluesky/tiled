@@ -52,6 +52,30 @@ class AwkwardAdapter(Adapter[AwkwardStructure]):
             specs=specs,
         )
 
+    @classmethod
+    def supported_storage(cls) -> Set[type[Storage]]:
+        return {FileStorage}
+
+    @classmethod
+    def init_storage(
+        cls,
+        storage: Storage,
+        data_source: DataSource[AwkwardStructure],
+        path_parts: List[str],
+    ) -> DataSource[AwkwardStructure]:
+        data_source = copy.deepcopy(data_source)  # Do not mutate caller input.
+        data_uri = storage.uri + "".join(
+            f"/{quote_plus(segment)}" for segment in path_parts
+        )
+        directory: Path = path_from_uri(data_uri)
+        directory.mkdir(parents=True, exist_ok=True)
+        if any(directory.iterdir()):
+            raise FileExistsError(f"Directory not empty: {directory}")
+        data_source.assets.append(
+            Asset(data_uri=data_uri, is_directory=True, parameter="data_uri")
+        )
+        return data_source
+
     def read_buffers(self, form_keys: Optional[List[str]] = None) -> Dict[str, bytes]:
         keys = [
             key

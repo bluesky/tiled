@@ -22,6 +22,10 @@ def register_builtin_serializers():
         from ..serialization import table as _table  # noqa: F401
 
         del _table
+    if modules_available("ragged"):
+        from ..serialization import ragged as _ragged  # noqa: F401
+
+        del _ragged
     if modules_available("sparse"):
         from ..serialization import sparse as _sparse  # noqa: F401
 
