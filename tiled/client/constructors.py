@@ -159,10 +159,13 @@ def from_context(
             )
 
         if has_providers and not context.has_external_auth:
-            found_valid_tokens = remember_me and context.use_cached_tokens() 
-            if (not context.authenticated) and (not found_valid_tokens) and auth_is_required: 
+            found_valid_tokens = remember_me and context.use_cached_tokens()
+            if (
+                (not context.authenticated)
+                and (not found_valid_tokens)
+                and auth_is_required
+            ):
                 context.authenticate(remember_me=remember_me)
-
     # Context ensures that context.api_uri has a trailing slash.
     item_uri = f"{context.api_uri}metadata/{'/'.join(node_path_parts)}"
     params = parse_qs(urlparse(item_uri).query)
