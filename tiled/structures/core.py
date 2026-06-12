@@ -18,11 +18,11 @@ from ..utils import OneShotCachedMap
 class StructureFamily(str, enum.Enum):
     array = "array"
     awkward = "awkward"
+    bytes = "bytes"
     container = "container"
     ragged = "ragged"
     sparse = "sparse"
     table = "table"
-    bytes = "bytes"
 
 
 @dataclass(frozen=True)

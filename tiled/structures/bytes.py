@@ -48,9 +48,3 @@ class BytesStructure(Structure):
             size=structure["size"],
             chunks=tuple(structure["chunks"]),
         )
-
-    @classmethod
-    def from_buffer(cls, buffer: bytes) -> "BytesStructure":
-        """Convenience constructor for the single-chunk (in-memory) case."""
-        size = len(buffer)
-        return cls(size=size, chunks=(size,) if size else ())

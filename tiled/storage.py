@@ -136,7 +136,7 @@ class ObjectStorage(Storage):
         object.__setattr__(self, "bucket", bucket_name)
 
     @classmethod
-    def parse_blob_uri(cls, uri: str) -> tuple[str, str]:
+    def parse_blob_uri(cls, uri: str) -> tuple[str, str, str]:
         """Split a blob URI into base URI, bucket name (optionally), and the prefix.
 
         For example, given 'http://example.com/bucket_name/path/to/blob',
