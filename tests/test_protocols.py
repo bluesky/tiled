@@ -4,6 +4,7 @@ import dask.dataframe
 import numpy
 import pandas
 import pytest
+import ragged
 import sparse
 from numpy.typing import NDArray
 from pytest_mock import MockFixture
@@ -15,6 +16,7 @@ from tiled.adapters.protocols import (
     ArrayAdapter,
     AwkwardAdapter,
     BaseAdapter,
+    RaggedAdapter,
     SparseAdapter,
     TableAdapter,
 )
@@ -24,6 +26,7 @@ from tiled.storage import Storage
 from tiled.structures.array import ArrayStructure, BuiltinDtype
 from tiled.structures.awkward import AwkwardStructure
 from tiled.structures.core import Spec, StructureFamily
+from tiled.structures.ragged import RaggedStructure
 from tiled.structures.sparse import COOStructure
 from tiled.structures.table import TableStructure
 from tiled.type_aliases import JSON, AccessBlob, AccessTags, Filters, Scopes
@@ -170,6 +173,72 @@ def test_awkwardadapter_protocol(mocker: MockFixture) -> None:
     mock_call3.assert_called_once_with(form_keys)
     mock_call4.assert_called_once()
     mock_call5.assert_called_once()
+
+
+class CustomRaggedAdapter:
+    structure_family: Literal[StructureFamily.ragged] = StructureFamily.ragged
+    supported_storage: Set[type[Storage]] = set()
+
+    def __init__(
+        self,
+        array: ragged.array,
+        structure: RaggedStructure,
+        metadata: Optional[JSON] = None,
+        specs: Optional[List[Spec]] = None,
+    ) -> None:
+        self._array = array
+        self._structure = structure
+        self._metadata = metadata or {}
+        self._specs = list(specs or [])
+
+    def structure(self) -> RaggedStructure:
+        return self._structure
+
+    def read(self, slice: Optional[NDSlice] = None) -> ragged.array:
+        return self._array
+
+    def specs(self) -> List[Spec]:
+        return self._specs
+
+    def metadata(self) -> JSON:
+        return self._metadata
+
+
+def raggedadapter_protocol_functions(
+    adapter: RaggedAdapter, slice: Optional[NDSlice]
+) -> None:
+    adapter.structure()
+    adapter.read(slice)
+    adapter.specs()
+    adapter.metadata()
+
+
+def test_raggedadapter_protocol(mocker: MockFixture) -> None:
+    mock_call = mocker.patch.object(CustomRaggedAdapter, "structure")
+    mock_call2 = mocker.patch.object(CustomRaggedAdapter, "read")
+    mock_call3 = mocker.patch.object(CustomRaggedAdapter, "specs")
+    mock_call4 = mocker.patch.object(CustomRaggedAdapter, "metadata")
+
+    structure = RaggedStructure(
+        data_type=BuiltinDtype.from_numpy_dtype(numpy.dtype("float64")),
+        shape=(2, None),
+        size=5,
+        chunks=((1, 1), None),
+        dims=("time", "x"),
+    )
+
+    array = ragged.array([[1.0, 2.0, 3.0], [4.0, 5.0]])
+    metadata: JSON = {"foo": "bar"}
+    anyslice = NDSlice(0)
+
+    anyraggedadapter = CustomRaggedAdapter(array, structure, metadata=metadata)
+    assert anyraggedadapter.structure_family == StructureFamily.ragged
+
+    raggedadapter_protocol_functions(anyraggedadapter, anyslice)
+    mock_call.assert_called_once()
+    mock_call2.assert_called_once_with(anyslice)
+    mock_call3.assert_called_once()
+    mock_call4.assert_called_once()
 
 
 class CustomSparseAdapter:

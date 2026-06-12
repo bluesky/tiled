@@ -88,7 +88,7 @@ class RaggedAdapter(BaseAdapter, Protocol):
         pass
 
     @abstractmethod
-    def read(self, slice: NDSlice) -> ragged.array:
+    def read(self, slice: Optional[NDSlice] = None) -> ragged.array:
         pass
 
 
