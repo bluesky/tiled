@@ -150,7 +150,7 @@ class ZarrArrayAdapter(Adapter[ArrayStructure]):
         ------
         ValueError :
             If slice does not fit wholly with the shape of the existing array
-            and expand is False
+            and extend is False
         """
         current_shape = self._array.shape
         normalized_offset = [0] * len(current_shape)
