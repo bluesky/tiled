@@ -632,7 +632,3 @@ class Key:
     # Note: __contains__ cannot be supported because the language coerces
     # the result of __contains__ to be a literal boolean. We are not
     # allowed to return a custom type.
-
-
-class QueryValueError(ValueError):
-    pass
