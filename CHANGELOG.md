@@ -18,6 +18,9 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - Respect the `Retry-After` header on HTTP 429 (Too Many Requests) responses.
 - Support for interacting with irregular-shaped numeric arrays via
   [`ragged`](https://github.com/scikit-hep/ragged).
+- Fail fast instead of retrying on deterministic client request errors that a
+  retry cannot fix: an unsupported URL scheme and an invalid request such as an
+  illegal header value.
 
 
 ## v0.2.11 (2026-05-27)
@@ -83,6 +86,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - CSVArrayAdapter supports reading heterogenous tables as structured arrays
 - Stream updates are processed using a single worker thread, by
   default, in order to guarantee that they are processed in order.
+- Refactored AwkwardAdapter to generalize its array buffer storage.
 - WebUI: fetch grayscale images as `application/octet-stream` instead of
   `image/png` and apply optional colormap and log-normalization client-side.
 - WebUI: reduce the number of significant digits to 4 when displaying numeric

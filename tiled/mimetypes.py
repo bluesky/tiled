@@ -67,7 +67,7 @@ DEFAULT_ADAPTERS_BY_MIMETYPE = OneShotCachedMap[str, type](
         ).ZarrAdapter,
         AWKWARD_BUFFERS_MIMETYPE: lambda: importlib.import_module(
             "..adapters.awkward", __name__
-        ).AwkwardAdapter,
+        ).AwkwardBuffersAdapter,
         RAGGED_SQL_MIMETYPE: lambda: importlib.import_module(
             "..adapters.ragged", __name__
         ).RaggedSQLAdapter,

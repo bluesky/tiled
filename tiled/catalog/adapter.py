@@ -131,7 +131,7 @@ STORAGE_ADAPTERS_BY_MIMETYPE = OneShotCachedMap[str, type](
         ).ZarrArrayAdapter,
         AWKWARD_BUFFERS_MIMETYPE: lambda: importlib.import_module(
             "...adapters.awkward", __name__
-        ).AwkwardAdapter,
+        ).AwkwardBuffersAdapter,
         PARQUET_MIMETYPE: lambda: importlib.import_module(
             "...adapters.parquet", __name__
         ).ParquetDatasetAdapter,
