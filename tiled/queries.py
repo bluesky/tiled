@@ -16,6 +16,21 @@ from .structures.core import StructureFamily as StructureFamilyEnum
 JSONSerializable = Any  # Feel free to refine this.
 
 
+def _json_loads_lenient(value):
+    """Parse *value* as JSON, falling back to the raw string on failure.
+
+    The Tiled Python client JSON-encodes filter values before putting them
+    into query parameters (e.g. ``json.dumps("Cr")`` → ``'"Cr"'``).
+    External callers (agents, curl, browsers) typically send bare strings
+    like ``Cr`` which are not valid JSON.  This helper makes ``decode``
+    methods accept both forms.
+    """
+    try:
+        return json.loads(value)
+    except (json.JSONDecodeError, TypeError):
+        return value
+
+
 class NoBool:
     def __bool__(self):
         raise TypeError(
@@ -101,7 +116,10 @@ class KeysFilter(NoBool):
 
     @classmethod
     def decode(cls, *, keys):
-        return cls(keys=json.loads(keys))
+        decoded = _json_loads_lenient(keys)
+        if not isinstance(decoded, list):
+            decoded = [decoded]
+        return cls(keys=decoded)
 
 
 @register(name="regex")
@@ -181,7 +199,7 @@ class Eq(NoBool):
 
     @classmethod
     def decode(cls, *, key, value):
-        return cls(key=key, value=json.loads(value))
+        return cls(key=key, value=_json_loads_lenient(value))
 
 
 @register(name="noteq")
@@ -215,7 +233,7 @@ class NotEq(NoBool):
 
     @classmethod
     def decode(cls, *, key, value):
-        return cls(key=key, value=json.loads(value))
+        return cls(key=key, value=_json_loads_lenient(value))
 
 
 class Operator(str, enum.Enum):
@@ -267,7 +285,9 @@ class Comparison(NoBool):
 
     @classmethod
     def decode(cls, *, operator, key, value):
-        return cls(operator=Operator(operator), key=key, value=json.loads(value))
+        return cls(
+            operator=Operator(operator), key=key, value=_json_loads_lenient(value)
+        )
 
 
 @register(name="contains")
@@ -299,7 +319,7 @@ class Contains(NoBool):
 
     @classmethod
     def decode(cls, *, key, value):
-        return cls(key=key, value=json.loads(value))
+        return cls(key=key, value=_json_loads_lenient(value))
 
 
 @register(name="in")
@@ -334,7 +354,10 @@ class In:
 
     @classmethod
     def decode(cls, *, key, value):
-        return cls(key=key, value=json.loads(value))
+        decoded = _json_loads_lenient(value)
+        if not isinstance(decoded, list):
+            decoded = [decoded]
+        return cls(key=key, value=decoded)
 
 
 @register(name="notin")
@@ -369,7 +392,10 @@ class NotIn:
 
     @classmethod
     def decode(cls, *, key, value):
-        return cls(key=key, value=json.loads(value))
+        decoded = _json_loads_lenient(value)
+        if not isinstance(decoded, list):
+            decoded = [decoded]
+        return cls(key=key, value=decoded)
 
 
 @register(name="keypresent")
@@ -443,7 +469,7 @@ class Like(NoBool):
 
     @classmethod
     def decode(cls, *, key, pattern):
-        return cls(key=key, pattern=json.loads(pattern))
+        return cls(key=key, pattern=_json_loads_lenient(pattern))
 
 
 @register(name="specs")
@@ -488,7 +514,13 @@ class SpecsQuery:
 
     @classmethod
     def decode(cls, *, include, exclude):
-        return cls(include=json.loads(include), exclude=json.loads(exclude))
+        inc = _json_loads_lenient(include)
+        exc = _json_loads_lenient(exclude)
+        if not isinstance(inc, list):
+            inc = [inc]
+        if not isinstance(exc, list):
+            exc = [exc]
+        return cls(include=inc, exclude=exc)
 
 
 def SpecQuery(spec):
