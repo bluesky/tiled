@@ -162,7 +162,7 @@ class RaggedStructure(Structure):
         )
 
     @property
-    def awk_form(self) -> awkward.forms.Form:
+    def awkward_form(self) -> awkward.forms.Form:
         """Construct a canonical Awkward Form representing the ragged array structure
 
         The Awkward Form is constructed by iterating through the dimensions of the array starting
@@ -211,7 +211,7 @@ class RaggedStructure(Structure):
         return form
 
     @property
-    def awk_length(self) -> int:
+    def awkward_length(self) -> int:
         "Length of corresponding awkward buffers, i.e. the first dimension of the array"
         return self.shape[0]
 

@@ -391,8 +391,8 @@ def test_awkward_form_from_structure(name):
     structure = RaggedStructure.from_array(array)
     form, length, buffers = ak.to_buffers(array._impl)
 
-    assert structure.awk_form == form
-    assert structure.awk_length == length
+    assert structure.awkward_form == form
+    assert structure.awkward_length == length
     assert set(form.expected_from_buffers().keys()) == set(buffers.keys())
 
     for key, val in form.expected_from_buffers().items():

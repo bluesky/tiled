@@ -81,7 +81,7 @@ def from_json(
     contents: str | bytes, structure: RaggedStructure
 ) -> CanonicalRaggedArray:
     lists_of_lists = orjson.loads(contents)
-    form = structure.awk_form
+    form = structure.awkward_form
     length, buffers = _buffers_from_data(form, lists_of_lists)
 
     return make_ragged_array(awkward.from_buffers(form, length, buffers))

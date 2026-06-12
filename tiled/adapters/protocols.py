@@ -11,7 +11,7 @@ from numpy.typing import NDArray
 from tiled.structures.ragged import RaggedStructure
 
 from ..ndslice import NDSlice
-from ..storage import DirectoryContainer, Storage
+from ..storage import Storage
 from ..structures.array import ArrayStructure
 from ..structures.awkward import AwkwardStructure
 from ..structures.core import Spec, StructureFamily

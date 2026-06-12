@@ -105,9 +105,9 @@ class RaggedSQLAdapter(Adapter[RaggedStructure]):
         cls, data_source: DataSource[RaggedStructure]
     ) -> DataSource[TableStructure]:
         "Convert a DataSource with a RaggedStructure to one with a TableStructure"
-        awk_schema = data_source.structure.awk_form.expected_from_buffers()
+        awkward_schema = data_source.structure.awkward_form.expected_from_buffers()
         empty_table_dict = {
-            col: [numpy.empty(0, dtype=typ)] for col, typ in awk_schema.items()
+            col: [numpy.empty(0, dtype=typ)] for col, typ in awkward_schema.items()
         }
         empty_table_dict["chunk_index"] = [numpy.int64(0)]
 
@@ -229,7 +229,7 @@ class RaggedSQLAdapter(Adapter[RaggedStructure]):
         rows = self._load_chunks(chunk_indexes)
 
         # Each row in the table represents an awkward buffer; concatenate them together
-        form = self._structure.awk_form  # awkward form should be the same for each row
+        form = self._structure.awkward_form  # form should be the same for each row
         buffers_schema = form.expected_from_buffers()
         buffers = [
             {
@@ -253,7 +253,7 @@ class RaggedSQLAdapter(Adapter[RaggedStructure]):
         form, _, buffers = awkward.to_buffers(data._impl)
         buffers = {key: val.ravel() for key, val in buffers.items()}
 
-        if self.structure().awk_form != form:
+        if self.structure().awkward_form != form:
             raise ValueError(
                 "The structure of the provided data does not match the adapter"
             )
@@ -316,7 +316,7 @@ class RaggedSQLAdapter(Adapter[RaggedStructure]):
         form, length, buffers = awkward.to_buffers(data._impl)
         buffers = {key: val.ravel() for key, val in buffers.items()}
 
-        if self.structure().awk_form != form:
+        if self.structure().awkward_form != form:
             raise ValueError(
                 "The structure (AwkwardForm) of the data does not match the adapter"
             )

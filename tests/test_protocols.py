@@ -20,7 +20,7 @@ from tiled.adapters.protocols import (
 )
 from tiled.ndslice import NDSlice
 from tiled.server.schemas import Principal, PrincipalType
-from tiled.storage import DirectoryContainer, Storage
+from tiled.storage import Storage
 from tiled.structures.array import ArrayStructure, BuiltinDtype
 from tiled.structures.awkward import AwkwardStructure
 from tiled.structures.core import Spec, StructureFamily
