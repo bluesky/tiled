@@ -185,7 +185,7 @@ class RaggedClient(BaseClient):
         url_path = self.item["links"]["full"]
         url_params: dict[str, Any] = {**parse_qs(urlparse(url_path).query)}
 
-        if slice:
+        if slice is not None:
             url_params.update(**params_from_slice(slice))
 
         if is_scalar := (self.ndim == 0) or NDSlice(slice).is_scalar(self.shape):

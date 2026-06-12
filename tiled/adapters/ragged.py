@@ -207,7 +207,7 @@ class RaggedSQLAdapter(Adapter[RaggedStructure]):
         through to ``make_ragged_array`` unchanged.
         """
         chunks0 = self._structure.chunks[0] or ()
-        slc = NDSlice(slice or ())
+        slc = NDSlice(slice) if slice is not None else NDSlice(())
         chunk_indexes = list(range(len(chunks0)))
 
         if chunks0 and slc and NDSlice(slc[0]):

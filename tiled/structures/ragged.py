@@ -385,7 +385,7 @@ def make_ragged_array(
 
     array = ragged.array(array)
 
-    if slice:
+    if slice is not None:
         try:
             array = array[slice]
 

@@ -601,6 +601,13 @@ def test_slicing(client, name):
     sliced_response_size = len(h.responses[0].content)
     assert sliced_response_size < full_response_size
 
+    # ``rac[0]`` must also slice (not return the whole array).
+    with record_history() as h:
+        sliced_result = rac[0]
+    assert ak.array_equal(sliced_result._impl, array[0]._impl)
+    assert len(h.responses) == 1
+    assert len(h.responses[0].content) < full_response_size
+
     # slice at first dimension
     with record_history() as h:
         sliced_result = rac[:1]
