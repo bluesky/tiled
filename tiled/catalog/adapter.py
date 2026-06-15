@@ -1693,6 +1693,11 @@ class CatalogAwkwardAdapter(CatalogNodeAdapter):
         return await ensure_awaitable((await self.get_adapter()).write, *args, **kwargs)
 
 
+class CatalogBytesAdapter(CatalogNodeAdapter):
+    async def read(self, *args, **kwargs):
+        return await ensure_awaitable((await self.get_adapter()).read, *args, **kwargs)
+
+
 class CatalogRaggedAdapter(CatalogArrayAdapter):
     def make_ws_schema(self):
         return {
@@ -2426,6 +2431,7 @@ def node_from_segments(segments, root_id=0):
 STRUCTURES = {
     StructureFamily.array: CatalogArrayAdapter,
     StructureFamily.awkward: CatalogAwkwardAdapter,
+    StructureFamily.bytes: CatalogBytesAdapter,
     StructureFamily.container: CatalogContainerAdapter,
     StructureFamily.ragged: CatalogRaggedAdapter,
     StructureFamily.sparse: CatalogSparseAdapter,

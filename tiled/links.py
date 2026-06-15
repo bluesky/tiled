@@ -30,6 +30,10 @@ def links_for_awkward(structure_family, structure, base_url, path_str):
     return links
 
 
+def links_for_bytes(structure_family, structure, base_url, path_str):
+    return {"full": f"{base_url}/bytes/full/{path_str}"}
+
+
 def links_for_container(structure_family, structure, base_url, path_str):
     links = {}
     links["full"] = f"{base_url}/container/full/{path_str}"
@@ -56,6 +60,7 @@ def links_for_table(structure_family, structure, base_url, path_str):
 LINKS_BY_STRUCTURE_FAMILY = {
     StructureFamily.array: links_for_array,
     StructureFamily.awkward: links_for_awkward,
+    StructureFamily.bytes: links_for_bytes,
     StructureFamily.container: links_for_container,
     StructureFamily.ragged: links_for_ragged,
     StructureFamily.sparse: links_for_array,  # spare and array are the same

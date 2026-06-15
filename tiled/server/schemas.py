@@ -33,6 +33,7 @@ from tiled.structures.ragged import RaggedStructure
 
 from ..structures.array import ArrayStructure
 from ..structures.awkward import AwkwardStructure
+from ..structures.bytes import BytesStructure
 from ..structures.core import STRUCTURE_TYPES, Spec, StructureFamily
 from ..structures.data_source import Management
 from ..structures.sparse import SparseStructure
@@ -204,6 +205,7 @@ class NodeAttributes(pydantic.BaseModel):
         Union[
             ArrayStructure,
             AwkwardStructure,
+            BytesStructure,
             RaggedStructure,
             SparseStructure,
             NodeStructure,
@@ -245,6 +247,11 @@ class AwkwardLinks(pydantic.BaseModel):
     full: str
 
 
+class BytesLinks(pydantic.BaseModel):
+    self: str
+    full: str
+
+
 class DataFrameLinks(pydantic.BaseModel):
     self: str
     full: str
@@ -266,6 +273,7 @@ class SparseLinks(pydantic.BaseModel):
 resource_links_type_by_structure_family = {
     StructureFamily.array: ArrayLinks,
     StructureFamily.awkward: AwkwardLinks,
+    StructureFamily.bytes: BytesLinks,
     StructureFamily.container: ContainerLinks,
     StructureFamily.ragged: RaggedLinks,
     StructureFamily.sparse: SparseLinks,
