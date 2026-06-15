@@ -1,3 +1,4 @@
+import builtins
 import collections
 import dataclasses
 import inspect
@@ -178,17 +179,15 @@ def _patch_route_signature(
     return inner
 
 
-def _parse_byte_range(
-    header: Optional[str], size: int
-) -> Optional[tuple[int, int]]:
+def _parse_byte_range(header: Optional[str], size: int) -> Optional[tuple[int, int]]:
     """Parse a single HTTP byte-range header against a known payload size.
 
-    Returns ``(lo, hi_exclusive)`` for a satisfiable range, ``None`` if
-    ``header`` is missing or malformed (caller should serve the full payload),
-    or raises ``HTTPException(416)`` for a well-formed but unsatisfiable range.
+    Returns `(lo, hi_exclusive)` for a satisfiable range, `None` if
+    `header` is missing or malformed (caller should serve the full payload),
+    or raises `HTTPException(416)` for a well-formed but unsatisfiable range.
 
-    Only the single-range forms ``bytes=lo-hi``, ``bytes=lo-`` and
-    ``bytes=-suffix`` are supported. Multi-range requests are treated as
+    Only the single-range forms `bytes=lo-hi`, `bytes=lo-` and
+    `bytes=-suffix` are supported. Multi-range requests are treated as
     malformed and fall through to a full-payload response.
     """
     if not header:
@@ -1811,14 +1810,11 @@ def get_router(
         except UnsupportedMediaTypes as err:
             raise HTTPException(status_code=HTTP_406_NOT_ACCEPTABLE, detail=err.args[0])
 
-    @router.get(
-        "/bytes/full/{path:path}",
-        name="Full Bytes",
-    )
+    @router.get("/bytes/full/{path:path}", name="Full Bytes")
     async def bytes_full(
         request: Request,
         path: str,
-        slice_: NDSlice = Depends(parse_slice_param),
+        slice: NDSlice = Depends(parse_slice_param),
         filename: Optional[str] = None,
         settings: Settings = Depends(get_settings),
         principal: Optional[Principal] = Depends(get_current_principal),
@@ -1830,13 +1826,13 @@ def get_router(
     ):
         """Fetch the opaque bytes payload.
 
-        Two slicing mechanisms are supported. ``?slice=start:stop:step`` accepts
+        Two slicing mechanisms are supported. `?slice=start:stop:step` accepts
         an arbitrary numpy-style slice (including reversed/strided). The HTTP
-        ``Range:`` header accepts a single byte range (``bytes=lo-hi``,
-        ``bytes=lo-``, or ``bytes=-suffix``) and triggers a ``206 Partial
-        Content`` response with ``Content-Range``; this is the right mechanism
-        for standard tools (``curl -r``, ``aria2c``, browsers) and resumable
-        downloads. If both are supplied, ``Range:`` wins.
+        `Range:` header accepts a single byte range (`bytes=lo-hi`,
+        `bytes=lo-`, or `bytes=-suffix`) and triggers a `206 Partial
+        Content` response with `Content-Range`; this is the right mechanism
+        for standard tools (`curl -r`, `aria2c`, browsers) and resumable
+        downloads. If both are supplied, `Range:` wins.
         """
         entry = await get_entry(
             path,
@@ -1857,16 +1853,16 @@ def get_router(
         is_partial = byte_range is not None
         if is_partial:
             lo, hi = byte_range
-            py_slice = slice(lo, hi)
+            py_slice = builtins.slice(lo, hi)
         else:
             # Bytes nodes are 1-D; collapse the NDSlice tuple to a single Python
             # slice (or None for the full payload).
-            if len(slice_) > 1:
+            if len(slice) > 1:
                 raise HTTPException(
                     status_code=HTTP_400_BAD_REQUEST,
                     detail="bytes nodes accept at most a single 1-D slice",
                 )
-            py_slice = slice_[0] if slice_ else None
+            py_slice = slice[0] if slice else None
 
         with record_timing(request.state.metrics, "read"):
             data = await ensure_awaitable(entry.read, py_slice)
@@ -1898,9 +1894,9 @@ def get_router(
             safe = "".join(c for c in filename if c.isprintable())
             legacy = safe.replace("\\", "\\\\").replace('"', '\\"')
             quoted = urllib.parse.quote(safe, safe="")
-            headers[
-                "Content-Disposition"
-            ] = f"attachment; filename=\"{legacy}\"; filename*=UTF-8''{quoted}"
+            headers["Content-Disposition"] = (
+                f"attachment; filename=\"{legacy}\"; filename*=UTF-8''{quoted}"
+            )
         return Response(
             content=data,
             media_type=media_type,

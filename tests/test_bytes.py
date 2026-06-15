@@ -231,7 +231,8 @@ def test_from_uris_is_lazy(tmp_path):
 
 
 _REVERSED_LAYOUT = tuple(
-    PAYLOAD[i : i + 7] for i in range(0, len(PAYLOAD), 7)  # noqa: E203
+    PAYLOAD[i : i + 7]
+    for i in range(0, len(PAYLOAD), 7)  # noqa: E203
 )
 
 
@@ -336,7 +337,7 @@ def test_slice_over_http(http_client, tmp_path, s):
 
 @pytest.mark.parametrize("i", [0, 1, 10, len(PAYLOAD) - 1, -1, -5])
 def test_int_indexing_matches_bytes_semantics(http_client, tmp_path, i):
-    """``client[i]`` returns ``int`` like ``bytes[i]``."""
+    """`client[i]` returns `int` like `bytes[i]`."""
     handle = _register_bytes_node(http_client, tmp_path, PAYLOAD)
     assert handle[i] == PAYLOAD[i]
 
@@ -539,16 +540,14 @@ def test_repr(http_client, tmp_path):
 # --- Parallel export -------------------------------------------------------
 
 
-@pytest.mark.parametrize("workers", [1, 2, 4, 16])
-def test_export_single_asset(http_client, tmp_path, workers):
+def test_export_single_asset(http_client, tmp_path):
     handle = _register_bytes_node(http_client, tmp_path, PAYLOAD)
-    out = tmp_path / f"out_w{workers}.bin"
-    handle.export(out, workers=workers)
+    out = tmp_path / "out.bin"
+    handle.export(out)
     assert out.read_bytes() == PAYLOAD
 
 
-@pytest.mark.parametrize("workers", [1, 4])
-def test_export_multi_chunk(http_client, tmp_path, workers):
+def test_export_multi_chunk(http_client, tmp_path):
     """Multi-chunk payload: parallel ranges align to chunk boundaries."""
     chunks = [PAYLOAD[i : i + 7] for i in range(0, len(PAYLOAD), 7)]  # noqa: E203
     assets = []
@@ -575,47 +574,63 @@ def test_export_multi_chunk(http_client, tmp_path, workers):
     handle = http_client.new(
         structure_family=StructureFamily.bytes,
         data_sources=[data_source],
-        key=f"multi_w{workers}",
+        key="multi_export",
     )
-    out = tmp_path / f"multi_w{workers}.bin"
-    handle.export(out, workers=workers)
+    out = tmp_path / "multi.bin"
+    handle.export(out)
     assert out.read_bytes() == PAYLOAD
 
 
 def test_export_empty_payload(http_client, tmp_path):
     handle = _register_bytes_node(http_client, tmp_path, b"", key="empty")
     out = tmp_path / "empty.bin"
-    handle.export(out, workers=4)
+    handle.export(out)
     assert out.read_bytes() == b""
 
 
-def test_export_to_buffer_ignores_workers(http_client, tmp_path):
-    """A non-path destination forces the single-shot path."""
+def test_export_to_buffer_uses_single_shot(http_client, tmp_path):
+    """A non-path destination falls back to a single sequential request."""
     import io
 
     handle = _register_bytes_node(http_client, tmp_path, PAYLOAD)
     buf = io.BytesIO()
-    handle.export(buf, format="application/octet-stream", workers=8)
+    handle.export(buf, format="application/octet-stream")
     assert buf.getvalue() == PAYLOAD
 
 
-def test_partition_aligns_to_chunks():
-    """Multi-chunk payloads partition along chunk boundaries regardless of workers."""
-    from tiled.client.bytes import _partition
+@pytest.mark.parametrize("s", SLICE_CASES, ids=repr)
+def test_export_with_slice(http_client, tmp_path, s):
+    """Exporting with a slice writes only the sliced bytes (including strided)."""
+    handle = _register_bytes_node(http_client, tmp_path, PAYLOAD)
+    out = tmp_path / "sliced.bin"
+    handle.export(out, slice=s)
+    assert out.read_bytes() == PAYLOAD[s]
 
-    assert _partition(20, (5, 7, 8), workers=16) == [(0, 5), (5, 12), (12, 20)]
+
+def test_read_partitions_when_payload_exceeds_limit(http_client, tmp_path, monkeypatch):
+    """Forcing RESPONSE_BYTESIZE_LIMIT below payload size triggers multi-request fetch."""
+    handle = _register_bytes_node(http_client, tmp_path, PAYLOAD)
+    monkeypatch.setattr(BytesClient, "RESPONSE_BYTESIZE_LIMIT", 7)
+    calls = []
+    real_get = http_client.context.http_client.get
+
+    def spy(url, *args, **kwargs):
+        calls.append(kwargs.get("headers", {}).get("Range"))
+        return real_get(url, *args, **kwargs)
+
+    monkeypatch.setattr(http_client.context.http_client, "get", spy)
+    assert handle.read() == PAYLOAD
+    # 43 bytes / 7 per request = ceil(43/7) = 7 requests, all with Range headers.
+    range_calls = [c for c in calls if c is not None]
+    assert len(range_calls) >= 2
+    assert all(c.startswith("bytes=") for c in range_calls)
 
 
-@pytest.mark.parametrize(
-    "size, workers, expected",
-    [
-        (10, 1, [(0, 10)]),
-        (10, 4, [(0, 3), (3, 6), (6, 9), (9, 10)]),
-        (10, 3, [(0, 4), (4, 8), (8, 10)]),
-        (0, 4, [(0, 0)]),
-    ],
-)
-def test_partition_single_chunk_even_split(size, workers, expected):
-    from tiled.client.bytes import _partition
-
-    assert _partition(size, (size,), workers) == expected
+def test_export_partitions_when_payload_exceeds_limit(
+    http_client, tmp_path, monkeypatch
+):
+    handle = _register_bytes_node(http_client, tmp_path, PAYLOAD)
+    monkeypatch.setattr(BytesClient, "RESPONSE_BYTESIZE_LIMIT", 7)
+    out = tmp_path / "partitioned.bin"
+    handle.export(out)
+    assert out.read_bytes() == PAYLOAD
