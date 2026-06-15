@@ -18,6 +18,14 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - Respect the `Retry-After` header on HTTP 429 (Too Many Requests) responses.
 - Support for interacting with irregular-shaped numeric arrays via
   [`ragged`](https://github.com/scikit-hep/ragged).
+- New `bytes` structure family for serving opaque byte payloads (PDFs,
+  firmware blobs, proprietary binary formats, etc.) that lack a useful
+  logical structure. Read-only by design: files registered as `bytes` are
+  served via `GET /bytes/full/{path}` with optional `?slice=start:stop:step`
+  byte-range slicing and `?filename=...` for `Content-Disposition`.
+  Externally-registered files whose extension Python classifies as
+  `application/octet-stream` (`.bin`, `.so`, `.a`, …) are picked up
+  automatically by `tiled register`.
 - Fail fast instead of retrying on deterministic client request errors that a
   retry cannot fix: an unsupported URL scheme and an invalid request such as an
   illegal header value.

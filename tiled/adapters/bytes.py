@@ -201,11 +201,10 @@ class BytesAdapter(Adapter[BytesStructure]):
             specs=node.specs,
         )
 
-    # TODO(phase-2): implement init_storage() and a streamed write() once the
-    # asset-wiring story for writable bytes nodes is finalized. Append support
-    # (`patch`-style) will likely add a new asset per call and atomically
-    # extend `structure.chunks`; this avoids per-file locking but requires the
-    # structure update to be transactional.
+    # The bytes family is read-only by design. To store new data in Tiled,
+    # users should pick a structured family (array, table, awkward, ...).
+    # `bytes` exists as a fallback for serving externally registered files
+    # that have no useful logical structure.
 
     def read(self, slice: Optional[slice] = None) -> bytes:
         """Return the bytes covered by `slice`, or the entire payload if None.

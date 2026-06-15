@@ -11,6 +11,8 @@ The structure families are:
 
 * array --- a strided array, like a [numpy](https://numpy.org) array
 * awkward --- nested, variable-sized data (as implemented by [AwkwardArray](https://awkward-array.org/))
+* bytes --- an opaque sequence of bytes (a fallback for externally registered
+  binary files with no useful logical structure)
 * container --- a collection of other structures, akin to a dictionary or directory
 * ragged --- an irregularly-shaped array of numeric data ([Ragged](https://github.com/scikit-hep/ragged))
 * sparse --- a sparse array (i.e. an array which is mostly zeros)
@@ -274,6 +276,43 @@ $ http :8000/api/v1/metadata/nested/ragged_array | jq .data.attributes.structure
   "dims": null,
   "resizable": false
 }
+```
+
+### Bytes
+
+The `bytes` family represents an opaque, flat sequence of bytes. Tiled does not
+interpret the payload: the interpretation (MIME type, filename, encoding) lives
+on the `DataSource` and individual `Asset`s. The structure carries only the
+total `size` and the per-chunk byte lengths needed to resolve a byte-range
+slice into per-chunk reads:
+
+```json
+{
+  "size": 1048576,
+  "chunks": [524288, 524288]
+}
+```
+
+Because Tiled gains no leverage from treating this as opaque, `bytes` is
+intentionally **read-only**. Use it for external files (PDFs, firmware blobs,
+proprietary binary formats) that lack a useful logical structure. To *store*
+new data in Tiled, prefer a structured family (`array`, `table`, `awkward`, …)
+so the server can chunk, slice, and serialize intelligently.
+
+#### Auto-registration with `tiled register`
+
+`tiled register` infers a MIME type per file from its extension and looks the
+adapter up in the registration map. Out of the box, the extensions Python
+classifies as `application/octet-stream` (`.bin`, `.so`, `.a`, `.o`, `.dump`,
+`.pkg`, …) are registered as `bytes` nodes.
+
+Files with extensions the server doesn't recognise are skipped. To opt into a
+true catch-all, supply a `mimetype_detection_hook` that falls back to
+`application/octet-stream`:
+
+```python
+def detect(path, mimetype):
+    return mimetype or "application/octet-stream"
 ```
 
 ### Sparse Array
