@@ -315,6 +315,25 @@ def detect(path, mimetype):
     return mimetype or "application/octet-stream"
 ```
 
+#### Slicing and large downloads
+
+Two mechanisms exist for fetching a sub-range:
+
+* `?slice=start:stop:step` accepts an arbitrary numpy-style slice (including
+  reversed and strided).
+* The HTTP `Range:` header (e.g. `bytes=0-9`, `bytes=20-`, `bytes=-1024`)
+  triggers a `206 Partial Content` response with `Content-Range` and is the
+  right mechanism for standard tools like `curl -r`, `aria2c -x16`, browsers,
+  and resumable downloads. The server advertises `Accept-Ranges: bytes` on
+  every response. If both are supplied, `Range:` wins.
+
+For multi-gigabyte payloads, `BytesClient.export(path, workers=N)`
+parallelises the download by issuing one `Range:`-bounded request per
+server-declared chunk (or by evenly partitioning the payload when there is
+only one chunk). Typical values: `workers=1` for local-file backends,
+`workers=4-16` for object-store backends. Each task writes to a disjoint
+region of a pre-allocated file.
+
 ### Sparse Array
 
 There are a variety of ways to represent

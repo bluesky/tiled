@@ -437,6 +437,87 @@ def test_multi_dim_slice_rejected(http_client, tmp_path):
     assert response.status_code == 400
 
 
+@pytest.mark.parametrize(
+    "header, expected",
+    [
+        ("bytes=0-9", PAYLOAD[0:10]),
+        ("bytes=5-15", PAYLOAD[5:16]),
+        (f"bytes=0-{len(PAYLOAD) - 1}", PAYLOAD),
+        (f"bytes=10-{len(PAYLOAD) + 100}", PAYLOAD[10:]),  # hi clamped to size
+        ("bytes=20-", PAYLOAD[20:]),
+        ("bytes=-5", PAYLOAD[-5:]),
+        (f"bytes=-{len(PAYLOAD) * 2}", PAYLOAD),  # suffix > size clamps to start
+    ],
+)
+def test_range_returns_206(http_client, tmp_path, header, expected):
+    handle = _register_bytes_node(http_client, tmp_path, PAYLOAD)
+    response = http_client.context.http_client.get(
+        handle.item["links"]["full"], headers={"Range": header}
+    )
+    assert response.status_code == 206
+    assert response.content == expected
+    assert response.headers["accept-ranges"] == "bytes"
+    content_range = response.headers["content-range"]
+    assert content_range.startswith("bytes ")
+    assert content_range.endswith(f"/{len(PAYLOAD)}")
+
+
+@pytest.mark.parametrize(
+    "header",
+    [
+        f"bytes={len(PAYLOAD)}-{len(PAYLOAD) + 10}",  # lo == size
+        f"bytes={len(PAYLOAD) + 1}-",  # lo > size
+        "bytes=10-5",  # inverted range
+    ],
+)
+def test_range_unsatisfiable_returns_416(http_client, tmp_path, header):
+    handle = _register_bytes_node(http_client, tmp_path, PAYLOAD)
+    response = http_client.context.http_client.get(
+        handle.item["links"]["full"], headers={"Range": header}
+    )
+    assert response.status_code == 416
+    assert response.headers["content-range"] == f"bytes */{len(PAYLOAD)}"
+
+
+@pytest.mark.parametrize(
+    "header",
+    [
+        "items=0-9",  # wrong unit
+        "bytes=abc-def",  # not integers
+        "bytes=",  # empty spec
+        "bytes=0-9,20-29",  # multi-range (not supported)
+        "bytes=-0",  # zero-length suffix
+    ],
+)
+def test_range_malformed_serves_full_payload(http_client, tmp_path, header):
+    """Malformed Range headers fall through to a 200 full response (per RFC 9110)."""
+    handle = _register_bytes_node(http_client, tmp_path, PAYLOAD)
+    response = http_client.context.http_client.get(
+        handle.item["links"]["full"], headers={"Range": header}
+    )
+    assert response.status_code == 200
+    assert response.content == PAYLOAD
+
+
+def test_accept_ranges_advertised_on_full_response(http_client, tmp_path):
+    handle = _register_bytes_node(http_client, tmp_path, PAYLOAD)
+    response = http_client.context.http_client.get(handle.item["links"]["full"])
+    assert response.status_code == 200
+    assert response.headers["accept-ranges"] == "bytes"
+
+
+def test_range_wins_over_slice_param(http_client, tmp_path):
+    """If both Range and ?slice= are present, Range takes precedence."""
+    handle = _register_bytes_node(http_client, tmp_path, PAYLOAD)
+    response = http_client.context.http_client.get(
+        handle.item["links"]["full"],
+        headers={"Range": "bytes=0-4"},
+        params={"slice": "20:30"},
+    )
+    assert response.status_code == 206
+    assert response.content == PAYLOAD[0:5]
+
+
 def test_links_contain_full(http_client, tmp_path):
     handle = _register_bytes_node(http_client, tmp_path, PAYLOAD)
     assert "full" in handle.item["links"]
@@ -453,3 +534,88 @@ def test_repr(http_client, tmp_path):
     handle = _register_bytes_node(http_client, tmp_path, PAYLOAD)
     assert "BytesClient" in repr(handle)
     assert str(len(PAYLOAD)) in repr(handle)
+
+
+# --- Parallel export -------------------------------------------------------
+
+
+@pytest.mark.parametrize("workers", [1, 2, 4, 16])
+def test_export_single_asset(http_client, tmp_path, workers):
+    handle = _register_bytes_node(http_client, tmp_path, PAYLOAD)
+    out = tmp_path / f"out_w{workers}.bin"
+    handle.export(out, workers=workers)
+    assert out.read_bytes() == PAYLOAD
+
+
+@pytest.mark.parametrize("workers", [1, 4])
+def test_export_multi_chunk(http_client, tmp_path, workers):
+    """Multi-chunk payload: parallel ranges align to chunk boundaries."""
+    chunks = [PAYLOAD[i : i + 7] for i in range(0, len(PAYLOAD), 7)]  # noqa: E203
+    assets = []
+    for i, chunk in enumerate(chunks):
+        p = tmp_path / f"c{i:02d}.bin"
+        p.write_bytes(chunk)
+        assets.append(
+            Asset(
+                data_uri=p.as_uri(),
+                is_directory=False,
+                parameter="data_uris",
+                num=i,
+            )
+        )
+    data_source = DataSource(
+        mimetype="application/octet-stream",
+        assets=assets,
+        structure_family=StructureFamily.bytes,
+        structure=BytesStructure(
+            size=len(PAYLOAD), chunks=tuple(len(c) for c in chunks)
+        ),
+        management=Management.external,
+    )
+    handle = http_client.new(
+        structure_family=StructureFamily.bytes,
+        data_sources=[data_source],
+        key=f"multi_w{workers}",
+    )
+    out = tmp_path / f"multi_w{workers}.bin"
+    handle.export(out, workers=workers)
+    assert out.read_bytes() == PAYLOAD
+
+
+def test_export_empty_payload(http_client, tmp_path):
+    handle = _register_bytes_node(http_client, tmp_path, b"", key="empty")
+    out = tmp_path / "empty.bin"
+    handle.export(out, workers=4)
+    assert out.read_bytes() == b""
+
+
+def test_export_to_buffer_ignores_workers(http_client, tmp_path):
+    """A non-path destination forces the single-shot path."""
+    import io
+
+    handle = _register_bytes_node(http_client, tmp_path, PAYLOAD)
+    buf = io.BytesIO()
+    handle.export(buf, format="application/octet-stream", workers=8)
+    assert buf.getvalue() == PAYLOAD
+
+
+def test_partition_aligns_to_chunks():
+    """Multi-chunk payloads partition along chunk boundaries regardless of workers."""
+    from tiled.client.bytes import _partition
+
+    assert _partition(20, (5, 7, 8), workers=16) == [(0, 5), (5, 12), (12, 20)]
+
+
+@pytest.mark.parametrize(
+    "size, workers, expected",
+    [
+        (10, 1, [(0, 10)]),
+        (10, 4, [(0, 3), (3, 6), (6, 9), (9, 10)]),
+        (10, 3, [(0, 4), (4, 8), (8, 10)]),
+        (0, 4, [(0, 0)]),
+    ],
+)
+def test_partition_single_chunk_even_split(size, workers, expected):
+    from tiled.client.bytes import _partition
+
+    assert _partition(size, (size,), workers) == expected

@@ -36,6 +36,7 @@ from starlette.status import (
     HTTP_405_METHOD_NOT_ALLOWED,
     HTTP_406_NOT_ACCEPTABLE,
     HTTP_410_GONE,
+    HTTP_416_RANGE_NOT_SATISFIABLE,
     HTTP_422_UNPROCESSABLE_CONTENT,
     HTTP_500_INTERNAL_SERVER_ERROR,
 )
@@ -175,6 +176,49 @@ def _patch_route_signature(
         return route_with_sig
 
     return inner
+
+
+def _parse_byte_range(
+    header: Optional[str], size: int
+) -> Optional[tuple[int, int]]:
+    """Parse a single HTTP byte-range header against a known payload size.
+
+    Returns ``(lo, hi_exclusive)`` for a satisfiable range, ``None`` if
+    ``header`` is missing or malformed (caller should serve the full payload),
+    or raises ``HTTPException(416)`` for a well-formed but unsatisfiable range.
+
+    Only the single-range forms ``bytes=lo-hi``, ``bytes=lo-`` and
+    ``bytes=-suffix`` are supported. Multi-range requests are treated as
+    malformed and fall through to a full-payload response.
+    """
+    if not header:
+        return None
+    unit, _, spec = header.partition("=")
+    if unit.strip().lower() != "bytes" or "," in spec:
+        return None
+    spec = spec.strip()
+    lo_s, sep, hi_s = spec.partition("-")
+    if not sep:
+        return None
+    try:
+        if not lo_s:
+            # bytes=-suffix → last `suffix` bytes.
+            suffix = int(hi_s)
+            if suffix <= 0:
+                return None
+            lo, hi = max(0, size - suffix), size
+        else:
+            lo = int(lo_s)
+            hi = int(hi_s) + 1 if hi_s else size
+    except ValueError:
+        return None
+    if lo < 0 or lo >= size or hi <= lo:
+        raise HTTPException(
+            status_code=HTTP_416_RANGE_NOT_SATISFIABLE,
+            detail=f"Requested range not satisfiable for payload of size {size}",
+            headers={"Content-Range": f"bytes */{size}"},
+        )
+    return lo, min(hi, size)
 
 
 def get_router(
@@ -1784,7 +1828,16 @@ def get_router(
         authn_scopes: Scopes = Depends(get_current_scopes),
         _=Security(check_scopes, scopes=["read:data"]),
     ):
-        """Fetch the opaque bytes payload, optionally sliced via `?slice=...`."""
+        """Fetch the opaque bytes payload.
+
+        Two slicing mechanisms are supported. ``?slice=start:stop:step`` accepts
+        an arbitrary numpy-style slice (including reversed/strided). The HTTP
+        ``Range:`` header accepts a single byte range (``bytes=lo-hi``,
+        ``bytes=lo-``, or ``bytes=-suffix``) and triggers a ``206 Partial
+        Content`` response with ``Content-Range``; this is the right mechanism
+        for standard tools (``curl -r``, ``aria2c``, browsers) and resumable
+        downloads. If both are supplied, ``Range:`` wins.
+        """
         entry = await get_entry(
             path,
             ["read:data"],
@@ -1797,14 +1850,23 @@ def get_router(
             {StructureFamily.bytes},
             getattr(request.app.state, "access_policy", None),
         )
-        # Bytes nodes are 1-D; collapse the NDSlice tuple to a single Python
-        # slice (or None for the full payload).
-        if len(slice_) > 1:
-            raise HTTPException(
-                status_code=HTTP_400_BAD_REQUEST,
-                detail="bytes nodes accept at most a single 1-D slice",
-            )
-        py_slice = slice_[0] if slice_ else None
+        size = entry.structure().size
+
+        # HTTP Range header takes precedence over ?slice= if both are present.
+        byte_range = _parse_byte_range(request.headers.get("range"), size)
+        is_partial = byte_range is not None
+        if is_partial:
+            lo, hi = byte_range
+            py_slice = slice(lo, hi)
+        else:
+            # Bytes nodes are 1-D; collapse the NDSlice tuple to a single Python
+            # slice (or None for the full payload).
+            if len(slice_) > 1:
+                raise HTTPException(
+                    status_code=HTTP_400_BAD_REQUEST,
+                    detail="bytes nodes accept at most a single 1-D slice",
+                )
+            py_slice = slice_[0] if slice_ else None
 
         with record_timing(request.state.metrics, "read"):
             data = await ensure_awaitable(entry.read, py_slice)
@@ -1814,7 +1876,8 @@ def get_router(
                 status_code=HTTP_400_BAD_REQUEST,
                 detail=(
                     f"Response would exceed {settings.response_bytesize_limit}. "
-                    "Use slicing ('?slice=...') to request smaller chunks."
+                    "Use slicing ('?slice=...' or the HTTP Range header) to "
+                    "request smaller chunks."
                 ),
             )
 
@@ -1824,7 +1887,10 @@ def get_router(
         if data_sources and data_sources[0].mimetype:
             media_type = data_sources[0].mimetype
 
-        headers = {}
+        headers = {"Accept-Ranges": "bytes"}
+        if is_partial:
+            lo, hi = byte_range
+            headers["Content-Range"] = f"bytes {lo}-{hi - 1}/{size}"
         if filename:
             # RFC 6266: filename* with percent-encoding handles non-ASCII and
             # avoids quoting issues. Strip control characters defensively, then
@@ -1835,7 +1901,12 @@ def get_router(
             headers[
                 "Content-Disposition"
             ] = f"attachment; filename=\"{legacy}\"; filename*=UTF-8''{quoted}"
-        return Response(content=data, media_type=media_type, headers=headers)
+        return Response(
+            content=data,
+            media_type=media_type,
+            headers=headers,
+            status_code=206 if is_partial else 200,
+        )
 
     @router.post("/metadata/{path:path}", response_model=schemas.PostMetadataResponse)
     async def post_metadata(

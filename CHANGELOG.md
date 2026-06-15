@@ -22,10 +22,13 @@ Write the date in place of the "Unreleased" in the case a new version is release
   firmware blobs, proprietary binary formats, etc.) that lack a useful
   logical structure. Read-only by design: files registered as `bytes` are
   served via `GET /bytes/full/{path}` with optional `?slice=start:stop:step`
-  byte-range slicing and `?filename=...` for `Content-Disposition`.
-  Externally-registered files whose extension Python classifies as
-  `application/octet-stream` (`.bin`, `.so`, `.a`, …) are picked up
-  automatically by `tiled register`.
+  byte-range slicing, the HTTP `Range:` header (yielding `206 Partial
+  Content` for use with `curl -r`, `aria2c -x16`, browsers, and resumable
+  downloads), and `?filename=...` for `Content-Disposition`.
+  `BytesClient.export(path, workers=N)` parallelises large downloads by
+  issuing one `Range`-bounded request per chunk. Externally-registered files
+  whose extension Python classifies as `application/octet-stream` (`.bin`,
+  `.so`, `.a`, …) are picked up automatically by `tiled register`.
 - Fail fast instead of retrying on deterministic client request errors that a
   retry cannot fix: an unsupported URL scheme and an invalid request such as an
   illegal header value.
