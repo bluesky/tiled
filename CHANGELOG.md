@@ -17,6 +17,10 @@ Write the date in place of the "Unreleased" in the case a new version is release
   The spinner is animated in Jupyter notebooks as well as TTY terminals.
 - Respect the `Retry-After` header on HTTP 429 (Too Many Requests) responses.
 
+### Fixed
+
+- Checking if the context is authenticated to prevent the user from being re-prompted to login in addition to the check of if an API key is set.
+
 
 ## v0.2.11 (2026-05-27)
 
