@@ -981,6 +981,17 @@ class CatalogNodeAdapter:
             ).all()
             return [Revision.from_orm(o[0]) for o in revision_orms]
 
+    async def revisions_count(self) -> int:
+        "Get the total number of revisions for this node."
+        async with self.context.session() as db:
+            return (
+                await db.execute(
+                    select(func.count())
+                    .select_from(orm.Revision)
+                    .where(orm.Revision.node_id == self.node.id)
+                )
+            ).scalar_one()
+
     async def delete(self, recursive=False, external_only=True):
         """Delete the Node, its descendants, and associated DataSources and Assets
 
