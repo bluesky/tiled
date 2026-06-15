@@ -332,10 +332,10 @@ For multi-gigabyte payloads, `BytesClient.export(path)` and
 server-declared chunk boundaries, subdividing further when any piece
 would exceed `BytesClient.RESPONSE_BYTESIZE_LIMIT` (100 MiB), and fan
 the sub-requests out concurrently via HTTP `Range:` headers. Concurrency
-is capped by the context's `max_connections` (default 16), matching the
-array client; there is no per-call `workers=` knob. Each task streams
-its sub-range directly to a disjoint region of a pre-allocated file, so
-peak per-worker memory stays bounded regardless of payload size.
+is capped by the context's `max_connections` (default 16), matching the logic of
+`ArrayClient`. Each task streams its sub-range directly to a disjoint
+region of a pre-allocated file, so peak per-worker memory stays bounded regardless
+of payload size.
 Reversed or strided slices fall back to a single sequential `?slice=`
 request. Buffer destinations (anything other than a path) also fall
 back to a single sequential request.

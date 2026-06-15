@@ -1894,9 +1894,9 @@ def get_router(
             safe = "".join(c for c in filename if c.isprintable())
             legacy = safe.replace("\\", "\\\\").replace('"', '\\"')
             quoted = urllib.parse.quote(safe, safe="")
-            headers["Content-Disposition"] = (
-                f"attachment; filename=\"{legacy}\"; filename*=UTF-8''{quoted}"
-            )
+            headers[
+                "Content-Disposition"
+            ] = f"attachment; filename=\"{legacy}\"; filename*=UTF-8''{quoted}"
         return Response(
             content=data,
             media_type=media_type,

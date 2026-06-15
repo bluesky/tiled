@@ -231,8 +231,7 @@ def test_from_uris_is_lazy(tmp_path):
 
 
 _REVERSED_LAYOUT = tuple(
-    PAYLOAD[i : i + 7]
-    for i in range(0, len(PAYLOAD), 7)  # noqa: E203
+    PAYLOAD[i : i + 7] for i in range(0, len(PAYLOAD), 7)  # noqa: E203
 )
 
 
