@@ -306,8 +306,8 @@ adapter up in the registration map. Out of the box, the extensions Python
 classifies as `application/octet-stream` (`.bin`, `.so`, `.a`, `.o`, `.dump`,
 `.pkg`, …) are registered as `bytes` nodes.
 
-Files with extensions the server doesn't recognise are skipped. To opt into a
-true catch-all, supply a `mimetype_detection_hook` that falls back to
+Files with extensions that the server doesn't recognise are skipped. To opt into
+a true catch-all, supply a `mimetype_detection_hook` that falls back to
 `application/octet-stream`:
 
 ```python
@@ -320,19 +320,25 @@ def detect(path, mimetype):
 Two mechanisms exist for fetching a sub-range:
 
 * `?slice=start:stop:step` accepts an arbitrary numpy-style slice (including
-  reversed and strided).
+  reversed and strided slices).
 * The HTTP `Range:` header (e.g. `bytes=0-9`, `bytes=20-`, `bytes=-1024`)
   triggers a `206 Partial Content` response with `Content-Range` and is the
-  right mechanism for standard tools like `curl -r`, `aria2c -x16`, browsers,
+  preferred mechanism for standard tools like `curl -r`, `aria2c -x16`, browsers,
   and resumable downloads. The server advertises `Accept-Ranges: bytes` on
-  every response. If both are supplied, `Range:` wins.
+  every response. If both are supplied, `Range:` takes precedence.
 
-For multi-gigabyte payloads, `BytesClient.export(path, workers=N)`
-parallelises the download by issuing one `Range:`-bounded request per
-server-declared chunk (or by evenly partitioning the payload when there is
-only one chunk). Typical values: `workers=1` for local-file backends,
-`workers=4-16` for object-store backends. Each task writes to a disjoint
-region of a pre-allocated file.
+For multi-gigabyte payloads, `BytesClient.export(path)` and
+`BytesClient.read()` automatically partition the request along
+server-declared chunk boundaries, subdividing further when any piece
+would exceed `BytesClient.RESPONSE_BYTESIZE_LIMIT` (100 MiB), and fan
+the sub-requests out concurrently via HTTP `Range:` headers. Concurrency
+is capped by the context's `max_connections` (default 16), matching the
+array client; there is no per-call `workers=` knob. Each task streams
+its sub-range directly to a disjoint region of a pre-allocated file, so
+peak per-worker memory stays bounded regardless of payload size.
+Reversed or strided slices fall back to a single sequential `?slice=`
+request. Buffer destinations (anything other than a path) also fall
+back to a single sequential request.
 
 ### Sparse Array
 
