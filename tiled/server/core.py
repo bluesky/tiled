@@ -348,7 +348,7 @@ async def construct_revisions_response(
             },
         }
         data.append(item)
-    count = len(data)
+    count = await entry.revisions_count()
     links = pagination_links(base_url, route, path_parts, page, None, count)
     return schemas.Response(data=data, links=links, meta={"count": count})
 
