@@ -24,8 +24,8 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Fixed
 
-- The metadata revisions endpoint now reports the total revision count, so 
-all revisions can be paged through via the API.
+- The metadata revisions endpoint now reports the total revision count, so
+  all revisions can be paged through via the API.
 
 
 ## v0.2.11 (2026-05-27)
