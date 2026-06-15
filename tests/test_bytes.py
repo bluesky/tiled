@@ -1,4 +1,4 @@
-"""Tests for the `bytes` structure family: `BytesStructure` and `BytesAdapter`."""
+"""Tests for the `bytes` structure family: structure, adapter, and HTTP path."""
 
 from types import SimpleNamespace
 
@@ -6,6 +6,10 @@ import pytest
 
 from tiled.adapters import bytes as bytes_adapter_mod
 from tiled.adapters.bytes import BytesAdapter
+from tiled.catalog import in_memory
+from tiled.client import Context, from_context
+from tiled.client.bytes import BytesClient
+from tiled.server.app import build_app
 from tiled.structures.bytes import BytesStructure
 from tiled.structures.core import STRUCTURE_TYPES, StructureFamily
 from tiled.structures.data_source import Asset, DataSource, Management
@@ -272,3 +276,180 @@ def test_from_catalog_ordering(tmp_path, asset_specs, expected):
     ds = _data_source(assets, size=sum(chunks), chunks=chunks)
     a = BytesAdapter.from_catalog(ds, _empty_node())
     assert a.read() == expected
+
+
+# --- HTTP end-to-end -------------------------------------------------------
+
+
+@pytest.fixture
+def http_client(tmpdir):
+    catalog = in_memory(writable_storage=str(tmpdir))
+    with Context.from_app(build_app(catalog)) as ctx:
+        yield from_context(ctx)
+
+
+def _register_bytes_node(
+    client, tmp_path, payload, key="blob", mimetype="application/octet-stream"
+):
+    """Write `payload` to a file and register it as an external bytes node."""
+    p = tmp_path / "blob.bin"
+    p.write_bytes(payload)
+    data_source = DataSource(
+        mimetype=mimetype,
+        assets=[
+            Asset(
+                data_uri=p.as_uri(),
+                is_directory=False,
+                parameter="data_uris",
+                num=0,
+            )
+        ],
+        structure_family=StructureFamily.bytes,
+        structure=BytesStructure(size=len(payload), chunks=(len(payload),)),
+        management=Management.external,
+    )
+    return client.new(
+        structure_family=StructureFamily.bytes,
+        data_sources=[data_source],
+        key=key,
+    )
+
+
+def test_register_and_read(http_client, tmp_path):
+    handle = _register_bytes_node(http_client, tmp_path, PAYLOAD)
+    assert isinstance(handle, BytesClient)
+    assert handle.read() == PAYLOAD
+    assert len(handle) == len(PAYLOAD)
+
+
+def test_client_dispatch_returns_bytes_client(http_client, tmp_path):
+    _register_bytes_node(http_client, tmp_path, PAYLOAD, key="b")
+    assert isinstance(http_client["b"], BytesClient)
+
+
+@pytest.mark.parametrize("s", SLICE_CASES, ids=repr)
+def test_slice_over_http(http_client, tmp_path, s):
+    handle = _register_bytes_node(http_client, tmp_path, PAYLOAD)
+    assert handle.read(s) == PAYLOAD[s]
+    assert handle[s] == PAYLOAD[s]
+
+
+@pytest.mark.parametrize("i", [0, 1, 10, len(PAYLOAD) - 1, -1, -5])
+def test_int_indexing_matches_bytes_semantics(http_client, tmp_path, i):
+    """``client[i]`` returns ``int`` like ``bytes[i]``."""
+    handle = _register_bytes_node(http_client, tmp_path, PAYLOAD)
+    assert handle[i] == PAYLOAD[i]
+
+
+@pytest.mark.parametrize("i", [len(PAYLOAD), -len(PAYLOAD) - 1, 1000])
+def test_int_index_out_of_range_raises(http_client, tmp_path, i):
+    handle = _register_bytes_node(http_client, tmp_path, PAYLOAD)
+    with pytest.raises(IndexError):
+        handle[i]
+
+
+def test_multi_chunk_assets(http_client, tmp_path):
+    """Multi-asset bytes node: assets registered with `num` reassemble in order."""
+    chunks = [PAYLOAD[i : i + 7] for i in range(0, len(PAYLOAD), 7)]  # noqa: E203
+    assets = []
+    for i, chunk in enumerate(chunks):
+        p = tmp_path / f"c{i:02d}.bin"
+        p.write_bytes(chunk)
+        assets.append(
+            Asset(
+                data_uri=p.as_uri(),
+                is_directory=False,
+                parameter="data_uris",
+                num=i,
+            )
+        )
+    data_source = DataSource(
+        mimetype="application/octet-stream",
+        # Register out of order to confirm `num` is respected.
+        assets=list(reversed(assets)),
+        structure_family=StructureFamily.bytes,
+        structure=BytesStructure(
+            size=len(PAYLOAD), chunks=tuple(len(c) for c in chunks)
+        ),
+        management=Management.external,
+    )
+    handle = http_client.new(
+        structure_family=StructureFamily.bytes,
+        data_sources=[data_source],
+        key="multi",
+    )
+    assert handle.read() == PAYLOAD
+    assert handle.read(slice(10, 30)) == PAYLOAD[10:30]
+
+
+def test_mimetype_propagates_to_content_type(tmpdir, tmp_path):
+    """A DataSource's mimetype propagates to the HTTP Content-Type."""
+    catalog = in_memory(
+        writable_storage=str(tmpdir),
+        adapters_by_mimetype={"application/pdf": BytesAdapter},
+    )
+    with Context.from_app(build_app(catalog)) as ctx:
+        client = from_context(ctx)
+        handle = _register_bytes_node(
+            client, tmp_path, b"%PDF-1.4 fake", mimetype="application/pdf"
+        )
+        response = client.context.http_client.get(handle.item["links"]["full"])
+        assert response.status_code == 200
+        assert response.headers["content-type"].startswith("application/pdf")
+
+
+def test_filename_sets_content_disposition(http_client, tmp_path):
+    handle = _register_bytes_node(http_client, tmp_path, PAYLOAD)
+    response = http_client.context.http_client.get(
+        handle.item["links"]["full"], params={"filename": "payload.bin"}
+    )
+    cd = response.headers.get("content-disposition", "")
+    assert "attachment" in cd
+    assert "payload.bin" in cd
+    assert "filename*=UTF-8''payload.bin" in cd  # RFC 6266 form
+
+
+@pytest.mark.parametrize(
+    "filename, must_not_contain",
+    [
+        ('evil"; attack="', '"; attack="'),  # quote injection sanitized via filename*
+        ("a\r\nX-Injected: 1", "\r\n"),  # CRLF stripped
+    ],
+)
+def test_filename_header_is_sanitized(
+    http_client, tmp_path, filename, must_not_contain
+):
+    handle = _register_bytes_node(http_client, tmp_path, PAYLOAD)
+    response = http_client.context.http_client.get(
+        handle.item["links"]["full"], params={"filename": filename}
+    )
+    assert response.status_code == 200
+    cd = response.headers.get("content-disposition", "")
+    assert must_not_contain not in cd
+    assert "X-Injected" not in response.headers
+
+
+def test_multi_dim_slice_rejected(http_client, tmp_path):
+    handle = _register_bytes_node(http_client, tmp_path, PAYLOAD)
+    response = http_client.context.http_client.get(
+        handle.item["links"]["full"], params={"slice": "0:10,0:5"}
+    )
+    assert response.status_code == 400
+
+
+def test_links_contain_full(http_client, tmp_path):
+    handle = _register_bytes_node(http_client, tmp_path, PAYLOAD)
+    assert "full" in handle.item["links"]
+    assert "/bytes/full/" in handle.item["links"]["full"]
+    assert handle.item["links"]["full"].endswith("blob")
+
+
+def test_unsupported_route_path_404(http_client):
+    response = http_client.context.http_client.get("/api/v1/bytes/full/does-not-exist")
+    assert response.status_code == 404
+
+
+def test_repr(http_client, tmp_path):
+    handle = _register_bytes_node(http_client, tmp_path, PAYLOAD)
+    assert "BytesClient" in repr(handle)
+    assert str(len(PAYLOAD)) in repr(handle)

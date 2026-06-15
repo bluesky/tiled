@@ -2,6 +2,7 @@ import collections
 import dataclasses
 import inspect
 import os
+import urllib.parse
 import warnings
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
@@ -1765,6 +1766,76 @@ def get_router(
                 )
         except UnsupportedMediaTypes as err:
             raise HTTPException(status_code=HTTP_406_NOT_ACCEPTABLE, detail=err.args[0])
+
+    @router.get(
+        "/bytes/full/{path:path}",
+        name="Full Bytes",
+    )
+    async def bytes_full(
+        request: Request,
+        path: str,
+        slice_: NDSlice = Depends(parse_slice_param),
+        filename: Optional[str] = None,
+        settings: Settings = Depends(get_settings),
+        principal: Optional[Principal] = Depends(get_current_principal),
+        root_tree=Depends(get_root_tree),
+        session_state: dict = Depends(get_session_state),
+        authn_access_tags: Optional[AccessTags] = Depends(get_current_access_tags),
+        authn_scopes: Scopes = Depends(get_current_scopes),
+        _=Security(check_scopes, scopes=["read:data"]),
+    ):
+        """Fetch the opaque bytes payload, optionally sliced via `?slice=...`."""
+        entry = await get_entry(
+            path,
+            ["read:data"],
+            principal,
+            authn_access_tags,
+            authn_scopes,
+            root_tree,
+            session_state,
+            request.state.metrics,
+            {StructureFamily.bytes},
+            getattr(request.app.state, "access_policy", None),
+        )
+        # Bytes nodes are 1-D; collapse the NDSlice tuple to a single Python
+        # slice (or None for the full payload).
+        if len(slice_) > 1:
+            raise HTTPException(
+                status_code=HTTP_400_BAD_REQUEST,
+                detail="bytes nodes accept at most a single 1-D slice",
+            )
+        py_slice = slice_[0] if slice_ else None
+
+        with record_timing(request.state.metrics, "read"):
+            data = await ensure_awaitable(entry.read, py_slice)
+
+        if len(data) > settings.response_bytesize_limit:
+            raise HTTPException(
+                status_code=HTTP_400_BAD_REQUEST,
+                detail=(
+                    f"Response would exceed {settings.response_bytesize_limit}. "
+                    "Use slicing ('?slice=...') to request smaller chunks."
+                ),
+            )
+
+        # Prefer the DataSource's declared mimetype; fall back to octet-stream.
+        media_type = "application/octet-stream"
+        data_sources = getattr(entry, "data_sources", None) or ()
+        if data_sources and data_sources[0].mimetype:
+            media_type = data_sources[0].mimetype
+
+        headers = {}
+        if filename:
+            # RFC 6266: filename* with percent-encoding handles non-ASCII and
+            # avoids quoting issues. Strip control characters defensively, then
+            # escape quotes/backslashes in the legacy filename= form.
+            safe = "".join(c for c in filename if c.isprintable())
+            legacy = safe.replace("\\", "\\\\").replace('"', '\\"')
+            quoted = urllib.parse.quote(safe, safe="")
+            headers[
+                "Content-Disposition"
+            ] = f"attachment; filename=\"{legacy}\"; filename*=UTF-8''{quoted}"
+        return Response(content=data, media_type=media_type, headers=headers)
 
     @router.post("/metadata/{path:path}", response_model=schemas.PostMetadataResponse)
     async def post_metadata(
