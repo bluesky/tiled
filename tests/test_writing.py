@@ -8,6 +8,7 @@ import base64
 import collections
 import math
 import os
+import pathlib
 import threading
 import uuid
 from datetime import datetime
@@ -106,6 +107,21 @@ def tree(tmpdir, tmp_minio_bucket):
     writable_storage.append(f"file://localhost{str(tmpdir / 'data')}")
 
     return in_memory(writable_storage=writable_storage)
+
+
+@pytest.fixture(scope="module")
+def module_tmp_path(tmp_path_factory: pytest.TempdirFactory) -> pathlib.Path:
+    return tmp_path_factory.mktemp("temp")
+
+
+@pytest.fixture(scope="module")
+def metadata_client(module_tmp_path):
+    catalog = in_memory(writable_storage=str(module_tmp_path))
+    app = build_app(catalog)
+    with Context.from_app(app) as context:
+        client = from_context(context)
+        client.write_array([1, 2, 3], key="invalid_check")
+        yield client
 
 
 def test_write_array_full(tree):
@@ -518,26 +534,12 @@ def test_replace_metadata(tiled_websocket_context):
         assert received_event.wait(timeout=5.0), "Timeout waiting for messages"
 
 
-def test_invalid_metadata(tree):
-    with Context.from_app(build_app(tree)) as context:
-        client = from_context(context)
-        client.write_array([1, 2, 3], key="invalid_check")
-        with pytest.raises(ValueError):
-            client["invalid_check"].update_metadata(metadata="test")
-        with pytest.raises(ValueError):
-            client["invalid_check"].update_metadata(metadata=["test1", "test2"])
-        with pytest.raises(ValueError):
-            client["invalid_check"].update_metadata(metadata=1)
-        with pytest.raises(ValueError):
-            client["invalid_check"].update_metadata(metadata=[1, 2])
-        with pytest.raises(ValueError):
-            client["invalid_check"].update_metadata(metadata=1.2)
-        with pytest.raises(ValueError):
-            client["invalid_check"].update_metadata(metadata=True)
-        with pytest.raises(ValueError):
-            client["invalid_check"].update_metadata(metadata=(1, 2))
-        with pytest.raises(ValueError):
-            client["invalid_check"].update_metadata(metadata={1})
+@pytest.mark.parametrize(
+    "tested_metadata", ["test", ["test1", "test2"], 1, [1, 2], 1.2, True, (1, 2), {1}]
+)
+def test_invalid_metadata(metadata_client, tested_metadata):
+    with pytest.raises(ValueError):
+        metadata_client["invalid_check"].update_metadata(metadata=tested_metadata)
 
 
 def test_valid_update_metadata(tree):
