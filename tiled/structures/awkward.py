@@ -11,6 +11,10 @@ class AwkwardStructure(Structure):
     length: int
     form: dict
 
+    @property
+    def awkward_form(self) -> awkward.forms.Form:
+        return awkward.forms.from_dict(self.form)
+
 
 def project_form(
     form: awkward.forms.Form, form_keys_touched

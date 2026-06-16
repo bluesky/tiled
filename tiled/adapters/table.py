@@ -151,16 +151,6 @@ class TableAdapter(Adapter[TableStructure]):
     def read(
         self, fields: Optional[List[str]] = None
     ) -> Union[dask.dataframe.DataFrame, pandas.DataFrame]:
-        """
-
-        Parameters
-        ----------
-        fields :
-
-        Returns
-        -------
-
-        """
         if any(p is None for p in self._partitions):
             raise ValueError("Not all partitions have been stored.")
         if isinstance(self._partitions[0], dask.dataframe.DataFrame):
@@ -181,17 +171,6 @@ class TableAdapter(Adapter[TableStructure]):
         partition: int,
         fields: Optional[List[str]] = None,
     ) -> Union[pandas.DataFrame, dask.dataframe.DataFrame]:
-        """
-
-        Parameters
-        ----------
-        partition :
-        fields :
-
-        Returns
-        -------
-
-        """
         df = self._partitions[partition]
         if df is None:
             raise RuntimeError(f"Partition {partition} has not been stored yet.")
@@ -199,7 +178,7 @@ class TableAdapter(Adapter[TableStructure]):
             df = df[fields]
         if isinstance(df, dask.dataframe.DataFrame):
             return df.compute()
-        return partition
+        return df
 
 
 DataFrameAdapter = TableAdapter

@@ -105,7 +105,7 @@ class TableStructure(Structure):
                 f"Expected base64-encoded data prefixed with {B64_ENCODED_PREFIX}."
             )
 
-        payload = self.arrow_schema[len(B64_ENCODED_PREFIX) :].encode(  # noqa: 203
+        payload = self.arrow_schema[len(B64_ENCODED_PREFIX) :].encode(  # noqa: E203
             "utf-8"
         )
         return pyarrow.ipc.read_schema(io.BytesIO(base64.b64decode(payload)))

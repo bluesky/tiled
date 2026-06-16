@@ -934,3 +934,129 @@ def test_first_message_jwt_auth_rejected(
             msg = websocket.receive()
             assert msg["type"] == "websocket.close"
             assert msg.get("code") == 4003
+
+
+# ---------------------------------------------------------------------------
+# Ragged-array streaming
+# ---------------------------------------------------------------------------
+
+
+def _ragged_array(start=0):
+    """Build a small jagged ragged.array. ``start`` shifts values for sequencing."""
+    import ragged
+
+    return ragged.array(
+        [
+            np.arange(2, dtype=np.int64) + start,
+            np.arange(3, dtype=np.int64) + start + 10,
+        ]
+    )
+
+
+@pytest.mark.parametrize("envelope_format", (["msgpack", "json"]))
+@pytest.mark.parametrize("persist", (None, True, False))
+def test_ragged_updates_persist_write(
+    tiled_websocket_context, envelope_format, persist
+):
+    """Stream a full-array overwrite of a ragged node."""
+    context = tiled_websocket_context
+    client = from_context(context)
+    test_client = context.http_client
+
+    initial = _ragged_array(start=0)
+    streaming_node = client.write_ragged(initial, key="test_ragged_stream_write")
+
+    with test_client.websocket_connect(
+        f"/api/v1/stream/single/test_ragged_stream_write?envelope_format={envelope_format}",
+        headers={"Authorization": "Apikey secret"},
+    ) as websocket:
+        # Send 2 overwriting updates
+        for i in range(1, 3):
+            kwargs = {} if persist is None else {"persist": persist}
+            streaming_node.write(_ragged_array(start=i), **kwargs)
+
+        # Receive schema + 2 updates
+        received = []
+        for _ in range(3):
+            if envelope_format == "json":
+                received.append(websocket.receive_json())
+            else:
+                received.append(msgpack.unpackb(websocket.receive_bytes()))
+
+    schema, *updates = received
+    assert "type" in schema and "version" in schema
+    assert schema["type"] == "ragged-schema"
+    assert len(updates) == 2
+    for msg in updates:
+        assert msg["type"] == "ragged-data"
+        assert "timestamp" in msg
+        assert "payload" in msg
+
+
+@pytest.mark.parametrize("envelope_format", (["msgpack", "json"]))
+@pytest.mark.parametrize("persist", (None, True, False))
+def test_ragged_updates_persist_write_block(
+    tiled_websocket_context, envelope_format, persist
+):
+    """Stream a write_block update of a ragged node (single-chunk write)."""
+    context = tiled_websocket_context
+    client = from_context(context)
+    test_client = context.http_client
+
+    initial = _ragged_array(start=0)
+    streaming_node = client.write_ragged(initial, key="test_ragged_stream_block")
+
+    with test_client.websocket_connect(
+        f"/api/v1/stream/single/test_ragged_stream_block?envelope_format={envelope_format}",
+        headers={"Authorization": "Apikey secret"},
+    ) as websocket:
+        # write_block with block=0 overwrites the only chunk
+        kwargs = {} if persist is None else {"persist": persist}
+        streaming_node.write_block(_ragged_array(start=1), block=0, **kwargs)
+
+        received = []
+        for _ in range(2):  # schema + 1 update
+            if envelope_format == "json":
+                received.append(websocket.receive_json())
+            else:
+                received.append(msgpack.unpackb(websocket.receive_bytes()))
+
+    schema, update = received
+    assert schema["type"] == "ragged-schema"
+    assert update["type"] == "ragged-data"
+    assert "payload" in update
+
+
+@pytest.mark.parametrize("envelope_format", (["msgpack", "json"]))
+def test_ragged_updates_persist_append(tiled_websocket_context, envelope_format):
+    """Stream a patch(extend=True) append of a ragged node."""
+    context = tiled_websocket_context
+    client = from_context(context)
+    test_client = context.http_client
+
+    initial = _ragged_array(start=0)
+    streaming_node = client.write_ragged(initial, key="test_ragged_stream_append")
+
+    with test_client.websocket_connect(
+        f"/api/v1/stream/single/test_ragged_stream_append?envelope_format={envelope_format}",
+        headers={"Authorization": "Apikey secret"},
+    ) as websocket:
+        # Append a second chunk along the leftmost dimension
+        offset = streaming_node.shape[0]
+        streaming_node.patch(_ragged_array(start=1), offset=offset, extend=True)
+
+        received = []
+        for _ in range(2):  # schema + 1 update
+            if envelope_format == "json":
+                received.append(websocket.receive_json())
+            else:
+                received.append(msgpack.unpackb(websocket.receive_bytes()))
+
+    schema, update = received
+    assert schema["type"] == "ragged-schema"
+    assert update["type"] == "ragged-data"
+    assert "payload" in update
+
+    # Persistence: the array should now have two chunks along the first dim.
+    assert streaming_node.shape[0] == 4
+    assert len(streaming_node.chunks[0]) == 2

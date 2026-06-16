@@ -206,6 +206,25 @@ TEST_CASES = {
             "duckdb": (["DECIMAL(5, 2) NULL"], pa.schema([("x", pa.decimal128(5, 2))])),
         },
     ),
+    "ragged_lists": (
+        pa.Table.from_arrays(
+            [
+                pa.array([[1], [2, 3], [4, 5, 6]], pa.list_(pa.int32())),
+                pa.array([[1.1, 2.2, 3.3], [4.4, 5.5], [6.6]], pa.list_(pa.float32())),
+            ],
+            names=["x", "y"],
+        ),
+        {
+            "duckdb": (
+                ["INTEGER[] NULL", "REAL[] NULL"],
+                pa.schema([("x", pa.list_(pa.int32())), ("y", pa.list_(pa.float32()))]),
+            ),
+            "postgresql": (
+                ["INTEGER ARRAY NULL", "REAL ARRAY NULL"],
+                pa.schema([("x", pa.list_(pa.int32())), ("y", pa.list_(pa.float32()))]),
+            ),
+        },
+    ),
 }
 
 
