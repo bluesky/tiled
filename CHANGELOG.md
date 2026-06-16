@@ -17,6 +17,10 @@ Write the date in place of the "Unreleased" in the case a new version is release
   The spinner is animated in Jupyter notebooks as well as TTY terminals.
 - Respect the `Retry-After` header on HTTP 429 (Too Many Requests) responses.
 
+### Fixed
+
+- Ensuring that the metadata parameter value entered when calling update_metadata is of the proper type (will serialize as a JSON object) before altering the metadata.
+
 
 ## v0.2.11 (2026-05-27)
 
