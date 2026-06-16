@@ -5,6 +5,7 @@ Persistent stores are being developed externally to the tiled package.
 """
 
 import base64
+import collections
 import math
 import os
 import threading
@@ -515,6 +516,43 @@ def test_replace_metadata(tiled_websocket_context):
         ac.replace_metadata(metadata={"3": 1}, drop_revision=True)  # update #3
         # Wait for all messages to be received
         assert received_event.wait(timeout=5.0), "Timeout waiting for messages"
+
+
+def test_invalid_metadata(tree):
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        client.write_array([1, 2, 3], key="invalid_check")
+        with pytest.raises(ValueError):
+            client["invalid_check"].update_metadata(metadata="test")
+        with pytest.raises(ValueError):
+            client["invalid_check"].update_metadata(metadata=["test1", "test2"])
+        with pytest.raises(ValueError):
+            client["invalid_check"].update_metadata(metadata=1)
+        with pytest.raises(ValueError):
+            client["invalid_check"].update_metadata(metadata=[1, 2])
+        with pytest.raises(ValueError):
+            client["invalid_check"].update_metadata(metadata=1.2)
+        with pytest.raises(ValueError):
+            client["invalid_check"].update_metadata(metadata=True)
+        with pytest.raises(ValueError):
+            client["invalid_check"].update_metadata(metadata=(1, 2))
+        with pytest.raises(ValueError):
+            client["invalid_check"].update_metadata(metadata={1})
+
+
+def test_valid_update_metadata(tree):
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        client.write_array([1, 2, 3], key="valid_check")
+
+        client["valid_check"].update_metadata(metadata={"a": 1, "b": 2})
+        assert client["valid_check"].metadata == {"a": 1, "b": 2}
+
+        d1 = {"a": 1}
+        d2 = {"b": 2}
+        d = collections.ChainMap(d1, d2)
+        client["valid_check"].update_metadata(metadata=d)
+        assert client["valid_check"].metadata == d
 
 
 def test_drop_revision(tree):
