@@ -96,7 +96,7 @@ class TagBasedAccessPolicy(AccessPolicy):
                 return identity.id
         else:
             raise ValueError(
-                f"Principal {principal} has no identity from provider {self.provider}."
+                f"{principal.type.capitalize()} principal with UUID {principal.uuid} has no identity from provider {self.provider}."
                 f"The Principal's identities are: {principal.identities}"
             )
 
