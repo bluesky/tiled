@@ -59,6 +59,10 @@ Write the date in place of the "Unreleased" in the case a new version is release
   principals and their API keys
 - Including `metadata` field in NodeTabs item fetch for spec views in the web UI
 
+### Added
+
+- A script to remove the 'streams' node as part of the updating BlueskyRun catalogs.
+
 ### Fixed
 
 - Display of color images in the web UI array viewer.
