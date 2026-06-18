@@ -705,3 +705,4 @@ def test_remaining_authenticated_when_tokens_not_remembered(config):
         context.configure_auth(tokens, remember_me=False)
         # This will timeout if waiting for a prompt response
         client = from_context(context, remember_me=False)
+        assert client.context.authenticated
