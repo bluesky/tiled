@@ -95,9 +95,14 @@ class TagBasedAccessPolicy(AccessPolicy):
             if identity.provider == self.provider:
                 return identity.id
         else:
+            provider_identity_info = "\n".join(
+                f"Identity: {identity.id}. Provider: {identity.provider}."
+                for identity in principal.identities
+            )
             raise ValueError(
-                f"{principal.type.capitalize()} principal with UUID {principal.uuid} has no identity from provider {self.provider}."
-                f"The Principal's identities are: {principal.identities}"
+                f"{principal.type.capitalize()} principal with UUID {principal.uuid} has no identity from "
+                f"provider {self.provider}. "
+                f"Below are the Principal's identities and corresponding providers:\n{provider_identity_info}"
             )
 
     def _is_admin(self, authn_scopes):

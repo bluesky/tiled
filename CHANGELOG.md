@@ -22,6 +22,10 @@ Write the date in place of the "Unreleased" in the case a new version is release
   retry cannot fix: an unsupported URL scheme and an invalid request such as an
   illegal header value.
 
+### Fixed
+
+- Changed the printing of the entire principal object within _get_id in the event of a ValueError to allow for a shorter and clearer description of the issue.
+
 
 ## v0.2.11 (2026-05-27)
 
