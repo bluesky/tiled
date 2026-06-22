@@ -158,6 +158,7 @@ Commands:
   create
   list
   revoke
+  revoke_self
 ```
 
 We can see the key that we made above in the list.

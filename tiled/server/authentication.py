@@ -437,6 +437,17 @@ async def get_current_scopes(
         return PUBLIC_SCOPES if settings.allow_anonymous_access else NO_SCOPES
 
 
+async def get_current_scopes_revoke(
+    which_scopes = Depends(get_current_scopes), 
+):  
+    if "revoke:apikeys" in which_scopes:
+        return "full_revoke_power"
+    elif "revoke:apikeys:self" in which_scopes: 
+        return "self_revoke_power"
+    else:
+        return None
+    
+
 async def get_current_scopes_websocket(
     websocket: WebSocket,
     api_key: Optional[str] = Depends(get_api_key_websocket),
@@ -564,6 +575,45 @@ async def check_scopes(
             detail=(
                 "Not enough permissions. "
                 f"Requires scopes {security_scopes.scopes}. "
+                f"Request had scopes {list(scopes)}"
+            ),
+            headers=headers_for_401(request, security_scopes),
+        )
+    
+
+async def check_scopes_with_or(
+    request: Request,
+    security_scopes: SecurityScopes,
+    scopes: set[str] = Depends(get_current_scopes),
+    settings: Settings = Depends(get_settings),
+) -> None:
+
+    if isinstance(settings.authenticator, ProxiedOIDCAuthenticator):
+        if settings.authenticator.scopes:
+            for scope in scopes:
+                if scope in set(settings.authenticator.scopes):
+                    return
+   
+            raise HTTPException(
+                status_code=HTTP_401_UNAUTHORIZED,
+                detail=(
+                    "Not enough permissions. "
+                    f"Requires scopes {settings.authenticator.scopes}. "
+                    f"Request had scopes {list(scopes)}"
+                ),
+                headers=headers_for_401(request, security_scopes),
+            )
+
+    else:
+        for scope in scopes:
+            if scope in set(security_scopes.scopes):
+                return
+   
+        raise HTTPException(
+            status_code=HTTP_401_UNAUTHORIZED,
+            detail=(
+                "Not enough permissions. "
+                f"Requires scopes {settings.authenticator.scopes}. "
                 f"Request had scopes {list(scopes)}"
             ),
             headers=headers_for_401(request, security_scopes),
@@ -1623,7 +1673,9 @@ def authentication_router() -> APIRouter:
         request: Request,
         first_eight: str,
         principal: Optional[schemas.Principal] = Depends(get_current_principal),
-        _=Security(check_scopes, scopes=["revoke:apikeys"]),
+        api_key: Optional[str] = Depends(get_api_key),
+        _=Security(check_scopes_with_or, scopes=["revoke:apikeys", "revoke:apikeys:self"]), 
+        which_scopes = Depends(get_current_scopes_revoke), 
         db_factory: Callable[[], Optional[AsyncSession]] = Depends(
             get_database_session_factory
         ),
@@ -1635,48 +1687,36 @@ def authentication_router() -> APIRouter:
         if principal is None:
             return None
         async with db_factory() as db:
-            api_key_orm = (
-                await db.execute(
-                    select(orm.APIKey).filter(orm.APIKey.first_eight == first_eight[:8])
-                )
-            ).scalar()
+            api_key_orm = None 
+            if which_scopes == "full_revoke_power":
+                api_key_orm = (
+                    await db.execute(
+                        select(orm.APIKey).filter(orm.APIKey.first_eight == first_eight[:8])
+                    )
+                ).scalar()
+            elif which_scopes == "self_revoke_power": 
+                if(first_eight[:8] == api_key[:8]):
+                    try:
+                        secret = bytes.fromhex(api_key)
+                    except Exception:
+                        return None
+                    api_key_orm = await lookup_valid_api_key(db, secret)
+
+                else:
+                    raise HTTPException(
+                        status_code=HTTP_401_UNAUTHORIZED,
+                        detail=(
+                            "Not enough permissions. "
+                            f"Requires scope revoke:apikeys. "
+                        )
+                    )
             if (api_key_orm is None) or (api_key_orm.principal.uuid != principal.uuid):
                 raise HTTPException(
                     404,
                     f"The currently-authenticated {principal.type} has no such API key.",
                 )
-            await db.delete(api_key_orm)
-            await db.commit()
-        return Response(status_code=HTTP_204_NO_CONTENT)
-    
-    @router.delete("/apikey/self")
-    async def revoke_self_apikey(
-        request: Request,
-        api_key: Optional[str] = Depends(get_api_key),
-        principal: Optional[schemas.Principal] = Depends(get_current_principal),
-        _=Security(check_scopes, scopes=["revoke:self_revoke_apikeys"]),
-        db_factory: Callable[[], Optional[AsyncSession]] = Depends(
-            get_database_session_factory
-        ),
-    ):
-        """
-        Revoke the current user's API key."""
-        # TODO Permit filtering the fields of the response.
-        request.state.endpoint = "auth"
-        if principal is None:
-            return None
-        async with db_factory() as db:
-            try:
-                secret = bytes.fromhex(api_key)
-                hashed_secret = hashlib.sha256(secret).digest()
-            except Exception:
-                return None
-            api_key_orm = await lookup_valid_api_key(db, secret)            
-            if (api_key_orm is None) or (api_key_orm.principal.uuid != principal.uuid):
-                raise HTTPException(
-                    404,
-                    f"The provided API key is not that of the currently-authenticated {principal.type}.",
-                )
+                
+            
             await db.delete(api_key_orm)
             await db.commit()
         return Response(status_code=HTTP_204_NO_CONTENT)

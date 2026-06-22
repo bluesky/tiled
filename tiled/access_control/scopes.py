@@ -14,6 +14,9 @@ SCOPES = {
     "revoke:apikeys": {
         "description": "Revoke API keys as the currently-authenticated user or service."
     },
+    "revoke:apikeys:self": {
+        "description": "Revokes one's own actively using API key."
+    },
     "admin:apikeys": {
         "description": "Create and revoke API keys on behalf of any user or service."
     },
