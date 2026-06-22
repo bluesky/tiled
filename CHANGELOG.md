@@ -4,6 +4,11 @@ Write the date in place of the "Unreleased" in the case a new version is release
 # Changelog
 
 
+### Fixed
+
+- Changed the printing of the entire principal object within _get_id in the event of a ValueError to allow for a shorter and clearer description of the issue.
+
+
 ## v0.2.12 (2026-06-16)
 
 ### Added
@@ -21,10 +26,6 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - Fail fast instead of retrying on deterministic client request errors that a
   retry cannot fix: an unsupported URL scheme and an invalid request such as an
   illegal header value.
-
-### Fixed
-
-- Changed the printing of the entire principal object within _get_id in the event of a ValueError to allow for a shorter and clearer description of the issue.
 
 
 ## v0.2.11 (2026-05-27)
