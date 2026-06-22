@@ -693,9 +693,9 @@ def test_admin_delete_principal_apikey(
         with fail_with_status_code(HTTP_401_UNAUTHORIZED):
             context.whoami()
 
+
 def test_api_key_self_revoked(enter_username_password, config):
     with Context.from_app(build_app_from_config(config)) as context:
-        
         # this logs in using username and password
         with enter_username_password("alice", "secret1"):
             context.authenticate()
@@ -704,12 +704,13 @@ def test_api_key_self_revoked(enter_username_password, config):
         api_key = context.create_api_key()
 
         # logs in with api key and revokes
-    with Context.from_app(build_app_from_config(config), api_key = api_key["secret"]) as api_context:
+    with Context.from_app(
+        build_app_from_config(config), api_key=api_key["secret"]
+    ) as api_context:
         api_context.revoke_self_api_key()
 
-        
     with Context.from_app(build_app_from_config(config)) as context:
-        # now that we revoked the api key, login again with username and password 
+        # now that we revoked the api key, login again with username and password
         with enter_username_password("alice", "secret1"):
             context.authenticate()
         assert len(context.whoami()["api_keys"]) == 0
@@ -721,32 +722,33 @@ def test_api_key_self_revoked(enter_username_password, config):
 
 def test_unallowed_api_key_self_revoked(enter_username_password, config):
     with Context.from_app(build_app_from_config(config)) as context:
-        
         # this logs in using username and password
         with enter_username_password("alice", "secret1"):
             context.authenticate()
 
         # this makes an API key that the user can login with
         api_key = context.create_api_key(scopes=["revoke:apikeys:self"])
-        second_api_key = context.create_api_key(scopes=["revoke:apikeys:self"]) 
-        
-    with Context.from_app(build_app_from_config(config), api_key = api_key["secret"]) as api_context:
+        second_api_key = context.create_api_key(scopes=["revoke:apikeys:self"])
+
+    with Context.from_app(
+        build_app_from_config(config), api_key=api_key["secret"]
+    ) as api_context:
         with fail_with_status_code(HTTP_401_UNAUTHORIZED):
             api_context.revoke_api_key(second_api_key["first_eight"])
-        
+
         assert len(api_context.whoami()["api_keys"]) == 2
 
-
     with Context.from_app(build_app_from_config(config)) as context:
-        
         # this logs in using username and password
         with enter_username_password("alice", "secret1"):
             context.authenticate()
 
         assert len(context.whoami()["api_keys"]) == 2
 
-    with Context.from_app(build_app_from_config(config), api_key = api_key["secret"]) as api_context:
-        api_context.revoke_self_api_key() 
+    with Context.from_app(
+        build_app_from_config(config), api_key=api_key["secret"]
+    ) as api_context:
+        api_context.revoke_self_api_key()
 
     with Context.from_app(build_app_from_config(config)) as context:
         with enter_username_password("alice", "secret1"):

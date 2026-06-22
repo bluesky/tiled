@@ -438,15 +438,15 @@ async def get_current_scopes(
 
 
 async def get_current_scopes_revoke(
-    which_scopes = Depends(get_current_scopes), 
-):  
+    which_scopes=Depends(get_current_scopes),
+):
     if "revoke:apikeys" in which_scopes:
         return "full_revoke_power"
-    elif "revoke:apikeys:self" in which_scopes: 
+    elif "revoke:apikeys:self" in which_scopes:
         return "self_revoke_power"
     else:
         return None
-    
+
 
 async def get_current_scopes_websocket(
     websocket: WebSocket,
@@ -579,7 +579,7 @@ async def check_scopes(
             ),
             headers=headers_for_401(request, security_scopes),
         )
-    
+
 
 async def check_scopes_with_or(
     request: Request,
@@ -587,13 +587,12 @@ async def check_scopes_with_or(
     scopes: set[str] = Depends(get_current_scopes),
     settings: Settings = Depends(get_settings),
 ) -> None:
-
     if isinstance(settings.authenticator, ProxiedOIDCAuthenticator):
         if settings.authenticator.scopes:
             for scope in scopes:
                 if scope in set(settings.authenticator.scopes):
                     return
-   
+
             raise HTTPException(
                 status_code=HTTP_401_UNAUTHORIZED,
                 detail=(
@@ -608,7 +607,7 @@ async def check_scopes_with_or(
         for scope in scopes:
             if scope in set(security_scopes.scopes):
                 return
-   
+
         raise HTTPException(
             status_code=HTTP_401_UNAUTHORIZED,
             detail=(
@@ -1674,8 +1673,10 @@ def authentication_router() -> APIRouter:
         first_eight: str,
         principal: Optional[schemas.Principal] = Depends(get_current_principal),
         api_key: Optional[str] = Depends(get_api_key),
-        _=Security(check_scopes_with_or, scopes=["revoke:apikeys", "revoke:apikeys:self"]), 
-        which_scopes = Depends(get_current_scopes_revoke), 
+        _=Security(
+            check_scopes_with_or, scopes=["revoke:apikeys", "revoke:apikeys:self"]
+        ),
+        which_scopes=Depends(get_current_scopes_revoke),
         db_factory: Callable[[], Optional[AsyncSession]] = Depends(
             get_database_session_factory
         ),
@@ -1687,15 +1688,17 @@ def authentication_router() -> APIRouter:
         if principal is None:
             return None
         async with db_factory() as db:
-            api_key_orm = None 
+            api_key_orm = None
             if which_scopes == "full_revoke_power":
                 api_key_orm = (
                     await db.execute(
-                        select(orm.APIKey).filter(orm.APIKey.first_eight == first_eight[:8])
+                        select(orm.APIKey).filter(
+                            orm.APIKey.first_eight == first_eight[:8]
+                        )
                     )
                 ).scalar()
-            elif which_scopes == "self_revoke_power": 
-                if(first_eight[:8] == api_key[:8]):
+            elif which_scopes == "self_revoke_power":
+                if first_eight[:8] == api_key[:8]:
                     try:
                         secret = bytes.fromhex(api_key)
                     except Exception:
@@ -1706,17 +1709,15 @@ def authentication_router() -> APIRouter:
                     raise HTTPException(
                         status_code=HTTP_401_UNAUTHORIZED,
                         detail=(
-                            "Not enough permissions. "
-                            f"Requires scope revoke:apikeys. "
-                        )
+                            "Not enough permissions. Requires scope revoke:apikeys. "
+                        ),
                     )
             if (api_key_orm is None) or (api_key_orm.principal.uuid != principal.uuid):
                 raise HTTPException(
                     404,
                     f"The currently-authenticated {principal.type} has no such API key.",
                 )
-                
-            
+
             await db.delete(api_key_orm)
             await db.commit()
         return Response(status_code=HTTP_204_NO_CONTENT)

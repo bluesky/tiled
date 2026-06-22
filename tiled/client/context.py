@@ -913,6 +913,7 @@ class Context:
                         },
                     )
                 )
+
     def revoke_self_api_key(self):
         """
         Revoke the current user's API key.
@@ -1331,6 +1332,7 @@ class Admin:
                         },
                     )
                 )
+
 
 class CannotPrompt(Exception):
     pass
