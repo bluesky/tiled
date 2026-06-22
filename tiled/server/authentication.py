@@ -1648,6 +1648,38 @@ def authentication_router() -> APIRouter:
             await db.delete(api_key_orm)
             await db.commit()
         return Response(status_code=HTTP_204_NO_CONTENT)
+    
+    @router.delete("/apikey/self")
+    async def revoke_self_apikey(
+        request: Request,
+        api_key: Optional[str] = Depends(get_api_key),
+        principal: Optional[schemas.Principal] = Depends(get_current_principal),
+        _=Security(check_scopes, scopes=["revoke:self_revoke_apikeys"]),
+        db_factory: Callable[[], Optional[AsyncSession]] = Depends(
+            get_database_session_factory
+        ),
+    ):
+        """
+        Revoke the current user's API key."""
+        # TODO Permit filtering the fields of the response.
+        request.state.endpoint = "auth"
+        if principal is None:
+            return None
+        async with db_factory() as db:
+            try:
+                secret = bytes.fromhex(api_key)
+                hashed_secret = hashlib.sha256(secret).digest()
+            except Exception:
+                return None
+            api_key_orm = await lookup_valid_api_key(db, secret)            
+            if (api_key_orm is None) or (api_key_orm.principal.uuid != principal.uuid):
+                raise HTTPException(
+                    404,
+                    f"The provided API key is not that of the currently-authenticated {principal.type}.",
+                )
+            await db.delete(api_key_orm)
+            await db.commit()
+        return Response(status_code=HTTP_204_NO_CONTENT)
 
     @router.get(
         "/whoami",

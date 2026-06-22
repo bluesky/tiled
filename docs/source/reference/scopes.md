@@ -15,6 +15,7 @@ with restricted scopes.
 * `delete:node` --- Delete a node
 * `create:apikeys` --- Create API keys for the currently-authenticated user or service.
 * `revoke:apikeys` --- Revoke API keys for the currently-authenticated user or service.
+* `revoke:self_revoke_apikeys` --- Revoke API key that is currently used for authorization.
 * `metrics` --- Access Prometheus metrics.
 * `admin:apikeys` --- Manage API keys on behalf of any user or service.
 * `read:principals` --- Read list of all users and services and their attributes.

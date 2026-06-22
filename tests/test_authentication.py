@@ -692,3 +692,72 @@ def test_admin_delete_principal_apikey(
         context.api_key = api_key_info["secret"]
         with fail_with_status_code(HTTP_401_UNAUTHORIZED):
             context.whoami()
+
+
+def test_api_key_self_revoked(enter_username_password, config):
+    with Context.from_app(build_app_from_config(config)) as context:
+        
+        # this logs in using username and password
+        with enter_username_password("alice", "secret1"):
+            context.authenticate()
+
+        # this makes an API key that the user can login with
+        api_key = context.create_api_key()
+
+        # logs in with api key and revokes
+    with Context.from_app(build_app_from_config(config), api_key = api_key["secret"]) as api_context:
+        api_context.revoke_self_api_key()
+
+        
+    with Context.from_app(build_app_from_config(config)) as context:
+        # now that we revoked the api key, login again with username and password 
+        with enter_username_password("alice", "secret1"):
+            context.authenticate()
+        assert len(context.whoami()["api_keys"]) == 0
+        context.logout()
+        context.api_key = api_key["secret"]
+        with fail_with_status_code(HTTP_401_UNAUTHORIZED):
+            from_context(context)
+
+
+def test_unallowed_api_key_self_revoked(enter_username_password, config):
+    with Context.from_app(build_app_from_config(config)) as context:
+        
+        # this logs in using username and password
+        with enter_username_password("alice", "secret1"):
+            context.authenticate()
+
+        # this makes an API key that the user can login with
+        api_key = context.create_api_key(scopes=["revoke:self_revoke_apikeys"]) # make so this shouldn't have regular revoke scope
+        second_api_key = context.create_api_key(scopes=["revoke:self_revoke_apikeys"]) 
+        # logs in with api key and revokes
+        
+    with Context.from_app(build_app_from_config(config), api_key = api_key["secret"]) as api_context:
+        with fail_with_status_code(HTTP_401_UNAUTHORIZED):
+            api_context.revoke_api_key(second_api_key["first_eight"]) # this should work because the api key has the scope to revoke itself
+        
+        # now that we revoked the api key, login again with username and password 
+        assert len(api_context.whoami()["api_keys"]) == 2
+        # context.logout()
+        # context.api_key = api_key["secret"]
+        # with fail_with_status_code(HTTP_401_UNAUTHORIZED):
+        #     context.revoke_api_key(api_key["first_eight"])
+
+    with Context.from_app(build_app_from_config(config)) as context:
+        
+        # this logs in using username and password
+        with enter_username_password("alice", "secret1"):
+            context.authenticate()
+
+        assert len(context.whoami()["api_keys"]) == 2
+        # TODO this is an attempt to revoke another key that won't work 'cause it's not itself
+
+    # now check that it CAN self revoke the 1 API key though
+    with Context.from_app(build_app_from_config(config), api_key = api_key["secret"]) as api_context:
+        api_context.revoke_self_api_key() 
+
+    with Context.from_app(build_app_from_config(config)) as context:
+        with enter_username_password("alice", "secret1"):
+            context.authenticate()
+
+        assert len(context.whoami()["api_keys"]) == 1

@@ -913,6 +913,31 @@ class Context:
                         },
                     )
                 )
+    def revoke_self_api_key(self):
+        """
+        Revoke the current user's API key.
+
+        The API key must belong to the currently-authenticated user or service.
+        Users with administrative scopes may use ``Context.admin.revoke_api_key``
+        to revoke API keys belonging to other users.
+
+        """
+
+        url_path = self.server_info.authentication.links.apikey
+
+        self.revoke_api_key(self.api_key[:8]) # make sure the self.api_key actually does what i want it to do
+
+        for attempt in retry_context(self):
+            with attempt:
+                handle_error(
+                    self.http_client.delete(
+                        url_path,
+                        headers={"x-csrf": self.http_client.cookies["tiled_csrf"]},
+                        params={
+                            **parse_qs(urlparse(url_path).query),
+                        },
+                    )
+                )
 
     @property
     def app(self):
@@ -1324,7 +1349,6 @@ class Admin:
                         },
                     )
                 )
-
 
 class CannotPrompt(Exception):
     pass
