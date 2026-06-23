@@ -6,7 +6,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Fixed
 
-- Changed the printing of the entire principal object within _get_id in the event of a ValueError to allow for a shorter and clearer description of the issue.
+- The exception message for when a principal doesn't have the specified identity from the provider within TagBasedAccessPolicy was changed from the printing of the entire principal object to the printing of specifically the type, uuid, and identities with respective providers. This change fixes the problem of an unreasonably long exception message to allow for greater readability and understanding. 
 
 
 ## v0.2.12 (2026-06-16)
