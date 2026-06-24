@@ -975,6 +975,7 @@ class CatalogNodeAdapter:
                 await db.execute(
                     select(orm.Revision)
                     .where(orm.Revision.node_id == self.node.id)
+                    .order_by(orm.Revision.revision_number)
                     .offset(offset)
                     .limit(limit)
                 )
