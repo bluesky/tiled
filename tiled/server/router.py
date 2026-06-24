@@ -40,7 +40,7 @@ from starlette.status import (
 )
 
 from tiled.adapters.protocols import AnyAdapter
-from tiled.authenticators import ProxiedOIDCAuthenticator
+from bluesky_authentication.authenticators import ProxiedOIDCAuthenticator
 from tiled.media_type_registration import SerializationRegistry
 from tiled.query_registration import QueryRegistry
 from tiled.schemas import About

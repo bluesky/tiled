@@ -2,7 +2,7 @@
 authentication:
   providers:
   - provider: orcid
-    authenticator: tiled.authenticators:OIDCAuthenticator
+    authenticator: bluesky_authentication.authenticators:OIDCAuthenticator
     args:
       audience: tiled  # something unique to ensure received headers are for you
       # These values come from https://orcid.org/developer-tools

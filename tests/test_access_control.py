@@ -34,7 +34,7 @@ server_config = {
         "providers": [
             {
                 "provider": "toy",
-                "authenticator": "tiled.authenticators:DictionaryAuthenticator",
+                "authenticator": "bluesky_authentication.authenticators:DictionaryAuthenticator",
                 "args": {
                     "users_to_passwords": {
                         "alice": "alice",

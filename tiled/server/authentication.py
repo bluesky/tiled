@@ -41,8 +41,8 @@ from starlette.status import (
     HTTP_409_CONFLICT,
 )
 
+from bluesky_authentication.authenticators import ProxiedOIDCAuthenticator
 from tiled.access_control.scopes import NO_SCOPES, PUBLIC_SCOPES, SINGLE_USER_SCOPES
-from tiled.authenticators import ProxiedOIDCAuthenticator
 
 # To hide third-party warning
 # .../jose/backends/cryptography_backend.py:18: CryptographyDeprecationWarning:

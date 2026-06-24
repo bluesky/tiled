@@ -162,6 +162,10 @@
 # Authentication
 # -----------------------------------------------------------------------------
 authentication:
+  # Canonical authenticator import path:
+  #   bluesky_authentication.authenticators:ClassName
+  # Backward-compatible legacy path still supported:
+  #   tiled.authenticators:ClassName
 
   # ---------------------------------------------------------------------------
   # Identity Providers
@@ -176,7 +180,7 @@ authentication:
   #
   # providers:
   #   - provider: local
-  #     authenticator: tiled.authenticators:PAMAuthenticator
+  #     authenticator: bluesky_authentication.authenticators:PAMAuthenticator
   #     args:
   #       service: login         # PAM service name. Default is "login".
 
@@ -200,7 +204,7 @@ authentication:
   #
   # providers:
   #   - provider: google          # Must match the label used in the redirect URIs above
-  #     authenticator: tiled.authenticators:OIDCAuthenticator
+  #     authenticator: bluesky_authentication.authenticators:OIDCAuthenticator
   #     args:
   #       audience: tiled         # Checked against the "aud" claim in the token
   #       client_id: YOUR_CLIENT_ID_HERE
@@ -226,7 +230,7 @@ authentication:
   #
   # providers:
   #   - provider: toy
-  #     authenticator: tiled.authenticators:DictionaryAuthenticator
+  #     authenticator: bluesky_authentication.authenticators:DictionaryAuthenticator
   #     args:
   #       users_to_passwords:
   #         alice: ${ALICE_PASSWORD}
@@ -239,7 +243,7 @@ authentication:
   #
   # providers:
   #   - provider: toy
-  #     authenticator: tiled.authenticators:DummyAuthenticator
+  #     authenticator: bluesky_authentication.authenticators:DummyAuthenticator
 
 
   # ---------------------------------------------------------------------------

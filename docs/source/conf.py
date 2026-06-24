@@ -324,7 +324,7 @@ app = build_app(
         providers=[
             AuthenticationProviderSpec(
                 provider="dummy",
-                authenticator="tiled.authenticators:DummyAuthenticator",
+                authenticator="bluesky_authentication.authenticators:DummyAuthenticator",
             )
         ]
     ),

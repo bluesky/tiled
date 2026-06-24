@@ -32,7 +32,7 @@ def oidc_config(well_known_url: str) -> Dict[str, Any]:
             "providers": [
                 {
                     "provider": "keycloak_oidc",
-                    "authenticator": "tiled.authenticators:ProxiedOIDCAuthenticator",
+                    "authenticator": "bluesky_authentication.authenticators:ProxiedOIDCAuthenticator",
                     "args": {
                         "audience": "tiled_aud",
                         "client_id": "tiled",
@@ -250,7 +250,7 @@ def decoded_token(base_url: str) -> Dict[str, Any]:
 
 
 @pytest.fixture
-@patch("tiled.authenticators.OIDCAuthenticator.decode_token")
+@patch("bluesky_authentication.authenticators.OIDCAuthenticator.decode_token")
 def client(
     decode_token: MagicMock,
     context,
@@ -275,7 +275,7 @@ def client(
     return client
 
 
-@patch("tiled.authenticators.OIDCAuthenticator.decode_token")
+@patch("bluesky_authentication.authenticators.OIDCAuthenticator.decode_token")
 def test_whoami_endpoint(
     decode_token: MagicMock,
     client,
@@ -286,7 +286,7 @@ def test_whoami_endpoint(
     assert info["identities"][0]["id"] == decoded_token["sub"]
 
 
-@patch("tiled.authenticators.OIDCAuthenticator.decode_token")
+@patch("bluesky_authentication.authenticators.OIDCAuthenticator.decode_token")
 def test_client_refresh(
     decode_token: MagicMock,
     context,
@@ -336,7 +336,7 @@ def test_client_refresh(
         assert client.context.whoami() == {}
 
 
-@patch("tiled.authenticators.OIDCAuthenticator.decode_token")
+@patch("bluesky_authentication.authenticators.OIDCAuthenticator.decode_token")
 def test_logout(
     decode_token: MagicMock,
     context,

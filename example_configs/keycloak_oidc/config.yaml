@@ -1,7 +1,7 @@
 authentication:
   providers:
   - provider: keycloak_oidc
-    authenticator: tiled.authenticators:ProxiedOIDCAuthenticator
+    authenticator: bluesky_authentication.authenticators:ProxiedOIDCAuthenticator
     args:
       audience: tiled_aud
       client_id: tiled

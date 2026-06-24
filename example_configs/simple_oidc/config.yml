@@ -7,7 +7,7 @@
 authentication:
   providers:
   - provider: simple_oidc
-    authenticator: tiled.authenticators:OIDCAuthenticator
+    authenticator: bluesky_authentication.authenticators:OIDCAuthenticator
     args:
       audience: ${OIDC_CLIENT_ID}
       client_id: ${OIDC_CLIENT_ID}
