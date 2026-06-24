@@ -465,7 +465,7 @@ class CustomAccessPolicy(AccessPolicy):
         authn_scopes: Scopes,
     ) -> Scopes:
         allowed = self.scopes
-        somemetadata = node.metadata()  # noqa: 841
+        somemetadata = node.metadata()  # noqa: F841
         return allowed
 
     async def filters(
@@ -477,7 +477,7 @@ class CustomAccessPolicy(AccessPolicy):
         scopes: Scopes,
     ) -> Filters:
         queries: Filters = ALL_ACCESS
-        somespecs = node.specs()  # noqa: 841
+        somespecs = node.specs()  # noqa: F841
         return queries
 
 
