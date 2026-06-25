@@ -30,6 +30,7 @@ on the `conda-forge` channel, which pixi uses by default.
 
 See [Getting Started][] for more detailed installation instructions.
 
+
 ## First Steps
 
 See [What is Tiled?][] for an overview of Tiled's goals. Then see
