@@ -21,7 +21,7 @@ jobs:
         python-version: ${{ matrix.python-version }}
 
     - name: Install tiled
-      run: uv sync --all-extras --group docs
+      run: uv sync --all-extras --group docs --with "bluesky-authentication @ git+https://github.com/davidpcls/bluesky-authentication.git@main"
 
     - name: Build Docs
       shell: bash -l {0}
