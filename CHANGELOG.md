@@ -18,6 +18,12 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - Respect the `Retry-After` header on HTTP 429 (Too Many Requests) responses.
 - Support for interacting with irregular-shaped numeric arrays via
   [`ragged`](https://github.com/scikit-hep/ragged).
+- Surface `Asset.size` (the byte length of each underlying file) on the
+  `Asset` API model. `tiled register` populates it via `os.stat()` for
+  non-directory `file://` assets; directory and object-store assets
+  leave it as `null`. The corresponding ORM column has existed since
+  the catalog schema was created but was previously never written or
+  read.
 - New `bytes` structure family for serving opaque byte payloads (PDFs,
   firmware blobs, proprietary binary formats, etc.) that lack a useful
   logical structure. Read-only by design: files registered as `bytes` are

@@ -897,6 +897,7 @@ class CatalogNodeAdapter:
             statement = self.insert(orm.Asset).values(
                 data_uri=asset.data_uri,
                 is_directory=asset.is_directory,
+                size=asset.size,
             )
             result = await db.execute(statement)
             (asset_id,) = result.inserted_primary_key
