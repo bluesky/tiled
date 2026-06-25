@@ -1695,8 +1695,11 @@ class CatalogAwkwardAdapter(CatalogNodeAdapter):
 
 
 class CatalogBytesAdapter(CatalogNodeAdapter):
-    async def read(self, *args, **kwargs):
-        return await ensure_awaitable((await self.get_adapter()).read, *args, **kwargs)
+    # Bytes nodes serve their content via /asset/bytes, not through a
+    # structure-family endpoint, so this adapter inherits CatalogNodeAdapter
+    # unchanged. The class exists to anchor the family in STRUCTURES so
+    # registration produces an instance of the right type.
+    pass
 
 
 class CatalogRaggedAdapter(CatalogArrayAdapter):

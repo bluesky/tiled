@@ -24,22 +24,8 @@ Write the date in place of the "Unreleased" in the case a new version is release
   leave it as `null`. The corresponding ORM column has existed since
   the catalog schema was created but was previously never written or
   read.
-- New `bytes` structure family for serving opaque byte payloads (PDFs,
-  firmware blobs, proprietary binary formats, etc.) that lack a useful
-  logical structure. Read-only by design: files registered as `bytes` are
-  served via `GET /bytes/full/{path}` with optional `?slice=start:stop:step`
-  byte-range slicing, the HTTP `Range:` header (yielding `206 Partial
-  Content` for use with `curl -r`, `aria2c -x16`, browsers, and resumable
-  downloads), and `?filename=...` for `Content-Disposition`.
-  `BytesClient.export(path)` and `BytesClient.read()` partition large
-  downloads at server-declared chunk boundaries (further subdivided so no
-  request exceeds `BytesClient.RESPONSE_BYTESIZE_LIMIT`, 100 MiB) and fan
-  the sub-requests out concurrently via HTTP `Range:` headers, capped by
-  the context's `max_connections`. Each task streams its sub-range to a
-  disjoint region of a pre-allocated file, so peak per-worker memory stays
-  bounded. Externally-registered files whose extension Python classifies
-  as `application/octet-stream` (`.bin`, `.so`, `.a`, …) are picked up
-  automatically by `tiled register`.
+- New `bytes` structure family for cataloging opaque byte payloads that lack a
+  useful logical structure (PDFs, firmware blobs, proprietary binary formats, etc.).
 - Fail fast instead of retrying on deterministic client request errors that a
   retry cannot fix: an unsupported URL scheme and an invalid request such as an
   illegal header value.

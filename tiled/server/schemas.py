@@ -252,7 +252,6 @@ class AwkwardLinks(pydantic.BaseModel):
 
 class BytesLinks(pydantic.BaseModel):
     self: str
-    full: str
 
 
 class DataFrameLinks(pydantic.BaseModel):

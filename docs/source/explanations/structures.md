@@ -282,14 +282,24 @@ $ http :8000/api/v1/metadata/nested/ragged_array | jq .data.attributes.structure
 
 The `bytes` family represents an opaque, flat sequence of bytes. Tiled does not
 interpret the payload: the interpretation (MIME type, filename, encoding) lives
-on the `DataSource` and individual `Asset`s. The structure carries only the
-total `size` and the per-chunk byte lengths needed to resolve a byte-range
-slice into per-chunk reads:
+on the `DataSource` and individual `Asset`s. `BytesStructure` itself carries no
+fields -- it exists only so the family takes its place in the registration map
+alongside `array`, `table`, etc. The per-asset byte length is recorded on each
+`Asset.size`, so a multi-asset bytes node reports the size of every underlying
+file individually:
 
 ```json
 {
-  "size": 1048576,
-  "chunks": [524288, 524288]
+  "data_sources": [
+    {
+      "structure_family": "bytes",
+      "structure": {},
+      "assets": [
+        {"id": 7, "data_uri": "file:///.../part0.bin", "size": 524288, "num": 0},
+        {"id": 8, "data_uri": "file:///.../part1.bin", "size": 524288, "num": 1}
+      ]
+    }
+  ]
 }
 ```
 
@@ -315,30 +325,30 @@ def detect(path, mimetype):
     return mimetype or "application/octet-stream"
 ```
 
-#### Slicing and large downloads
+#### Downloading bytes content
 
-Two mechanisms exist for fetching a sub-range:
+`bytes` nodes do not have a dedicated content endpoint, and there is no
+family-specific Python client: a `bytes` node surfaces as a generic
+`BaseClient` whose `.item` carries the structure and asset metadata.
+Each underlying asset is downloaded individually through the generic
+`/api/v1/asset/bytes/{path}?id=N` endpoint, where `N` is the asset's id
+discovered from the node's metadata (`data_sources[0].assets[i].id`).
+Clients with multi-asset nodes issue one request per asset and
+concatenate the responses in `num` order.
 
-* `?slice=start:stop:step` accepts an arbitrary numpy-style slice (including
-  reversed and strided slices).
-* The HTTP `Range:` header (e.g. `bytes=0-9`, `bytes=20-`, `bytes=-1024`)
-  triggers a `206 Partial Content` response with `Content-Range` and is the
-  preferred mechanism for standard tools like `curl -r`, `aria2c -x16`, browsers,
-  and resumable downloads. The server advertises `Accept-Ranges: bytes` on
-  every response. If both are supplied, `Range:` takes precedence.
+The endpoint honors the HTTP `Range:` header and returns `206 Partial
+Content` for ranged requests, so large assets are usable with `curl -r`,
+`aria2c -x16`, browsers, and other resumable-download tools without any
+Tiled-specific client code.
 
-For multi-gigabyte payloads, `BytesClient.export(path)` and
-`BytesClient.read()` automatically partition the request along
-server-declared chunk boundaries, subdividing further when any piece
-would exceed `BytesClient.RESPONSE_BYTESIZE_LIMIT` (100 MiB), and fan
-the sub-requests out concurrently via HTTP `Range:` headers. Concurrency
-is capped by the context's `max_connections` (default 16), matching the logic of
-`ArrayClient`. Each task streams its sub-range directly to a disjoint
-region of a pre-allocated file, so peak per-worker memory stays bounded regardless
-of payload size.
-Reversed or strided slices fall back to a single sequential `?slice=`
-request. Buffer destinations (anything other than a path) also fall
-back to a single sequential request.
+This endpoint is gated by `settings.expose_raw_assets`, which defaults
+to `True`. Administrators can disable raw asset downloads by setting
+`expose_raw_assets: False` in the server configuration.
+
+Currently only `file://` assets are downloadable through this endpoint.
+Object-store (`s3://`, `az://`, `gs://`) bytes assets are recorded in
+the catalog but cannot be served via the API; this restriction will be
+lifted in a future release.
 
 ### Sparse Array
 

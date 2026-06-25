@@ -135,10 +135,6 @@ class BytesAdapter(BaseAdapter, Protocol):
     def structure(self) -> BytesStructure:
         pass
 
-    @abstractmethod
-    def read(self, slice: Optional[slice] = None) -> bytes:
-        pass
-
 
 AnyAdapter = Union[
     ArrayAdapter,

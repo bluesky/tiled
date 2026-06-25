@@ -16,6 +16,7 @@ from tiled.adapters.protocols import (
     ArrayAdapter,
     AwkwardAdapter,
     BaseAdapter,
+    BytesAdapter,
     RaggedAdapter,
     SparseAdapter,
     TableAdapter,
@@ -25,6 +26,7 @@ from tiled.server.schemas import Principal, PrincipalType
 from tiled.storage import Storage
 from tiled.structures.array import ArrayStructure, BuiltinDtype
 from tiled.structures.awkward import AwkwardStructure
+from tiled.structures.bytes import BytesStructure
 from tiled.structures.core import Spec, StructureFamily
 from tiled.structures.ragged import RaggedStructure
 from tiled.structures.sparse import COOStructure
@@ -173,6 +175,53 @@ def test_awkwardadapter_protocol(mocker: MockFixture) -> None:
     mock_call3.assert_called_once_with(form_keys)
     mock_call4.assert_called_once()
     mock_call5.assert_called_once()
+
+
+class CustomBytesAdapter:
+    structure_family: Literal[StructureFamily.bytes] = StructureFamily.bytes
+    supported_storage: Set[type[Storage]] = set()
+
+    def __init__(
+        self,
+        structure: BytesStructure,
+        metadata: Optional[JSON] = None,
+        specs: Optional[List[Spec]] = None,
+    ) -> None:
+        self._structure = structure
+        self._metadata = metadata or {}
+        self._specs = list(specs or [])
+
+    def structure(self) -> BytesStructure:
+        return self._structure
+
+    def specs(self) -> List[Spec]:
+        return self._specs
+
+    def metadata(self) -> JSON:
+        return self._metadata
+
+
+def bytesadapter_protocol_functions(adapter: BytesAdapter) -> None:
+    adapter.structure()
+    adapter.specs()
+    adapter.metadata()
+
+
+def test_bytesadapter_protocol(mocker: MockFixture) -> None:
+    mock_call = mocker.patch.object(CustomBytesAdapter, "structure")
+    mock_call2 = mocker.patch.object(CustomBytesAdapter, "specs")
+    mock_call3 = mocker.patch.object(CustomBytesAdapter, "metadata")
+
+    structure = BytesStructure()
+    metadata: JSON = {"foo": "bar"}
+
+    anybytesadapter = CustomBytesAdapter(structure, metadata=metadata)
+    assert anybytesadapter.structure_family == StructureFamily.bytes
+
+    bytesadapter_protocol_functions(anybytesadapter)
+    mock_call.assert_called_once()
+    mock_call2.assert_called_once()
+    mock_call3.assert_called_once()
 
 
 class CustomRaggedAdapter:

@@ -1,9 +1,7 @@
-import builtins
 import collections
 import dataclasses
 import inspect
 import os
-import urllib.parse
 import warnings
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
@@ -37,7 +35,6 @@ from starlette.status import (
     HTTP_405_METHOD_NOT_ALLOWED,
     HTTP_406_NOT_ACCEPTABLE,
     HTTP_410_GONE,
-    HTTP_416_RANGE_NOT_SATISFIABLE,
     HTTP_422_UNPROCESSABLE_CONTENT,
     HTTP_500_INTERNAL_SERVER_ERROR,
 )
@@ -177,47 +174,6 @@ def _patch_route_signature(
         return route_with_sig
 
     return inner
-
-
-def _parse_byte_range(header: Optional[str], size: int) -> Optional[tuple[int, int]]:
-    """Parse a single HTTP byte-range header against a known payload size.
-
-    Returns `(lo, hi_exclusive)` for a satisfiable range, `None` if
-    `header` is missing or malformed (caller should serve the full payload),
-    or raises `HTTPException(416)` for a well-formed but unsatisfiable range.
-
-    Only the single-range forms `bytes=lo-hi`, `bytes=lo-` and
-    `bytes=-suffix` are supported. Multi-range requests are treated as
-    malformed and fall through to a full-payload response.
-    """
-    if not header:
-        return None
-    unit, _, spec = header.partition("=")
-    if unit.strip().lower() != "bytes" or "," in spec:
-        return None
-    spec = spec.strip()
-    lo_s, sep, hi_s = spec.partition("-")
-    if not sep:
-        return None
-    try:
-        if not lo_s:
-            # bytes=-suffix → last `suffix` bytes.
-            suffix = int(hi_s)
-            if suffix <= 0:
-                return None
-            lo, hi = max(0, size - suffix), size
-        else:
-            lo = int(lo_s)
-            hi = int(hi_s) + 1 if hi_s else size
-    except ValueError:
-        return None
-    if lo < 0 or lo >= size or hi <= lo:
-        raise HTTPException(
-            status_code=HTTP_416_RANGE_NOT_SATISFIABLE,
-            detail=f"Requested range not satisfiable for payload of size {size}",
-            headers={"Content-Range": f"bytes */{size}"},
-        )
-    return lo, min(hi, size)
 
 
 def get_router(
@@ -1809,100 +1765,6 @@ def get_router(
                 )
         except UnsupportedMediaTypes as err:
             raise HTTPException(status_code=HTTP_406_NOT_ACCEPTABLE, detail=err.args[0])
-
-    @router.get("/bytes/full/{path:path}", name="Full Bytes")
-    async def bytes_full(
-        request: Request,
-        path: str,
-        slice: NDSlice = Depends(parse_slice_param),
-        filename: Optional[str] = None,
-        settings: Settings = Depends(get_settings),
-        principal: Optional[Principal] = Depends(get_current_principal),
-        root_tree=Depends(get_root_tree),
-        session_state: dict = Depends(get_session_state),
-        authn_access_tags: Optional[AccessTags] = Depends(get_current_access_tags),
-        authn_scopes: Scopes = Depends(get_current_scopes),
-        _=Security(check_scopes, scopes=["read:data"]),
-    ):
-        """Fetch the opaque bytes payload.
-
-        Two slicing mechanisms are supported. `?slice=start:stop:step` accepts
-        an arbitrary numpy-style slice (including reversed/strided). The HTTP
-        `Range:` header accepts a single byte range (`bytes=lo-hi`,
-        `bytes=lo-`, or `bytes=-suffix`) and triggers a `206 Partial
-        Content` response with `Content-Range`; this is the right mechanism
-        for standard tools (`curl -r`, `aria2c`, browsers) and resumable
-        downloads. If both are supplied, `Range:` wins.
-        """
-        entry = await get_entry(
-            path,
-            ["read:data"],
-            principal,
-            authn_access_tags,
-            authn_scopes,
-            root_tree,
-            session_state,
-            request.state.metrics,
-            {StructureFamily.bytes},
-            getattr(request.app.state, "access_policy", None),
-        )
-        size = entry.structure().size
-
-        # HTTP Range header takes precedence over ?slice= if both are present.
-        byte_range = _parse_byte_range(request.headers.get("range"), size)
-        is_partial = byte_range is not None
-        if is_partial:
-            lo, hi = byte_range
-            py_slice = builtins.slice(lo, hi)
-        else:
-            # Bytes nodes are 1-D; collapse the NDSlice tuple to a single Python
-            # slice (or None for the full payload).
-            if len(slice) > 1:
-                raise HTTPException(
-                    status_code=HTTP_400_BAD_REQUEST,
-                    detail="bytes nodes accept at most a single 1-D slice",
-                )
-            py_slice = slice[0] if slice else None
-
-        with record_timing(request.state.metrics, "read"):
-            data = await ensure_awaitable(entry.read, py_slice)
-
-        if len(data) > settings.response_bytesize_limit:
-            raise HTTPException(
-                status_code=HTTP_400_BAD_REQUEST,
-                detail=(
-                    f"Response would exceed {settings.response_bytesize_limit}. "
-                    "Use slicing ('?slice=...' or the HTTP Range header) to "
-                    "request smaller chunks."
-                ),
-            )
-
-        # Prefer the DataSource's declared mimetype; fall back to octet-stream.
-        media_type = "application/octet-stream"
-        data_sources = getattr(entry, "data_sources", None) or ()
-        if data_sources and data_sources[0].mimetype:
-            media_type = data_sources[0].mimetype
-
-        headers = {"Accept-Ranges": "bytes"}
-        if is_partial:
-            lo, hi = byte_range
-            headers["Content-Range"] = f"bytes {lo}-{hi - 1}/{size}"
-        if filename:
-            # RFC 6266: filename* with percent-encoding handles non-ASCII and
-            # avoids quoting issues. Strip control characters defensively, then
-            # escape quotes/backslashes in the legacy filename= form.
-            safe = "".join(c for c in filename if c.isprintable())
-            legacy = safe.replace("\\", "\\\\").replace('"', '\\"')
-            quoted = urllib.parse.quote(safe, safe="")
-            headers[
-                "Content-Disposition"
-            ] = f"attachment; filename=\"{legacy}\"; filename*=UTF-8''{quoted}"
-        return Response(
-            content=data,
-            media_type=media_type,
-            headers=headers,
-            status_code=206 if is_partial else 200,
-        )
 
     @router.post("/metadata/{path:path}", response_model=schemas.PostMetadataResponse)
     async def post_metadata(

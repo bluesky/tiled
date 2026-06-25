@@ -31,7 +31,10 @@ def links_for_awkward(structure_family, structure, base_url, path_str):
 
 
 def links_for_bytes(structure_family, structure, base_url, path_str):
-    return {"full": f"{base_url}/bytes/full/{path_str}"}
+    # Bytes nodes have no structure-family endpoint of their own. Clients
+    # download the underlying assets via /asset/bytes/{path}?id=N, which they
+    # construct from the node metadata.
+    return {}
 
 
 def links_for_container(structure_family, structure, base_url, path_str):
