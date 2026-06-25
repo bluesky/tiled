@@ -697,3 +697,12 @@ the contained tables and arrays (thus, name collisions are forbidden). This allo
 the disparate internal storage mechanisms (e.g. Parquet for tables and zarr for arrays) and present the user with a
 smooth homogeneous interface for data access. Composite structures do not support pagination and are not
 recommended for "wide" datasets with more than ~1000 items (columns and arrays) in the namespace.
+
+`bytes`-family children are permitted in a composite container -- they participate in the
+flat namespace like any other child, listed via `composite.keys()` and accessed via
+`composite["blob_key"]` -- but they are **silently skipped** by `composite.read()` because
+opaque byte payloads have no `xarray.Dataset` representation. Downloading a bytes child
+nested inside a composite works through the same per-asset path used for top-level bytes
+nodes: `GET /asset/bytes/{composite_key}/{blob_key}?id=N`. Naming a bytes child
+explicitly in `composite.read(variables=[...])` raises a clear error rather than silently
+producing an empty slot, so typos surface immediately.

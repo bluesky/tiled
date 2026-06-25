@@ -824,3 +824,84 @@ def test_composite_progress_total_mixed_small_and_large_arrays(tmp_path):
 
             # Single variable
             assert capture_outermost_total(variables=["small_b"]) == [1]
+
+
+# --- Bytes children in composite containers --------------------------------
+
+
+@pytest.fixture(scope="function")
+def composite_with_bytes(tmp_path):
+    """A fresh composite container with one array and one bytes child."""
+    from tiled.structures.bytes import BytesStructure
+
+    catalog = in_memory(writable_storage=str(tmp_path / "store"))
+    with Context.from_app(build_app(catalog)) as ctx:
+        client = from_context(ctx)
+        comp = client.create_container(key="c", specs=["composite"])
+        comp.write_array(arr1, key="arr")
+        # External bytes child registered manually.
+        blob_path = tmp_path / "blob.bin"
+        payload = b"opaque payload"
+        blob_path.write_bytes(payload)
+        comp.new(
+            structure_family=StructureFamily.bytes,
+            data_sources=[
+                DataSource(
+                    structure_family=StructureFamily.bytes,
+                    structure=BytesStructure(),
+                    mimetype="application/octet-stream",
+                    management=Management.external,
+                    assets=[
+                        Asset(
+                            data_uri=blob_path.as_uri(),
+                            is_directory=False,
+                            size=len(payload),
+                            parameter="data_uris",
+                            num=0,
+                        )
+                    ],
+                )
+            ],
+            key="blob",
+        )
+        yield client, payload
+
+
+def test_composite_lists_bytes_child(composite_with_bytes):
+    """Bytes children appear in keys() and get_contents() like any other child."""
+    client, _ = composite_with_bytes
+    comp = client["c"]
+    assert "arr" in comp.keys()
+    assert "blob" in comp.keys()
+    contents = comp.get_contents()
+    assert contents["blob"]["attributes"]["structure_family"] == "bytes"
+
+
+def test_composite_read_skips_bytes_children(composite_with_bytes):
+    """Composite.read() returns a Dataset of array children only; bytes silently skipped."""
+    client, _ = composite_with_bytes
+    ds = client["c"].read()
+    assert "arr" in ds.data_vars
+    assert "blob" not in ds.data_vars
+    numpy.testing.assert_array_equal(ds["arr"].values, arr1)
+
+
+def test_composite_read_explicit_bytes_variable_raises(composite_with_bytes):
+    """Explicitly asking for a bytes child by name raises a clear error."""
+    client, _ = composite_with_bytes
+    with pytest.raises(ValueError, match="bytes-family child 'blob'"):
+        client["c"].read(variables=["blob"])
+
+
+def test_composite_bytes_child_downloadable(composite_with_bytes):
+    """Bytes child inside a composite is downloadable via /asset/bytes."""
+    client, payload = composite_with_bytes
+    meta = client.context.http_client.get(
+        "/api/v1/metadata/c/blob", params={"include_data_sources": True}
+    )
+    asset_id = meta.json()["data"]["attributes"]["data_sources"][0]["assets"][0]["id"]
+    response = client.context.http_client.get(
+        "/api/v1/asset/bytes/c/blob", params={"id": asset_id}
+    )
+    assert response.status_code == 200
+    assert response.content == payload
