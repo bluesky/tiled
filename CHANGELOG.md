@@ -26,6 +26,11 @@ Write the date in place of the "Unreleased" in the case a new version is release
   read.
 - New `bytes` structure family for cataloging opaque byte payloads that lack a
   useful logical structure (PDFs, firmware blobs, proprietary binary formats, etc.).
+- `BaseClient.raw_export()` accepts a `MutableMapping` (e.g. a `dict`) as its
+  destination, streaming each asset into an in-memory `io.BytesIO` keyed by
+  the on-disk-equivalent layout (`<filename>` for a single asset;
+  `<asset_id>/<filename>` for multi-asset nodes). No filesystem I/O is
+  performed in this mode.
 - Fail fast instead of retrying on deterministic client request errors that a
   retry cannot fix: an unsupported URL scheme and an invalid request such as an
   illegal header value.
