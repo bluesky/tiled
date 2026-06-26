@@ -359,3 +359,44 @@ def test_put_asset_backfills_size_on_reregistration(http_client, tmp_path):
         ).json()
         asset = meta["data"]["attributes"]["data_sources"][0]["assets"][0]
         assert asset["size"] == len(PAYLOAD)
+
+
+def test_raw_export_handles_missing_content_length(http_client, tmp_path):
+    """Regression: large compressed responses have no `Content-Length` header
+    (the compression middleware strips it when streaming a chunked body).
+    `raw_export` must not crash with `KeyError('Content-Length')` and should
+    show an indeterminate progress bar instead."""
+    # A payload comfortably larger than the compression middleware's
+    # minimum_size (500 bytes) so the server will actually compress and stream.
+    large_payload = (b"the quick brown fox " * 1024) * 64  # ~1.3 MiB
+    p = tmp_path / "big.bin"
+    p.write_bytes(large_payload)
+    http_client.new(
+        structure_family=StructureFamily.bytes,
+        data_sources=[
+            DataSource(
+                mimetype="application/octet-stream",
+                assets=[
+                    Asset(
+                        data_uri=p.as_uri(),
+                        is_directory=False,
+                        size=len(large_payload),
+                        parameter="data_uris",
+                        num=0,
+                    )
+                ],
+                structure_family=StructureFamily.bytes,
+                structure=BytesStructure(),
+                management=Management.external,
+            )
+        ],
+        key="big",
+    )
+    # Force the server's compression middleware to engage and strip
+    # Content-Length on the streaming branch.
+    http_client.context.http_client.headers["Accept-Encoding"] = "zstd"
+    dest = tmp_path / "out"
+    dest.mkdir()
+    paths = http_client["big"].raw_export(dest)
+    assert len(paths) == 1
+    assert Path(paths[0]).read_bytes() == large_payload

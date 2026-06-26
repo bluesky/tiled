@@ -51,7 +51,12 @@ def _download_url(
                         ).group(1)
                         path = Path(path.parent, filename)
                     with open(path, "wb") as file:
-                        total = int(response.headers["Content-Length"])
+                        # Content-Length is absent when the server streams a
+                        # chunked response (e.g. when compression middleware
+                        # re-encodes the body). Fall back to an indeterminate
+                        # progress bar in that case.
+                        content_length = response.headers.get("Content-Length")
+                        total = int(content_length) if content_length else None
                         progress.update(task_id, total=total)
                         progress.start_task(task_id)
                         for chunk in response.iter_bytes():
@@ -97,7 +102,9 @@ def _download_url_to_buffer(
                             ATTACHMENT_FILENAME_PLACEHOLDER, filename
                         )
                     buf = io.BytesIO()
-                    total = int(response.headers["Content-Length"])
+                    # See note in `_download_url` re: missing Content-Length.
+                    content_length = response.headers.get("Content-Length")
+                    total = int(content_length) if content_length else None
                     progress.update(task_id, total=total)
                     progress.start_task(task_id)
                     for chunk in response.iter_bytes():
