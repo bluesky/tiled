@@ -293,3 +293,69 @@ def test_raw_export_to_mapping_multi_asset(http_client, tmp_path):
     num_by_id = {a["id"]: a["num"] for a in ds["assets"]}
     ordered = sorted(keys, key=lambda k: num_by_id[int(k.split("/")[0])])
     assert b"".join(buffers[k].read() for k in ordered) == PAYLOAD
+
+
+def test_put_asset_backfills_size_on_reregistration(http_client, tmp_path):
+    """Re-registering an asset whose stored `size` is stale (or NULL) updates
+    it. `_put_asset` matches existing assets by `data_uri`; when the new
+    record carries a non-null `size` that differs from the stored value,
+    the row is updated. This lets a re-`register` repair pre-existing rows
+    that predate `Asset.size` being populated by the client."""
+    # First registration: register with size=None to simulate a legacy row.
+    p = tmp_path / "blob.bin"
+    p.write_bytes(PAYLOAD)
+    http_client.new(
+        structure_family=StructureFamily.bytes,
+        data_sources=[
+            DataSource(
+                mimetype="application/octet-stream",
+                assets=[
+                    Asset(
+                        data_uri=p.as_uri(),
+                        is_directory=False,
+                        size=None,
+                        parameter="data_uris",
+                        num=0,
+                    )
+                ],
+                structure_family=StructureFamily.bytes,
+                structure=BytesStructure(),
+                management=Management.external,
+            )
+        ],
+        key="legacy",
+    )
+    meta = http_client.context.http_client.get(
+        "/api/v1/metadata/legacy", params={"include_data_sources": True}
+    ).json()
+    assert meta["data"]["attributes"]["data_sources"][0]["assets"][0]["size"] is None
+
+    # Re-register a new node referencing the same data_uri, this time with
+    # size populated. The shared underlying asset row should be updated.
+    http_client.new(
+        structure_family=StructureFamily.bytes,
+        data_sources=[
+            DataSource(
+                mimetype="application/octet-stream",
+                assets=[
+                    Asset(
+                        data_uri=p.as_uri(),
+                        is_directory=False,
+                        size=len(PAYLOAD),
+                        parameter="data_uris",
+                        num=0,
+                    )
+                ],
+                structure_family=StructureFamily.bytes,
+                structure=BytesStructure(),
+                management=Management.external,
+            )
+        ],
+        key="refreshed",
+    )
+    for key in ("legacy", "refreshed"):
+        meta = http_client.context.http_client.get(
+            f"/api/v1/metadata/{key}", params={"include_data_sources": True}
+        ).json()
+        asset = meta["data"]["attributes"]["data_sources"][0]["assets"][0]
+        assert asset["size"] == len(PAYLOAD)
