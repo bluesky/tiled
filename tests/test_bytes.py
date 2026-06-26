@@ -7,6 +7,7 @@ These tests exercise that full round-trip end-to-end.
 """
 
 import io
+import warnings
 from pathlib import Path
 
 import pytest
@@ -359,6 +360,27 @@ def test_put_asset_backfills_size_on_reregistration(http_client, tmp_path):
         ).json()
         asset = meta["data"]["attributes"]["data_sources"][0]["assets"][0]
         assert asset["size"] == len(PAYLOAD)
+
+
+def test_raw_export_destination_directory_kwarg_is_deprecated(http_client, tmp_path):
+    """The old `destination_directory` keyword still works but emits
+    `DeprecationWarning`. Passing both the new and old names raises."""
+    _register_bytes_node(http_client, tmp_path, PAYLOAD, key="blob")
+    dest = tmp_path / "out"
+    dest.mkdir()
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        paths = http_client["blob"].raw_export(destination_directory=dest)
+    assert len(paths) == 1
+    assert Path(paths[0]).read_bytes() == PAYLOAD
+    assert any(
+        issubclass(w.category, DeprecationWarning)
+        and "destination_directory" in str(w.message)
+        for w in caught
+    )
+
+    with pytest.raises(TypeError, match="both 'destination'"):
+        http_client["blob"].raw_export(dest, destination_directory=dest)
 
 
 def test_raw_export_handles_missing_content_length(http_client, tmp_path):

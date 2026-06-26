@@ -376,7 +376,7 @@ class BaseClient:
                 manifests[asset.id] = manifest
         return manifests
 
-    def raw_export(self, destination_directory=None, max_workers=4):
+    def raw_export(self, destination=None, max_workers=4, **kwargs):
         """
         Download the raw assets backing this node.
 
@@ -384,7 +384,7 @@ class BaseClient:
 
         Parameters
         ----------
-        destination_directory : Path or MutableMapping, optional
+        destination : Path or MutableMapping, optional
             Destination for downloaded assets. If a `MutableMapping` (e.g. a
             `dict`) is provided, each asset is stored in-memory as an
             `io.BytesIO` under a key mirroring the on-disk layout
@@ -400,13 +400,34 @@ class BaseClient:
         paths_or_keys : List[Path] or List[str]
             Filepaths of exported files, or keys written to the mapping.
         """
-        in_memory = isinstance(destination_directory, MutableMapping)
+        # Back-compat: accept the old keyword name with a deprecation warning.
+        if "destination_directory" in kwargs:
+            import warnings
+
+            if destination is not None:
+                raise TypeError(
+                    "raw_export() got both 'destination' and the deprecated "
+                    "'destination_directory'; pass only 'destination'."
+                )
+            warnings.warn(
+                "The 'destination_directory' keyword to raw_export() is "
+                "deprecated; use 'destination' instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            destination = kwargs.pop("destination_directory")
+        if kwargs:
+            raise TypeError(
+                f"raw_export() got unexpected keyword arguments: " f"{sorted(kwargs)!r}"
+            )
+
+        in_memory = isinstance(destination, MutableMapping)
         if in_memory:
-            mapping = destination_directory
-        elif destination_directory is None:
-            destination_directory = Path.cwd()
+            mapping = destination
+        elif destination is None:
+            destination = Path.cwd()
         else:
-            destination_directory = Path(destination_directory)
+            destination = Path(destination)
 
         # Import here to defer the import of rich (for progress bar).
         from .download import (
@@ -430,13 +451,11 @@ class BaseClient:
             for asset in data_source.assets:
                 if len(data_source.assets) == 1:
                     # Only one asset: keep the name simple.
-                    base = "" if in_memory else destination_directory
+                    base = "" if in_memory else destination
                 else:
                     # Multiple assets: namespace each asset by id.
                     base = (
-                        f"{asset.id}"
-                        if in_memory
-                        else Path(destination_directory, str(asset.id))
+                        f"{asset.id}" if in_memory else Path(destination, str(asset.id))
                     )
                 if asset.is_directory:
                     relative_paths = asset_manifest[asset.id]
