@@ -336,6 +336,29 @@ discovered from the node's metadata (`data_sources[0].assets[i].id`).
 Clients with multi-asset nodes issue one request per asset and
 concatenate the responses in `num` order.
 
+From Python, the high-level entry point is `BaseClient.raw_export(...)`,
+which is the same API used for downloading the raw files backing arrays,
+tables, and other structures (see
+[10 minutes to Tiled](../getting-started/10-minutes-to-tiled.md#download-raw-files)).
+For `bytes` nodes it is the *primary* way to retrieve content, because
+the family has no `read()` method:
+
+```python
+# To disk (parallel downloads):
+paths = c["my_blob"].raw_export("downloads/")
+
+# In memory: any MutableMapping works as the destination.
+buffers = {}
+keys = c["my_blob"].raw_export(buffers)
+payload = buffers[keys[0]].read()   # single-asset node
+
+# Multi-asset: keys are `<asset_id>/<filename>`; reassemble in `num` order.
+ds = c["my_blob"].include_data_sources().data_sources()[0]
+num_by_id = {a.id: a.num for a in ds.assets}
+ordered = sorted(keys, key=lambda k: num_by_id[int(k.split("/")[0])])
+payload = b"".join(buffers[k].read() for k in ordered)
+```
+
 The endpoint honors the HTTP `Range:` header and returns `206 Partial
 Content` for ranged requests, so large assets are usable with `curl -r`,
 `aria2c -x16`, browsers, and other resumable-download tools without any

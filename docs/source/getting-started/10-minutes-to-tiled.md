@@ -367,6 +367,22 @@ this efficiently by launching parallel downloads.
 c['examples/xraydb/C/edges'].raw_export('downloads/')
 ```
 
+This works for any node with assets (arrays backed by HDF5, tables backed by
+CSV/Parquet, opaque `bytes` payloads, …), not just bytes. To keep everything
+in memory and skip disk entirely, pass any `MutableMapping` (e.g. a `dict`)
+instead of a path. Each asset is streamed into an `io.BytesIO` keyed by the
+on-disk layout (`<filename>` for a single asset; `<asset_id>/<filename>` when
+multiple assets back the node):
+
+```{code-cell} ipython3
+buffers = {}
+keys = c['examples/xraydb/C/edges'].raw_export(buffers)
+keys, type(buffers[keys[0]])
+```
+
+The buffers are returned seeked to `0`, so a `buffers[key].read()` yields the
+raw bytes of that asset directly.
+
 (run-a-tiled-server)=
 ## Run a Tiled server
 
