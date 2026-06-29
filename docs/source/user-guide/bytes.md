@@ -3,7 +3,7 @@
 The `bytes` structure family lets Tiled catalog opaque binary files -- PDFs,
 firmware blobs, proprietary binary formats, raw detector dumps -- without
 asking Tiled to interpret them. See
-[Bytes](../explanations/structures.md#bytes) for an explanation of the family
+[Bytes](bytes-structure-family) for an explanation of the family
 itself; this how-to focuses on the practical operations: registering bytes
 content, downloading it with the Python client and from the HTTP API, and
 handling multi-asset nodes.

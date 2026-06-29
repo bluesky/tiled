@@ -636,6 +636,7 @@ nodes: `GET /asset/bytes/{composite_key}/{blob_key}?id=N`. Naming a bytes child
 explicitly in `composite.read(variables=[...])` raises a clear error rather than silently
 producing an empty slot, so typos surface immediately.
 
+(bytes-structure-family)=
 ### Bytes
 
 The `bytes` family is a deliberate outlier in this list: it represents an
