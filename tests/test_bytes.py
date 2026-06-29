@@ -14,6 +14,7 @@ import pytest
 from tiled.adapters.bytes import BytesAdapter
 from tiled.catalog import in_memory
 from tiled.client import Context, from_context
+from tiled.client.bytes import BytesClient, _format_size
 from tiled.server.app import build_app
 from tiled.structures.bytes import BytesStructure
 from tiled.structures.core import StructureFamily
@@ -385,3 +386,77 @@ def test_raw_export_handles_missing_content_length(http_client, tmp_path):
     paths = http_client["big"].raw_export(dest)
     assert len(paths) == 1
     assert Path(paths[0]).read_bytes() == large_payload
+
+
+def test_client_dispatch_returns_bytes_client(http_client, tmp_path):
+    """A bytes node is dispatched to `BytesClient`, not the generic `BaseClient`."""
+    _register_bytes_node(http_client, tmp_path, PAYLOAD, key="blob")
+    assert isinstance(http_client["blob"], BytesClient)
+
+
+@pytest.mark.parametrize(
+    ("num_bytes", "expected"),
+    [
+        (0, "0 B"),
+        (512, "512 B"),
+        (1024, "1.0 KB"),
+        (1536, "1.5 KB"),
+        (1024 * 1024, "1.0 MB"),
+        (3 * 1024**3, "3.0 GB"),
+    ],
+)
+def test_format_size(num_bytes, expected):
+    """`_format_size` renders byte counts with binary prefixes (1 KB = 1024 B)."""
+    assert _format_size(num_bytes) == expected
+
+
+def test_repr_without_data_sources(http_client, tmp_path):
+    """Without `include_data_sources()`, the repr falls back to the class name
+    only; no network round-trip is triggered inside `__repr__`."""
+    _register_bytes_node(http_client, tmp_path, PAYLOAD, key="blob")
+    assert repr(http_client["blob"]) == "<BytesClient>"
+
+
+def test_repr_single_asset_with_size(http_client, tmp_path):
+    """With data sources cached, the repr reports total size and asset count."""
+    _register_bytes_node(http_client, tmp_path, PAYLOAD, key="blob")
+    client = http_client["blob"].include_data_sources()
+    assert repr(client) == f"<BytesClient {len(PAYLOAD)} B across 1 asset>"
+
+
+def test_repr_multi_asset(http_client, tmp_path):
+    """Across multiple assets the repr sums their sizes and pluralizes."""
+    chunks = [PAYLOAD[i : i + 7] for i in range(0, len(PAYLOAD), 7)]  # noqa: E203
+    _register_multi_asset_node(http_client, tmp_path, chunks, key="multi")
+    client = http_client["multi"].include_data_sources()
+    total = sum(len(c) for c in chunks)
+    assert repr(client) == f"<BytesClient {total} B across {len(chunks)} assets>"
+
+
+def test_repr_falls_back_when_size_missing(http_client, tmp_path):
+    """If any asset has `size=None`, the repr reports asset count only."""
+    p = tmp_path / "blob.bin"
+    p.write_bytes(PAYLOAD)
+    http_client.new(
+        structure_family=StructureFamily.bytes,
+        data_sources=[
+            DataSource(
+                mimetype="application/octet-stream",
+                assets=[
+                    Asset(
+                        data_uri=p.as_uri(),
+                        is_directory=False,
+                        size=None,  # explicitly unknown
+                        parameter="data_uris",
+                        num=0,
+                    )
+                ],
+                structure_family=StructureFamily.bytes,
+                structure=BytesStructure(),
+                management=Management.external,
+            )
+        ],
+        key="blob",
+    )
+    client = http_client["blob"].include_data_sources()
+    assert repr(client) == "<BytesClient 1 asset>"
