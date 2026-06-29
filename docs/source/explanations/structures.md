@@ -339,7 +339,7 @@ concatenate the responses in `num` order.
 From Python, the high-level entry point is `BaseClient.raw_export(...)`,
 which is the same API used for downloading the raw files backing arrays,
 tables, and other structures (see
-[10 minutes to Tiled](../getting-started/10-minutes-to-tiled.md#download-raw-files)).
+[10 minutes to Tiled](download-raw-files)).
 For `bytes` nodes it is the *primary* way to retrieve content, because
 the family has no `read()` method:
 
