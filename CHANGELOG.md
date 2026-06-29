@@ -20,17 +20,18 @@ Write the date in place of the "Unreleased" in the case a new version is release
   [`ragged`](https://github.com/scikit-hep/ragged).
 - Surface `Asset.size` (the byte length of each underlying file) on the
   `Asset` API model. `tiled register` populates it via `os.stat()` for
-  non-directory `file://` assets; directory and object-store assets
-  leave it as `null`. The corresponding ORM column has existed since
-  the catalog schema was created but was previously never written or
-  read.
+  non-directory `file://` assets walked from the local filesystem. For
+  assets in object storage, callers can compute size via the new
+  `tiled.utils.size_from_uri` helper, which dispatches to `os.stat()` for
+  `file://` URIs and `obstore.head()` for `s3://`/`az://`/`gs://`. The
+  corresponding ORM column has existed since the catalog schema was
+  created but was previously never written or read.
 - New `bytes` structure family for cataloging opaque byte payloads that lack a
   useful logical structure (PDFs, firmware blobs, proprietary binary formats, etc.).
 - `BaseClient.raw_export()` accepts a `MutableMapping` (e.g. a `dict`) as its
   destination, streaming each asset into an in-memory `io.BytesIO` keyed by
   the on-disk-equivalent layout (`<filename>` for a single asset;
-  `<asset_id>/<filename>` for multi-asset nodes). No filesystem I/O is
-  performed in this mode.
+  `<asset_id>/<filename>` for multi-asset nodes). No filesystem I/O is performed in this mode.
 - Fail fast instead of retrying on deterministic client request errors that a
   retry cannot fix: an unsupported URL scheme and an invalid request such as an
   illegal header value.

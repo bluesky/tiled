@@ -352,6 +352,7 @@ it's a plain old file or something else if it is not.
 ds.assets[0].data_uri
 ```
 
+(download-raw-files)=
 ## Download raw files
 
 Sometimes it is best to just download the files exactly as they were. This may
