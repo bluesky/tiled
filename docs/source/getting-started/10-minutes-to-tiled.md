@@ -368,21 +368,10 @@ this efficiently by launching parallel downloads.
 c['examples/xraydb/C/edges'].raw_export('downloads/')
 ```
 
-This works for any node with assets (arrays backed by HDF5, tables backed by
-CSV/Parquet, opaque `bytes` payloads, …), not just bytes. To keep everything
-in memory and skip disk entirely, pass any `MutableMapping` (e.g. a `dict`)
-instead of a path. Each asset is streamed into an `io.BytesIO` keyed by the
-on-disk layout (`<filename>` for a single asset; `<asset_id>/<filename>` when
-multiple assets back the node):
-
-```{code-cell} ipython3
-buffers = {}
-keys = c['examples/xraydb/C/edges'].raw_export(buffers)
-keys, type(buffers[keys[0]])
-```
-
-The buffers are returned seeked to `0`, so a `buffers[key].read()` yields the
-raw bytes of that asset directly.
+Finally, `raw_export` is the primary way to retrieve any unstructured data from
+Tiled (e.g. PDF files or binary blobs). For more on `raw_export` --
+including downloading into in-memory buffers and reassembling multi-asset
+payloads -- see [Working with `bytes` nodes](../user-guide/bytes.md).
 
 (run-a-tiled-server)=
 ## Run a Tiled server

@@ -11,13 +11,14 @@ The structure families are:
 
 * array --- a strided array, like a [numpy](https://numpy.org) array
 * awkward --- nested, variable-sized data (as implemented by [AwkwardArray](https://awkward-array.org/))
-* bytes --- an opaque sequence of bytes (a fallback for externally registered
-  binary files with no useful logical structure)
 * container --- a collection of other structures, akin to a dictionary or directory
 * ragged --- an irregularly-shaped array of numeric data ([Ragged](https://github.com/scikit-hep/ragged))
 * sparse --- a sparse array (i.e. an array which is mostly zeros)
 * table --- tabular data, as in [Apache Arrow](https://arrow.apache.org) or
   [pandas](https://pandas.pydata.org/)
+* bytes --- a special, "non-structure" family: an opaque sequence of bytes with
+  no logical structure for Tiled to interpret. Useful as a fallback for
+  externally registered binary files that do not fit any of the other families.
 
 ## How structure is encoded
 
@@ -277,101 +278,6 @@ $ http :8000/api/v1/metadata/nested/ragged_array | jq .data.attributes.structure
   "resizable": false
 }
 ```
-
-### Bytes
-
-The `bytes` family represents an opaque, flat sequence of bytes. Tiled does not
-interpret the payload: the interpretation (MIME type, filename, encoding) lives
-on the `DataSource` and individual `Asset`s. `BytesStructure` itself carries no
-fields -- it exists only so the family takes its place in the registration map
-alongside `array`, `table`, etc. The per-asset byte length is recorded on each
-`Asset.size`, so a multi-asset bytes node reports the size of every underlying
-file individually:
-
-```json
-{
-  "data_sources": [
-    {
-      "structure_family": "bytes",
-      "structure": {},
-      "assets": [
-        {"id": 7, "data_uri": "file:///.../part0.bin", "size": 524288, "num": 0},
-        {"id": 8, "data_uri": "file:///.../part1.bin", "size": 524288, "num": 1}
-      ]
-    }
-  ]
-}
-```
-
-Because Tiled gains no leverage from treating this as opaque, `bytes` is
-intentionally **read-only**. Use it for external files (PDFs, firmware blobs,
-proprietary binary formats) that lack a useful logical structure. To *store*
-new data in Tiled, prefer a structured family (`array`, `table`, `awkward`, …)
-so the server can chunk, slice, and serialize intelligently.
-
-#### Auto-registration with `tiled register`
-
-`tiled register` infers a MIME type per file from its extension and looks the
-adapter up in the registration map. Out of the box, the extensions Python
-classifies as `application/octet-stream` (`.bin`, `.so`, `.a`, `.o`, `.dump`,
-`.pkg`, …) are registered as `bytes` nodes.
-
-Files with extensions that the server doesn't recognise are skipped. To opt into
-a true catch-all, supply a `mimetype_detection_hook` that falls back to
-`application/octet-stream`:
-
-```python
-def detect(path, mimetype):
-    return mimetype or "application/octet-stream"
-```
-
-#### Downloading bytes content
-
-`bytes` nodes do not have a dedicated content endpoint, and there is no
-family-specific Python client: a `bytes` node surfaces as a generic
-`BaseClient` whose `.item` carries the structure and asset metadata.
-Each underlying asset is downloaded individually through the generic
-`/api/v1/asset/bytes/{path}?id=N` endpoint, where `N` is the asset's id
-discovered from the node's metadata (`data_sources[0].assets[i].id`).
-Clients with multi-asset nodes issue one request per asset and
-concatenate the responses in `num` order.
-
-From Python, the high-level entry point is `BaseClient.raw_export(...)`,
-which is the same API used for downloading the raw files backing arrays,
-tables, and other structures (see
-[10 minutes to Tiled](download-raw-files)).
-For `bytes` nodes it is the *primary* way to retrieve content, because
-the family has no `read()` method:
-
-```python
-# To disk (parallel downloads):
-paths = c["my_blob"].raw_export("downloads/")
-
-# In memory: any MutableMapping works as the destination.
-buffers = {}
-keys = c["my_blob"].raw_export(buffers)
-payload = buffers[keys[0]].read()   # single-asset node
-
-# Multi-asset: keys are `<asset_id>/<filename>`; reassemble in `num` order.
-ds = c["my_blob"].include_data_sources().data_sources()[0]
-num_by_id = {a.id: a.num for a in ds.assets}
-ordered = sorted(keys, key=lambda k: num_by_id[int(k.split("/")[0])])
-payload = b"".join(buffers[k].read() for k in ordered)
-```
-
-The endpoint honors the HTTP `Range:` header and returns `206 Partial
-Content` for ranged requests, so large assets are usable with `curl -r`,
-`aria2c -x16`, browsers, and other resumable-download tools without any
-Tiled-specific client code.
-
-This endpoint is gated by `settings.expose_raw_assets`, which defaults
-to `True`. Administrators can disable raw asset downloads by setting
-`expose_raw_assets: False` in the server configuration.
-
-Currently only `file://` assets are downloadable through this endpoint.
-Object-store (`s3://`, `az://`, `gs://`) bytes assets are recorded in
-the catalog but cannot be served via the API; this restriction will be
-lifted in a future release.
 
 ### Sparse Array
 
@@ -729,3 +635,37 @@ nested inside a composite works through the same per-asset path used for top-lev
 nodes: `GET /asset/bytes/{composite_key}/{blob_key}?id=N`. Naming a bytes child
 explicitly in `composite.read(variables=[...])` raises a clear error rather than silently
 producing an empty slot, so typos surface immediately.
+
+### Bytes
+
+The `bytes` family is a deliberate outlier in this list: it represents an
+opaque, flat sequence of bytes with **no structural information** for Tiled to
+interpret. The relevant details (MIME type, filename, encoding) live on the
+`DataSource` and individual `Asset`s; `BytesStructure` itself carries no fields.
+The per-asset byte length is recorded on each `Asset.size`, so a multi-asset
+bytes node reports the size of every underlying file individually:
+
+```json
+{
+  "data_sources": [
+    {
+      "structure_family": "bytes",
+      "structure": {},
+      "assets": [
+        {"id": 7, "data_uri": "file:///.../part0.bin", "size": 524288, "num": 0},
+        {"id": 8, "data_uri": "file:///.../part1.bin", "size": 524288, "num": 1}
+      ]
+    }
+  ]
+}
+```
+
+Because Tiled gains no leverage from treating this as opaque, `bytes` is
+intentionally **read-only**. Use it for external files (PDFs, firmware blobs,
+proprietary binary formats) that lack a useful logical structure. To *store*
+new data in Tiled, prefer a structured family (`array`, `table`, `awkward`, …)
+so the server can chunk, slice, and serialize intelligently.
+
+For practical recipes -- auto-registration via `tiled register`, downloading
+content from Python and from the HTTP API, multi-asset reassembly, etc. -- see
+the [Working with `bytes` nodes](../user-guide/bytes.md) how-to guide.

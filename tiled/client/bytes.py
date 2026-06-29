@@ -1,15 +1,3 @@
-"""Client for the `bytes` structure family.
-
-A `bytes` node has no content endpoint and no specialized read path. The
-client exists primarily to (a) identify a node as `bytes` for downstream
-dispatch and (b) provide a more informative `__repr__` than `BaseClient`
-when data-source information is available.
-
-Use `raw_export(...)` (inherited from `BaseClient`) to download the
-underlying assets, either to a directory on disk or into an in-memory
-`MutableMapping` of `BytesIO` buffers.
-"""
-
 from ..structures.core import StructureFamily
 from .base import BaseClient
 
@@ -27,13 +15,16 @@ def _format_size(num_bytes: float) -> str:
 
 
 class BytesClient(BaseClient):
-    """Client for a `bytes` structure-family node.
+    """Client for the `bytes` structure family node.
 
-    `bytes` nodes carry no structural information of their own; downloads go
-    through `/api/v1/asset/bytes/{path}?id=N`, one request per underlying
-    asset, gated by `settings.expose_raw_assets`. The high-level entry point
-    is `raw_export(...)` (inherited from `BaseClient`), which supports both
-    directory and in-memory `MutableMapping` destinations.
+    A `bytes` node has no content endpoint and no specialized read path. The
+    client exists primarily to (a) identify a node as `bytes` for downstream
+    dispatch and (b) provide a more informative `__repr__` than `BaseClient`
+    when data-source information is available.
+
+    Use `raw_export(...)` (inherited from `BaseClient`) to download the
+    underlying assets, either to a directory on disk or into an in-memory
+    `MutableMapping` of `BytesIO` buffers.
     """
 
     structure_family: StructureFamily = StructureFamily.bytes
@@ -43,12 +34,9 @@ class BytesClient(BaseClient):
 
         Falls back to the bare class name when no asset information is
         cached on the client (e.g. when the client was not constructed with
-        `include_data_sources=True`). This avoids triggering a network
-        round-trip inside `__repr__`.
+        `include_data_sources=True`).
         """
-        data_sources = (
-            self.item.get("attributes", {}).get("data_sources") or []
-        )
+        data_sources = self.item.get("attributes", {}).get("data_sources") or []
         assets = [a for ds in data_sources for a in ds.get("assets", [])]
         if not assets:
             return f"<{type(self).__name__}>"
