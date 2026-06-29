@@ -793,33 +793,6 @@ def ensure_uri(uri_or_path) -> str:
     return str(uri_str)
 
 
-def size_from_uri(data_uri: str) -> int:
-    """Return the byte length of the asset at `data_uri`.
-
-    Dispatches on URI scheme: `file://` URIs are stat'd on the local
-    filesystem; object-store URIs (those in `SUPPORTED_OBJECT_URI_SCHEMES`)
-    issue a HEAD via obstore. Raises `ValueError` for any other scheme.
-    Underlying I/O errors (`FileNotFoundError`, network errors, etc.)
-    propagate; callers that want best-effort behavior should catch them at
-    the call site.
-    """
-    # Deferred import: `tiled.storage` imports from this module, so importing
-    # it at module top would create a cycle.
-    from .storage import SUPPORTED_OBJECT_URI_SCHEMES, ObjectStorage, get_storage
-
-    scheme = urlparse(data_uri).scheme
-    if scheme == "file":
-        return path_from_uri(data_uri).stat().st_size
-    if scheme in SUPPORTED_OBJECT_URI_SCHEMES:
-        storage = get_storage(data_uri)
-        _, _, path = ObjectStorage.parse_blob_uri(data_uri)
-        store = storage.get_obstore_location()
-        return int(store.head(path)["size"])
-    raise ValueError(
-        f"Cannot stat URI with unsupported scheme {scheme!r}: {data_uri!r}"
-    )
-
-
 def sanitize_uri(uri: str) -> tuple[str, Optional[str], Optional[str]]:
     "Remove the username and password from uri if they are present."
     parsed_uri = urlparse(uri)

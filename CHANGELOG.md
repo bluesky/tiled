@@ -22,7 +22,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
   `Asset` API model. `tiled register` populates it via `os.stat()` for
   non-directory `file://` assets walked from the local filesystem. For
   assets in object storage, callers can compute size via the new
-  `tiled.utils.size_from_uri` helper, which dispatches to `os.stat()` for
+  `tiled.storage.size_from_uri` helper, which dispatches to `os.stat()` for
   `file://` URIs and `obstore.head()` for `s3://`/`az://`/`gs://`. The
   corresponding ORM column has existed since the catalog schema was
   created but was previously never written or read.
