@@ -826,7 +826,7 @@ def test_composite_progress_total_mixed_small_and_large_arrays(tmp_path):
             assert capture_outermost_total(variables=["small_b"]) == [1]
 
 
-# --- Bytes children in composite containers --------------------------------
+# --- Bytes children are allowed in composite containers ---------------------------
 
 
 @pytest.fixture(scope="function")

@@ -377,8 +377,7 @@ class BaseClient:
         return manifests
 
     def raw_export(self, destination=None, max_workers=4, **kwargs):
-        """
-        Download the raw assets backing this node.
+        """Download the raw assets backing this node.
 
         This may produce a single file or a directory.
 
@@ -422,19 +421,11 @@ class BaseClient:
             )
 
         in_memory = isinstance(destination, MutableMapping)
-        if in_memory:
-            mapping = destination
-        elif destination is None:
-            destination = Path.cwd()
-        else:
-            destination = Path(destination)
+        if not in_memory:
+            destination = Path(destination or Path.cwd())
 
         # Import here to defer the import of rich (for progress bar).
-        from .download import (
-            ATTACHMENT_FILENAME_PLACEHOLDER,
-            download,
-            download_to_buffers,
-        )
+        from .download import ATTACHMENT_FILENAME_PLACEHOLDER, download
 
         urls = []
         targets = []  # Paths or posix-style string keys.
@@ -497,11 +488,11 @@ class BaseClient:
                     else:
                         targets.append(Path(base, ATTACHMENT_FILENAME_PLACEHOLDER))
         if in_memory:
-            return download_to_buffers(
+            return download(
                 self.context.http_client,
                 urls,
                 targets,
-                mapping,
+                mapping=destination,
                 max_workers=max_workers,
             )
         return download(

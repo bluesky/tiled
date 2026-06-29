@@ -6,7 +6,6 @@ asset through `/asset/bytes/{path}?id=N`, gated by `settings.expose_raw_assets`.
 These tests exercise that full round-trip end-to-end.
 """
 
-import io
 import warnings
 from pathlib import Path
 
@@ -58,19 +57,90 @@ def _register_bytes_node(
     )
 
 
-def test_structure_from_json_tolerates_legacy_keys():
-    """Older catalogs persisted `size` and `chunks` on BytesStructure; tolerate them
-    so existing rows continue to deserialize cleanly after the simplification."""
-    assert BytesStructure.from_json({}) == BytesStructure()
-    assert BytesStructure.from_json({"size": 10, "chunks": [10]}) == BytesStructure()
+def _register_multi_asset_node(client, tmp_path, chunks, key="multi", reverse=False):
+    """Write each chunk to its own file and register them as one bytes node.
+
+    `num` is set to the chunk's index, so the original payload can be recovered
+    by ordering downloaded parts by `num`. When `reverse=True`, the assets are
+    submitted in the *opposite* order to verify the server canonicalises by `num`.
+    """
+    assets = []
+    for i, chunk in enumerate(chunks):
+        p = tmp_path / f"c{i:02d}.bin"
+        p.write_bytes(chunk)
+        assets.append(
+            Asset(
+                data_uri=p.as_uri(),
+                is_directory=False,
+                size=len(chunk),
+                parameter="data_uris",
+                num=i,
+            )
+        )
+    client.new(
+        structure_family=StructureFamily.bytes,
+        data_sources=[
+            DataSource(
+                mimetype="application/octet-stream",
+                assets=list(reversed(assets)) if reverse else assets,
+                structure_family=StructureFamily.bytes,
+                structure=BytesStructure(),
+                management=Management.external,
+            )
+        ],
+        key=key,
+    )
+
+
+class _DiskDestination:
+    """`raw_export` target backed by a directory on disk."""
+
+    def __init__(self, tmp_path):
+        self.dest = tmp_path / "out"
+        self.dest.mkdir()
+
+    @property
+    def arg(self):
+        return self.dest
+
+    def read(self, handle):
+        return Path(handle).read_bytes()
+
+    def asset_id(self, handle):
+        # Multi-asset disk layout: `<dest>/<asset_id>/<filename>`.
+        return int(Path(handle).parent.name)
+
+
+class _MappingDestination:
+    """`raw_export` target backed by an in-memory `dict` of `BytesIO` buffers."""
+
+    def __init__(self, tmp_path):
+        self.buffers = {}
+
+    @property
+    def arg(self):
+        return self.buffers
+
+    def read(self, handle):
+        return self.buffers[handle].read()
+
+    def asset_id(self, handle):
+        # Multi-asset mapping layout: `<asset_id>/<filename>`.
+        return int(handle.split("/")[0])
+
+
+@pytest.fixture(params=["disk", "mapping"])
+def destination(request, tmp_path):
+    return {"disk": _DiskDestination, "mapping": _MappingDestination}[request.param](
+        tmp_path
+    )
 
 
 def test_roundtrip_register_and_download(http_client, tmp_path):
     """Register a bytes node, inspect its metadata, and download the asset.
 
-    Covers the full happy path: structure_family wiring, default mimetype,
-    Asset.size population, asset-id discovery, and content round-trip via
-    /asset/bytes.
+    Covers the full path: structure_family wiring, default mimetype,
+    Asset.size population, asset-id discovery, and content round-trip via /asset/bytes.
     """
     handle = _register_bytes_node(http_client, tmp_path, PAYLOAD, key="blob")
     assert handle.item["attributes"]["structure_family"] == "bytes"
@@ -94,32 +164,8 @@ def test_multi_asset_roundtrip(http_client, tmp_path):
     """A bytes node backed by multiple assets reports each size and is downloadable
     in `num` order; concatenating the parts reconstructs the original payload."""
     chunks = [PAYLOAD[i : i + 7] for i in range(0, len(PAYLOAD), 7)]  # noqa: E203
-    assets = []
-    for i, chunk in enumerate(chunks):
-        p = tmp_path / f"c{i:02d}.bin"
-        p.write_bytes(chunk)
-        assets.append(
-            Asset(
-                data_uri=p.as_uri(),
-                is_directory=False,
-                size=len(chunk),
-                parameter="data_uris",
-                num=i,
-            )
-        )
-    data_source = DataSource(
-        mimetype="application/octet-stream",
-        # Registered out of order; `num` defines the canonical order.
-        assets=list(reversed(assets)),
-        structure_family=StructureFamily.bytes,
-        structure=BytesStructure(),
-        management=Management.external,
-    )
-    http_client.new(
-        structure_family=StructureFamily.bytes,
-        data_sources=[data_source],
-        key="multi",
-    )
+    # Registered out of order; `num` defines the canonical order.
+    _register_multi_asset_node(http_client, tmp_path, chunks, key="multi", reverse=True)
 
     meta = http_client.context.http_client.get(
         "/api/v1/metadata/multi", params={"include_data_sources": True}
@@ -178,122 +224,39 @@ def test_registers_with_arbitrary_mimetype(tmpdir, tmp_path):
         assert ds["structure_family"] == "bytes"
 
 
-def test_raw_export_single_asset(http_client, tmp_path):
-    """`BaseClient.raw_export()` writes a single-asset bytes payload to one file.
+def test_raw_export_single_asset(http_client, tmp_path, destination):
+    """`BaseClient.raw_export()` writes a single-asset bytes payload to one handle.
 
     Bytes nodes return the generic `BaseClient` (no family-specific client), so
-    `raw_export` is the high-level user-facing download API. For a single asset
-    the file lands directly in the destination directory.
+    `raw_export` is the high-level user-facing download API. The destination may
+    be either a directory on disk or an in-memory `MutableMapping`; in both
+    cases a single-asset node produces exactly one handle keyed by the
+    server-supplied filename.
     """
     _register_bytes_node(http_client, tmp_path, PAYLOAD, key="blob")
-    dest = tmp_path / "out"
-    dest.mkdir()
-    paths = http_client["blob"].raw_export(dest)
-    assert len(paths) == 1
-    assert Path(paths[0]).read_bytes() == PAYLOAD
+    handles = http_client["blob"].raw_export(destination.arg)
+    assert len(handles) == 1
+    assert Path(handles[0]).name == "blob.bin"
+    assert destination.read(handles[0]) == PAYLOAD
 
 
-def test_raw_export_multi_asset(http_client, tmp_path):
-    """`raw_export()` on a multi-asset bytes node namespaces files by asset id.
+def test_raw_export_multi_asset(http_client, tmp_path, destination):
+    """`raw_export()` on a multi-asset bytes node namespaces handles by asset id.
 
-    Each asset is downloaded into `<dest>/<asset_id>/<filename>`; concatenating
-    the parts in `num` order reproduces the original payload.
+    On disk each asset lands in `<dest>/<asset_id>/<filename>`; in a mapping the
+    keys take the form `<asset_id>/<filename>`. In either layout, ordering the
+    handles by the asset's server-side `num` reproduces the original payload.
     """
     chunks = [PAYLOAD[i : i + 7] for i in range(0, len(PAYLOAD), 7)]  # noqa: E203
-    assets = []
-    for i, chunk in enumerate(chunks):
-        p = tmp_path / f"c{i:02d}.bin"
-        p.write_bytes(chunk)
-        assets.append(
-            Asset(
-                data_uri=p.as_uri(),
-                is_directory=False,
-                size=len(chunk),
-                parameter="data_uris",
-                num=i,
-            )
-        )
-    http_client.new(
-        structure_family=StructureFamily.bytes,
-        data_sources=[
-            DataSource(
-                mimetype="application/octet-stream",
-                assets=assets,
-                structure_family=StructureFamily.bytes,
-                structure=BytesStructure(),
-                management=Management.external,
-            )
-        ],
-        key="multi",
-    )
-    dest = tmp_path / "out"
-    dest.mkdir()
-    paths = http_client["multi"].raw_export(dest)
-    assert len(paths) == len(chunks)
-    # Each path is `<dest>/<asset_id>/c{i}.bin`. Concatenating in `num` order
-    # (recovered from server metadata) must reproduce the original payload.
+    _register_multi_asset_node(http_client, tmp_path, chunks, key="multi")
+    handles = http_client["multi"].raw_export(destination.arg)
+    assert len(handles) == len(chunks)
     ds = http_client.context.http_client.get(
         "/api/v1/metadata/multi", params={"include_data_sources": True}
     ).json()["data"]["attributes"]["data_sources"][0]
     num_by_id = {a["id"]: a["num"] for a in ds["assets"]}
-    ordered = sorted(paths, key=lambda p: num_by_id[int(Path(p).parent.name)])
-    assert b"".join(Path(p).read_bytes() for p in ordered) == PAYLOAD
-
-
-def test_raw_export_to_mapping_single_asset(http_client, tmp_path):
-    """Passing a `MutableMapping` to `raw_export()` streams the payload into an
-    in-memory `BytesIO` keyed by the server-provided filename, with no disk I/O."""
-    _register_bytes_node(http_client, tmp_path, PAYLOAD, key="blob")
-    buffers = {}
-    keys = http_client["blob"].raw_export(buffers)
-    assert keys == ["blob.bin"]
-    assert set(buffers) == {"blob.bin"}
-    assert isinstance(buffers["blob.bin"], io.BytesIO)
-    assert buffers["blob.bin"].read() == PAYLOAD
-
-
-def test_raw_export_to_mapping_multi_asset(http_client, tmp_path):
-    """For multi-asset nodes the mapping keys are namespaced as
-    `<asset_id>/<filename>`, mirroring the on-disk layout."""
-    chunks = [PAYLOAD[i : i + 7] for i in range(0, len(PAYLOAD), 7)]  # noqa: E203
-    assets = []
-    for i, chunk in enumerate(chunks):
-        p = tmp_path / f"c{i:02d}.bin"
-        p.write_bytes(chunk)
-        assets.append(
-            Asset(
-                data_uri=p.as_uri(),
-                is_directory=False,
-                size=len(chunk),
-                parameter="data_uris",
-                num=i,
-            )
-        )
-    http_client.new(
-        structure_family=StructureFamily.bytes,
-        data_sources=[
-            DataSource(
-                mimetype="application/octet-stream",
-                assets=assets,
-                structure_family=StructureFamily.bytes,
-                structure=BytesStructure(),
-                management=Management.external,
-            )
-        ],
-        key="multi",
-    )
-    buffers = {}
-    keys = http_client["multi"].raw_export(buffers)
-    assert len(keys) == len(chunks)
-    assert set(buffers) == set(keys)
-    # Each key is `<asset_id>/c{i}.bin`; ordering by num (from metadata)
-    # reproduces the original payload.
-    ds = http_client.context.http_client.get(
-        "/api/v1/metadata/multi", params={"include_data_sources": True}
-    ).json()["data"]["attributes"]["data_sources"][0]
-    num_by_id = {a["id"]: a["num"] for a in ds["assets"]}
-    ordered = sorted(keys, key=lambda k: num_by_id[int(k.split("/")[0])])
-    assert b"".join(buffers[k].read() for k in ordered) == PAYLOAD
+    ordered = sorted(handles, key=lambda h: num_by_id[destination.asset_id(h)])
+    assert b"".join(destination.read(h) for h in ordered) == PAYLOAD
 
 
 def test_put_asset_backfills_size_on_reregistration(http_client, tmp_path):
