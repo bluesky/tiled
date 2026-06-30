@@ -154,6 +154,12 @@ STORAGE_ADAPTERS_BY_MIMETYPE = OneShotCachedMap[str, type](
 )
 
 
+@dataclasses.dataclass(frozen=True)
+class AccessBlobMock:
+    username: str | None = None
+    tags: list[str] | None = None
+
+
 class RootNode:
     """
     Node representing the root of the tree.
@@ -174,7 +180,17 @@ class RootNode:
         self.specs = specs or []
         self.key = ""
         self.data_sources = None
-        self.access_blob = top_level_access_blob or {}
+
+        if top_level_access_blob is None:
+            self.access_blob = None
+        elif "user" in top_level_access_blob:
+            self.access_blob = AccessBlobMock(
+                username=top_level_access_blob["user"]
+            )
+        else:
+            self.access_blob = AccessBlobMock(
+                tags=top_level_access_blob["tags"]
+            )
 
 
 class Context:
@@ -1301,7 +1317,6 @@ class CatalogNodeAdapter:
                     # SQLAlchemy reserved word 'metadata'.
                     metadata_=current.metadata_,
                     specs=current.specs,
-                    access_blob=current.access_blob,
                     node_id=current.id,
                     revision_number=next_revision_number,
                 )
