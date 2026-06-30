@@ -888,15 +888,31 @@ class CatalogNodeAdapter:
             return type(self)(self.context, refreshed_node)
 
     async def _put_asset(self, db: AsyncSession, asset):
-        # Find an asset_id if it exists, otherwise create a new one
-        statement = select(orm.Asset.id).where(orm.Asset.data_uri == asset.data_uri)
+        # Find an asset_id if it exists, otherwise create a new one.
+        statement = select(orm.Asset.id, orm.Asset.size).where(
+            orm.Asset.data_uri == asset.data_uri
+        )
         result = await db.execute(statement)
         if row := result.fetchone():
-            (asset_id,) = row
+            asset_id, existing_size = row
+            # Opportunistically refresh `size` on re-registration. This
+            # backfills rows that predate `Asset.size` being populated by the
+            # client and lets a re-`register` pick up changes when an
+            # underlying file has been rewritten. We only act when the caller
+            # supplied a non-null size to avoid clobbering a known value with
+            # `None` (e.g. when re-registering through a path that does not
+            # stat the file).
+            if asset.size is not None and asset.size != existing_size:
+                await db.execute(
+                    update(orm.Asset)
+                    .where(orm.Asset.id == asset_id)
+                    .values(size=asset.size)
+                )
         else:
             statement = self.insert(orm.Asset).values(
                 data_uri=asset.data_uri,
                 is_directory=asset.is_directory,
+                size=asset.size,
             )
             result = await db.execute(statement)
             (asset_id,) = result.inserted_primary_key
@@ -1693,6 +1709,14 @@ class CatalogAwkwardAdapter(CatalogNodeAdapter):
         return await ensure_awaitable((await self.get_adapter()).write, *args, **kwargs)
 
 
+class CatalogBytesAdapter(CatalogNodeAdapter):
+    # Bytes nodes serve their content via /asset/bytes, not through a
+    # structure-family endpoint, so this adapter inherits CatalogNodeAdapter
+    # unchanged. The class exists to anchor the family in STRUCTURES so
+    # registration produces an instance of the right type.
+    pass
+
+
 class CatalogRaggedAdapter(CatalogArrayAdapter):
     def make_ws_schema(self):
         return {
@@ -2426,6 +2450,7 @@ def node_from_segments(segments, root_id=0):
 STRUCTURES = {
     StructureFamily.array: CatalogArrayAdapter,
     StructureFamily.awkward: CatalogAwkwardAdapter,
+    StructureFamily.bytes: CatalogBytesAdapter,
     StructureFamily.container: CatalogContainerAdapter,
     StructureFamily.ragged: CatalogRaggedAdapter,
     StructureFamily.sparse: CatalogSparseAdapter,

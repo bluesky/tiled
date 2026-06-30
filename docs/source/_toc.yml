@@ -46,6 +46,7 @@ subtrees:
             - file: user-guide/register
             - file: user-guide/retries
             - file: user-guide/webhooks
+            - file: user-guide/bytes
   - entries:
       - file: explanations/index
         subtrees:

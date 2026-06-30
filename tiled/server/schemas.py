@@ -33,6 +33,7 @@ from tiled.structures.ragged import RaggedStructure
 
 from ..structures.array import ArrayStructure
 from ..structures.awkward import AwkwardStructure
+from ..structures.bytes import BytesStructure
 from ..structures.core import STRUCTURE_TYPES, Spec, StructureFamily
 from ..structures.data_source import Management
 from ..structures.sparse import SparseStructure
@@ -121,6 +122,7 @@ Specs = Annotated[List[Spec], Field(max_length=MAX_ALLOWED_SPECS)]
 class Asset(pydantic.BaseModel):
     data_uri: str
     is_directory: bool
+    size: Optional[int] = None
     parameter: Optional[str] = None
     num: Optional[int] = None
     id: Optional[int] = None
@@ -130,6 +132,7 @@ class Asset(pydantic.BaseModel):
         return cls(
             data_uri=orm.data_uri,
             is_directory=orm.is_directory,
+            size=orm.size,
             id=orm.id,
         )
 
@@ -138,6 +141,7 @@ class Asset(pydantic.BaseModel):
         return cls(
             data_uri=orm.asset.data_uri,
             is_directory=orm.asset.is_directory,
+            size=orm.asset.size,
             parameter=orm.parameter,
             num=orm.num,
             id=orm.asset.id,
@@ -204,6 +208,7 @@ class NodeAttributes(pydantic.BaseModel):
         Union[
             ArrayStructure,
             AwkwardStructure,
+            BytesStructure,
             RaggedStructure,
             SparseStructure,
             NodeStructure,
@@ -245,6 +250,10 @@ class AwkwardLinks(pydantic.BaseModel):
     full: str
 
 
+class BytesLinks(pydantic.BaseModel):
+    self: str
+
+
 class DataFrameLinks(pydantic.BaseModel):
     self: str
     full: str
@@ -266,6 +275,7 @@ class SparseLinks(pydantic.BaseModel):
 resource_links_type_by_structure_family = {
     StructureFamily.array: ArrayLinks,
     StructureFamily.awkward: AwkwardLinks,
+    StructureFamily.bytes: BytesLinks,
     StructureFamily.container: ContainerLinks,
     StructureFamily.ragged: RaggedLinks,
     StructureFamily.sparse: SparseLinks,

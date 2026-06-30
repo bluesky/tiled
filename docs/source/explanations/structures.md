@@ -16,6 +16,9 @@ The structure families are:
 * sparse --- a sparse array (i.e. an array which is mostly zeros)
 * table --- tabular data, as in [Apache Arrow](https://arrow.apache.org) or
   [pandas](https://pandas.pydata.org/)
+* bytes --- a special, "non-structure" family: an opaque sequence of bytes with
+  no logical structure for Tiled to interpret. Useful as a fallback for
+  externally registered binary files that do not fit any of the other families.
 
 ## How structure is encoded
 
@@ -623,3 +626,47 @@ the contained tables and arrays (thus, name collisions are forbidden). This allo
 the disparate internal storage mechanisms (e.g. Parquet for tables and zarr for arrays) and present the user with a
 smooth homogeneous interface for data access. Composite structures do not support pagination and are not
 recommended for "wide" datasets with more than ~1000 items (columns and arrays) in the namespace.
+
+`bytes`-family children are permitted in a composite container -- they participate in the
+flat namespace like any other child, listed via `composite.keys()` and accessed via
+`composite["blob_key"]` -- but they are **silently skipped** by `composite.read()` because
+opaque byte payloads have no `xarray.Dataset` representation. Downloading a bytes child
+nested inside a composite works through the same per-asset path used for top-level bytes
+nodes: `GET /asset/bytes/{composite_key}/{blob_key}?id=N`. Naming a bytes child
+explicitly in `composite.read(variables=[...])` raises a clear error rather than silently
+producing an empty slot, so typos surface immediately.
+
+(bytes-structure-family)=
+### Bytes
+
+The `bytes` family is a deliberate outlier in this list: it represents an
+opaque, flat sequence of bytes with **no structural information** for Tiled to
+interpret. The relevant details (MIME type, filename, encoding) live on the
+`DataSource` and individual `Asset`s; `BytesStructure` itself carries no fields.
+The per-asset byte length is recorded on each `Asset.size`, so a multi-asset
+bytes node reports the size of every underlying file individually:
+
+```json
+{
+  "data_sources": [
+    {
+      "structure_family": "bytes",
+      "structure": {},
+      "assets": [
+        {"id": 7, "data_uri": "file:///.../part0.bin", "size": 524288, "num": 0},
+        {"id": 8, "data_uri": "file:///.../part1.bin", "size": 524288, "num": 1}
+      ]
+    }
+  ]
+}
+```
+
+Because Tiled gains no leverage from treating this as opaque, `bytes` is
+intentionally **read-only**. Use it for external files (PDFs, firmware blobs,
+proprietary binary formats) that lack a useful logical structure. To *store*
+new data in Tiled, prefer a structured family (`array`, `table`, `awkward`, …)
+so the server can chunk, slice, and serialize intelligently.
+
+For practical recipes -- auto-registration via `tiled register`, downloading
+content from Python and from the HTTP API, multi-asset reassembly, etc. -- see
+the [Working with `bytes` nodes](../user-guide/bytes.md) how-to guide.

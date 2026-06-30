@@ -195,6 +195,18 @@ class CompositeClient(Container):
             data_vars = {}
             for part, item in contents.items():
                 # Read all or selective arrays/columns.
+                if item["attributes"]["structure_family"] == StructureFamily.bytes:
+                    # Bytes children are opaque payloads with no xarray representation.
+                    # Silently skip them when reading the whole composite; raise if
+                    # the caller named one explicitly so typos surface clearly.
+                    if variables is not None and part in variables:
+                        raise ValueError(
+                            f"Cannot read bytes-family child {part!r} as part of "
+                            "a composite xarray.Dataset. Bytes payloads are opaque; "
+                            "download them via /asset/bytes/{path}?id=N using the "
+                            "asset ids discovered from the node's metadata."
+                        )
+                    continue
                 if item["attributes"]["structure_family"] in {
                     StructureFamily.array,
                     StructureFamily.sparse,

@@ -352,6 +352,7 @@ it's a plain old file or something else if it is not.
 ds.assets[0].data_uri
 ```
 
+(download-raw-files)=
 ## Download raw files
 
 Sometimes it is best to just download the files exactly as they were. This may
@@ -366,6 +367,11 @@ this efficiently by launching parallel downloads.
 ```{code-cell} ipython3
 c['examples/xraydb/C/edges'].raw_export('downloads/')
 ```
+
+Finally, `raw_export` is the primary way to retrieve any unstructured data from
+Tiled (e.g. PDF files or binary blobs). For more on `raw_export` --
+including downloading into in-memory buffers and reassembling multi-asset
+payloads -- see [Working with `bytes` nodes](../user-guide/bytes.md).
 
 (run-a-tiled-server)=
 ## Run a Tiled server
