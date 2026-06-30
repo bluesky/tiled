@@ -75,7 +75,6 @@ class Node(Timestamped, Base):
     structure_family = Column(Enum(StructureFamily), nullable=False)
     metadata_ = Column("metadata", JSONVariant, nullable=False)
     specs = Column(JSONVariant, nullable=False)
-    access_blob = Column("access_blob", JSONVariant, nullable=False)
 
     data_sources = relationship(
         "DataSource",
@@ -87,6 +86,11 @@ class Node(Timestamped, Base):
     revisions = relationship(
         "Revision",
         backref="node",
+        passive_deletes=True,
+    )
+    access_blob = relationship(
+        "AccessBlob",
+        uselist=False,
         passive_deletes=True,
     )
 
@@ -106,7 +110,6 @@ class Node(Timestamped, Base):
             "time_created",
             "id",
             "metadata",
-            "access_blob",
             postgresql_using="gin",
         ),
         # B-tree index supporting cursor-based pagination (WHERE parent = ?
@@ -133,6 +136,30 @@ class NodesClosure(Base):
     __table_args__ = (
         Index("idx_nodes_closure_ancestor", "ancestor"),
         Index("idx_nodes_closure_descendant", "descendant"),
+    )
+
+
+class AccessBlob(Base):
+    """
+    An access blob contains a set of tags that are used to control access to nodes.
+    May otherwise contain information indicating that a node is "user-owned".
+
+    Relationship is one-to-one with the nodes table.
+    """
+
+    __tablename__ = "access_blobs"
+
+    node_id = Column(ForeignKey("nodes.id", ondelete="CASCADE"), unique=True, nullable=False)
+    kind = Column(Enum("user", "tags", name="access_kind"), nullable=False)
+    username = Column(String, nullable=True)
+    tags = Column(ARRAY(String), nullable=True)
+
+    __table_args__ = (
+        CheckConstraint(
+            "(username IS NOT NULL AND tags IS NULL) OR "
+            "(username IS NULL AND tags IS NOT NULL)",
+            name="ck_access_blob_user_xor_tags",
+        ),
     )
 
 
@@ -372,8 +399,8 @@ EXECUTE FUNCTION update_closure_table_when_inserting();
     connection.execute(
         text(
             """
-INSERT INTO nodes(id, key, parent, structure_family, metadata, specs, access_blob)
-SELECT 0, '', NULL, 'container', '{}', '[]', '{}';
+INSERT INTO nodes(id, key, parent, structure_family, metadata, specs)
+SELECT 0, '', NULL, 'container', '{}', '[]';
 """
         )
     )
@@ -550,7 +577,7 @@ class Asset(Timestamped, Base):
 
 class Revision(Timestamped, Base):
     """
-    This tracks history of metadata, specs, and access_blob supporting 'undo' functionality.
+    This tracks history of metadata and specs supporting 'undo' functionality.
     """
 
     __tablename__ = "revisions"
@@ -566,7 +593,6 @@ class Revision(Timestamped, Base):
 
     metadata_ = Column("metadata", JSONVariant, nullable=False)
     specs = Column(JSONVariant, nullable=False)
-    access_blob = Column("access_blob", JSONVariant, nullable=False)
 
     __table_args__ = (
         UniqueConstraint(
