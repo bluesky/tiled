@@ -147,7 +147,7 @@ class FileSequenceAdapter(Adapter[ArrayStructure]):
             true_shape = tuple(map(sum, self._chunks))
             if true_shape != struct_shape:
                 # The trailing dimensions must match (can be generalized in the future)
-                if (math.prod(true_shape) != math.prod(struct_shape)):
+                if math.prod(true_shape) != math.prod(struct_shape):
                     raise RuntimeError(
                         f"Array with shape {true_shape} derived from storage can not be reshaped "
                         f"to match the desired structure, {struct_shape}."
