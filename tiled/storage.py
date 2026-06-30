@@ -136,7 +136,7 @@ class ObjectStorage(Storage):
         object.__setattr__(self, "bucket", bucket_name)
 
     @classmethod
-    def parse_blob_uri(cls, uri: str) -> tuple[str, str]:
+    def parse_blob_uri(cls, uri: str) -> tuple[str, str, str]:
         """Split a blob URI into base URI, bucket name (optionally), and the prefix.
 
         For example, given 'http://example.com/bucket_name/path/to/blob',
@@ -395,6 +395,29 @@ def get_storage(uri: str) -> Storage:
         uri, _, _ = ObjectStorage.parse_blob_uri(uri)
 
     return _STORAGE[uri]
+
+
+def size_from_uri(data_uri: str) -> int:
+    """Return the byte length of the asset at `data_uri`.
+
+    Dispatches on URI scheme: `file://` URIs are stat'd on the local
+    filesystem; object-store URIs (those in `SUPPORTED_OBJECT_URI_SCHEMES`)
+    issue a HEAD via obstore. Raises `ValueError` for any other scheme.
+    Underlying I/O errors (`FileNotFoundError`, network errors, etc.)
+    propagate; callers that want best-effort behavior should catch them at
+    the call site.
+    """
+    scheme = urlparse(data_uri).scheme
+    if scheme == "file":
+        return path_from_uri(data_uri).stat().st_size
+    if scheme in SUPPORTED_OBJECT_URI_SCHEMES:
+        storage = get_storage(data_uri)
+        _, _, path = ObjectStorage.parse_blob_uri(data_uri)
+        store = storage.get_obstore_location()
+        return int(store.head(path)["size"])
+    raise ValueError(
+        f"Cannot stat URI with unsupported scheme {scheme!r}: {data_uri!r}"
+    )
 
 
 class DirectoryContainer(Mapping[str, bytes]):

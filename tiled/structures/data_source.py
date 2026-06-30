@@ -22,6 +22,7 @@ class Asset:
     parameter: Optional[str]
     num: Optional[int] = None
     id: Optional[int] = None
+    size: Optional[int] = None
 
 
 StructureT = TypeVar("StructureT", bound=Optional[Structure])

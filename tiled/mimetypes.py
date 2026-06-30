@@ -16,6 +16,9 @@ TILED_SQL_TABLE_MIMETYPE = "application/x-tiled-sql-table"
 # TODO: make type[Adapter] after #1047
 DEFAULT_ADAPTERS_BY_MIMETYPE = OneShotCachedMap[str, type](
     {
+        "application/octet-stream": lambda: importlib.import_module(
+            "..adapters.bytes", __name__
+        ).BytesAdapter,
         "image/tiff": lambda: importlib.import_module(
             "..adapters.tiff", __name__
         ).TiffAdapter,

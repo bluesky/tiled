@@ -340,6 +340,7 @@ async def register_single_item(
                     Asset(
                         data_uri=ensure_uri(item),
                         is_directory=is_directory,
+                        size=item.stat().st_size if not is_directory else None,
                         parameter="data_uri",
                     )
                 ],
@@ -450,6 +451,7 @@ async def register_image_sequence(node, name, sequence, settings):
                     Asset(
                         data_uri=ensure_uri(item),
                         is_directory=False,
+                        size=item.stat().st_size,
                         parameter="data_uris",
                         num=i,
                     )
