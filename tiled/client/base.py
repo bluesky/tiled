@@ -1,3 +1,4 @@
+import collections.abc
 import time
 from collections.abc import MutableMapping
 from copy import copy, deepcopy
@@ -652,6 +653,10 @@ class BaseClient:
         if metadata is None:
             metadata_patch = []
         else:
+            if not isinstance(metadata, collections.abc.Mapping):
+                raise ValueError(
+                    f"Metadata must serialize as a JSON object, cannot be {type(metadata)}."
+                )
             md_copy = deepcopy(self._item["attributes"]["metadata"])
             metadata_patch = jsonpatch.JsonPatch.from_diff(
                 self._item["attributes"]["metadata"],
