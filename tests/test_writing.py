@@ -473,6 +473,38 @@ def test_metadata_revisions(tree):
             ac.metadata_revisions.delete_revision(1)
 
 
+def test_metadata_revisions_count(tree):
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        ac = client.write_array([1, 2, 3], key="paginate_me")
+        ac.update_metadata(metadata={"a": 1})
+        ac.update_metadata(metadata={"a": 2})
+        ac.update_metadata(metadata={"a": 3})
+        # `len` reads the total count from the server, which was always 0 before.
+        assert len(ac.metadata_revisions) == 3
+        # Revisions are returned ordered by revision number.
+        revision_numbers = [r["revision_number"] for r in ac.metadata_revisions[:]]
+        assert revision_numbers == sorted(revision_numbers)
+
+
+def test_metadata_revisions_pagination(tree):
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        ac = client.write_array([1, 2, 3], key="paginate_revisions")
+        ac.update_metadata(metadata={"a": 1})
+        ac.update_metadata(metadata={"a": 2})
+        ac.update_metadata(metadata={"a": 3})
+        # Walk one revision per page via the 'next' links (never generated before
+        # #1389) and confirm all three come back, in order, with no overlap.
+        url = ac.uri.replace("/metadata/", "/revisions/") + "?page[limit]=1"
+        revision_numbers = []
+        while url is not None:
+            page = context.http_client.get(url).json()
+            revision_numbers += [r["revision_number"] for r in page["data"]]
+            url = page["links"]["next"]
+        assert revision_numbers == [1, 2, 3]
+
+
 def test_replace_metadata(tiled_websocket_context):
     context = tiled_websocket_context
     client = from_context(context)
