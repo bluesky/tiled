@@ -18,7 +18,7 @@ from tiled.adapters.array import ArrayAdapter
 from tiled.adapters.mapping import MapAdapter
 from tiled.client import Context, from_context
 from tiled.client.auth import CannotRefreshAuthentication
-from tiled.client.context import PasswordRejected
+from tiled.client.context import PasswordRejected, password_grant
 from tiled.server import authentication
 from tiled.server.app import build_app_from_config
 
@@ -692,3 +692,17 @@ def test_admin_delete_principal_apikey(
         context.api_key = api_key_info["secret"]
         with fail_with_status_code(HTTP_401_UNAUTHORIZED):
             context.whoami()
+
+
+@pytest.mark.timeout(5)
+def test_remaining_authenticated_when_tokens_not_remembered(config):
+    with Context.from_app(build_app_from_config(config)) as context:
+        provider = context.server_info.authentication.providers[0]
+        auth_endpoint = provider.links["auth_endpoint"]
+        tokens = password_grant(
+            context.http_client, auth_endpoint, provider.provider, "alice", "secret1"
+        )
+        context.configure_auth(tokens, remember_me=False)
+        # This will timeout if waiting for a prompt response
+        client = from_context(context, remember_me=False)
+        assert client.context.authenticated

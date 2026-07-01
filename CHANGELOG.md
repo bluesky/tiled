@@ -36,6 +36,10 @@ Write the date in place of the "Unreleased" in the case a new version is release
   retry cannot fix: an unsupported URL scheme and an invalid request such as an
   illegal header value.
 
+### Fixed
+
+- Fixed authentication check in from_context to prevent the user from being re-prompted to login.
+
 
 ## v0.2.11 (2026-05-27)
 
