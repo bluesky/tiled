@@ -3,6 +3,15 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Expand the functionality of HDF5Adapter to handle `object`-dtyped data:
+  variable-length strings are coerced to fixed-length bytes, non-string object
+  dtypes (e.g. vlen arrays) fall back to an empty placeholder that preserves
+  the original shape.
+
 
 ## v0.2.12 (2026-06-16)
 
