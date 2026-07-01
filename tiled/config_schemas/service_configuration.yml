@@ -179,8 +179,11 @@ properties:
               description: |
                 Type of Authenticator to use.
 
-                These are typically from the tiled.authenticators module,
+                These are typically from the bluesky_authentication.authenticators module,
                 though user-defined ones may be used as well.
+
+                For backward compatibility, import paths from the deprecated
+                tiled.authenticators module are also supported.
 
                 This is given as an import path. In an import path, packages/modules
                 are separated by dots, and the object itself it separated by a colon.

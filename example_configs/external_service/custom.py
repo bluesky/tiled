@@ -1,7 +1,7 @@
 import numpy
+from bluesky_authentication.protocols import UserSessionState
 
 from tiled.adapters.array import ArrayAdapter
-from tiled.authenticators import UserSessionState
 from tiled.server.protocols import InternalAuthenticator
 from tiled.structures.core import StructureFamily
 

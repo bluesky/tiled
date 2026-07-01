@@ -132,6 +132,10 @@ Tiled is designed to integrate with external user-management systems via a plugg
 Authenticator interface. For those familiar with JupyterHub, these are very
 similar to JupyterHub Authenticators. Authenticators fall into two groups:
 
+The canonical import path for built-in authenticators is
+`bluesky_authentication.authenticators:*`. For backward compatibility,
+`tiled.authenticators:*` remains supported for existing configurations.
+
 * Authenticators that accept user credentials directly, following the OAuth2 and
   OpenAPI standards as shown below, and validate the credentials using some
   underlying authentication mechanism, such as PAM.
@@ -176,7 +180,7 @@ The configuration file(s) should include:
 
 ```yaml
 authentication:
-  authenticator: tiled.authenticators:PAMAuthenticator
+  authenticator: bluesky_authentication.authenticators:PAMAuthenticator
 ```
 
 Here is a complete working example:
@@ -185,7 +189,7 @@ Here is a complete working example:
 # pam_config.yml
 authentication:
   providers:
-    - authenticator: tiled.authenticators:PAMAuthenticator
+    - authenticator: bluesky_authentication.authenticators:PAMAuthenticator
       # This 'provider' can be any string; it is used to differentiate
       # authentication providers when multiple ones are supported.
       provider: local
@@ -251,7 +255,7 @@ The configuration file(s) must include the following.
 authentication:
   providers:
   - provider: example.com
-    authenticator: tiled.authenticators:OIDCAuthenticator
+    authenticator: bluesky_authentication.authenticators:OIDCAuthenticator
     args:
       # Values should come from your OIDC provider configuration
       # The audience claim is checked by the OIDC Client (Tiled)
@@ -282,7 +286,7 @@ should only for used for development and demos.
 authentication:
   providers:
   - provider: toy
-    authenticator: tiled.authenticators:DictionaryAuthenticator
+    authenticator: bluesky_authentication.authenticators:DictionaryAuthenticator
     args:
       users_to_passwords:
         alice: ${ALICE_PASSWORD}
@@ -304,7 +308,7 @@ The ``DummyAuthenticator`` accepts *any* username and password combination.
 authentication:
   providers:
   - provider: toy
-    authenticator: tiled.authenticators:DummyAuthenticator
+    authenticator: bluesky_authentication.authenticators:DummyAuthenticator
 trees:
   - path: /
     tree: tiled.examples.generated_minimal:tree

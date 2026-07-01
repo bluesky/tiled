@@ -4,7 +4,7 @@
 authentication:
   providers:
   - provider: saml
-    authenticator: tiled.authenticators:SAMLAuthenticator
+    authenticator: bluesky_authentication.authenticators:SAMLAuthenticator
     args:
       attribute_name: "email"
       saml_settings:

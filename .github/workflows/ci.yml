@@ -48,7 +48,7 @@ jobs:
         python-version: ${{ matrix.python-version }}
 
     - name: Install tiled
-      run: uv sync --all-extras
+      run: uv sync --all-extras --with "bluesky-authentication @ git+https://github.com/davidpcls/bluesky-authentication.git@main"
 
     # TODO Find a new image to use.
     # https://github.com/bluesky/tiled/issues/1109
@@ -128,7 +128,7 @@ jobs:
         python-version: ${{ matrix.python-version }}
 
     - name: Install tiled
-      run: uv sync --all-extras
+      run: uv sync --all-extras --with "bluesky-authentication @ git+https://github.com/davidpcls/bluesky-authentication.git@main"
       env:
         TILED_BUILD_SKIP_UI: 1
 

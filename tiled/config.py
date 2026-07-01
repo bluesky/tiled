@@ -17,7 +17,7 @@ from pydantic_settings import (
     SettingsConfigDict,
 )
 
-from tiled.authenticators import ProxiedOIDCAuthenticator
+from bluesky_authentication.authenticators import ProxiedOIDCAuthenticator
 from tiled.server.protocols import ExternalAuthenticator, InternalAuthenticator
 from tiled.type_aliases import AppTask, TaskMap
 

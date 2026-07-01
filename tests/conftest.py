@@ -373,7 +373,7 @@ TOY_AUTHENTICATION = {
     "providers": [
         {
             "provider": "toy",
-            "authenticator": "tiled.authenticators:DictionaryAuthenticator",
+            "authenticator": "bluesky_authentication.authenticators:DictionaryAuthenticator",
             "args": {
                 "users_to_passwords": {"alice": "secret1", "bob": "secret2"},
             },

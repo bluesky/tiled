@@ -193,16 +193,37 @@ def test_duplicate_auth_providers():
                     "providers": [
                         {
                             "provider": "one",
-                            "authenticator": "tiled.authenticators:DummyAuthenticator",
+                            "authenticator": "bluesky_authentication.authenticators:DummyAuthenticator",
                         },
                         {
                             "provider": "one",
-                            "authenticator": "tiled.authenticators:DictionaryAuthenticator",
+                            "authenticator": "bluesky_authentication.authenticators:DictionaryAuthenticator",
                         },
                     ]
                 }
             }
         )
+
+
+def test_legacy_authenticator_import_path_is_supported():
+    config = Config.model_validate(
+        {
+            "trees": [{"tree": f"{__name__}:tree", "path": "/"}],
+            "authentication": {
+                "providers": [
+                    {
+                        "provider": "legacy",
+                        "authenticator": "tiled.authenticators:DictionaryAuthenticator",
+                        "args": {
+                            "users_to_passwords": {"alice": "secret"},
+                        },
+                    }
+                ],
+                "secret_keys": ["SECRET"],
+            },
+        }
+    )
+    assert "legacy" in config.authentication.authenticators
 
 
 @respx.mock
@@ -226,7 +247,7 @@ def test_proxied_authenticator_single_instance_required(
                     "providers": [
                         {
                             "provider": "one",
-                            "authenticator": "tiled.authenticators:ProxiedOIDCAuthenticator",
+                            "authenticator": "bluesky_authentication.authenticators:ProxiedOIDCAuthenticator",
                             "args": {
                                 "audience": "tiled",
                                 "client_id": "tiled",
@@ -236,7 +257,7 @@ def test_proxied_authenticator_single_instance_required(
                         },
                         {
                             "provider": "two",
-                            "authenticator": "tiled.authenticators:ProxiedOIDCAuthenticator",
+                            "authenticator": "bluesky_authentication.authenticators:ProxiedOIDCAuthenticator",
                             "args": {
                                 "audience": "tiled",
                                 "client_id": "tiled",
@@ -268,11 +289,11 @@ def test_proxied_authenticator_is_not_used_with_other_authenticators(
                     "providers": [
                         {
                             "provider": "one",
-                            "authenticator": "tiled.authenticators:DummyAuthenticator",
+                            "authenticator": "bluesky_authentication.authenticators:DummyAuthenticator",
                         },
                         {
                             "provider": "two",
-                            "authenticator": "tiled.authenticators:ProxiedOIDCAuthenticator",
+                            "authenticator": "bluesky_authentication.authenticators:ProxiedOIDCAuthenticator",
                             "args": {
                                 "audience": "tiled",
                                 "client_id": "tiled",

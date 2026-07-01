@@ -19,6 +19,7 @@ requires-python = ">=3.10"
 # data structures you care about.
 # Use pip install tiled[all] to get everything.
 dependencies = [
+    "bluesky-authentication",
     "httpx >=0.20.0,!=0.23.1",
     "json-merge-patch",
     "jsonpatch",

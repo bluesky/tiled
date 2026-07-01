@@ -37,7 +37,7 @@ from starlette.status import (
 )
 
 from ..access_control.protocols import AccessPolicy
-from ..authenticators import ProxiedOIDCAuthenticator
+from bluesky_authentication.authenticators import ProxiedOIDCAuthenticator
 from ..catalog.adapter import WouldDeleteData
 from ..config import (
     Authentication,

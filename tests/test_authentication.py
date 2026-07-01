@@ -260,12 +260,12 @@ def test_multiple_providers(enter_username_password, config, monkeypatch):
         [
             {
                 "provider": "second",
-                "authenticator": "tiled.authenticators:DictionaryAuthenticator",
+                "authenticator": "bluesky_authentication.authenticators:DictionaryAuthenticator",
                 "args": {"users_to_passwords": {"cara": "secret3", "doug": "secret4"}},
             },
             {
                 "provider": "third",
-                "authenticator": "tiled.authenticators:DictionaryAuthenticator",
+                "authenticator": "bluesky_authentication.authenticators:DictionaryAuthenticator",
                 "args": {
                     # Duplicate 'cara' username.
                     "users_to_passwords": {"cara": "secret5", "emilia": "secret6"}
@@ -292,12 +292,12 @@ def test_multiple_providers_name_collision(config):
     config["authentication"]["providers"] = [
         {
             "provider": "some_name",
-            "authenticator": "tiled.authenticators:DictionaryAuthenticator",
+            "authenticator": "bluesky_authentication.authenticators:DictionaryAuthenticator",
             "args": {"users_to_passwords": {"cara": "secret3", "doug": "secret4"}},
         },
         {
             "provider": "some_name",  # duplicate!
-            "authenticator": "tiled.authenticators:DictionaryAuthenticator",
+            "authenticator": "bluesky_authentication.authenticators:DictionaryAuthenticator",
             "args": {
                 # Duplicate 'cara' username.
                 "users_to_passwords": {"cara": "secret5", "emilia": "secret6"}
