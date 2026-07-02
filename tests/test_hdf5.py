@@ -88,9 +88,32 @@ def example_file_with_vlen_str_in_dataset(tmp_path_factory):
         c = b.create_group("c")
         # Need to do this to make a vlen str dataset
         dt = h5py.string_dtype(encoding="utf-8")
+        # "d": sparsely populated vlen str
         dset = c.create_dataset("d", (100,), dtype=dt)
         assert dset.dtype == "object"
         dset[0] = b"test"
+        # "e": size-1 vlen str
+        c.create_dataset("e", data=numpy.array(["hello world"], dtype=object), dtype=dt)
+        # "f": multi-element vlen str with all values populated
+        f_dset = c.create_dataset("f", (3,), dtype=dt)
+        for i, v in enumerate([b"alpha", b"beta", b"gamma"]):
+            f_dset[i] = v
+        # "g": non-string object dtype (vlen array) -- exercises the
+        # branch where h5py.check_string_dtype returns None.
+        g_dset = c.create_dataset("g", (3,), dtype=h5py.vlen_dtype(numpy.int32))
+        g_dset[0] = numpy.arange(2, dtype=numpy.int32)
+        g_dset[1] = numpy.arange(5, dtype=numpy.int32)
+        g_dset[2] = numpy.arange(1, dtype=numpy.int32)
+        # "h": multi-dimensional vlen str -- shape preserved beyond 1-D.
+        h_dset = c.create_dataset("h", (2, 3), dtype=dt)
+        h_dset[...] = [[b"a", b"bb", b"ccc"], [b"d", b"ee", b"fff"]]
+        # "i": non-ASCII UTF-8 strings -- byte-level fidelity through the
+        # bytes coercion. "héllo" is 6 bytes in UTF-8.
+        c.create_dataset(
+            "i",
+            data=numpy.array(["héllo", "wörld"], dtype=object),
+            dtype=dt,
+        )
 
     yield ensure_uri(file_path)
 
@@ -184,8 +207,6 @@ def test_from_file_with_empty_data(example_file_with_empty_data, buffer, key):
 @pytest.mark.parametrize("num", [1, 5])
 def test_from_file_with_scalars(example_file_with_scalars, buffer, key: str, num: int):
     """Serve HDF5 file(s) containing scalars."""
-    if key in {"str", "bytes"}:
-        pytest.xfail("HDF5Adapter treats object dtypes differently.")
     h5py = pytest.importorskip("h5py")
     tree = HDF5Adapter.from_uris(*[example_file_with_scalars] * num)
     with Context.from_app(build_app(tree)) as context:
@@ -199,19 +220,58 @@ def test_from_file_with_scalars(example_file_with_scalars, buffer, key: str, num
 
 
 @pytest.mark.filterwarnings("ignore: The dataset")
-def test_from_file_with_vlen_str_dataset(example_file_with_vlen_str_in_dataset, buffer):
+@pytest.mark.parametrize(
+    "key, expected_shape, expected_values",
+    [
+        # Sparsely populated vlen str (only [0] set).
+        ("d", (100,), None),
+        # Size-1 vlen str.
+        ("e", (1,), [b"hello world"]),
+        # Fully populated multi-element vlen str.
+        ("f", (3,), [b"alpha", b"beta", b"gamma"]),
+        # Non-string object dtype (vlen array): served as an empty
+        # placeholder of the original shape.
+        ("g", (3,), None),
+        # Multi-dimensional vlen str.
+        (
+            "h",
+            (2, 3),
+            [[b"a", b"bb", b"ccc"], [b"d", b"ee", b"fff"]],
+        ),
+        # Non-ASCII UTF-8 strings preserved as raw bytes.
+        ("i", (2,), [b"h\xc3\xa9llo", b"w\xc3\xb6rld"]),
+    ],
+)
+def test_from_file_with_vlen_str_dataset(
+    example_file_with_vlen_str_in_dataset, buffer, key, expected_shape, expected_values
+):
     """Serve a single HDF5 file at top level."""
     h5py = pytest.importorskip("h5py")
     tree = HDF5Adapter.from_uris(example_file_with_vlen_str_in_dataset)
     with pytest.warns(UserWarning):
         with Context.from_app(build_app(tree)) as context:
             client = from_context(context)
-    arr = client["a"]["b"]["c"]["d"].read()
+    arr = client["a"]["b"]["c"][key].read()
     assert isinstance(arr, numpy.ndarray)
+    assert arr.shape == expected_shape
+    if expected_values is not None:
+        assert numpy.array_equal(arr, numpy.asarray(expected_values, dtype=bytes))
     with pytest.warns(UserWarning):
         client.export(buffer, format="application/x-hdf5")
     file = h5py.File(buffer, "r")
-    assert file["a"]["b"]["c"]["d"] is not None
+    assert file["a"]["b"]["c"][key] is not None
+
+
+@pytest.mark.filterwarnings("ignore: The dataset")
+@pytest.mark.parametrize("num", [2, 3])
+def test_from_multiple_files_with_vlen_str(example_file_with_vlen_str_in_dataset, num):
+    """Vlen string datasets must concatenate along axis 0 across files."""
+    tree = HDF5Adapter.from_uris(*[example_file_with_vlen_str_in_dataset] * num)
+    arr = tree["a"]["b"]["c"]["f"].read()
+    # Per-file shape is (3,) -> num*3 concatenated along axis 0.
+    assert arr.shape == (3 * num,)
+    expected = numpy.asarray([b"alpha", b"beta", b"gamma"] * num, dtype=bytes)
+    assert numpy.array_equal(arr, expected)
 
 
 def test_from_group(example_file, buffer):
