@@ -52,8 +52,14 @@ from ..links import links_for_node
 from ..ndslice import NDBlock, NDSlice
 from ..stream_messages import ArrayPatch
 from ..structures.core import Spec, StructureFamily
-from ..type_aliases import AccessTags, Scopes
-from ..utils import BrokenLink, ensure_awaitable, patch_mimetypes, path_from_uri
+from ..type_aliases import AccessBlob, AccessTags, Scopes
+from ..utils import (
+    BrokenLink,
+    access_blob_matches,
+    ensure_awaitable,
+    patch_mimetypes,
+    path_from_uri,
+)
 from ..validation_registration import ValidationError, ValidationRegistry
 from . import schemas
 from .authentication import (
@@ -106,6 +112,26 @@ from .utils import (
 )
 
 T = TypeVar("T")
+
+
+def _access_blob_from_payload(access_blob):
+    if access_blob is None:
+        return None
+    if "user" in access_blob:
+        return AccessBlob(username=access_blob["user"])
+    if "tags" in access_blob:
+        return AccessBlob(tags=access_blob["tags"])
+    return AccessBlob(tags=[])
+
+
+def _access_blob_to_payload(access_blob):
+    if access_blob is None:
+        return {}
+    if access_blob.username is not None:
+        return {"user": access_blob.username}
+    if access_blob.tags is not None:
+        return {"tags": access_blob.tags}
+    return {}
 
 
 def _patch_route_signature(
@@ -1863,7 +1889,7 @@ def get_router(
             body.metadata,
             body.structure_family,
             body.specs,
-            body.access_blob,
+            _access_blob_from_payload(body.access_blob),
         )
         if structure_family == StructureFamily.container:
             structure = None
@@ -1890,7 +1916,10 @@ def get_router(
                     access_blob_modified,
                     access_blob,
                 ) = await request.app.state.access_policy.init_node(
-                    principal, authn_access_tags, authn_scopes, access_blob=access_blob
+                    principal,
+                    authn_access_tags,
+                    authn_scopes,
+                    access_blob=access_blob,
                 )
             except ValueError as e:
                 raise HTTPException(
@@ -1898,8 +1927,8 @@ def get_router(
                     detail=f"Access policy rejects the provided access blob.\n{e}",
                 )
         else:
-            access_blob_modified = access_blob != {}
-            access_blob = {}
+            access_blob_modified = access_blob is not None
+            access_blob = AccessBlob(tags=[])
 
         node = await entry.create_node(
             metadata=body.metadata,
@@ -1920,7 +1949,7 @@ def get_router(
         if metadata_modified:
             response_data["metadata"] = metadata
         if access_blob_modified:
-            response_data["access_blob"] = access_blob
+            response_data["access_blob"] = _access_blob_to_payload(access_blob)
 
         return json_or_msgpack(request, response_data)
 
@@ -2344,7 +2373,11 @@ def get_router(
         if body.content_type == patch_mimetypes.JSON_PATCH:
             metadata = apply_json_patch(entry.metadata(), (body.metadata or []))
             specs = apply_json_patch((entry.specs or []), (body.specs or []))
-            access_blob = apply_json_patch(entry.access_blob, (body.access_blob or []))
+            access_blob = _access_blob_from_payload(
+                apply_json_patch(
+                    _access_blob_to_payload(entry.access_blob), (body.access_blob or [])
+                )
+            )
         elif body.content_type == patch_mimetypes.MERGE_PATCH:
             metadata = apply_merge_patch(entry.metadata(), (body.metadata or {}))
             # body.specs = [] clears specs, as per json merge patch specification
@@ -2357,9 +2390,9 @@ def get_router(
             # access policy from sanity checking the access blob.
             # make a copy so we can compare the node against the
             # proposed new access blob.
-            entry_access_blob_copy = deepcopy(entry.access_blob)
-            access_blob = apply_merge_patch(
-                entry_access_blob_copy, (body.access_blob or [])
+            entry_access_blob_copy = deepcopy(_access_blob_to_payload(entry.access_blob))
+            access_blob = _access_blob_from_payload(
+                apply_merge_patch(entry_access_blob_copy, (body.access_blob or []))
             )
         else:
             raise HTTPException(
@@ -2400,7 +2433,7 @@ def get_router(
                 )
         else:
             # Cannot modify the access blob if there is no access policy
-            access_blob_modified = access_blob != entry.access_blob
+            access_blob_modified = not access_blob_matches(access_blob, entry.access_blob)
             access_blob = entry.access_blob
 
         await entry.replace_metadata(
@@ -2414,7 +2447,7 @@ def get_router(
         if metadata_modified:
             response_data["metadata"] = metadata
         if access_blob_modified:
-            response_data["access_blob"] = access_blob
+            response_data["access_blob"] = _access_blob_to_payload(access_blob)
         return json_or_msgpack(request, response_data)
 
     @router.put("/metadata/{path:path}", response_model=schemas.PutMetadataResponse)
@@ -2452,7 +2485,11 @@ def get_router(
         metadata, specs, access_blob = (
             body.metadata if body.metadata is not None else entry.metadata(),
             body.specs if body.specs is not None else entry.specs,
-            body.access_blob if body.access_blob is not None else entry.access_blob,
+            (
+                _access_blob_from_payload(body.access_blob)
+                if body.access_blob is not None
+                else entry.access_blob
+            ),
         )
 
         metadata_modified, metadata = await validate_specs(
@@ -2476,7 +2513,7 @@ def get_router(
                 )
         else:
             # Cannot modify the access blob if there is no access policy
-            access_blob_modified = access_blob != entry.access_blob
+            access_blob_modified = not access_blob_matches(access_blob, entry.access_blob)
             access_blob = entry.access_blob
 
         await entry.replace_metadata(
@@ -2490,7 +2527,7 @@ def get_router(
         if metadata_modified:
             response_data["metadata"] = metadata
         if access_blob_modified:
-            response_data["access_blob"] = access_blob
+            response_data["access_blob"] = _access_blob_to_payload(access_blob)
         return json_or_msgpack(request, response_data)
 
     @router.get("/revisions/{path:path}")
