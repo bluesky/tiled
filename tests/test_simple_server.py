@@ -213,3 +213,11 @@ def test_webhooks_delivers_event(tmp_path):
             assert payload["key"] == "x"
     finally:
         receiver.shutdown()
+
+
+def test_whoami_failing_gracefully(capsys):
+    with SimpleTiledServer() as server:
+        client = from_uri(server.uri)
+        client.context.whoami()
+        printed = capsys.readouterr().out
+        assert "Authentication providers were not configured on the server." in printed
