@@ -18,6 +18,7 @@ from ..utils import OneShotCachedMap
 class StructureFamily(str, enum.Enum):
     array = "array"
     awkward = "awkward"
+    bytes = "bytes"
     container = "container"
     ragged = "ragged"
     sparse = "sparse"
@@ -71,5 +72,8 @@ STRUCTURE_TYPES = OneShotCachedMap[StructureFamily, type](
         StructureFamily.container: lambda: importlib.import_module(
             "...structures.container", StructureFamily.__module__
         ).ContainerStructure,
+        StructureFamily.bytes: lambda: importlib.import_module(
+            "...structures.bytes", StructureFamily.__module__
+        ).BytesStructure,
     }
 )

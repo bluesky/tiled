@@ -1,4 +1,5 @@
 import time
+from collections.abc import MutableMapping
 from copy import copy, deepcopy
 from dataclasses import asdict
 from pathlib import Path
@@ -375,34 +376,59 @@ class BaseClient:
                 manifests[asset.id] = manifest
         return manifests
 
-    def raw_export(self, destination_directory=None, max_workers=4):
-        """
-        Download the raw assets backing this node.
+    def raw_export(self, destination=None, max_workers=4, **kwargs):
+        """Download the raw assets backing this node.
 
         This may produce a single file or a directory.
 
         Parameters
         ----------
-        destination_directory : Path, optional
-            Destination for downloaded assets. Default is current working directory
+        destination : Path or MutableMapping, optional
+            Destination for downloaded assets. If a `MutableMapping` (e.g. a
+            `dict`) is provided, each asset is stored in-memory as an
+            `io.BytesIO` under a key mirroring the on-disk layout
+            (`<filename>` for a single asset; `<asset_id>/<filename>` or
+            `<asset_id>/<relative_path>` when multiple assets back the node).
+            Otherwise the value is treated as a filesystem path; defaults to
+            the current working directory.
         max_workers : int, optional
             Number of parallel workers downloading data. Default is 4.
 
         Returns
         -------
-        paths : List[Path]
-            Filepaths of exported files
+        paths_or_keys : List[Path] or List[str]
+            Filepaths of exported files, or keys written to the mapping.
         """
-        if destination_directory is None:
-            destination_directory = Path.cwd()
-        else:
-            destination_directory = Path(destination_directory)
+        # Back-compat: accept the old keyword name with a deprecation warning.
+        if "destination_directory" in kwargs:
+            import warnings
+
+            if destination is not None:
+                raise TypeError(
+                    "raw_export() got both 'destination' and the deprecated "
+                    "'destination_directory'; pass only 'destination'."
+                )
+            warnings.warn(
+                "The 'destination_directory' keyword to raw_export() is "
+                "deprecated; use 'destination' instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            destination = kwargs.pop("destination_directory")
+        if kwargs:
+            raise TypeError(
+                f"raw_export() got unexpected keyword arguments: " f"{sorted(kwargs)!r}"
+            )
+
+        in_memory = isinstance(destination, MutableMapping)
+        if not in_memory:
+            destination = Path(destination or Path.cwd())
 
         # Import here to defer the import of rich (for progress bar).
         from .download import ATTACHMENT_FILENAME_PLACEHOLDER, download
 
         urls = []
-        paths = []
+        targets = []  # Paths or posix-style string keys.
         data_sources = self.include_data_sources().data_sources()
         asset_manifest = self.asset_manifest(data_sources)
         if len(data_sources) != 1:
@@ -416,11 +442,12 @@ class BaseClient:
             for asset in data_source.assets:
                 if len(data_source.assets) == 1:
                     # Only one asset: keep the name simple.
-                    base_path = destination_directory
+                    base = "" if in_memory else destination
                 else:
-                    # Multiple assets: Add a subdirectory named for the asset
-                    # id to namespace each asset.
-                    base_path = Path(destination_directory, str(asset.id))
+                    # Multiple assets: namespace each asset by id.
+                    base = (
+                        f"{asset.id}" if in_memory else Path(destination, str(asset.id))
+                    )
                 if asset.is_directory:
                     relative_paths = asset_manifest[asset.id]
                     urls.extend(
@@ -436,12 +463,12 @@ class BaseClient:
                             for relative_path in relative_paths
                         ]
                     )
-                    paths.extend(
-                        [
-                            Path(base_path, relative_path)
-                            for relative_path in relative_paths
-                        ]
-                    )
+                    if in_memory:
+                        targets.extend(
+                            [f"{base}/{rp}" if base else rp for rp in relative_paths]
+                        )
+                    else:
+                        targets.extend([Path(base, rp) for rp in relative_paths])
                 else:
                     urls.append(
                         URL(
@@ -452,8 +479,25 @@ class BaseClient:
                             },
                         )
                     )
-                    paths.append(Path(base_path, ATTACHMENT_FILENAME_PLACEHOLDER))
-        return download(self.context.http_client, urls, paths, max_workers=max_workers)
+                    if in_memory:
+                        targets.append(
+                            f"{base}/{ATTACHMENT_FILENAME_PLACEHOLDER}"
+                            if base
+                            else ATTACHMENT_FILENAME_PLACEHOLDER
+                        )
+                    else:
+                        targets.append(Path(base, ATTACHMENT_FILENAME_PLACEHOLDER))
+        if in_memory:
+            return download(
+                self.context.http_client,
+                urls,
+                targets,
+                mapping=destination,
+                max_workers=max_workers,
+            )
+        return download(
+            self.context.http_client, urls, targets, max_workers=max_workers
+        )
 
     @property
     def formats(self):

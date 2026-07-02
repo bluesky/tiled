@@ -14,6 +14,7 @@ from ..ndslice import NDSlice
 from ..storage import Storage
 from ..structures.array import ArrayStructure
 from ..structures.awkward import AwkwardStructure
+from ..structures.bytes import BytesStructure
 from ..structures.core import Spec, StructureFamily
 from ..structures.sparse import SparseStructure
 from ..structures.table import TableStructure
@@ -22,13 +23,6 @@ from ..type_aliases import JSON
 
 class BaseAdapter(Protocol):
     supported_storage: Set[type[Storage]]
-
-    # @abstractmethod
-    # @classmethod
-    # def from_catalog(
-    #     cls, data_source: DataSource, node: Node, /, **kwargs: Optional[Any]
-    # ) -> "BaseAdapter":
-    #     pass
 
     @abstractmethod
     def metadata(self) -> JSON:
@@ -134,9 +128,18 @@ class TableAdapter(BaseAdapter, Protocol):
         pass
 
 
+class BytesAdapter(BaseAdapter, Protocol):
+    structure_family: Literal[StructureFamily.bytes] = StructureFamily.bytes
+
+    @abstractmethod
+    def structure(self) -> BytesStructure:
+        pass
+
+
 AnyAdapter = Union[
     ArrayAdapter,
     AwkwardAdapter,
+    BytesAdapter,
     ContainerAdapter,
     RaggedAdapter,
     SparseAdapter,

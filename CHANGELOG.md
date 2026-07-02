@@ -3,6 +3,31 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Expand the functionality of HDF5Adapter to handle `object`-dtyped data:
+  variable-length strings are coerced to fixed-length bytes, non-string object
+  dtypes (e.g. vlen arrays) fall back to an empty placeholder that preserves
+  the original shape.
+- The metadata revisions endpoint now reports the total revision count, so
+  all revisions can be paged through via the API.
+- Surface `Asset.size` (the byte length of each underlying file) on the
+  `Asset` API model. `tiled register` populates it via `os.stat()` for
+  non-directory `file://` assets walked from the local filesystem. For
+  assets in object storage, callers can compute size via the new
+  `tiled.storage.size_from_uri` helper, which dispatches to `os.stat()` for
+  `file://` URIs and `obstore.head()` for `s3://`/`az://`/`gs://`. The
+  corresponding ORM column has existed since the catalog schema was
+  created but was previously never written or read.
+- New `bytes` structure family for cataloging opaque byte payloads that lack a
+  useful logical structure (PDFs, firmware blobs, proprietary binary formats, etc.).
+- `BaseClient.raw_export()` accepts a `MutableMapping` (e.g. a `dict`) as its
+  destination, streaming each asset into an in-memory `io.BytesIO` keyed by
+  the on-disk-equivalent layout (`<filename>` for a single asset;
+  `<asset_id>/<filename>` for multi-asset nodes). No filesystem I/O is performed in this mode.
+
 
 ## v0.2.12 (2026-06-16)
 
@@ -24,8 +49,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Fixed
 
-- The metadata revisions endpoint now reports the total revision count, so
-  all revisions can be paged through via the API.
+- Fixed authentication check in from_context to prevent the user from being re-prompted to login.
 
 
 ## v0.2.11 (2026-05-27)

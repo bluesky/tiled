@@ -186,35 +186,52 @@ class HDF5ArrayAdapter(ArrayAdapter):
         shapes_chunks_dtypes = [_get_hdf5_specs(fpath) for fpath in file_paths]
         dtype = shapes_chunks_dtypes[0][2]
         if dtype == numpy.dtype("O"):
-            # TODO: It should be possible to put this in dask.delayed too -- needs to be thoroughly tested
+            # h5py uses NumPy's object dtype to represent variable-length
+            # strings, vlen arrays, and HDF5 references. These are a
+            # Python-only h5py feature not supported by HDF5 in general.
+            # See https://docs.h5py.org/en/stable/special.html.
+            #
+            # Variable-length strings are repackaged into a fixed-length
+            # bytes array (which dask can chunk). For any other object
+            # dtype we serve an empty placeholder preserving the original
+            # shape, since we cannot generally read it as a numpy array
+            # (and dask cannot auto-chunk object dtype).
             warnings.warn(
                 f"The dataset {dataset} is of object type, using a "
                 "Python-only feature of h5py that is not supported by "
                 "HDF5 in general. Read more about that feature at "
                 "https://docs.h5py.org/en/stable/special.html. "
                 "Consider using a fixed-length field instead. "
-                "Tiled will serve an empty placeholder, unless the "
-                "object is of size 1, where it will attempt to repackage "
-                "the data into a numpy array."
+                "If the data are variable-length strings, Tiled will "
+                "repackage them as a fixed-length bytes array; "
+                "otherwise an empty placeholder of the same shape "
+                "will be served."
             )
 
-            check_str_dtype = h5py.check_string_dtype(dtype)
-            if check_str_dtype.length is None:
-                # TODO: refactor and test
+            is_vlen_string = h5py.check_string_dtype(dtype) is not None
+
+            def _read_as_bytes(fpath: Union[str, Path]) -> NDArray:
                 with h5open(
-                    file_paths[0],
-                    dataset=dataset,
-                    swmr=swmr,
-                    libver=libver,
-                    locking=locking,
-                ) as value:
-                    dataset_names = value.file[value.file.name + "/" + dataset][...][()]
-                    if value.size == 1:
-                        arr = dask.array.from_array(numpy.array(dataset_names))
-                    else:
-                        arr = dask.array.empty(shape=())
-                return arr
-            return dask.array.empty(shape=())
+                    fpath, dataset, swmr=swmr, libver=libver, locking=locking
+                ) as ds:
+                    if is_vlen_string:
+                        # Coerce vlen-string object array to fixed-length bytes
+                        return numpy.asarray(ds[()], dtype=bytes)
+                    # Non-string object dtype: serve an empty placeholder
+                    # of the same shape (zero-length bytes).
+                    return numpy.empty(ds.shape, dtype="S0")
+
+            arrays = [_read_as_bytes(fp) for fp in file_paths]
+            # Mirror the empty/scalar vs. multi-dim behavior of the
+            # non-object branch below: stack (adding a leading axis) only
+            # for true scalars; otherwise concatenate along axis 0.
+            if arrays[0].shape == () or 0 in arrays[0].shape:
+                stacked = numpy.stack(arrays)
+            elif len(arrays) > 1:
+                stacked = numpy.concatenate(arrays, axis=0)
+            else:
+                stacked = arrays[0]
+            return dask.array.from_array(stacked, chunks=stacked.shape)
 
         if all((not shp) or (0 in shp) for shp, _, _ in shapes_chunks_dtypes):
             # Treat empty arrays and scalars separately: all shapes are empty or has 0
