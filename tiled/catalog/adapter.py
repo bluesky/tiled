@@ -991,11 +991,47 @@ class CatalogNodeAdapter:
                 await db.execute(
                     select(orm.Revision)
                     .where(orm.Revision.node_id == self.node.id)
+                    .order_by(orm.Revision.revision_number)
                     .offset(offset)
                     .limit(limit)
                 )
             ).all()
             return [Revision.from_orm(o[0]) for o in revision_orms]
+
+    async def revisions_with_count(self, offset: int = 0, limit=None):
+        """Return a page of revisions and the total revision count.
+
+        Uses a single windowed query so the count is consistent with the
+        page and requires only one database round-trip.  If the page is
+        empty (either because there are no revisions or because ``offset``
+        is past the end), a follow-up ``COUNT`` runs in the same session
+        to obtain an accurate total.
+        """
+        async with self.context.session() as db:
+            rows = (
+                await db.execute(
+                    select(orm.Revision, func.count().over().label("_total"))
+                    .where(orm.Revision.node_id == self.node.id)
+                    .order_by(orm.Revision.revision_number)
+                    .offset(offset)
+                    .limit(limit)
+                )
+            ).all()
+            if rows:
+                revisions = [Revision.from_orm(row[0]) for row in rows]
+                total = rows[0]._total
+            else:
+                revisions = []
+                # Window functions emit no rows when the SELECT is empty, so fall back
+                # to a plain COUNT to distinguish "no revisions" from "offset past end".
+                total = (
+                    await db.execute(
+                        select(func.count())
+                        .select_from(orm.Revision)
+                        .where(orm.Revision.node_id == self.node.id)
+                    )
+                ).scalar_one()
+        return revisions, total
 
     async def delete(self, recursive=False, external_only=True):
         """Delete the Node, its descendants, and associated DataSources and Assets
