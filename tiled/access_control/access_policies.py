@@ -7,7 +7,7 @@ import httpx
 from pydantic import BaseModel, HttpUrl, TypeAdapter, ValidationError
 
 from ..adapters.protocols import BaseAdapter
-from ..queries import AccessBlobFilter
+from ..queries import AccessBlobFilter, AccessBlobInheritedFilter
 from ..server.schemas import Principal
 from ..type_aliases import AccessBlob, AccessTags, Filters, Scopes
 from ..utils import Sentinel, import_object
@@ -414,6 +414,133 @@ class TagBasedAccessPolicy(AccessPolicy):
 
 
 T = TypeVar("T")
+
+
+class InheritedTagAccessPolicy(TagBasedAccessPolicy):
+    """Like TagBasedAccessPolicy but resolves access by walking the node hierarchy.
+
+    When a node has no tags of its own, ``allowed_scopes`` and ``filters`` walk
+    up the ``nodes_closure`` table to find the nearest tagged ancestor and treat
+    that ancestor's tags as the effective access control for the node.
+    """
+
+    async def _inherited_access_blob(self, node) -> dict:
+        """Return the nearest ancestor's access_blob that carries tags, or {}."""
+        if not (hasattr(node, "context") and hasattr(node, "node")):
+            return {}
+
+        from sqlalchemy import select
+
+        from ..catalog import orm
+
+        stmt = (
+            select(orm.Node.access_blob)
+            .join(orm.NodesClosure, orm.NodesClosure.ancestor == orm.Node.id)
+            .where(orm.NodesClosure.descendant == node.node.id)
+            .where(orm.Node.access_blob.isnot(None))
+            .order_by(orm.NodesClosure.depth.asc())
+        )
+        async with node.context.session() as db:
+            blobs = (await db.execute(stmt)).scalars().all()
+
+        for blob in blobs:
+            if blob and blob.get("tags"):
+                return blob
+        return {}
+
+    async def allowed_scopes(
+        self,
+        node: BaseAdapter,
+        principal: Principal,
+        authn_access_tags: Optional[AccessTags],
+        authn_scopes: Scopes,
+    ) -> Scopes:
+        if not hasattr(node, "access_blob"):
+            return self.scopes
+        if self._is_admin(authn_scopes):
+            return self.scopes
+
+        if principal is None:
+            identifier = None
+        elif principal.type == "service":
+            identifier = str(principal.uuid)
+        else:
+            identifier = self._get_id(principal)
+
+        access_blob = node.access_blob or {}
+
+        # Node has no own tags or user ownership — inherit from nearest tagged ancestor.
+        if not access_blob.get("tags") and not access_blob.get("user"):
+            access_blob = await self._inherited_access_blob(node)
+
+        allowed = set()
+        if "user" in access_blob:
+            if authn_access_tags is None and identifier == access_blob["user"]:
+                allowed = self.scopes
+        elif "tags" in access_blob:
+            for tag in access_blob["tags"]:
+                if authn_access_tags is not None:
+                    if tag not in authn_access_tags:
+                        continue
+                if await self.is_tag_public(tag):
+                    allowed.update(self.read_scopes)
+                    if tag == self.public_tag:
+                        continue
+                elif not await self.is_tag_defined(tag):
+                    continue
+                if identifier is not None:
+                    tag_scopes = await self.get_scopes_from_tag(tag, identifier)
+                    allowed.update(
+                        tag_scopes if tag_scopes.issubset(self.scopes) else set()
+                    )
+        return allowed
+
+    async def filters(
+        self,
+        node: BaseAdapter,
+        principal: Principal,
+        authn_access_tags: Optional[AccessTags],
+        authn_scopes: Scopes,
+        scopes: Scopes,
+    ) -> Filters:
+        if not hasattr(node, "access_blob"):
+            return ALL_ACCESS
+        if not scopes.issubset(self.scopes):
+            return NO_ACCESS
+
+        tag_list = set()
+        if principal is None:
+            identifier = None
+        else:
+            if principal.type == "service":
+                identifier = str(principal.uuid)
+            elif self._is_admin(authn_scopes):
+                return ALL_ACCESS
+            else:
+                identifier = self._get_id(principal)
+            tag_list.update(
+                set.intersection(
+                    *[
+                        await self.get_tags_from_scope(scope, identifier)
+                        for scope in scopes
+                    ]
+                )
+            )
+
+        tag_list.update(
+            set.intersection(
+                *[
+                    await self.get_public_tags() if scope in self.read_scopes else set()
+                    for scope in scopes
+                ]
+            )
+        )
+
+        if authn_access_tags is not None:
+            identifier = None
+            tag_list.intersection_update(authn_access_tags)
+
+        return [AccessBlobInheritedFilter(identifier, list(tag_list))]
 
 
 class ResultHolder(BaseModel, Generic[T]):

@@ -706,6 +706,7 @@ def build_app(
                 async with AsyncSession(
                     engine, autoflush=False, expire_on_commit=False
                 ) as session:
+                    ### in transientdatabase, this is called before the user is created
                     await make_admin_by_identity(
                         session,
                         identity_provider=admin.provider,
