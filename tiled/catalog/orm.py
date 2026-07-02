@@ -92,6 +92,8 @@ class Node(Timestamped, Base):
         "AccessBlob",
         uselist=False,
         passive_deletes=True,
+        cascade="all, delete-orphan",
+        single_parent=True,
     )
 
     # This is a self-referencing relationship between parent and children
@@ -149,7 +151,12 @@ class AccessBlob(Base):
 
     __tablename__ = "access_blobs"
 
-    node_id = Column(ForeignKey("nodes.id", ondelete="CASCADE"), unique=True, nullable=False)
+    node_id = Column(
+        ForeignKey("nodes.id", ondelete="CASCADE"),
+        primary_key=True,
+        unique=True,
+        nullable=False,
+    )
     kind = Column(Enum("user", "tags", name="access_kind"), nullable=False)
     username = Column(String, nullable=True)
     tags = Column(ARRAY(String), nullable=True)
