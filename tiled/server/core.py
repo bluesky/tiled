@@ -337,7 +337,13 @@ async def construct_revisions_response(
     media_type,
 ):
     path_parts = [segment for segment in path.split("/") if segment]
-    revisions = await entry.revisions(page.offset, page.limit)
+    combined = getattr(entry, "revisions_with_count", None)
+    if combined is not None:
+        revisions, count = await combined(page.offset, page.limit)
+    else:
+        # Backward compatibility for third-party adapters that only implement `revisions()` API.
+        revisions = await entry.revisions(page.offset, page.limit)
+        count = len(revisions)
     data = []
     for revision in revisions:
         item = {
@@ -349,7 +355,6 @@ async def construct_revisions_response(
             },
         }
         data.append(item)
-    count = await entry.revisions_count()
     links = pagination_links(base_url, route, path_parts, page, None, count)
     return schemas.Response(data=data, links=links, meta={"count": count})
 
