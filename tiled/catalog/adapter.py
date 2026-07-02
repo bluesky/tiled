@@ -119,6 +119,7 @@ from ..utils import (
     import_object,
     path_from_uri,
 )
+from ..type_aliases import AccessBlob
 from . import orm
 from .core import check_catalog_database, initialize_database
 from .explain import ExplainAsyncSession
@@ -178,12 +179,6 @@ STORAGE_ADAPTERS_BY_MIMETYPE = OneShotCachedMap[str, type](
 )
 
 
-@dataclasses.dataclass(frozen=True)
-class AccessBlobMock:
-    username: str | None = None
-    tags: list[str] | None = None
-
-
 class RootNode:
     """
     Node representing the root of the tree.
@@ -206,15 +201,21 @@ class RootNode:
         self.data_sources = None
 
         if top_level_access_blob is None:
-            self.access_blob = None
+            self.access_blob = AccessBlob(tags=[])
         elif "user" in top_level_access_blob:
-            self.access_blob = AccessBlobMock(
-                username=top_level_access_blob["user"]
-            )
+            self.access_blob = AccessBlob(username=top_level_access_blob["user"])
         else:
-            self.access_blob = AccessBlobMock(
-                tags=top_level_access_blob["tags"]
-            )
+            self.access_blob = AccessBlob(tags=top_level_access_blob["tags"])
+
+
+def _access_blob_to_orm(access_blob: AccessBlob | None) -> orm.AccessBlob:
+    if access_blob is None:
+        return orm.AccessBlob(kind="tags", tags=[])
+    if access_blob.username is not None:
+        return orm.AccessBlob(kind="user", username=access_blob.username)
+    if access_blob.tags is not None:
+        return orm.AccessBlob(kind="tags", tags=access_blob.tags)
+    return orm.AccessBlob(kind="tags", tags=[])
 
 
 class Context:
@@ -937,7 +938,8 @@ class CatalogNodeAdapter:
         data_sources=None,
         access_blob=None,
     ):
-        access_blob = access_blob or {}
+        if access_blob is None:
+            access_blob = AccessBlob(tags=[])
         key = key or self.context.key_maker()
         data_sources = data_sources or []
 
@@ -947,8 +949,8 @@ class CatalogNodeAdapter:
             metadata_=metadata,
             structure_family=structure_family,
             specs=specs or [],
-            access_blob=access_blob,
         )
+        node.access_blob = _access_blob_to_orm(access_blob)
         async with self.context.session() as db:
             # TODO Consider using nested transitions to ensure that
             # both the node is created (name not already taken)
@@ -1501,8 +1503,6 @@ class CatalogNodeAdapter:
             values["metadata_"] = metadata
         if specs is not None:
             values["specs"] = specs
-        if access_blob is not None:
-            values["access_blob"] = access_blob
         async with self.context.session() as db:
             if not drop_revision:
                 current = (
@@ -1529,9 +1529,17 @@ class CatalogNodeAdapter:
                     revision_number=next_revision_number,
                 )
                 db.add(revision)
-            await db.execute(
-                update(orm.Node).where(orm.Node.id == self.node.id).values(**values)
-            )
+            if values:
+                await db.execute(
+                    update(orm.Node).where(orm.Node.id == self.node.id).values(**values)
+                )
+            if access_blob is not None:
+                await db.execute(
+                    delete(orm.AccessBlob).where(orm.AccessBlob.node_id == self.node.id)
+                )
+                access_blob_orm = _access_blob_to_orm(access_blob)
+                access_blob_orm.node_id = self.node.id
+                db.add(access_blob_orm)
             await db.commit()
             # Upon successful update, inform websocket subscribers through redis
             if self.context.streaming_cache:
@@ -2555,7 +2563,6 @@ async def _create_mount_node_segments(engine, mount_path, specs=None, access_blo
     from sqlalchemy import insert
 
     specs = specs or []
-    access_blob = access_blob or {}
     async with engine.begin() as conn:
         parent_id = 0  # root node id
         for i, segment in enumerate(mount_path):
@@ -2576,10 +2583,19 @@ async def _create_mount_node_segments(engine, mount_path, specs=None, access_blo
                         structure_family=StructureFamily.container,
                         metadata_={},
                         specs=specs if is_leaf else [],
-                        access_blob=access_blob if is_leaf else {},
                     )
                 )
                 node_id = result.inserted_primary_key[0]
+                node_access_blob = access_blob if (is_leaf and access_blob) else AccessBlob(tags=[])
+                access_blob_orm = _access_blob_to_orm(node_access_blob)
+                await conn.execute(
+                    insert(orm.AccessBlob).values(
+                        node_id=node_id,
+                        kind=access_blob_orm.kind,
+                        username=access_blob_orm.username,
+                        tags=access_blob_orm.tags,
+                    )
+                )
                 logger.info(
                     "Created container node %r (id=%d) under parent_id=%d.",
                     segment,

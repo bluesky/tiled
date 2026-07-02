@@ -511,6 +511,12 @@ def import_object(colon_separated_string, accept_live_object=True):
         )
 
 
+def access_blob_matches(left, right) -> bool:
+    if left is None or right is None:
+        return left is right
+    return (left.username, left.tags) == (right.username, right.tags)
+
+
 def modules_available(*module_names):
     for module_name in module_names:
         if not importlib.util.find_spec(module_name):
