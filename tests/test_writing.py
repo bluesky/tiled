@@ -484,7 +484,7 @@ def test_metadata_revisions_count(tree):
         assert len(ac.metadata_revisions) == 3
         # Revisions are returned ordered by revision number.
         revision_numbers = [r["revision_number"] for r in ac.metadata_revisions[:]]
-        assert revision_numbers == sorted(revision_numbers)
+        assert revision_numbers == [1, 2, 3]
 
 
 def test_metadata_revisions_pagination(tree):
