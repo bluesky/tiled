@@ -1717,7 +1717,6 @@ def authentication_router() -> APIRouter:
                     404,
                     f"The currently-authenticated {principal.type} has no such API key.",
                 )
-
             await db.delete(api_key_orm)
             await db.commit()
         return Response(status_code=HTTP_204_NO_CONTENT)
