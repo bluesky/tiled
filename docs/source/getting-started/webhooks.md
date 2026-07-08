@@ -217,7 +217,7 @@ server.close()
 Configure Bluesky and run a scan!
 
 ```{code-cell} ipython3
-from bluesky.callbacks.tiled_writer import TiledWriter
+from bluesky-tiled-plugins.writing.tiled_writer import TiledWriter
 from bluesky import RunEngine
 from tiled.client import from_uri
 
