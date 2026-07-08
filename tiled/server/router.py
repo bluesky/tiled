@@ -2826,11 +2826,15 @@ def _model_dump_backcompat(request: Request, response: schemas.Response) -> dict
     client_version = parse_python_tiled_client_version(request)
     if client_version is None:
         return response_dict
-    data_sources = (response_dict.get("data") or {}).get("attributes", {}).get(
-        "data_sources"
-    ) or []
+    data = response_dict.get("data") or []
+    resources = data if isinstance(data, list) else [data]
+    all_data_sources = [
+        ds
+        for resource in resources
+        for ds in (resource.get("attributes", {}) or {}).get("data_sources") or []
+    ]
     if client_version < packaging.version.parse("0.2.4"):
-        for ds in data_sources:
+        for ds in all_data_sources:
             ds.pop("properties", None)
-    strip_asset_fields_for_client(data_sources, client_version)
+    strip_asset_fields_for_client(all_data_sources, client_version)
     return response_dict
