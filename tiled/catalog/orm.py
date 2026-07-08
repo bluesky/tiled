@@ -1,6 +1,7 @@
 from typing import List
 
 from sqlalchemy import (
+    ARRAY,
     JSON,
     Boolean,
     Column,
@@ -9,6 +10,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    String,
     Table,
     Unicode,
     event,
@@ -18,7 +20,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy.schema import PrimaryKeyConstraint, UniqueConstraint
+from sqlalchemy.schema import PrimaryKeyConstraint, UniqueConstraint, CheckConstraint
 from sqlalchemy.sql import func
 
 from ..server.schemas import Management
@@ -27,6 +29,7 @@ from .base import Base
 
 # Use JSON with SQLite and JSONB with PostgreSQL.
 JSONVariant = JSON().with_variant(JSONB(), "postgresql")
+AccessTagsVariant = JSON().with_variant(ARRAY(String()), "postgresql")
 
 
 class Timestamped:
@@ -91,6 +94,7 @@ class Node(Timestamped, Base):
     access_blob = relationship(
         "AccessBlob",
         uselist=False,
+        lazy="selectin",
         passive_deletes=True,
         cascade="all, delete-orphan",
         single_parent=True,
@@ -159,7 +163,7 @@ class AccessBlob(Base):
     )
     kind = Column(Enum("user", "tags", name="access_kind"), nullable=False)
     username = Column(String, nullable=True)
-    tags = Column(ARRAY(String), nullable=True)
+    tags = Column(AccessTagsVariant, nullable=True)
 
     __table_args__ = (
         CheckConstraint(
