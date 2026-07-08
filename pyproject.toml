@@ -286,6 +286,10 @@ test = [
 dev = [
   { include-group = "test" },
 ]
+docs-bluesky = [
+    "bluesky",
+    "bluesky-tiled-plugins",
+]
 docs = [
     "ipykernel",
     "ipywidgets",
