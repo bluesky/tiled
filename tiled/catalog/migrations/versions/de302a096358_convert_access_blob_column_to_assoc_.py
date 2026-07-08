@@ -1,7 +1,7 @@
 """Convert access_blob column to assoc. table
 
 Revision ID: de302a096358
-Revises: e8956581ecd5
+Revises: b93c79d197f4
 Create Date: 2026-07-03 14:27:39.197261
 
 """
@@ -12,7 +12,7 @@ from tiled.catalog.orm import JSONVariant
 
 # revision identifiers, used by Alembic.
 revision = "de302a096358"
-down_revision = "e8956581ecd5"
+down_revision = "b93c79d197f4"
 branch_labels = None
 depends_on = None
 
