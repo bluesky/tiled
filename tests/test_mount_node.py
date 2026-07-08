@@ -220,8 +220,8 @@ def test_create_mount_nodes_if_not_exist(sqlite_or_postgres_uri, tmpdir):
         # Intermediate nodes should have empty specs and access_blob.
         assert client["X"].specs == []
         assert client["X"]["Y"].specs == []
-        assert not client["X"].access_blob
-        assert not client["X"]["Y"].access_blob
+        assert client["X"].access_blob.get("tags") == []
+        assert client["X"]["Y"].access_blob.get("tags") == []
         # The leaf (mount node) should carry the configured specs.
         assert client["X"]["Y"]["Z"].specs == [Spec(name="MyCustomSpec", version="3.0")]
         assert client["X"]["Y"]["Z"].access_blob.get("tags") == ["_ROOT_NODE"]

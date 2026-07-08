@@ -126,7 +126,7 @@ ARRAY_RETRY_AFTER_SECONDS = int(os.getenv("TILED_ARRAY_RETRY_AFTER", "1"))
 
 
 def _access_blob_from_payload(access_blob):
-    if access_blob is None:
+    if access_blob == {}:
         return None
     if "user" in access_blob:
         return AccessBlob(username=access_blob["user"])
@@ -2423,7 +2423,9 @@ def get_router(
             # access policy from sanity checking the access blob.
             # make a copy so we can compare the node against the
             # proposed new access blob.
-            entry_access_blob_copy = deepcopy(_access_blob_to_payload(entry.access_blob))
+            entry_access_blob_copy = deepcopy(
+                _access_blob_to_payload(entry.access_blob)
+            )
             access_blob = _access_blob_from_payload(
                 apply_merge_patch(entry_access_blob_copy, (body.access_blob or []))
             )
@@ -2466,7 +2468,9 @@ def get_router(
                 )
         else:
             # Cannot modify the access blob if there is no access policy
-            access_blob_modified = not access_blob_matches(access_blob, entry.access_blob)
+            access_blob_modified = not access_blob_matches(
+                access_blob, entry.access_blob
+            )
             access_blob = entry.access_blob
 
         await entry.replace_metadata(
@@ -2546,7 +2550,9 @@ def get_router(
                 )
         else:
             # Cannot modify the access blob if there is no access policy
-            access_blob_modified = not access_blob_matches(access_blob, entry.access_blob)
+            access_blob_modified = not access_blob_matches(
+                access_blob, entry.access_blob
+            )
             access_blob = entry.access_blob
 
         await entry.replace_metadata(
