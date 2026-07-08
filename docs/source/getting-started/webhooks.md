@@ -31,7 +31,7 @@ This makes webhooks a good fit for:
 - integrating Tiled with systems that cannot maintain a long-lived connection
 
 This tutorial demonstrates the full webhook lifecycle end-to-end in a single
-Python session, with no external services and no configuration files required.
+IPython session, with no external services and no configuration files required. Using IPython is necessary to instantiate and persist the classes and services. Having the receiver in a separate IPython session from the server would enable monitoring of the handler, as well as make the `received` messages visible.
 
 ## Set up a local receiver
 
@@ -210,6 +210,22 @@ random jitter).
 ```{code-cell} ipython3
 receiver.shutdown()
 server.close()
+```
+
+## Recommended extra
+
+Configure Bluesky and run a scan!
+
+```{code-cell} ipython3
+from bluesky.callbacks.tiled_writer import TiledWriter
+from bluesky import RunEngine
+from tiled.client import from_uri
+
+tiled_client = from_uri(f"http://localhost:{server.port}", api_key=f"{server.api_key}")
+
+RE=RunEngine()
+tw=TiledWriter(tiled_client)
+RE.subscribe(tw)
 ```
 
 ## See also
