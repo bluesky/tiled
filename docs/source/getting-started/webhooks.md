@@ -87,8 +87,7 @@ print(f"Tiled server running at {server.uri}")
 A webhook is registered against a **node path**.  Any event on that node, or
 any of its descendants, will be delivered.
 
-Registering on the root (`""`) means we watch the entire catalog.  Omitting
-`"events"` means all event types are delivered.
+Registering on the root (`""`) means we watch the entire catalog. For `"events"`, omitting or setting to `None` means all event types are delivered. `"secret"` is used for the HMAC signing secret.
 
 ```{code-cell} ipython3
 import json
@@ -100,7 +99,11 @@ resp = httpx.post(
         "Authorization": f"Apikey {server.api_key}",
         "Content-Type": "application/json",
     },
-    content=json.dumps({"url": f"http://127.0.0.1:{receiver_port}/hook"}),
+    content=json.dumps({
+	"url": f"http://127.0.0.1:{receiver_port}/hook",
+	"secret": None,
+	"events": None,
+    }),
 )
 resp.raise_for_status()
 
