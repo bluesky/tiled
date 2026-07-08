@@ -152,7 +152,6 @@ class Revision(pydantic.BaseModel):
     revision_number: int
     metadata: dict
     specs: Specs
-    access_blob: dict
     time_updated: datetime
 
     @classmethod
@@ -163,7 +162,6 @@ class Revision(pydantic.BaseModel):
             revision_number=orm.revision_number,
             metadata=orm.metadata_,
             specs=orm.specs,
-            access_blob=orm.access_blob,
             time_updated=orm.time_updated,
         )
 

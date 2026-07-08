@@ -96,6 +96,7 @@ from ..storage import (
     register_storage,
 )
 from ..structures.core import Spec, StructureFamily
+from ..type_aliases import AccessBlob
 from ..utils import (
     UNCHANGED,
     Conflicts,
@@ -174,7 +175,23 @@ class RootNode:
         self.specs = specs or []
         self.key = ""
         self.data_sources = None
-        self.access_blob = top_level_access_blob or {}
+
+        if top_level_access_blob is None:
+            self.access_blob = AccessBlob(tags=[])
+        elif "user" in top_level_access_blob:
+            self.access_blob = AccessBlob(username=top_level_access_blob["user"])
+        else:
+            self.access_blob = AccessBlob(tags=top_level_access_blob["tags"])
+
+
+def _access_blob_to_orm(access_blob: AccessBlob | None) -> orm.AccessBlob:
+    if access_blob is None:
+        return orm.AccessBlob(kind="tags", tags=[])
+    if access_blob.username is not None:
+        return orm.AccessBlob(kind="user", username=access_blob.username)
+    if access_blob.tags is not None:
+        return orm.AccessBlob(kind="tags", tags=access_blob.tags)
+    return orm.AccessBlob(kind="tags", tags=[])
 
 
 class Context:
@@ -719,7 +736,8 @@ class CatalogNodeAdapter:
         data_sources=None,
         access_blob=None,
     ):
-        access_blob = access_blob or {}
+        if access_blob is None:
+            access_blob = AccessBlob(tags=[])
         key = key or self.context.key_maker()
         data_sources = data_sources or []
 
@@ -729,8 +747,8 @@ class CatalogNodeAdapter:
             metadata_=metadata,
             structure_family=structure_family,
             specs=specs or [],
-            access_blob=access_blob,
         )
+        node.access_blob = _access_blob_to_orm(access_blob)
         async with self.context.session() as db:
             # TODO Consider using nested transitions to ensure that
             # both the node is created (name not already taken)
@@ -865,7 +883,11 @@ class CatalogNodeAdapter:
                     "specs": [spec.model_dump() for spec in (specs or [])],
                     "metadata": metadata,
                     "data_sources": [d.model_dump() for d in data_sources_with_ids],
-                    "access_blob": refreshed_node.access_blob,
+                    "access_blob": (
+                        {"user": refreshed_node.access_blob.username}
+                        if refreshed_node.access_blob.username is not None
+                        else {"tags": refreshed_node.access_blob.tags}
+                    ),
                 }
 
                 # Cache data in Redis with a TTL, and publish
@@ -1277,8 +1299,6 @@ class CatalogNodeAdapter:
             values["metadata_"] = metadata
         if specs is not None:
             values["specs"] = specs
-        if access_blob is not None:
-            values["access_blob"] = access_blob
         async with self.context.session() as db:
             if not drop_revision:
                 current = (
@@ -1301,14 +1321,21 @@ class CatalogNodeAdapter:
                     # SQLAlchemy reserved word 'metadata'.
                     metadata_=current.metadata_,
                     specs=current.specs,
-                    access_blob=current.access_blob,
                     node_id=current.id,
                     revision_number=next_revision_number,
                 )
                 db.add(revision)
-            await db.execute(
-                update(orm.Node).where(orm.Node.id == self.node.id).values(**values)
-            )
+            if values:
+                await db.execute(
+                    update(orm.Node).where(orm.Node.id == self.node.id).values(**values)
+                )
+            if access_blob is not None:
+                await db.execute(
+                    delete(orm.AccessBlob).where(orm.AccessBlob.node_id == self.node.id)
+                )
+                access_blob_orm = _access_blob_to_orm(access_blob)
+                access_blob_orm.node_id = self.node.id
+                db.add(access_blob_orm)
             await db.commit()
             # Upon successful update, inform websocket subscribers through redis
             if self.context.streaming_cache:
@@ -2107,35 +2134,39 @@ def specs(query, tree):
 
 def access_blob_filter(query, tree):
     dialect_name = tree.context.engine.url.get_dialect().name
-    access_blob = orm.Node.access_blob
     if not (query.user_id or query.tags):
         # Results cannot possibly match an empty value or list,
         # so put a False condition in the list ensuring that
         # there are no rows returned.
         condition = false()
-    elif dialect_name == "sqlite":
-        attr_id = access_blob["user"]
-        attr_tags = access_blob["tags"]
-        access_tags_json = func.json_each(attr_tags).table_valued("value")
-        condition = (
-            select(1)
-            .select_from(access_tags_json)
-            .where(access_tags_json.c.value.in_(query.tags))
-            .exists()
-        )
-        if query.user_id is not None:
-            user_match = (
-                func.json_extract(func.json_quote(attr_id), "$") == query.user_id
-            )
-            condition = or_(condition, user_match)
-    elif dialect_name == "postgresql":
-        access_blob_jsonb = type_coerce(access_blob, JSONB)
-        condition = access_blob_jsonb["tags"].has_any(sql_cast(query.tags, ARRAY(TEXT)))
-        if query.user_id is not None:
-            user_match = access_blob_jsonb["user"].astext == query.user_id
-            condition = or_(condition, user_match)
     else:
-        raise UnsupportedQueryType("access_blob_filter")
+        filters = []
+        if query.tags:
+            if dialect_name == "sqlite":
+                access_tags_json = func.json_each(orm.AccessBlob.tags).table_valued(
+                    "value"
+                )
+                tags_match = select(orm.AccessBlob.node_id).where(
+                    orm.AccessBlob.kind == "tags",
+                    select(1)
+                    .select_from(access_tags_json)
+                    .where(access_tags_json.c.value.in_(query.tags))
+                    .exists(),
+                )
+            elif dialect_name == "postgresql":
+                tags_match = select(orm.AccessBlob.node_id).where(
+                    orm.AccessBlob.kind == "tags",
+                    orm.AccessBlob.tags.has_any(sql_cast(query.tags, ARRAY(TEXT))),
+                )
+            else:
+                raise UnsupportedQueryType("access_blob_filter")
+            filters.append(orm.Node.id.in_(tags_match))
+        if query.user_id is not None:
+            user_match = select(orm.AccessBlob.node_id).where(
+                orm.AccessBlob.kind == "user", orm.AccessBlob.username == query.user_id
+            )
+            filters.append(orm.Node.id.in_(user_match))
+        condition = or_(*filters) if filters else false()
 
     return tree.new_variation(conditions=tree.conditions + [condition])
 
@@ -2281,7 +2312,6 @@ async def _create_mount_node_segments(engine, mount_path, specs=None, access_blo
     from sqlalchemy import insert
 
     specs = specs or []
-    access_blob = access_blob or {}
     async with engine.begin() as conn:
         parent_id = 0  # root node id
         for i, segment in enumerate(mount_path):
@@ -2302,10 +2332,21 @@ async def _create_mount_node_segments(engine, mount_path, specs=None, access_blo
                         structure_family=StructureFamily.container,
                         metadata_={},
                         specs=specs if is_leaf else [],
-                        access_blob=access_blob if is_leaf else {},
                     )
                 )
                 node_id = result.inserted_primary_key[0]
+                node_access_blob = (
+                    access_blob if (is_leaf and access_blob) else AccessBlob(tags=[])
+                )
+                access_blob_orm = _access_blob_to_orm(node_access_blob)
+                await conn.execute(
+                    insert(orm.AccessBlob).values(
+                        node_id=node_id,
+                        kind=access_blob_orm.kind,
+                        username=access_blob_orm.username,
+                        tags=access_blob_orm.tags,
+                    )
+                )
                 logger.info(
                     "Created container node %r (id=%d) under parent_id=%d.",
                     segment,

@@ -56,8 +56,8 @@ async def test_node_access_allowed(
         principal=principal,
         authn_access_tags=set(),
         authn_scopes=set([]),
-        access_blob={"tags": {"beamline_x_user"}},
-    ) == (True, {"tags": {"beamline_x_user"}})
+        access_blob=AccessBlob(tags=["beamline_x_user"]),
+    ) == (True, AccessBlob(tags=["beamline_x_user"]))
 
 
 @pytest.mark.asyncio
@@ -72,8 +72,8 @@ async def test_node_access_denied(
         principal=principal,
         authn_access_tags=set(),
         authn_scopes=set([]),
-        access_blob={"tags": {"beamline_x_user"}},
-    ) == (False, {"tags": {"beamline_x_user"}})
+        access_blob=AccessBlob(tags=["beamline_x_user"]),
+    ) == (False, AccessBlob(tags=["beamline_x_user"]))
 
 
 @pytest.mark.asyncio
@@ -91,8 +91,8 @@ async def test_node_modify_allowed(
         principal=principal,
         authn_access_tags=set(),
         authn_scopes=set([]),
-        access_blob={"tags": {"beamline_x_user"}},
-    ) == (True, {"tags": {"beamline_x_user"}})
+        access_blob=AccessBlob(tags=["beamline_x_user"]),
+    ) == (True, AccessBlob(tags=["beamline_x_user"]))
 
 
 @pytest.mark.asyncio
@@ -110,8 +110,8 @@ async def test_node_modify_denied(
         principal=principal,
         authn_access_tags=set(),
         authn_scopes=set([]),
-        access_blob={"tags": {"beamline_x_user"}},
-    ) == (False, {"tags": {"beamline_x_user"}})
+        access_blob=AccessBlob(tags=["beamline_x_user"]),
+    ) == (False, AccessBlob(tags=["beamline_x_user"]))
 
 
 @pytest.mark.asyncio
@@ -128,7 +128,7 @@ async def test_node_modify_denied_when_none_returned(
             principal=principal,
             authn_access_tags=set(),
             authn_scopes=set([]),
-            access_blob={"tags": {"beamline_x_user"}},
+            access_blob=AccessBlob(tags=["beamline_x_user"]),
         )
 
 
@@ -137,14 +137,14 @@ async def test_node_modify_with_same_not_modified(
     external_policy: ExternalPolicyDecisionPoint, principal: Principal
 ):
     node = MagicMock()
-    node.access_blob = {"tags": {"beamline_x_user"}}
+    node.access_blob = AccessBlob(tags=["beamline_x_user"])
     assert await external_policy.modify_node(
         node=node,
         principal=principal,
         authn_access_tags=set(),
         authn_scopes=set([]),
-        access_blob={"tags": {"beamline_x_user"}},
-    ) == (False, {"tags": {"beamline_x_user"}})
+        access_blob=AccessBlob(tags=["beamline_x_user"]),
+    ) == (False, AccessBlob(tags=["beamline_x_user"]))
 
 
 @pytest.mark.asyncio
