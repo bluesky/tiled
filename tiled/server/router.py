@@ -56,7 +56,10 @@ from ..type_aliases import AccessTags, Scopes
 from ..utils import BrokenLink, ensure_awaitable, patch_mimetypes, path_from_uri
 from ..validation_registration import ValidationError, ValidationRegistry
 from . import schemas
-from ._backcompat import parse_python_tiled_client_version
+from ._backcompat import (
+    parse_python_tiled_client_version,
+    strip_asset_fields_for_client,
+)
 from .authentication import (
     authenticate_websocket_first_message,
     check_scopes,
@@ -1910,6 +1913,9 @@ def get_router(
             structure_family, structure, get_base_url(request), path + f"/{node.key}"
         )
         data_sources_dump = [ds.model_dump() for ds in node.data_sources]
+        strip_asset_fields_for_client(
+            data_sources_dump, parse_python_tiled_client_version(request)
+        )
         response_data = {
             "id": node.key,
             "links": links,
@@ -2806,17 +2812,25 @@ def get_metrics_router() -> APIRouter:
 
 
 def _model_dump_backcompat(request: Request, response: schemas.Response) -> dict:
-    """Backwards compatibility for clients older than v0.2.4
+    """Adjust the outgoing response payload to match older client expectations.
 
-    Older clients expect "data_sources" in the response to not include "properties".
+    - Clients older than v0.2.4 crash on `properties` in data sources.
+      Issue: https://github.com/bluesky/tiled/issues/1300
+    - Clients older than v0.2.13 crash on `size` in assets, because their
+      `tiled.structures.data_source.Asset` dataclass has no `size` field and
+      `DataSource.from_json` unpacks kwargs directly.
+
     To be removed in a future major release.
-    Issue: https://github.com/bluesky/tiled/issues/1300
     """
     response_dict = response.model_dump()
     client_version = parse_python_tiled_client_version(request)
     if client_version is None:
         return response_dict
+    data_sources = (response_dict.get("data") or {}).get("attributes", {}).get(
+        "data_sources"
+    ) or []
     if client_version < packaging.version.parse("0.2.4"):
-        for ds in response_dict["data"]["attributes"]["data_sources"]:
+        for ds in data_sources:
             ds.pop("properties", None)
+    strip_asset_fields_for_client(data_sources, client_version)
     return response_dict

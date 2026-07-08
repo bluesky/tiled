@@ -32,6 +32,10 @@ Write the date in place of the "Unreleased" in the case a new version is release
 ### Fixed
 
 - Including a check for authentication links when running whoami to allow for a graceful message when authentication links are not present.
+- Strip the newly added `Asset.size` field from metadata responses when the
+  request comes from a `python-tiled` client older than v0.2.13, whose
+  `Asset` dataclass has no `size` field and would otherwise crash in
+  `DataSource.from_json` with an unexpected keyword argument.
 
 
 ## v0.2.12 (2026-06-16)
