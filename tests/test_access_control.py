@@ -866,8 +866,12 @@ def test_update_node_access_control(access_control_test_context_factory):
         db = sqlite3.connect(f"file:catalog_{top}?mode=memory&cache=shared", uri=True)
         cursor = db.cursor()
         cursor.execute(
-            "UPDATE nodes SET access_blob = ? WHERE key = ?",
-            ('{"tags": ["undefined_tag", "biologists_tag"]}', data),
+            """
+            UPDATE access_blobs
+            SET kind = 'tags', username = NULL, tags = json(?)
+            WHERE node_id = (SELECT id FROM nodes WHERE key = ?)
+            """,
+            ('["undefined_tag", "biologists_tag"]', data),
         )
         db.commit()
         with fail_with_status_code(HTTP_403_FORBIDDEN):
@@ -899,9 +903,9 @@ def test_update_node_access_control(access_control_test_context_factory):
 
 def test_empty_access_blob_access_control(access_control_test_context_factory):
     """
-    Test the cases where a node in the catalog has an empty access blob.
+    Test the cases where a node in the catalog has no access blob row.
     This case occurs when migrating an older catalog without also
-      populating the access_blob column.
+      populating the access_blobs association table.
     """
     admin_client = access_control_test_context_factory("admin", "admin")
     alice_client = access_control_test_context_factory("alice", "alice")
@@ -912,7 +916,10 @@ def test_empty_access_blob_access_control(access_control_test_context_factory):
         db = sqlite3.connect(f"file:catalog_{top}?mode=memory&cache=shared", uri=True)
         cursor = db.cursor()
         cursor.execute(
-            "UPDATE nodes SET access_blob = json('{}') WHERE key == 'data_M'"
+            """
+            DELETE FROM access_blobs
+            WHERE node_id = (SELECT id FROM nodes WHERE key == 'data_M')
+            """
         )
         db.commit()
 
