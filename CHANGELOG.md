@@ -7,6 +7,16 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Fixed
 
+- Strengthen the server-side backcompatibility. Strip the newly added `Asset.size` field
+  from metadata responses when the request comes from a `python-tiled` client older than
+  v0.2.13, whose `Asset` dataclass has no `size` field and would otherwise crash
+  in `DataSource.from_json` with an unexpected keyword argument.
+
+
+## v0.2.13 (2026-07-08)
+
+### Fixed
+
 - Expand the functionality of HDF5Adapter to handle `object`-dtyped data:
   variable-length strings are coerced to fixed-length bytes, non-string object
   dtypes (e.g. vlen arrays) fall back to an empty placeholder that preserves
@@ -32,10 +42,6 @@ Write the date in place of the "Unreleased" in the case a new version is release
 ### Fixed
 
 - Including a check for authentication links when running whoami to allow for a graceful message when authentication links are not present.
-- Strip the newly added `Asset.size` field from metadata responses when the
-  request comes from a `python-tiled` client older than v0.2.13, whose
-  `Asset` dataclass has no `size` field and would otherwise crash in
-  `DataSource.from_json` with an unexpected keyword argument.
 
 
 ## v0.2.12 (2026-06-16)
