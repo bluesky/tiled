@@ -125,3 +125,39 @@ def test_do_not_expose_raw_assets(tmpdir):
         client.write_array([1, 2, 3], key="x")
         with fail_with_status_code(HTTP_403_FORBIDDEN):
             client["x"].raw_export(tmpdir / "exported")
+
+
+@pytest.mark.parametrize(
+    "user_agent, expect_size_key",
+    [
+        # New client understands ``size``; server includes it.
+        ("python-tiled/0.2.13", True),
+        # Old client (pre-``size`` field) would crash on unknown kwarg; server strips it.
+        ("python-tiled/0.2.12", False),
+    ],
+)
+def test_asset_size_stripped_for_old_python_clients(
+    client, user_agent, expect_size_key
+):
+    """The server strips ``size`` from assets when talking to python-tiled clients
+    older than 0.2.13, because their ``Asset`` dataclass has no ``size`` field
+    and ``DataSource.from_json`` unpacks kwargs directly, which would raise
+    ``Asset.__init__() got an unexpected keyword argument 'size'``.
+    """
+    client.write_array([1, 2, 3], key="x")
+
+    # GET path: /metadata/... with include_data_sources
+    response = client.context.http_client.get(
+        "/api/v1/metadata/x",
+        params={"include_data_sources": "true"},
+        headers={"user-agent": user_agent},
+    )
+    response.raise_for_status()
+    data_sources = response.json()["data"]["attributes"]["data_sources"]
+    assert data_sources, "expected at least one data_source"
+    for ds in data_sources:
+        for asset in ds["assets"]:
+            assert ("size" in asset) is expect_size_key, (
+                f"user-agent={user_agent!r}: expected size key "
+                f"present={expect_size_key}, got asset={asset!r}"
+            )
