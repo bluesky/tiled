@@ -215,21 +215,11 @@ receiver.shutdown()
 server.close()
 ```
 
-## Recommended extra
+## Recommended extra: Configure Bluesky and run a scan!
 
-Configure Bluesky and run a scan!
+Use the following webpage to set up RunEngine and TiledWriter, connecting a Tiled client to the SimpleTiledServer created above: https://blueskyproject.io/bluesky/main/tiled-writer.html
 
-```{code-cell} ipython3
-from bluesky-tiled-plugins.writing.tiled_writer import TiledWriter
-from bluesky import RunEngine
-from tiled.client import from_uri
-
-tiled_client = from_uri(f"http://localhost:{server.port}", api_key=f"{server.api_key}")
-
-RE=RunEngine()
-tw=TiledWriter(tiled_client)
-RE.subscribe(tw)
-```
+Once everything is hooked up, running a Bluesky scan will enable viewing all of the events that a scan creates.
 
 ## See also
 
