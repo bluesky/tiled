@@ -171,6 +171,23 @@ class AccessBlob(Base):
             "(username IS NULL AND tags IS NOT NULL)",
             name="ck_access_blob_user_xor_tags",
         ),
+        # Tight partial index for owner lookups used by access_blob_filter.
+        Index(
+            "ix_access_blobs_username_user",
+            "username",
+            postgresql_where=text("kind = 'user' AND username IS NOT NULL"),
+            sqlite_where=text("kind = 'user' AND username IS NOT NULL"),
+        ),
+        # Helps narrow to the relevant subset for tags/user branches quickly,
+        # including SQLite where tags membership itself is not index-friendly.
+        Index("ix_access_blobs_kind_node_id", "kind", "node_id"),
+        # PostgreSQL can index array overlap checks directly.
+        Index(
+            "ix_access_blobs_tags_gin",
+            "tags",
+            postgresql_using="gin",
+            postgresql_where=text("kind = 'tags' AND tags IS NOT NULL"),
+        ),
     )
 
 

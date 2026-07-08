@@ -2147,21 +2147,23 @@ def access_blob_filter(query, tree):
                     "value"
                 )
                 tags_match = select(orm.AccessBlob.node_id).where(
+                    orm.AccessBlob.kind == "tags",
                     select(1)
                     .select_from(access_tags_json)
                     .where(access_tags_json.c.value.in_(query.tags))
-                    .exists()
+                    .exists(),
                 )
             elif dialect_name == "postgresql":
                 tags_match = select(orm.AccessBlob.node_id).where(
-                    orm.AccessBlob.tags.has_any(sql_cast(query.tags, ARRAY(TEXT)))
+                    orm.AccessBlob.kind == "tags",
+                    orm.AccessBlob.tags.has_any(sql_cast(query.tags, ARRAY(TEXT))),
                 )
             else:
                 raise UnsupportedQueryType("access_blob_filter")
             filters.append(orm.Node.id.in_(tags_match))
         if query.user_id is not None:
             user_match = select(orm.AccessBlob.node_id).where(
-                orm.AccessBlob.username == query.user_id
+                orm.AccessBlob.kind == "user", orm.AccessBlob.username == query.user_id
             )
             filters.append(orm.Node.id.in_(user_match))
         condition = or_(*filters) if filters else false()
