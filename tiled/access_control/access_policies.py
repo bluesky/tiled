@@ -211,7 +211,11 @@ class TagBasedAccessPolicy(AccessPolicy):
             )
             return False, node.access_blob
 
-        if access_blob is None or access_blob.username is not None or access_blob.tags is None:
+        if (
+            access_blob is None
+            or access_blob.username is not None
+            or access_blob.tags is None
+        ):
             raise ValueError(
                 f"""access_blob must be in the form '{{"tags": ["tag1", "tag2", ...]}}'\n"""
                 f"""Received {access_blob=}\n"""
@@ -266,9 +270,7 @@ class TagBasedAccessPolicy(AccessPolicy):
 
         # check for tags that need to be removed
         if node.access_blob.tags is not None:
-            for tag in set(node.access_blob.tags).difference(
-                access_tags_from_policy
-            ):
+            for tag in set(node.access_blob.tags).difference(access_tags_from_policy):
                 if authn_access_tags is not None:
                     if tag not in authn_access_tags:
                         raise ValueError(
@@ -344,7 +346,10 @@ class TagBasedAccessPolicy(AccessPolicy):
 
             allowed = set()
             if node.access_blob.username is not None:
-                if authn_access_tags is None and identifier == node.access_blob.username:
+                if (
+                    authn_access_tags is None
+                    and identifier == node.access_blob.username
+                ):
                     allowed = self.scopes
             elif node.access_blob.tags is not None:
                 for tag in node.access_blob.tags:
