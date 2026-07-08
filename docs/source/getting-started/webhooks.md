@@ -212,22 +212,6 @@ receiver.shutdown()
 server.close()
 ```
 
-## Recommended extra
-
-Configure Bluesky and run a scan!
-
-```{code-cell} ipython3
-from bluesky.callbacks.tiled_writer import TiledWriter
-from bluesky import RunEngine
-from tiled.client import from_uri
-
-tiled_client = from_uri(f"http://localhost:{server.port}", api_key=f"{server.api_key}")
-
-RE=RunEngine()
-tw=TiledWriter(tiled_client)
-RE.subscribe(tw)
-```
-
 ## See also
 
 - {doc}`../user-guide/webhooks` — operator reference: server configuration,
