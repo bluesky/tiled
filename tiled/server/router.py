@@ -56,6 +56,7 @@ from ..type_aliases import AccessTags, Scopes
 from ..utils import BrokenLink, ensure_awaitable, patch_mimetypes, path_from_uri
 from ..validation_registration import ValidationError, ValidationRegistry
 from . import schemas
+from ._backcompat import parse_python_tiled_client_version
 from .authentication import (
     authenticate_websocket_first_message,
     check_scopes,
@@ -201,20 +202,16 @@ def get_router(
             "required": not settings.allow_anonymous_access,
         }
         provider_specs = []
-        user_agent = request.headers.get("user-agent", "")
         # The name of the "internal" mode used to be "password".
         # This ensures back-compat with older Python clients.
         internal_mode_name = "internal"
         MINIMUM_INTERNAL_PYTHON_CLIENT_VERSION = packaging.version.parse("0.1.0b17")
-        if user_agent.startswith("python-tiled/"):
-            agent, _, raw_version = user_agent.partition("/")
-            try:
-                parsed_version = packaging.version.parse(raw_version)
-            except Exception:
-                pass
-            else:
-                if parsed_version < MINIMUM_INTERNAL_PYTHON_CLIENT_VERSION:
-                    internal_mode_name = "password"
+        client_version = parse_python_tiled_client_version(request)
+        if (
+            client_version is not None
+            and client_version < MINIMUM_INTERNAL_PYTHON_CLIENT_VERSION
+        ):
+            internal_mode_name = "password"
         for provider, authenticator in authenticators.items():
             if isinstance(authenticator, InternalAuthenticator):
                 spec = {
@@ -1912,10 +1909,11 @@ def get_router(
         links = links_for_node(
             structure_family, structure, get_base_url(request), path + f"/{node.key}"
         )
+        data_sources_dump = [ds.model_dump() for ds in node.data_sources]
         response_data = {
             "id": node.key,
             "links": links,
-            "data_sources": [ds.model_dump() for ds in node.data_sources],
+            "data_sources": data_sources_dump,
         }
         if metadata_modified:
             response_data["metadata"] = metadata
@@ -2815,18 +2813,10 @@ def _model_dump_backcompat(request: Request, response: schemas.Response) -> dict
     Issue: https://github.com/bluesky/tiled/issues/1300
     """
     response_dict = response.model_dump()
-    user_agent = request.headers.get("user-agent", "")
-    if user_agent.startswith("python-tiled/"):
-        agent, _, raw_version = user_agent.partition("/")
-        try:
-            parsed_version = packaging.version.parse(raw_version)
-            if parsed_version < packaging.version.parse("0.2.4"):
-                for ds in response_dict["data"]["attributes"]["data_sources"]:
-                    ds.pop("properties", None)
-
-                return response_dict
-
-        except Exception:
-            pass
-
+    client_version = parse_python_tiled_client_version(request)
+    if client_version is None:
+        return response_dict
+    if client_version < packaging.version.parse("0.2.4"):
+        for ds in response_dict["data"]["attributes"]["data_sources"]:
+            ds.pop("properties", None)
     return response_dict
