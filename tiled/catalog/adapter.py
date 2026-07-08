@@ -1085,7 +1085,11 @@ class CatalogNodeAdapter:
                     "specs": [spec.model_dump() for spec in (specs or [])],
                     "metadata": metadata,
                     "data_sources": [d.model_dump() for d in data_sources_with_ids],
-                    "access_blob": refreshed_node.access_blob,
+                    "access_blob": (
+                        {"user": refreshed_node.access_blob.username}
+                        if refreshed_node.access_blob.username is not None
+                        else {"tags": refreshed_node.access_blob.tags}
+                    ),
                 }
 
                 # Cache data in Redis with a TTL, and publish
@@ -2389,35 +2393,40 @@ def specs(query, tree):
 
 def access_blob_filter(query, tree):
     dialect_name = tree.context.engine.url.get_dialect().name
-    access_blob = orm.Node.access_blob
     if not (query.user_id or query.tags):
         # Results cannot possibly match an empty value or list,
         # so put a False condition in the list ensuring that
         # there are no rows returned.
         condition = false()
-    elif dialect_name == "sqlite":
-        attr_id = access_blob["user"]
-        attr_tags = access_blob["tags"]
-        access_tags_json = func.json_each(attr_tags).table_valued("value")
-        condition = (
-            select(1)
-            .select_from(access_tags_json)
-            .where(access_tags_json.c.value.in_(query.tags))
-            .exists()
-        )
-        if query.user_id is not None:
-            user_match = (
-                func.json_extract(func.json_quote(attr_id), "$") == query.user_id
-            )
-            condition = or_(condition, user_match)
-    elif dialect_name == "postgresql":
-        access_blob_jsonb = type_coerce(access_blob, JSONB)
-        condition = access_blob_jsonb["tags"].has_any(sql_cast(query.tags, ARRAY(TEXT)))
-        if query.user_id is not None:
-            user_match = access_blob_jsonb["user"].astext == query.user_id
-            condition = or_(condition, user_match)
     else:
-        raise UnsupportedQueryType("access_blob_filter")
+        filters = []
+        if query.tags:
+            if dialect_name == "sqlite":
+                access_tags_json = func.json_each(orm.AccessBlob.tags).table_valued(
+                    "value"
+                )
+                tags_match = (
+                    select(orm.AccessBlob.node_id)
+                    .where(
+                        select(1)
+                        .select_from(access_tags_json)
+                        .where(access_tags_json.c.value.in_(query.tags))
+                        .exists()
+                    )
+                )
+            elif dialect_name == "postgresql":
+                tags_match = select(orm.AccessBlob.node_id).where(
+                    orm.AccessBlob.tags.has_any(sql_cast(query.tags, ARRAY(TEXT)))
+                )
+            else:
+                raise UnsupportedQueryType("access_blob_filter")
+            filters.append(orm.Node.id.in_(tags_match))
+        if query.user_id is not None:
+            user_match = select(orm.AccessBlob.node_id).where(
+                orm.AccessBlob.username == query.user_id
+            )
+            filters.append(orm.Node.id.in_(user_match))
+        condition = or_(*filters) if filters else false()
 
     return tree.new_variation(conditions=tree.conditions + [condition])
 
