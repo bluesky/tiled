@@ -11,6 +11,11 @@ Write the date in place of the "Unreleased" in the case a new version is release
   from metadata responses when the request comes from a `python-tiled` client older than
   v0.2.13, whose `Asset` dataclass has no `size` field and would otherwise crash
   in `DataSource.from_json` with an unexpected keyword argument.
+- Tolerate unknown fields on the client side when decoding server JSON into
+  `Asset`, `DataSource`, `Spec`, and structure dataclasses (`AwkwardStructure`,
+  `TableStructure`, `ContainerStructure`). Unknown keys are dropped and logged
+  at DEBUG so a client can talk to a newer server without crashing on
+  fields it does not recognize.
 
 
 ## v0.2.13 (2026-07-08)
