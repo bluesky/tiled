@@ -21,7 +21,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy.schema import PrimaryKeyConstraint, UniqueConstraint, CheckConstraint
+from sqlalchemy.schema import CheckConstraint, PrimaryKeyConstraint, UniqueConstraint
 from sqlalchemy.sql import func
 
 from ..server.schemas import Management

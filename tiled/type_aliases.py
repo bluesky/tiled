@@ -33,6 +33,7 @@ Scopes = Set[str]
 Query = Any  # for now...
 Filters = List[Query]
 
+
 @dataclass(frozen=True)
 class AccessBlob:
     username: str | None = None

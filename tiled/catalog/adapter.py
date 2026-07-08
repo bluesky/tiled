@@ -109,6 +109,7 @@ from ..storage import (
     register_storage,
 )
 from ..structures.core import Spec, StructureFamily
+from ..type_aliases import AccessBlob
 from ..utils import (
     UNCHANGED,
     Conflicts,
@@ -119,7 +120,6 @@ from ..utils import (
     import_object,
     path_from_uri,
 )
-from ..type_aliases import AccessBlob
 from . import orm
 from .core import check_catalog_database, initialize_database
 from .explain import ExplainAsyncSession
@@ -2405,14 +2405,11 @@ def access_blob_filter(query, tree):
                 access_tags_json = func.json_each(orm.AccessBlob.tags).table_valued(
                     "value"
                 )
-                tags_match = (
-                    select(orm.AccessBlob.node_id)
-                    .where(
-                        select(1)
-                        .select_from(access_tags_json)
-                        .where(access_tags_json.c.value.in_(query.tags))
-                        .exists()
-                    )
+                tags_match = select(orm.AccessBlob.node_id).where(
+                    select(1)
+                    .select_from(access_tags_json)
+                    .where(access_tags_json.c.value.in_(query.tags))
+                    .exists()
                 )
             elif dialect_name == "postgresql":
                 tags_match = select(orm.AccessBlob.node_id).where(
@@ -2595,7 +2592,9 @@ async def _create_mount_node_segments(engine, mount_path, specs=None, access_blo
                     )
                 )
                 node_id = result.inserted_primary_key[0]
-                node_access_blob = access_blob if (is_leaf and access_blob) else AccessBlob(tags=[])
+                node_access_blob = (
+                    access_blob if (is_leaf and access_blob) else AccessBlob(tags=[])
+                )
                 access_blob_orm = _access_blob_to_orm(node_access_blob)
                 await conn.execute(
                     insert(orm.AccessBlob).values(
