@@ -41,6 +41,26 @@ def upgrade():
             name="ck_access_blob_user_xor_tags",
         ),
     )
+    op.create_index(
+        "ix_access_blobs_username_user",
+        "access_blobs",
+        ["username"],
+        sqlite_where=sa.text("kind = 'user' AND username IS NOT NULL"),
+        postgresql_where=sa.text("kind = 'user' AND username IS NOT NULL"),
+    )
+    op.create_index(
+        "ix_access_blobs_kind_node_id",
+        "access_blobs",
+        ["kind", "node_id"],
+    )
+    if dialect_name == "postgresql":
+        op.create_index(
+            "ix_access_blobs_tags_gin",
+            "access_blobs",
+            ["tags"],
+            postgresql_using="gin",
+            postgresql_where=sa.text("kind = 'tags' AND tags IS NOT NULL"),
+        )
 
     if dialect_name == "postgresql":
         op.execute(
