@@ -123,7 +123,9 @@ webhook = resp.json()
 webhook_id = webhook["id"]
 print(f"Webhook registered (id={webhook_id})")
 ```
+
 (Write_deliveries)=
+
 ## Write data and watch the deliveries arrive
 
 Every `write_array` call creates a new catalog entry, which triggers a
@@ -231,7 +233,9 @@ server.close()
 
 ## Configure Bluesky and run a scan
 
-Use the following webpage to set up RunEngine and TiledWriter, connecting a Tiled client to the SimpleTiledServer created above: https://blueskyproject.io/bluesky/main/tiled-writer.html
+Use the following webpage to set up RunEngine and TiledWriter, connecting a
+Tiled client to the SimpleTiledServer created above:
+[Tiled writer example](https://blueskyproject.io/bluesky/main/tiled-writer.html#usage)
 
 Once everything is hooked up, running a Bluesky scan will enable viewing all of the events that a scan creates.
 
