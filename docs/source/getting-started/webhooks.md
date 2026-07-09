@@ -73,7 +73,7 @@ print(f"Receiver listening on http://127.0.0.1:{receiver_port}/hook")
 Note that the `received` variable will be accessible from the IPython session,
 which will enable easier debugging.
 
-The structure of the json object is described below.
+The structure of the json object is described in [](Write_Deliveries)
 
 ## Start a Tiled server with webhooks enabled
 
@@ -123,7 +123,7 @@ webhook = resp.json()
 webhook_id = webhook["id"]
 print(f"Webhook registered (id={webhook_id})")
 ```
-
+(Write_deliveries)=
 ## Write data and watch the deliveries arrive
 
 Every `write_array` call creates a new catalog entry, which triggers a
