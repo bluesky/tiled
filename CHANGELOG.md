@@ -11,6 +11,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
   from metadata responses when the request comes from a `python-tiled` client older than
   v0.2.13, whose `Asset` dataclass has no `size` field and would otherwise crash
   in `DataSource.from_json` with an unexpected keyword argument.
+- Fixed type in the log writing of authenticators.py
 
 
 ## v0.2.13 (2026-07-08)
