@@ -1707,9 +1707,9 @@ def authentication_router() -> APIRouter:
 
                 else:
                     raise HTTPException(
-                        status_code=HTTP_401_UNAUTHORIZED,
+                        status_code=HTTP_404_NOT_FOUND,
                         detail=(
-                            "Not enough permissions. Requires scope revoke:apikeys. "
+                            "The currently-authenticated PrincipalType.user has no such API key."
                         ),
                     )
             if (api_key_orm is None) or (api_key_orm.principal.uuid != principal.uuid):
