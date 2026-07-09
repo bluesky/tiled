@@ -612,7 +612,7 @@ async def check_scopes_with_or(
             status_code=HTTP_401_UNAUTHORIZED,
             detail=(
                 "Not enough permissions. "
-                f"Requires scopes {settings.authenticator.scopes}. "
+                f"Requires scopes {security_scopes.scopes}. "
                 f"Request had scopes {list(scopes)}"
             ),
             headers=headers_for_401(request, security_scopes),
@@ -1680,6 +1680,7 @@ def authentication_router() -> APIRouter:
         db_factory: Callable[[], Optional[AsyncSession]] = Depends(
             get_database_session_factory
         ),
+        scopes: set[str] = Depends(get_current_scopes),
     ):
         """
         Revoke an API belonging to the currently-authenticated user or service."""
@@ -1707,9 +1708,11 @@ def authentication_router() -> APIRouter:
 
                 else:
                     raise HTTPException(
-                        status_code=HTTP_404_NOT_FOUND,
+                        status_code=HTTP_401_UNAUTHORIZED,
                         detail=(
-                            "The currently-authenticated PrincipalType.user has no such API key."
+                            "Not enough permissions. "
+                            f"Requires scopes ['revoke:apikeys']. "
+                            f"Request had scopes {list(scopes)}"
                         ),
                     )
             if (api_key_orm is None) or (api_key_orm.principal.uuid != principal.uuid):

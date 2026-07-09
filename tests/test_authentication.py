@@ -730,7 +730,7 @@ def test_unallowed_api_key_self_revoked(enter_username_password, config):
     with Context.from_app(
         build_app_from_config(config), api_key=api_key["secret"]
     ) as api_context:
-        with fail_with_status_code(HTTP_404_NOT_FOUND):
+        with fail_with_status_code(HTTP_401_UNAUTHORIZED):
             api_context.revoke_api_key(second_api_key["first_eight"])
 
         assert len(api_context.whoami()["api_keys"]) == 2
