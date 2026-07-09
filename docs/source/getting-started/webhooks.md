@@ -20,7 +20,7 @@ change in future releases.
 
 While Tiled's {ref}`streaming subscriptions <stream>` push
 data to a Python client over a WebSocket, **webhooks** push to any external
-HTTP service — no persistent connection required.  Whenever a catalog event
+HTTP service — no persistent connection required. Whenever a catalog event
 fires (new entry created, metadata updated, stream closed), Tiled sends an
 HTTP `POST` containing a JSON description of the event to a URL you register.
 
@@ -40,7 +40,7 @@ separate IPython sessions enables reconfiguring and restarting the services inde
 
 ## Set up a local receiver
 
-In production your webhook target would be an existing web service.  Here we
+In production your webhook target would be an existing web service. Here we
 spin up a tiny stdlib HTTP server on a background thread to capture the
 incoming `POST` requests.
 
@@ -94,7 +94,7 @@ print(f"Tiled server running at {server.uri}")
 
 ## Register a webhook
 
-A webhook is registered against a **node path**.  Any event on that node, or
+A webhook is registered against a **node path**. Any event on that node, or
 any of its descendants, will be delivered.
 
 Registering on the root (`""`) means we watch the entire catalog. For `"events"`,
@@ -127,7 +127,7 @@ print(f"Webhook registered (id={webhook_id})")
 ## Write data and watch the deliveries arrive
 
 Every `write_array` call creates a new catalog entry, which triggers a
-`container-child-created` event.  Tiled dispatches the delivery in the
+`container-child-created` event. Tiled dispatches the delivery in the
 background, so we wait briefly before inspecting what the receiver collected.
 
 ```{code-cell} ipython3
@@ -155,14 +155,14 @@ for payload in received:
 
 The key fields are:
 
-| Field | Description |
-|-------|-------------|
-| `type` | The event type, e.g. `container-child-created` |
-| `key` | The name of the new or updated entry |
-| `path` | Full path from the catalog root |
-| `structure_family` | `array`, `table`, `container`, … |
-| `specs` | Any specs attached to the entry |
-| `metadata` | The entry's metadata at the time of the event |
+| Field              | Description                                    |
+| ------------------ | ---------------------------------------------- |
+| `type`             | The event type, e.g. `container-child-created` |
+| `key`              | The name of the new or updated entry           |
+| `path`             | Full path from the catalog root                |
+| `structure_family` | `array`, `table`, `container`, …               |
+| `specs`            | Any specs attached to the entry                |
+| `metadata`         | The entry's metadata at the time of the event  |
 
 ## Verify with HMAC signatures
 
@@ -196,7 +196,7 @@ def handle(request):
 
 ## Inspect delivery history
 
-Tiled records every delivery attempt.  This is useful for debugging: you can
+Tiled records every delivery attempt. This is useful for debugging: you can
 see whether a delivery succeeded, how many retries it took, and what HTTP
 status code your receiver returned.
 
