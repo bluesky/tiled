@@ -31,7 +31,12 @@ This makes webhooks a good fit for:
 - integrating Tiled with systems that cannot maintain a long-lived connection
 
 This tutorial demonstrates the full webhook lifecycle end-to-end in a single
-IPython session, with no external services and no configuration files required. Using IPython is necessary to instantiate and persist the classes and services. Having the receiver in a separate IPython session from the server would enable monitoring of the handler, as well as make the `received` messages visible.
+IPython session, with no external services and no configuration files required.
+Using IPython is necessary to instantiate and persist the classes and services.
+
+The server and receiver can be made more modular by using the port and API key information
+and starting a new receiver downstream. Separating the server and receiver into
+separate IPython sessions enables reconfiguring and restarting the services independently.
 
 ## Set up a local receiver
 
@@ -65,6 +70,11 @@ threading.Thread(target=receiver.serve_forever, daemon=True).start()
 print(f"Receiver listening on http://127.0.0.1:{receiver_port}/hook")
 ```
 
+Note that the `received` variable will be accessible from the IPython session,
+which will enable easier debugging.
+
+The structure of the json object is described below.
+
 ## Start a Tiled server with webhooks enabled
 
 `SimpleTiledServer` accepts `enable_webhooks=True`, which automatically
@@ -87,7 +97,9 @@ print(f"Tiled server running at {server.uri}")
 A webhook is registered against a **node path**.  Any event on that node, or
 any of its descendants, will be delivered.
 
-Registering on the root (`""`) means we watch the entire catalog. For `"events"`, omitting or setting to `None` means all event types are delivered. `"secret"` is used for the HMAC signing secret.
+Registering on the root (`""`) means we watch the entire catalog. For `"events"`,
+omitting or setting to `None` means all event types are delivered. `"secret"` is
+used for the HMAC signing secret.
 
 ```{code-cell} ipython3
 import json
@@ -215,13 +227,19 @@ receiver.shutdown()
 server.close()
 ```
 
-## Recommended extra: Configure Bluesky and run a scan!
+# Extension possibilities
+
+## Configure Bluesky and run a scan
 
 Use the following webpage to set up RunEngine and TiledWriter, connecting a Tiled client to the SimpleTiledServer created above: https://blueskyproject.io/bluesky/main/tiled-writer.html
 
 Once everything is hooked up, running a Bluesky scan will enable viewing all of the events that a scan creates.
 
-## See also
+## Calling another application from the Tiled webhook receiver
+
+The receiver can serve as a filter of raw Tiled output into a call to another external application. This can be done, for example, to only trigger the application when a stop document is published, or to respond to start documents.
+
+# See also
 
 - {doc}`../user-guide/webhooks` — operator reference: server configuration,
   HMAC signing, SSRF protection, managing webhooks via the API
