@@ -110,7 +110,7 @@ def get_combined_blocked_networks(local_blocked_networks: list[str]) -> list[ipa
         ipaddress.ip_network(net) for net in local_blocked_networks
     ]
 
-def check_url_ssrf_safety(url: str, local_blocked_networks: Optional[list[str]] = None) -> None:
+def check_url_ssrf_safety(url: str, local_blocked_networks: Optional[list[str]] = None, allow_delivery_hosts: Optional[list[str]] = None) -> None:
     """Raise ``ValueError`` if *url* resolves to a private/loopback/reserved address.
 
     Call this at webhook registration time.  Note that DNS-rebinding attacks can
@@ -123,6 +123,8 @@ def check_url_ssrf_safety(url: str, local_blocked_networks: Optional[list[str]] 
         The webhook target URL to validate.
     blocked_networks:
         List of networks to combine with _BLOCKED_NETWORKS.
+    allow_delivery_hosts:
+        List of hosts to always allow, overriding any blocked_networks
 
     Raises
     ------
@@ -146,6 +148,8 @@ def check_url_ssrf_safety(url: str, local_blocked_networks: Optional[list[str]] 
         try:
             addr = ipaddress.ip_address(ip_str)
         except ValueError:
+            continue
+        if allow_delivery_hosts and addr.exploded in allow_delivery_hosts:
             continue
         for net in ALL_BLOCKED_NETWORKS:
             if addr in net:
