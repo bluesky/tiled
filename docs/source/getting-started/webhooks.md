@@ -229,7 +229,7 @@ receiver.shutdown()
 server.close()
 ```
 
-# Extension possibilities
+# Extending toward real-world situations
 
 ## Configure Bluesky and run a scan
 
