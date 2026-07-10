@@ -253,7 +253,7 @@ class WebhooksConfig(BaseSettings):
     blocked_networks: list of str
         Range of network addresses to which webhooks cannot be delivered, except
         for the exceptions that follow.
-    deliver_exception_hosts: list of str
+    allow_delivery_hosts: list of str
         List of host names to which webhooks must be delivered, regardless of
         whether in the `blocked_network list` or not.
     allow_http : bool
@@ -267,7 +267,7 @@ class WebhooksConfig(BaseSettings):
 
     secret_keys: list[str] = []
     blocked_networks: list[str] = []
-    deliver_exception_hosts: list[str] = []
+    allow_delivery_hosts: list[str] = []
     allow_http: bool = False
     allow_private_addresses: bool = False
 
