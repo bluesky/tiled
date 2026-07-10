@@ -437,17 +437,6 @@ async def get_current_scopes(
         return PUBLIC_SCOPES if settings.allow_anonymous_access else NO_SCOPES
 
 
-async def get_current_scopes_revoke(
-    which_scopes=Depends(get_current_scopes),
-):
-    if "revoke:apikeys" in which_scopes:
-        return "full_revoke_power"
-    elif "revoke:apikeys:self" in which_scopes:
-        return "self_revoke_power"
-    else:
-        return None
-
-
 async def get_current_scopes_websocket(
     websocket: WebSocket,
     api_key: Optional[str] = Depends(get_api_key_websocket),
@@ -1676,7 +1665,6 @@ def authentication_router() -> APIRouter:
         _=Security(
             check_scopes_with_or, scopes=["revoke:apikeys", "revoke:apikeys:self"]
         ),
-        which_scopes=Depends(get_current_scopes_revoke),
         db_factory: Callable[[], Optional[AsyncSession]] = Depends(
             get_database_session_factory
         ),
@@ -1690,23 +1678,14 @@ def authentication_router() -> APIRouter:
             return None
         async with db_factory() as db:
             api_key_orm = None
-            if which_scopes == "full_revoke_power":
-                api_key_orm = (
-                    await db.execute(
-                        select(orm.APIKey).filter(
-                            orm.APIKey.first_eight == first_eight[:8]
-                        )
-                    )
-                ).scalar()
-            elif which_scopes == "self_revoke_power":
-                if first_eight[:8] == api_key[:8]:
-                    try:
-                        secret = bytes.fromhex(api_key)
-                    except Exception:
-                        return None
-                    api_key_orm = await lookup_valid_api_key(db, secret)
-
-                else:
+            if api_key and first_eight[:8] == api_key[:8]:
+                try:
+                    secret = bytes.fromhex(api_key)
+                except Exception:
+                    return None
+                api_key_orm = await lookup_valid_api_key(db, secret)
+            else:
+                if "revoke:apikeys" not in scopes:
                     raise HTTPException(
                         status_code=HTTP_401_UNAUTHORIZED,
                         detail=(
@@ -1715,6 +1694,15 @@ def authentication_router() -> APIRouter:
                             f"Request had scopes {list(scopes)}"
                         ),
                     )
+                else:
+                    api_key_orm = (
+                        await db.execute(
+                            select(orm.APIKey).filter(
+                                orm.APIKey.first_eight == first_eight[:8]
+                            )
+                        )
+                    ).scalar()
+
             if (api_key_orm is None) or (api_key_orm.principal.uuid != principal.uuid):
                 raise HTTPException(
                     404,
