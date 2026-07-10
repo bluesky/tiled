@@ -7,6 +7,9 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Fixed
 
+- Update webhook documentation to fix minor bugs. Add two main extensions towards
+  use in real systems: adding Bluesky to the test system, and a suggestion on how to
+  build the webhook response system that triggers another application.
 - Expand the functionality of HDF5Adapter to handle `object`-dtyped data:
   variable-length strings are coerced to fixed-length bytes, non-string object
   dtypes (e.g. vlen arrays) fall back to an empty placeholder that preserves
