@@ -241,24 +241,38 @@ if modules_available("zstandard"):
     # TODO Make compression settings configurable.
     # This complex in our case because, as with gzip, we may
     # want configure differently for different media types.
-    zstd_compressor = zstandard.ZstdCompressor(level=3, threads=0)
+    ZSTD_LEVEL = 3
 
     class ZstdBuffer:
         """
         Imitate the API provided by gzip.GzipFile and used by tiled.server.compression.
 
-        It's not clear to me yet what this buys us, but I think we should follow
-        the pattern set by starlette until we have a clear reason not to.
+        Wraps a `zstandard.ZstdCompressor.stream_writer` so that successive
+        `write()` calls append to a single zstd frame and `close()` flushes
+        the closing marker. (A naive `compressor.compress(b)` per write would
+        emit one independent frame per write; decoders such as httpx's zstd
+        decoder stop after the first frame, so streaming responses would
+        appear truncated at the first chunk boundary.)
         """
 
         def __init__(self, file):
+            # A fresh compressor per buffer: zstandard's stream_writer holds
+            # state on the parent ZstdCompressor, so a single shared
+            # compressor cannot drive multiple concurrent stream writers
+            # (e.g. concurrent requests in a threaded server).
+            self._compressor = zstandard.ZstdCompressor(level=ZSTD_LEVEL, threads=0)
             self._file = file
+            # `closefd=False` keeps the underlying BytesIO open after we close
+            # the compressor; CompressionMiddleware needs to call .getvalue()
+            # on it after the final frame is flushed.
+            self._writer = self._compressor.stream_writer(file, closefd=False)
 
         def write(self, b):
-            self._file.write(zstd_compressor.compress(b))
+            self._writer.write(b)
 
         def close(self):
-            pass
+            # stream_writer.close() flushes the final zstd frame to `file`.
+            self._writer.close()
 
     for media_type in [
         "application/json",

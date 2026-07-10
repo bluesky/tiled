@@ -143,10 +143,11 @@ def from_context(
     if isinstance(structure_clients, str):
         structure_clients = DEFAULT_STRUCTURE_CLIENT_DISPATCH[structure_clients]
     # To construct a user-facing client object, we may be required to authenticate.
-    # 1. If any API key set, we are already authenticated and there is nothing to do.
+    # 1. If the context is authenticated, such as if an API key is set, we are already
+    #    authenticated and there is nothing to do.
     # 2. If there are cached valid credentials for this server, use them.
     # 3. If not, and the server requires authentication, prompt for authentication.
-    if context.api_key is None:
+    if not context.authenticated:
         auth_is_required = context.server_info.authentication.required
         has_providers = len(context.server_info.authentication.providers) > 0
         if auth_is_required and not has_providers:

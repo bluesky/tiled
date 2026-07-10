@@ -888,15 +888,31 @@ class CatalogNodeAdapter:
             return type(self)(self.context, refreshed_node)
 
     async def _put_asset(self, db: AsyncSession, asset):
-        # Find an asset_id if it exists, otherwise create a new one
-        statement = select(orm.Asset.id).where(orm.Asset.data_uri == asset.data_uri)
+        # Find an asset_id if it exists, otherwise create a new one.
+        statement = select(orm.Asset.id, orm.Asset.size).where(
+            orm.Asset.data_uri == asset.data_uri
+        )
         result = await db.execute(statement)
         if row := result.fetchone():
-            (asset_id,) = row
+            asset_id, existing_size = row
+            # Opportunistically refresh `size` on re-registration. This
+            # backfills rows that predate `Asset.size` being populated by the
+            # client and lets a re-`register` pick up changes when an
+            # underlying file has been rewritten. We only act when the caller
+            # supplied a non-null size to avoid clobbering a known value with
+            # `None` (e.g. when re-registering through a path that does not
+            # stat the file).
+            if asset.size is not None and asset.size != existing_size:
+                await db.execute(
+                    update(orm.Asset)
+                    .where(orm.Asset.id == asset_id)
+                    .values(size=asset.size)
+                )
         else:
             statement = self.insert(orm.Asset).values(
                 data_uri=asset.data_uri,
                 is_directory=asset.is_directory,
+                size=asset.size,
             )
             result = await db.execute(statement)
             (asset_id,) = result.inserted_primary_key
@@ -975,11 +991,47 @@ class CatalogNodeAdapter:
                 await db.execute(
                     select(orm.Revision)
                     .where(orm.Revision.node_id == self.node.id)
+                    .order_by(orm.Revision.revision_number)
                     .offset(offset)
                     .limit(limit)
                 )
             ).all()
             return [Revision.from_orm(o[0]) for o in revision_orms]
+
+    async def revisions_with_count(self, offset: int = 0, limit=None):
+        """Return a page of revisions and the total revision count.
+
+        Uses a single windowed query so the count is consistent with the
+        page and requires only one database round-trip.  If the page is
+        empty (either because there are no revisions or because ``offset``
+        is past the end), a follow-up ``COUNT`` runs in the same session
+        to obtain an accurate total.
+        """
+        async with self.context.session() as db:
+            rows = (
+                await db.execute(
+                    select(orm.Revision, func.count().over().label("_total"))
+                    .where(orm.Revision.node_id == self.node.id)
+                    .order_by(orm.Revision.revision_number)
+                    .offset(offset)
+                    .limit(limit)
+                )
+            ).all()
+            if rows:
+                revisions = [Revision.from_orm(row[0]) for row in rows]
+                total = rows[0]._total
+            else:
+                revisions = []
+                # Window functions emit no rows when the SELECT is empty, so fall back
+                # to a plain COUNT to distinguish "no revisions" from "offset past end".
+                total = (
+                    await db.execute(
+                        select(func.count())
+                        .select_from(orm.Revision)
+                        .where(orm.Revision.node_id == self.node.id)
+                    )
+                ).scalar_one()
+        return revisions, total
 
     async def delete(self, recursive=False, external_only=True):
         """Delete the Node, its descendants, and associated DataSources and Assets
@@ -1691,6 +1743,14 @@ class CatalogAwkwardAdapter(CatalogNodeAdapter):
 
     async def write(self, *args, **kwargs):
         return await ensure_awaitable((await self.get_adapter()).write, *args, **kwargs)
+
+
+class CatalogBytesAdapter(CatalogNodeAdapter):
+    # Bytes nodes serve their content via /asset/bytes, not through a
+    # structure-family endpoint, so this adapter inherits CatalogNodeAdapter
+    # unchanged. The class exists to anchor the family in STRUCTURES so
+    # registration produces an instance of the right type.
+    pass
 
 
 class CatalogRaggedAdapter(CatalogArrayAdapter):
@@ -2426,6 +2486,7 @@ def node_from_segments(segments, root_id=0):
 STRUCTURES = {
     StructureFamily.array: CatalogArrayAdapter,
     StructureFamily.awkward: CatalogAwkwardAdapter,
+    StructureFamily.bytes: CatalogBytesAdapter,
     StructureFamily.container: CatalogContainerAdapter,
     StructureFamily.ragged: CatalogRaggedAdapter,
     StructureFamily.sparse: CatalogSparseAdapter,

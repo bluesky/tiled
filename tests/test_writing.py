@@ -5,8 +5,10 @@ Persistent stores are being developed externally to the tiled package.
 """
 
 import base64
+import collections
 import math
 import os
+import pathlib
 import threading
 import uuid
 from datetime import datetime
@@ -105,6 +107,21 @@ def tree(tmpdir, tmp_minio_bucket):
     writable_storage.append(f"file://localhost{str(tmpdir / 'data')}")
 
     return in_memory(writable_storage=writable_storage)
+
+
+@pytest.fixture(scope="module")
+def module_tmp_path(tmp_path_factory: pytest.TempdirFactory) -> pathlib.Path:
+    return tmp_path_factory.mktemp("temp")
+
+
+@pytest.fixture(scope="module")
+def metadata_client(module_tmp_path):
+    catalog = in_memory(writable_storage=str(module_tmp_path))
+    app = build_app(catalog)
+    with Context.from_app(app) as context:
+        client = from_context(context)
+        client.write_array([1, 2, 3], key="invalid_check")
+        yield client
 
 
 def test_write_array_full(tree):
@@ -473,6 +490,68 @@ def test_metadata_revisions(tree):
             ac.metadata_revisions.delete_revision(1)
 
 
+def test_metadata_revisions_count(tree):
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        ac = client.write_array([1, 2, 3], key="paginate_me")
+        ac.update_metadata(metadata={"a": 1})
+        ac.update_metadata(metadata={"a": 2})
+        ac.update_metadata(metadata={"a": 3})
+        # `len` reads the total count from the server, which was always 0 before.
+        assert len(ac.metadata_revisions) == 3
+        # Revisions are returned ordered by revision number.
+        revision_numbers = [r["revision_number"] for r in ac.metadata_revisions[:]]
+        assert revision_numbers == [1, 2, 3]
+
+
+def test_metadata_revisions_count_empty(tree):
+    """Cover the empty-page branch of `revisions_with_count`.
+
+    The windowed COUNT emits no rows when the SELECT is empty, so the
+    adapter falls back to a plain COUNT query.  Exercise both empty
+    cases: (a) a node with zero revisions and (b) a page whose offset is
+    past the end of a non-empty revision list.
+    """
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+
+        # (a) Zero revisions on this node.
+        ac = client.write_array([1, 2, 3], key="no_revisions")
+        url = ac.uri.replace("/metadata/", "/revisions/")
+        page = context.http_client.get(url).json()
+        assert page["meta"]["count"] == 0
+        assert page["data"] == []
+        assert page["links"]["next"] is None
+
+        # (b) Offset past the end of a node that does have revisions.
+        ac = client.write_array([1, 2, 3], key="past_end")
+        ac.update_metadata(metadata={"a": 1})
+        ac.update_metadata(metadata={"a": 2})
+        url = ac.uri.replace("/metadata/", "/revisions/") + "?page[offset]=10"
+        page = context.http_client.get(url).json()
+        assert page["meta"]["count"] == 2
+        assert page["data"] == []
+        assert page["links"]["next"] is None
+
+
+def test_metadata_revisions_pagination(tree):
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        ac = client.write_array([1, 2, 3], key="paginate_revisions")
+        ac.update_metadata(metadata={"a": 1})
+        ac.update_metadata(metadata={"a": 2})
+        ac.update_metadata(metadata={"a": 3})
+        # Walk one revision per page via the 'next' links (never generated before
+        # #1389) and confirm all three come back, in order, with no overlap.
+        url = ac.uri.replace("/metadata/", "/revisions/") + "?page[limit]=1"
+        revision_numbers = []
+        while url is not None:
+            page = context.http_client.get(url).json()
+            revision_numbers += [r["revision_number"] for r in page["data"]]
+            url = page["links"]["next"]
+        assert revision_numbers == [1, 2, 3]
+
+
 def test_replace_metadata(tiled_websocket_context):
     context = tiled_websocket_context
     client = from_context(context)
@@ -515,6 +594,29 @@ def test_replace_metadata(tiled_websocket_context):
         ac.replace_metadata(metadata={"3": 1}, drop_revision=True)  # update #3
         # Wait for all messages to be received
         assert received_event.wait(timeout=5.0), "Timeout waiting for messages"
+
+
+@pytest.mark.parametrize(
+    "tested_metadata", ["test", ["test1", "test2"], 1, [1, 2], 1.2, True, (1, 2), {1}]
+)
+def test_invalid_metadata(metadata_client, tested_metadata):
+    with pytest.raises(ValueError):
+        metadata_client["invalid_check"].update_metadata(metadata=tested_metadata)
+
+
+def test_valid_update_metadata(tree):
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        client.write_array([1, 2, 3], key="valid_check")
+
+        client["valid_check"].update_metadata(metadata={"a": 1, "b": 2})
+        assert client["valid_check"].metadata == {"a": 1, "b": 2}
+
+        d1 = {"a": 1}
+        d2 = {"b": 2}
+        d = collections.ChainMap(d1, d2)
+        client["valid_check"].update_metadata(metadata=d)
+        assert client["valid_check"].metadata == d
 
 
 def test_drop_revision(tree):
