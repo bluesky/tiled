@@ -20,7 +20,7 @@ change in future releases.
 
 While Tiled's {ref}`streaming subscriptions <stream>` push
 data to a Python client over a WebSocket, **webhooks** push to any external
-HTTP service — no persistent connection required.  Whenever a catalog event
+HTTP service — no persistent connection required. Whenever a catalog event
 fires (new entry created, metadata updated, stream closed), Tiled sends an
 HTTP `POST` containing a JSON description of the event to a URL you register.
 
@@ -31,11 +31,16 @@ This makes webhooks a good fit for:
 - integrating Tiled with systems that cannot maintain a long-lived connection
 
 This tutorial demonstrates the full webhook lifecycle end-to-end in a single
-Python session, with no external services and no configuration files required.
+IPython session, with no external services and no configuration files required.
+Using IPython is necessary to instantiate and persist the classes and services.
+
+The server and receiver can be made more modular by using the port and API key information
+and starting a new receiver downstream. Separating the server and receiver into
+separate IPython sessions enables reconfiguring and restarting the services independently.
 
 ## Set up a local receiver
 
-In production your webhook target would be an existing web service.  Here we
+In production your webhook target would be an existing web service. Here we
 spin up a tiny stdlib HTTP server on a background thread to capture the
 incoming `POST` requests.
 
@@ -65,6 +70,11 @@ threading.Thread(target=receiver.serve_forever, daemon=True).start()
 print(f"Receiver listening on http://127.0.0.1:{receiver_port}/hook")
 ```
 
+Note that the `received` variable will be accessible from the IPython session,
+which will enable easier debugging.
+
+The structure of the json object is described in [](Write_Deliveries)
+
 ## Start a Tiled server with webhooks enabled
 
 `SimpleTiledServer` accepts `enable_webhooks=True`, which automatically
@@ -84,11 +94,12 @@ print(f"Tiled server running at {server.uri}")
 
 ## Register a webhook
 
-A webhook is registered against a **node path**.  Any event on that node, or
+A webhook is registered against a **node path**. Any event on that node, or
 any of its descendants, will be delivered.
 
-Registering on the root (`""`) means we watch the entire catalog.  Omitting
-`"events"` means all event types are delivered.
+Registering on the root (`""`) means we watch the entire catalog. For `"events"`,
+omitting or setting to `None` means all event types are delivered. `"secret"` is
+used for the HMAC signing secret.
 
 ```{code-cell} ipython3
 import json
@@ -100,7 +111,11 @@ resp = httpx.post(
         "Authorization": f"Apikey {server.api_key}",
         "Content-Type": "application/json",
     },
-    content=json.dumps({"url": f"http://127.0.0.1:{receiver_port}/hook"}),
+    content=json.dumps({
+	"url": f"http://127.0.0.1:{receiver_port}/hook",
+	"secret": None,
+	"events": None,
+    }),
 )
 resp.raise_for_status()
 
@@ -109,10 +124,12 @@ webhook_id = webhook["id"]
 print(f"Webhook registered (id={webhook_id})")
 ```
 
+(Write_deliveries)=
+
 ## Write data and watch the deliveries arrive
 
 Every `write_array` call creates a new catalog entry, which triggers a
-`container-child-created` event.  Tiled dispatches the delivery in the
+`container-child-created` event. Tiled dispatches the delivery in the
 background, so we wait briefly before inspecting what the receiver collected.
 
 ```{code-cell} ipython3
@@ -140,14 +157,14 @@ for payload in received:
 
 The key fields are:
 
-| Field | Description |
-|-------|-------------|
-| `type` | The event type, e.g. `container-child-created` |
-| `key` | The name of the new or updated entry |
-| `path` | Full path from the catalog root |
-| `structure_family` | `array`, `table`, `container`, … |
-| `specs` | Any specs attached to the entry |
-| `metadata` | The entry's metadata at the time of the event |
+| Field              | Description                                    |
+| ------------------ | ---------------------------------------------- |
+| `type`             | The event type, e.g. `container-child-created` |
+| `key`              | The name of the new or updated entry           |
+| `path`             | Full path from the catalog root                |
+| `structure_family` | `array`, `table`, `container`, …               |
+| `specs`            | Any specs attached to the entry                |
+| `metadata`         | The entry's metadata at the time of the event  |
 
 ## Verify with HMAC signatures
 
@@ -181,7 +198,7 @@ def handle(request):
 
 ## Inspect delivery history
 
-Tiled records every delivery attempt.  This is useful for debugging: you can
+Tiled records every delivery attempt. This is useful for debugging: you can
 see whether a delivery succeeded, how many retries it took, and what HTTP
 status code your receiver returned.
 
@@ -212,7 +229,21 @@ receiver.shutdown()
 server.close()
 ```
 
-## See also
+# Extending toward real-world situations
+
+## Configure Bluesky and run a scan
+
+Use the following webpage to set up RunEngine and TiledWriter, connecting a
+Tiled client to the SimpleTiledServer created above:
+[Tiled writer example](https://blueskyproject.io/bluesky/main/tiled-writer.html#usage)
+
+Once everything is hooked up, running a Bluesky scan will enable viewing all of the events that a scan creates.
+
+## Calling another application from the Tiled webhook receiver
+
+The receiver can serve as a filter of raw Tiled output into a call to another external application. This can be done, for example, to only trigger the application when a stop document is published, or to respond to start documents.
+
+# See also
 
 - {doc}`../user-guide/webhooks` — operator reference: server configuration,
   HMAC signing, SSRF protection, managing webhooks via the API

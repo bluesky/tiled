@@ -7,6 +7,9 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Fixed
 
+- Update webhook documentation to fix minor bugs. Add two main extensions towards
+  use in real systems: adding Bluesky to the test system, and a suggestion on how to
+  build the webhook response system that triggers another application.
 - Strengthen the server-side backcompatibility. Strip the newly added `Asset.size` field
   from metadata responses when the request comes from a `python-tiled` client older than
   v0.2.13, whose `Asset` dataclass has no `size` field and would otherwise crash
