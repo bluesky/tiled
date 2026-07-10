@@ -91,7 +91,7 @@ class _DeliveryHTTPError(Exception):
 # Explicit blocklist of private/reserved ranges.  Using explicit ranges rather
 # than relying solely on ipaddress.is_private gives consistent behaviour across
 # Python 3.10–3.12 (is_private semantics changed in 3.11).
-_BLOCKED_NETWORKS: list[ipaddress.IPv4Network | ipaddress.IPv6Network] = [
+_STANDARD_BLOCKED_NETWORKS: list[ipaddress.IPv4Network | ipaddress.IPv6Network] = [
     ipaddress.ip_network("127.0.0.0/8"),  # IPv4 loopback
     ipaddress.ip_network("10.0.0.0/8"),  # RFC 1918
     ipaddress.ip_network("172.16.0.0/12"),  # RFC 1918
@@ -104,8 +104,13 @@ _BLOCKED_NETWORKS: list[ipaddress.IPv4Network | ipaddress.IPv6Network] = [
     ipaddress.ip_network("fe80::/10"),  # IPv6 link-local
 ]
 
+def get_combined_blocked_networks(local_blocked_networks: list[str]) -> list[ipaddress.IPv4Network | ipaddress.IPv6Network]:
+    """Return the union of the standard blocked networks and any local overrides."""
+    return _STANDARD_BLOCKED_NETWORKS + [
+        ipaddress.ip_network(net) for net in local_blocked_networks
+    ]
 
-def check_url_ssrf_safety(url: str) -> None:
+def check_url_ssrf_safety(url: str, local_blocked_networks: Optional[list[str]] = None) -> None:
     """Raise ``ValueError`` if *url* resolves to a private/loopback/reserved address.
 
     Call this at webhook registration time.  Note that DNS-rebinding attacks can
@@ -116,11 +121,13 @@ def check_url_ssrf_safety(url: str) -> None:
     ----------
     url:
         The webhook target URL to validate.
+    blocked_networks:
+        List of networks to combine with _BLOCKED_NETWORKS.
 
     Raises
     ------
     ValueError
-        If the URL hostname resolves to any address in ``_BLOCKED_NETWORKS``.
+        If the URL hostname resolves to any address in the union of ``_BLOCKED_NETWORKS` and blocked_networks`.
     """
     parsed = urlparse(url)
     hostname = parsed.hostname
@@ -133,13 +140,14 @@ def check_url_ssrf_safety(url: str) -> None:
         raise ValueError(
             f"Cannot resolve webhook URL hostname {hostname!r}: {exc}"
         ) from exc
+    ALL_BLOCKED_NETWORKS = get_combined_blocked_networks(local_blocked_networks)
     for _family, _type, _proto, _canonname, sockaddr in infos:
         ip_str = sockaddr[0]
         try:
             addr = ipaddress.ip_address(ip_str)
         except ValueError:
             continue
-        for net in _BLOCKED_NETWORKS:
+        for net in ALL_BLOCKED_NETWORKS:
             if addr in net:
                 raise ValueError(
                     f"Webhook URL {url!r} resolves to {addr}, which is in the "
