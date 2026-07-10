@@ -10,6 +10,16 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - Update webhook documentation to fix minor bugs. Add two main extensions towards
   use in real systems: adding Bluesky to the test system, and a suggestion on how to
   build the webhook response system that triggers another application.
+- Strengthen the server-side backcompatibility. Strip the newly added `Asset.size` field
+  from metadata responses when the request comes from a `python-tiled` client older than
+  v0.2.13, whose `Asset` dataclass has no `size` field and would otherwise crash
+  in `DataSource.from_json` with an unexpected keyword argument.
+
+
+## v0.2.13 (2026-07-08)
+
+### Fixed
+
 - Expand the functionality of HDF5Adapter to handle `object`-dtyped data:
   variable-length strings are coerced to fixed-length bytes, non-string object
   dtypes (e.g. vlen arrays) fall back to an empty placeholder that preserves
@@ -30,6 +40,11 @@ Write the date in place of the "Unreleased" in the case a new version is release
   destination, streaming each asset into an in-memory `io.BytesIO` keyed by
   the on-disk-equivalent layout (`<filename>` for a single asset;
   `<asset_id>/<filename>` for multi-asset nodes). No filesystem I/O is performed in this mode.
+
+
+### Fixed
+
+- Including a check for authentication links when running whoami to allow for a graceful message when authentication links are not present.
 
 
 ## v0.2.12 (2026-06-16)
@@ -53,6 +68,10 @@ Write the date in place of the "Unreleased" in the case a new version is release
 ### Fixed
 
 - Fixed authentication check in from_context to prevent the user from being re-prompted to login.
+
+### Fixed
+
+- Ensuring that the metadata parameter value entered when calling update_metadata is of the proper type (will serialize as a JSON object) before altering the metadata.
 
 
 ## v0.2.11 (2026-05-27)

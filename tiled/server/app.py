@@ -58,6 +58,7 @@ from ..query_registration import QueryRegistry, default_query_registry
 from ..type_aliases import AppTask, TaskMap
 from ..utils import SHARE_TILED_PATH, Conflicts, UnsupportedQueryType
 from ..validation_registration import ValidationRegistry, default_validation_registry
+from ._backcompat import raw_python_tiled_client_version
 from .authentication import move_api_key
 from .compression import CompressionMiddleware
 from .protocols import ExternalAuthenticator, InternalAuthenticator
@@ -807,9 +808,8 @@ def build_app(
     async def client_compatibility_check(
         request: Request, call_next: RequestResponseEndpoint
     ):
-        user_agent = request.headers.get("user-agent", "")
-        if user_agent.startswith("python-tiled/"):
-            agent, _, raw_version = user_agent.partition("/")
+        raw_version = raw_python_tiled_client_version(request)
+        if raw_version is not None:
             try:
                 parsed_version = packaging.version.parse(raw_version)
             except Exception as caught_exception:

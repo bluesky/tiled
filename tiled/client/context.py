@@ -1133,14 +1133,17 @@ class Context:
 
     def whoami(self):
         "Return information about the currently-authenticated user or service."
-        for attempt in retry_context(self):
-            with attempt:
-                return handle_error(
-                    self.http_client.get(
-                        self.server_info.authentication.links.whoami,
-                        headers={"Accept": MSGPACK_MIME_TYPE},
-                    )
-                ).json()
+        if self.server_info.authentication.links:
+            for attempt in retry_context(self):
+                with attempt:
+                    return handle_error(
+                        self.http_client.get(
+                            self.server_info.authentication.links.whoami,
+                            headers={"Accept": MSGPACK_MIME_TYPE},
+                        )
+                    ).json()
+        else:
+            warnings.warn("Authentication providers were not configured on the server.")
 
     def logout(self):
         """
