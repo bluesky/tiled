@@ -1677,32 +1677,24 @@ def authentication_router() -> APIRouter:
         if principal is None:
             return None
         async with db_factory() as db:
-            api_key_orm = None
-            if api_key and first_eight[:8] == api_key[:8]:
-                try:
-                    secret = bytes.fromhex(api_key)
-                except Exception:
-                    return None
-                api_key_orm = await lookup_valid_api_key(db, secret)
-            else:
-                if "revoke:apikeys" not in scopes:
-                    raise HTTPException(
-                        status_code=HTTP_401_UNAUTHORIZED,
-                        detail=(
-                            "Not enough permissions. "
-                            f"Requires scopes ['revoke:apikeys']. "
-                            f"Request had scopes {list(scopes)}"
-                        ),
-                    )
-                else:
-                    api_key_orm = (
-                        await db.execute(
-                            select(orm.APIKey).filter(
-                                orm.APIKey.first_eight == first_eight[:8]
-                            )
-                        )
-                    ).scalar()
-
+            if (
+                "revoke:apikeys" not in scopes
+                and api_key
+                and first_eight[:8] != api_key[:8]
+            ):
+                raise HTTPException(
+                    status_code=HTTP_401_UNAUTHORIZED,
+                    detail=(
+                        "Not enough permissions. "
+                        f"Requires scopes ['revoke:apikeys']. "
+                        f"Request had scopes {list(scopes)}"
+                    ),
+                )
+            api_key_orm = (
+                await db.execute(
+                    select(orm.APIKey).filter(orm.APIKey.first_eight == first_eight[:8])
+                )
+            ).scalar()
             if (api_key_orm is None) or (api_key_orm.principal.uuid != principal.uuid):
                 raise HTTPException(
                     404,
