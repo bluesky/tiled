@@ -921,11 +921,11 @@ class Context:
         The API key must be that of the currently-authenticated user or service.
         """
         if not self.api_key:
-            raise RuntimeError(
+            warnings.warn(
                 "You must be authenticated with an API key to revoke your API key."
             )
-
-        self.revoke_api_key(self.api_key[:8])
+        else:
+            self.revoke_api_key(self.api_key[:8])
 
     @property
     def app(self):
