@@ -29,6 +29,7 @@ numpy = "*"
 
 [feature.awkward.dependencies]
 awkward = ">=2.4.3"
+ragged = "*"
 
 [feature.client.dependencies]
 entrypoints = "*"
