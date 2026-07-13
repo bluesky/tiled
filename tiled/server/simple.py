@@ -72,6 +72,12 @@ class SimpleTiledServer:
         checks), making it easy to test against a local receiver.
         A ``webhook_secret_key`` is auto-generated and exposed as an
         attribute.  Default is False.
+    blocked_networks: Optional[List[str]]
+        Networks not permitted to receive a webhook notification from this server. Webhooks must
+        be enabled.
+    allow_delivery_hosts: Optional[List[str]]
+        Hosts allowed to receive webhook notifications, even if on a blocked network otherwise.
+        Webhooks must be enabled.
 
     Examples
     --------
@@ -101,6 +107,8 @@ class SimpleTiledServer:
             Union[str, pathlib.Path, list[Union[str, pathlib.Path]]]
         ] = None,
         enable_webhooks: bool = False,
+        blocked_networks: Optional[List[str]] = None,
+        allow_delivery_hosts: Optional[List[str]] = None,
     ):
         # Delay import to avoid circular import.
         from ..catalog import from_uri as catalog_from_uri
@@ -157,7 +165,8 @@ class SimpleTiledServer:
         )
         server_settings = {}
         if enable_webhooks:
-            webhook_cfg = WebhooksConfig(secret_keys=[webhook_secret_key])
+            webhook_cfg = WebhooksConfig(secret_keys=[webhook_secret_key], blocked_networks=blocked_networks,
+                allow_delivery_hosts=allow_delivery_hosts)
             server_settings["webhooks"] = webhook_cfg
         self.app = build_app(
             self.catalog,
