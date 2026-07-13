@@ -970,7 +970,13 @@ class CatalogNodeAdapter:
                     db.add(assoc_orm)
 
             await db.commit()
-        if self.context.streaming_cache:
+        # Live-streaming updates for `put_data_source` are only defined
+        # for array structures (`array-ref` messages carry a shape,
+        # so subscribers can build a slice URI).
+        if (
+            self.context.streaming_cache
+            and data_source.structure_family == StructureFamily.array
+        ):
             sequence = await self.context.streaming_cache.incr_seq(self.node.id)
             metadata = {
                 "type": "array-ref",
