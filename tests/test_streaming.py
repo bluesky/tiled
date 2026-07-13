@@ -6,8 +6,13 @@ import numpy as np
 import orjson
 import pytest
 
-from tiled.client import from_context
+from tiled.catalog import in_memory
+from tiled.client import Context, from_context
 from tiled.server import streaming
+from tiled.server.app import build_app
+from tiled.structures.bytes import BytesStructure
+from tiled.structures.core import StructureFamily
+from tiled.structures.data_source import Asset, DataSource, Management
 
 
 def test_register_datastore_lowercases_name():
@@ -133,3 +138,64 @@ async def test_pubsub_fanout_and_cleanup():
             break
         await asyncio.sleep(0)
     assert "topic" not in pubsub._topics
+
+
+def test_put_data_source_on_non_array_with_streaming_cache(tmpdir):
+    """PUT /data_source on a non-array node (here: `bytes`) must not
+    crash when the server has a `streaming_cache` configured.
+
+    The streaming-cache update path in `CatalogNodeAdapter.put_data_source`
+    unconditionally reads `structure["shape"]`, which only exists for
+    array-family structures. When `bluesky-tiled-plugins`' validator
+    router calls `put_data_source` on a non-array data key, the server
+    used to raise `KeyError: 'shape'`. We now skip the streaming-cache
+    write for non-array structures; this test guards against regression.
+    """
+    payload = b"opaque-bytes-payload"
+    blob = tmpdir / "blob.bin"
+    blob.write_binary(payload)
+
+    catalog = in_memory(
+        writable_storage=str(tmpdir),
+        cache_config={
+            "uri": "memory://",
+            "data_ttl": 60,
+            "seq_ttl": 60,
+        },
+    )
+    with Context.from_app(build_app(catalog)) as ctx:
+        client = from_context(ctx)
+        data_source = DataSource(
+            mimetype="application/octet-stream",
+            assets=[
+                Asset(
+                    data_uri=f"file://{blob}",
+                    is_directory=False,
+                    size=len(payload),
+                    parameter="data_uris",
+                    num=0,
+                )
+            ],
+            structure_family=StructureFamily.bytes,
+            structure=BytesStructure(),
+            management=Management.external,
+        )
+        node = client.new(
+            structure_family=StructureFamily.bytes,
+            data_sources=[data_source],
+            key="blob",
+        )
+
+        # Fetch the freshly-created data_source (with server-assigned id)
+        # and echo it back through PUT /data_source. This is the exact
+        # shape of call `bluesky-tiled-plugins`' validator router makes.
+        response = ctx.http_client.get(
+            f"/api/v1/metadata/{node.item['id']}?include_data_sources=true"
+        )
+        response.raise_for_status()
+        [ds] = response.json()["data"]["attributes"]["data_sources"]
+        put_response = ctx.http_client.put(
+            f"/api/v1/data_source/{node.item['id']}",
+            json={"data_source": ds},
+        )
+        assert put_response.status_code == 200, put_response.text
