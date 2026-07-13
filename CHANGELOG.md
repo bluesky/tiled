@@ -8,11 +8,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 ### Fixed
 
 - Skip the `array-ref` streaming-cache update in `put_data_source` when the
-  data source is not an array. The update payload requires a `shape` field
-  that only array-family structures carry, so a `PUT /data_source` on a
-  `bytes` / `table` / other non-array node (as issued by
-  `bluesky-tiled-plugins`' validator router) previously raised
-  `KeyError: 'shape'` when a `streaming_cache` was configured.
+  data source is not an array.
 - Strengthen the server-side backcompatibility. Strip the newly added `Asset.size` field
   from metadata responses when the request comes from a `python-tiled` client older than
   v0.2.13, whose `Asset` dataclass has no `size` field and would otherwise crash

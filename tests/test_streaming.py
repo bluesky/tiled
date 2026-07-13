@@ -141,15 +141,9 @@ async def test_pubsub_fanout_and_cleanup():
 
 
 def test_put_data_source_on_non_array_with_streaming_cache(tmpdir):
-    """PUT /data_source on a non-array node (here: `bytes`) must not
+    """PUT /data_source on a non-array node (e.g. `bytes`) must not
     crash when the server has a `streaming_cache` configured.
 
-    The streaming-cache update path in `CatalogNodeAdapter.put_data_source`
-    unconditionally reads `structure["shape"]`, which only exists for
-    array-family structures. When `bluesky-tiled-plugins`' validator
-    router calls `put_data_source` on a non-array data key, the server
-    used to raise `KeyError: 'shape'`. We now skip the streaming-cache
-    write for non-array structures; this test guards against regression.
     """
     payload = b"opaque-bytes-payload"
     blob = tmpdir / "blob.bin"
