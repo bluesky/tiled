@@ -7,6 +7,8 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Fixed
 
+- Skip the `array-ref` streaming-cache update in `put_data_source` when the
+  data source is not an array.
 - Strengthen the server-side backcompatibility. Strip the newly added `Asset.size` field
   from metadata responses when the request comes from a `python-tiled` client older than
   v0.2.13, whose `Asset` dataclass has no `size` field and would otherwise crash
