@@ -1677,19 +1677,16 @@ def authentication_router() -> APIRouter:
         if principal is None:
             return None
         async with db_factory() as db:
-            if (
-                "revoke:apikeys" not in scopes
-                and api_key
-                and first_eight[:8] != api_key[:8]
-            ):
-                raise HTTPException(
-                    status_code=HTTP_401_UNAUTHORIZED,
-                    detail=(
-                        "Not enough permissions. "
-                        f"Requires scopes ['revoke:apikeys']. "
-                        f"Request had scopes {list(scopes)}"
-                    ),
-                )
+            if "revoke:apikeys" not in scopes:
+                if not api_key or first_eight[:8] != api_key[:8]:
+                    raise HTTPException(
+                        status_code=HTTP_401_UNAUTHORIZED,
+                        detail=(
+                            "Not enough permissions. "
+                            f"Requires scopes ['revoke:apikeys']. "
+                            f"Request had scopes {list(scopes)}"
+                        ),
+                    )
             api_key_orm = (
                 await db.execute(
                     select(orm.APIKey).filter(orm.APIKey.first_eight == first_eight[:8])

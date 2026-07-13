@@ -5,12 +5,18 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## Unreleased
 
+### Added
+
+- A new "revoke:apikeys:self" scope that allows a user to revoke only the API key they are currently authenticated with.
+
 ### Fixed
 
 - Strengthen the server-side backcompatibility. Strip the newly added `Asset.size` field
   from metadata responses when the request comes from a `python-tiled` client older than
   v0.2.13, whose `Asset` dataclass has no `size` field and would otherwise crash
   in `DataSource.from_json` with an unexpected keyword argument.
+- Including a check for authentication links when running whoami to allow for a graceful message when authentication links are not present.
+- Ensuring that the metadata parameter value entered when calling update_metadata is of the proper type (will serialize as a JSON object) before altering the metadata.
 
 
 ## v0.2.13 (2026-07-08)
@@ -37,16 +43,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
   destination, streaming each asset into an in-memory `io.BytesIO` keyed by
   the on-disk-equivalent layout (`<filename>` for a single asset;
   `<asset_id>/<filename>` for multi-asset nodes). No filesystem I/O is performed in this mode.
-
-
-### Fixed
-
-- Including a check for authentication links when running whoami to allow for a graceful message when authentication links are not present.
-
-
-### Added
-
-- A new "revoke:apikeys:self" scope that allows a user to revoke only the API key they are currently authenticated with.
+- Fixed authentication check in from_context to prevent the user from being re-prompted to login.
 
 
 ## v0.2.12 (2026-06-16)
@@ -66,14 +63,6 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - Fail fast instead of retrying on deterministic client request errors that a
   retry cannot fix: an unsupported URL scheme and an invalid request such as an
   illegal header value.
-
-### Fixed
-
-- Fixed authentication check in from_context to prevent the user from being re-prompted to login.
-
-### Fixed
-
-- Ensuring that the metadata parameter value entered when calling update_metadata is of the proper type (will serialize as a JSON object) before altering the metadata.
 
 
 ## v0.2.11 (2026-05-27)

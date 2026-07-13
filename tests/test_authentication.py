@@ -781,7 +781,7 @@ def test_admin_can_self_revoke(enter_username_password, config):
         ) as api_context:
             api_context.whoami()
 
-            
+
 @pytest.mark.timeout(5)
 def test_remaining_authenticated_when_tokens_not_remembered(config):
     with Context.from_app(build_app_from_config(config)) as context:
