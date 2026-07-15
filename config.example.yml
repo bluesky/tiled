@@ -365,12 +365,18 @@ authentication:
 # can read all entries when allow_anonymous_access is true).
 #
 # access_control:
-#   access_policy: tiled.access_policies:SimpleAccessPolicy
+#   access_policy: tiled.access_control.access_policies:TagBasedAccessPolicy
 #   args:
 #     provider: local           # Must match a provider label defined above
-#     access_lists:
-#       alice: "read:data"
-#       bob:   "read:metadata"
+#     scopes:
+#     - "read:metadata"
+#     - "read:data"
+#     - "write:metadata"
+#     - "write:data"
+#     - "create"
+#     tags_db:
+#       uri: "file:/path/to/compiled_tags.sqlite"
+#     access_tags_parser: "tiled.access_control.access_tags:AccessTagsParser"
 #     # Allow unauthenticated users to read entries covered by this policy.
 #     # Also requires allow_anonymous_access: true under authentication: above.
 #     public: false
