@@ -375,7 +375,7 @@ authentication:
 #     - "write:data"
 #     - "create"
 #     tags_db:
-#       uri: "file:/path/to/compiled_tags.sqlite"
+#       uri: "file:///path/to/compiled_tags.sqlite"
 #     access_tags_parser: "tiled.access_control.access_tags:AccessTagsParser"
 #     # Allow unauthenticated users to read entries covered by this policy.
 #     # Also requires allow_anonymous_access: true under authentication: above.
