@@ -7,6 +7,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Fixed
 
+- Replace `SimpleAccessPolicy` with `TagBasedAccessPolicy` as it no longer exists.
 - Skip the `array-ref` streaming-cache update in `put_data_source` when the
   data source is not an array.
 - Strengthen the server-side backcompatibility. Strip the newly added `Asset.size` field
