@@ -266,8 +266,8 @@ class WebhooksConfig(BaseSettings):
     """
 
     secret_keys: list[str] = []
-    blocked_networks: list[str] = []
-    allow_delivery_hosts: list[str] = []
+    blocked_networks: Optional[list[str]] = []
+    allow_delivery_hosts: Optional[list[str]] = []
     allow_http: bool = False
     allow_private_addresses: bool = False
 
