@@ -365,15 +365,13 @@ authentication:
 # can read all entries when allow_anonymous_access is true).
 #
 # access_control:
-#   access_policy: tiled.access_policies:SimpleAccessPolicy
+#   access_policy: "tiled.access_control.access_policies:TagBasedAccessPolicy"
 #   args:
 #     provider: local           # Must match a provider label defined above
-#     access_lists:
-#       alice: "read:data"
-#       bob:   "read:metadata"
-#     # Allow unauthenticated users to read entries covered by this policy.
-#     # Also requires allow_anonymous_access: true under authentication: above.
-#     public: false
+#     tags_db: "sqlite+aiosqlite:////path/to/access_tags.db"
+#     # Access tags are defined in a tags definition YAML file, compiled with
+#     # the AccessTagsCompiler. See example_configs/ for a full worked example.
+#     # tags_definition: /path/to/tag_definitions.yml
 
 
 # -----------------------------------------------------------------------------
