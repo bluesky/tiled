@@ -9,6 +9,9 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 - A new "revoke:apikeys:self" scope that allows a user to revoke only the API key they are currently authenticated with.
 
+
+## v0.2.14 (2026-07-08)
+
 ### Fixed
 
 - Strengthen the server-side backcompatibility. Strip the newly added `Asset.size` field
@@ -19,7 +22,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - Ensuring that the metadata parameter value entered when calling update_metadata is of the proper type (will serialize as a JSON object) before altering the metadata.
 
 
-## v0.2.13 (2026-07-08)
+## v0.2.13 (2026-07-07)
 
 ### Fixed
 
