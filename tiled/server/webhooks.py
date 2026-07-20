@@ -149,10 +149,12 @@ def check_url_ssrf_safety(url: str, local_blocked_networks: Optional[list[str]] 
             addr = ipaddress.ip_address(ip_str)
         except ValueError:
             continue
-        if allow_delivery_hosts and addr.exploded in allow_delivery_hosts:
-            continue
         for net in ALL_BLOCKED_NETWORKS:
             if addr in net:
+                # Allow if this address is in allowed hosts
+                if allow_delivery_hosts and addr.exploded in allow_delivery_hosts:
+                    logger.info(f"{addr} is in a blocked network {net} but is allowed because it is also in allowed hosts")
+                    continue
                 raise ValueError(
                     f"Webhook URL {url!r} resolves to {addr}, which is in the "
                     f"blocked network {net} (private/loopback/reserved). "
