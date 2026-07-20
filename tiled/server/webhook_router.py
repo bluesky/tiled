@@ -88,7 +88,12 @@ def _build_url_validator(config: WebhooksConfig) -> UrlValidator:
                 raise HTTPException(status_code=422, detail=str(exc)) from exc
         if not config.allow_private_addresses:
             try:
-                await asyncio.to_thread(check_url_ssrf_safety, str(body.url), config.blocked_networks, config.allow_delivery_hosts)
+                await asyncio.to_thread(
+                    check_url_ssrf_safety,
+                    str(body.url),
+                    config.blocked_networks,
+                    config.allow_delivery_hosts,
+                )
             except ValueError as exc:
                 logger.info("Webhook registration blocked by SSRF check: %s", exc)
                 raise HTTPException(

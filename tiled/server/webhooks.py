@@ -104,13 +104,21 @@ _STANDARD_BLOCKED_NETWORKS: list[ipaddress.IPv4Network | ipaddress.IPv6Network] 
     ipaddress.ip_network("fe80::/10"),  # IPv6 link-local
 ]
 
-def get_combined_blocked_networks(local_blocked_networks: list[str]) -> list[ipaddress.IPv4Network | ipaddress.IPv6Network]:
+
+def get_combined_blocked_networks(
+    local_blocked_networks: list[str],
+) -> list[ipaddress.IPv4Network | ipaddress.IPv6Network]:
     """Return the union of the standard blocked networks and any local overrides."""
     return _STANDARD_BLOCKED_NETWORKS + [
         ipaddress.ip_network(net) for net in local_blocked_networks
     ]
 
-def check_url_ssrf_safety(url: str, local_blocked_networks: Optional[list[str]] = None, allow_delivery_hosts: Optional[list[str]] = None) -> None:
+
+def check_url_ssrf_safety(
+    url: str,
+    local_blocked_networks: Optional[list[str]] = None,
+    allow_delivery_hosts: Optional[list[str]] = None,
+) -> None:
     """Raise ``ValueError`` if *url* resolves to a private/loopback/reserved address.
 
     Call this at webhook registration time.  Note that DNS-rebinding attacks can
@@ -153,7 +161,9 @@ def check_url_ssrf_safety(url: str, local_blocked_networks: Optional[list[str]] 
             if addr in net:
                 # Allow if this address is in allowed hosts
                 if allow_delivery_hosts and addr.exploded in allow_delivery_hosts:
-                    logger.info(f"{addr} is in a blocked network {net} but is allowed because it is also in allowed hosts")
+                    logger.info(
+                        f"{addr} is in a blocked network {net} but is allowed because it is also in allowed hosts"
+                    )
                     continue
                 raise ValueError(
                     f"Webhook URL {url!r} resolves to {addr}, which is in the "

@@ -678,24 +678,29 @@ def test_ssrf_check_blocks_custom_local_networks() -> None:
 
 
 def test_ssrf_check_passes_exception() -> None:
-    """With an acceptable hostname even if within a valid network range, pass. """
+    """With an acceptable hostname even if within a valid network range, pass."""
 
     def _fake(host, port, *args, **kwargs):
         return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 0))]
 
     with patch("tiled.server.webhooks.socket.getaddrinfo", side_effect=_fake):
-            check_url_ssrf_safety("https://example.com/hook", ["93.184.216.0/24"], ["93.184.216.34"])  # must not raise
+        check_url_ssrf_safety(
+            "https://example.com/hook", ["93.184.216.0/24"], ["93.184.216.34"]
+        )  # must not raise
 
 
 def test_ssrf_check_blocks_custom_local_network() -> None:
-    """With an acceptable hostname even if within a valid network range, pass. """
+    """With an acceptable hostname even if within a valid network range, pass."""
 
     def _fake(host, port, *args, **kwargs):
         return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 0))]
 
     with patch("tiled.server.webhooks.socket.getaddrinfo", side_effect=_fake):
         with pytest.raises(ValueError, match="blocked network 93.184.216.0/24"):
-            check_url_ssrf_safety("https://example.com/hook", ["93.184.216.0/24"], ["93.184.216.1"])
+            check_url_ssrf_safety(
+                "https://example.com/hook", ["93.184.216.0/24"], ["93.184.216.1"]
+            )
+
 
 # ---------------------------------------------------------------------------
 # Unit tests: WebhookDispatcher shutdown drains pending tasks
