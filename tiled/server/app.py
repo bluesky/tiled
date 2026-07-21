@@ -768,7 +768,7 @@ def build_app(
                 UninitializedDatabase,
                 check_database,
             )
-            from ..graph.core import (
+            from ..catalog.core import (
                 ALL_REVISIONS,
                 REQUIRED_REVISION,
                 initialize_database,
@@ -790,8 +790,8 @@ def build_app(
                             sys.executable,
                             "-m",
                             "tiled",
-                            "graph",
-                            "initialize-database",
+                            "catalog",
+                            "init",
                             str(graph_engine.url),
                         ],
                         capture_output=True,
@@ -806,7 +806,7 @@ def build_app(
 
                             To create one, run:
 
-                                tiled graph initialize-database {redacted_graph_url}
+                                tiled catalog init {redacted_graph_url}
                             """
                         ),
                         file=sys.stderr,
@@ -822,7 +822,7 @@ def build_app(
 
                         Back up the database, and then run:
 
-                            tiled graph upgrade-database {redacted_graph_url}
+                            tiled catalog upgrade-database {redacted_graph_url}
                         """
                     ),
                     file=sys.stderr,

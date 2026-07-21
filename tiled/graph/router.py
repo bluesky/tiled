@@ -7,9 +7,9 @@ registered automatically when the router is included in a FastAPI app.
 
 Database migrations are NOT run here — they are the responsibility of the
 caller (app startup) following the same pattern as the authn and catalog
-databases.  Use `tiled graph initialize-database` / `upgrade-database` from
-the CLI, or let the server auto-initialize when database_init_if_not_exists
-is set.
+databases. The links tables are managed by catalog migrations, so use
+`tiled catalog init` / `upgrade-database` for the target database, or let
+the server auto-initialize when database_init_if_not_exists is set.
 """
 
 from __future__ import annotations

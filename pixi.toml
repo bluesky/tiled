@@ -60,7 +60,6 @@ minio = "*"
 mistune = "*"
 myst-parser = "*"
 numpydoc = "*"
-pre-commit = "*"
 pytest = "*"
 pytest-asyncio = "*"
 pytest-mock = "*"
@@ -73,6 +72,9 @@ sphinx-copybutton = "*"
 sphinx_rtd_theme = "*"
 sphinxcontrib-mermaid = "*"
 types-cachetools = "*"
+
+[feature.dev.pypi-dependencies]
+pre-commit = ">=4.6.1, <5"
 
 [feature.formats.dependencies]
 h5netcdf = "*"
