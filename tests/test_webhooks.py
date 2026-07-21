@@ -690,7 +690,7 @@ def test_ssrf_check_passes_exception() -> None:
 
 
 def test_ssrf_check_blocks_custom_local_network() -> None:
-    """With an acceptable hostname even if within a valid network range, pass."""
+    """Fail if the destination is in a blocked network and not an accepted host."""
 
     def _fake(host, port, *args, **kwargs):
         return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 0))]
