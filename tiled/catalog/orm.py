@@ -2,6 +2,7 @@ from typing import List
 
 from sqlalchemy import (
     JSON,
+    BigInteger,
     Boolean,
     Column,
     DateTime,
@@ -534,7 +535,7 @@ class Asset(Timestamped, Base):
     is_directory = Column(Boolean, nullable=False)
     hash_type = Column(Unicode(63), nullable=True)
     hash_content = Column(Unicode(1023), nullable=True)
-    size = Column(Integer, nullable=True)
+    size = Column(BigInteger, nullable=True)
 
     # # many-to-many relationship to Asset, bypassing the `Association` class
     data_sources: Mapped[List["DataSource"]] = relationship(
