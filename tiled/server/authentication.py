@@ -593,21 +593,19 @@ async def check_scopes_with_or(
                 ),
                 headers=headers_for_401(request, security_scopes),
             )
+    for scope in scopes:
+        if scope in set(security_scopes.scopes):
+            return
 
-    else:
-        for scope in scopes:
-            if scope in set(security_scopes.scopes):
-                return
-
-        raise HTTPException(
-            status_code=HTTP_401_UNAUTHORIZED,
-            detail=(
-                "Not enough permissions. "
-                f"Requires scopes {security_scopes.scopes}. "
-                f"Request had scopes {list(scopes)}"
-            ),
-            headers=headers_for_401(request, security_scopes),
-        )
+    raise HTTPException(
+        status_code=HTTP_401_UNAUTHORIZED,
+        detail=(
+            "Not enough permissions. "
+            f"Requires scopes {security_scopes.scopes}. "
+            f"Request had scopes {list(scopes)}"
+        ),
+        headers=headers_for_401(request, security_scopes),
+    )
 
 
 async def get_current_principal_from_api_key(
