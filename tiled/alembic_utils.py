@@ -10,6 +10,7 @@ from typing import TypeVar
 from alembic import command
 from alembic.config import Config
 from alembic.runtime import migration
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 T = TypeVar("T")
@@ -217,19 +218,34 @@ def initialize_database_if_needed(
     async def do_setup() -> bool:
         engine = create_async_engine(database_uri)
         try:
-            await check_database(engine, required_revision, known_revisions)
-        except UninitializedDatabase:
-            await initialize_database(engine)
-            return True
-        else:
-            return False
+            async with _initialization_lock(engine):
+                try:
+                    await check_database(engine, required_revision, known_revisions)
+                except UninitializedDatabase:
+                    await initialize_database(engine)
+                    # env.py calls asyncio.run, which can't nest; use a thread.
+                    await asyncio.to_thread(
+                        stamp_head, alembic_ini_template_path, alembic_dir, database_uri
+                    )
+                    return True
+                return False
         finally:
             await engine.dispose()
 
-    def run() -> bool:
-        initialized = asyncio.run(do_setup())
-        if initialized:
-            stamp_head(alembic_ini_template_path, alembic_dir, database_uri)
-        return initialized
+    return _run_outside_event_loop(lambda: asyncio.run(do_setup()))
 
-    return _run_outside_event_loop(run)
+
+# Arbitrary. Advisory locks are scoped per database.
+INITIALIZATION_LOCK_KEY = 0x711ED
+
+
+@contextlib.asynccontextmanager
+async def _initialization_lock(engine: AsyncEngine):
+    "Serialize initialization across replicas. PostgreSQL only."
+    if engine.dialect.name != "postgresql":
+        yield
+        return
+
+    async with engine.begin() as conn:
+        await conn.execute(select(func.pg_advisory_xact_lock(INITIALIZATION_LOCK_KEY)))
+        yield
