@@ -579,7 +579,9 @@ async def check_scopes_with_or(
     if isinstance(settings.authenticator, ProxiedOIDCAuthenticator):
         if settings.authenticator.scopes:
             for scope in scopes:
-                if scope in set(settings.authenticator.scopes):
+                if scope in set(settings.authenticator.scopes) and scope in set(
+                    security_scopes.scopes
+                ):
                     return
 
             raise HTTPException(
