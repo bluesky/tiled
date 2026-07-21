@@ -1,3 +1,4 @@
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -6,7 +7,14 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.future import select
 
 from tiled.authn_database import orm
-from tiled.authn_database.core import create_user, initialize_database, purge_expired
+from tiled.authn_database.core import (
+    create_user,
+    initialize_authn_database,
+    initialize_database,
+    purge_expired,
+)
+
+REPLICAS = 8
 
 
 @pytest.fixture
@@ -148,3 +156,14 @@ async def test_purging_session_nulls_pending_session_reference(db_session):
         .all()
     )
     assert session_ids == [None]
+
+
+def test_concurrent_initialization(postgres_uri):
+    with ThreadPoolExecutor(REPLICAS) as executor:
+        results = list(
+            executor.map(
+                lambda _: initialize_authn_database(postgres_uri), range(REPLICAS)
+            )
+        )
+
+    assert results.count(True) == 1
