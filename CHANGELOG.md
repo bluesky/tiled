@@ -330,6 +330,9 @@ wherever it is used.
   `alembic.ini`), websockets 17.1 (the client's streaming connection is entered
   as a context manager), and pydantic (serializing an entry point loaded from
   a configuration string, such as `adapters_by_mimetype`).
+- Serialize database initialization on PostgreSQL with an advisory lock, so
+  replicas starting at once against a fresh database no longer crash on
+  colliding DDL.
 - Treat `anyio.ClosedResourceError` as a normal disconnect in the
   test-client websocket wrapper: starlette >=1.0 raises it when receiving
   on a closed session, which previously killed streaming subscription
