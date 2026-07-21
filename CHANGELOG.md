@@ -5,6 +5,12 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## Unreleased
 
+### Changed
+
+- The links graph schema (`entities` and `links` tables) is now managed by the
+  catalog migration chain instead of a separate graph Alembic history, enabling
+  co-location with catalog tables in one database for SQL joins.
+
 ### Fixed
 
 - Fix the webhook `history` and `delete` endpoints when a catalog is mounted under

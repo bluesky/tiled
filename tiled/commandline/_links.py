@@ -8,15 +8,16 @@ graph_app = typer.Typer(no_args_is_help=True)
 @graph_app.command("initialize-database")
 def initialize_database(database_uri: str):
     """
-    Initialize the graph database for use by Tiled.
+    Initialize the catalog database (including graph tables) for use by Tiled.
     """
     import asyncio
 
     from sqlalchemy.ext.asyncio import create_async_engine
 
     from ..alembic_utils import UninitializedDatabase, check_database, stamp_head
-    from ..graph.alembic_constants import ALEMBIC_DIR, ALEMBIC_INI_TEMPLATE_PATH
-    from ..graph.core import ALL_REVISIONS, REQUIRED_REVISION, initialize_database
+    from ..catalog.alembic_constants import ALEMBIC_DIR, ALEMBIC_INI_TEMPLATE_PATH
+    from ..catalog.core import ALL_REVISIONS, REQUIRED_REVISION
+    from ..catalog.core import initialize_database as initialize_catalog_database
     from ..utils import ensure_specified_sql_driver
 
     database_uri = ensure_specified_sql_driver(database_uri)
@@ -31,7 +32,7 @@ def initialize_database(database_uri: str):
                 f"Database {redacted_url} is new. Creating tables and marking revision {REQUIRED_REVISION}.",
                 err=True,
             )
-            await initialize_database(engine)
+            await initialize_catalog_database(engine)
             typer.echo("Database initialized.", err=True)
         else:
             typer.echo(f"Database at {redacted_url} is already initialized.", err=True)
@@ -51,15 +52,15 @@ def upgrade_database(
     ),
 ):
     """
-    Upgrade the graph database schema to the latest version.
+    Upgrade the catalog database schema (including graph tables) to the latest version.
     """
     import asyncio
 
     from sqlalchemy.ext.asyncio import create_async_engine
 
     from ..alembic_utils import get_current_revision, upgrade
-    from ..graph.alembic_constants import ALEMBIC_DIR, ALEMBIC_INI_TEMPLATE_PATH
-    from ..graph.core import ALL_REVISIONS
+    from ..catalog.alembic_constants import ALEMBIC_DIR, ALEMBIC_INI_TEMPLATE_PATH
+    from ..catalog.core import ALL_REVISIONS
     from ..utils import ensure_specified_sql_driver
 
     database_uri = ensure_specified_sql_driver(database_uri)
@@ -71,7 +72,7 @@ def upgrade_database(
         await engine.dispose()
         if current_revision is None:
             typer.echo(
-                f"Database {redacted_url} has not been initialized. Use `tiled graph initialize-database`.",
+                f"Database {redacted_url} has not been initialized. Use `tiled catalog init`.",
                 err=True,
             )
             raise typer.Abort()
@@ -86,15 +87,15 @@ def downgrade_database(
     revision: str = typer.Argument(..., help="The ID of a revision to downgrade to."),
 ):
     """
-    Downgrade the graph database schema to a previous version.
+    Downgrade the catalog database schema (including graph tables) to a previous version.
     """
     import asyncio
 
     from sqlalchemy.ext.asyncio import create_async_engine
 
     from ..alembic_utils import downgrade, get_current_revision
-    from ..graph.alembic_constants import ALEMBIC_DIR, ALEMBIC_INI_TEMPLATE_PATH
-    from ..graph.core import ALL_REVISIONS
+    from ..catalog.alembic_constants import ALEMBIC_DIR, ALEMBIC_INI_TEMPLATE_PATH
+    from ..catalog.core import ALL_REVISIONS
     from ..utils import ensure_specified_sql_driver
 
     database_uri = ensure_specified_sql_driver(database_uri)
@@ -106,7 +107,7 @@ def downgrade_database(
         await engine.dispose()
         if current_revision is None:
             typer.echo(
-                f"Database {redacted_url} has not been initialized. Use `tiled graph initialize-database`.",
+                f"Database {redacted_url} has not been initialized. Use `tiled catalog init`.",
                 err=True,
             )
             raise typer.Abort()
