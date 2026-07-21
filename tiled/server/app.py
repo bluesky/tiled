@@ -692,7 +692,7 @@ def build_app(
                     await check_database(engine, REQUIRED_REVISION, ALL_REVISIONS)
                 except UninitializedDatabase:
                     if settings.database_init_if_not_exists:
-                        # The alembic stamping can only be does synchronously.
+                        # The alembic stamping can only be done synchronously.
                         # The cleanest option available is to start a subprocess
                         # because SQLite is allergic to threads.
                         await _ensure_authn_database_initialized(engine)
