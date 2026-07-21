@@ -726,6 +726,7 @@ def test_unallowed_api_key_self_revoked(enter_username_password, config):
         # this makes an API key that the user can login with
         api_key = context.create_api_key(scopes=["revoke:apikeys:self"])
         second_api_key = context.create_api_key(scopes=["revoke:apikeys:self"])
+        third_api_key = context.create_api_key(scopes=["create:apikeys"])
 
     with Context.from_app(
         build_app_from_config(config), api_key=api_key["secret"]
@@ -733,7 +734,13 @@ def test_unallowed_api_key_self_revoked(enter_username_password, config):
         with fail_with_status_code(HTTP_401_UNAUTHORIZED):
             api_context.revoke_api_key(second_api_key["first_eight"])
 
-        assert len(api_context.whoami()["api_keys"]) == 2
+        assert len(api_context.whoami()["api_keys"]) == 3
+
+    with Context.from_app(
+        build_app_from_config(config), api_key=third_api_key["secret"]
+    ) as api_context:
+        with fail_with_status_code(HTTP_401_UNAUTHORIZED):
+            api_context.revoke_api_key(third_api_key["first_eight"])
 
 
 def test_unallowed_revoke_api_keys_of_others(enter_username_password, config):

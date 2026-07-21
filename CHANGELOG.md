@@ -9,6 +9,16 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 - A new "revoke:apikeys:self" scope that allows a user to revoke only the API key they are currently authenticated with.
 
+### Fixed
+
+- Widen `assets.size` from `INTEGER` (int32) to `BIGINT` (int64) so the
+  server can register single files larger than ~2.1 GB without an
+  `int32 out of range` error from PostgreSQL. Includes an alembic
+  migration; SQLite is unaffected (its `INTEGER` affinity already stores
+  64-bit values).
+- Skip the `array-ref` streaming-cache update in `put_data_source` when the
+  data source is not an array.
+
 
 ## v0.2.14 (2026-07-08)
 
