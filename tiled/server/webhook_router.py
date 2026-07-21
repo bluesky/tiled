@@ -14,7 +14,9 @@ Both scopes are granted to admin users only.
 """
 
 import asyncio
+import ipaddress
 import logging
+import socket
 from typing import Callable, Coroutine, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Security
@@ -74,9 +76,20 @@ def _build_url_validator(config: WebhooksConfig) -> UrlValidator:
     if config.allow_http:
         logger.warning("Webhook HTTPS enforcement is disabled (allow_http=True).")
     if config.allow_private_addresses:
+        for hostname in config.allow_delivery_hosts:
+            try:
+                host_ip = socket.gethostbyname(hostname)
+                ipaddress.ip_address(host_ip)
+            except socket.gaierror as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
         logger.warning(
             "Webhook SSRF protection is disabled (allow_private_addresses=True)."
         )
+    for network in config.blocked_networks:
+        try:
+            ipaddress.ip_network(network)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     async def _url_validator(
         body: WebhookRegistrationRequest,
