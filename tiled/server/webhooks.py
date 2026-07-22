@@ -141,6 +141,15 @@ def check_url_ssrf_safety(
     """
     parsed = urlparse(url)
     hostname = parsed.hostname
+
+    if local_blocked_networks:
+        for network in local_blocked_networks:
+            ipaddress.ip_network(network)
+    if allow_delivery_hosts:
+        for host in allow_delivery_hosts:
+            fqdn = socket.getfqdn(host)
+            if fqdn is not host:
+                raise ValueError(f"Allow delivery host {host} must be a valid hostname")
     if not hostname:
         raise ValueError(f"Cannot parse hostname from URL: {url!r}")
     try:
@@ -155,12 +164,13 @@ def check_url_ssrf_safety(
         ip_str = sockaddr[0]
         try:
             addr = ipaddress.ip_address(ip_str)
+            host = socket.getfqdn(ip_str)
         except ValueError:
             continue
         for net in ALL_BLOCKED_NETWORKS:
             if addr in net:
                 # Allow if this address is in allowed hosts
-                if allow_delivery_hosts and addr.exploded in allow_delivery_hosts:
+                if allow_delivery_hosts and host in allow_delivery_hosts:
                     logger.info(
                         f"{addr} is in a blocked network {net} but is allowed because it is also in allowed hosts"
                     )
