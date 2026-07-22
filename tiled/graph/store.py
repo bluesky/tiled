@@ -29,6 +29,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Index,
+    Integer,
     MetaData,
     String,
     Table,
@@ -51,6 +52,7 @@ class EntityRecord(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     id: str
+    node_id: Optional[int] = None
     entity_type: str
     name: str
     uri: Optional[str]
@@ -82,6 +84,7 @@ class Store(abc.ABC):
         self,
         entity_type: str,
         name: str,
+        node_id: Optional[int] = None,
         uri: Optional[str] = None,
         properties: Optional[dict] = None,
     ) -> EntityRecord:
@@ -162,11 +165,18 @@ _entities = Table(
     "entities",
     _metadata,
     Column("id", String, primary_key=True),
+    Column(
+        "node_id",
+        Integer,
+        ForeignKey("nodes.id", ondelete="SET NULL"),
+        nullable=True,
+    ),
     Column("entity_type", String, nullable=False),
     Column("name", String, nullable=False),
     Column("uri", String, nullable=True),
     Column("properties", JSON, nullable=False),
     Column("created_at", DateTime(timezone=True), nullable=False),
+    Index("entities_node_id_idx", "node_id"),
     Index("entities_type_created_idx", "entity_type", "created_at"),
     Index("entities_uri_idx", "uri"),
 )
@@ -253,6 +263,7 @@ class SQLAlchemyStore(Store):
     def _to_entity(row) -> EntityRecord:
         return EntityRecord(
             id=row.id,
+            node_id=row.node_id,
             entity_type=row.entity_type,
             name=row.name,
             uri=row.uri,
@@ -279,6 +290,7 @@ class SQLAlchemyStore(Store):
         self,
         entity_type: str,
         name: str,
+        node_id: Optional[int] = None,
         uri: Optional[str] = None,
         properties: Optional[dict] = None,
     ) -> EntityRecord:
@@ -288,6 +300,7 @@ class SQLAlchemyStore(Store):
             conn.execute(
                 insert(_entities).values(
                     id=id_,
+                    node_id=node_id,
                     entity_type=entity_type,
                     name=name,
                     uri=uri,
@@ -332,12 +345,16 @@ class SQLAlchemyStore(Store):
         self,
         id: str,
         name: Optional[str] = None,
+        node_id: Optional[int] = None,
         uri: Optional[str] = None,
         entity_type: Optional[str] = None,
     ) -> Optional[EntityRecord]:
         values: dict = {}
+        # Is it ok that the node_id, name and uri cannot be unset?
         if name is not None:
             values["name"] = name
+        if node_id is not None:
+            values["node_id"] = node_id
         if uri is not None:
             values["uri"] = uri
         if entity_type is not None:
