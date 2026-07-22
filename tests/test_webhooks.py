@@ -690,8 +690,9 @@ def test_ssrf_check_passes_exception() -> None:
         else:
             return "example3.com"
 
-    with (patch("tiled.server.webhooks.socket.getaddrinfo", side_effect=_fake),
-           patch("tiled.server.webhooks.socket.getfqdn", side_effect=_fake2)) :
+    with patch("tiled.server.webhooks.socket.getaddrinfo", side_effect=_fake), patch(
+        "tiled.server.webhooks.socket.getfqdn", side_effect=_fake2
+    ):
         check_url_ssrf_safety(
             "https://example.com/hook", ["93.184.216.0/24"], ["example.com"]
         )  # must not raise
@@ -711,8 +712,9 @@ def test_ssrf_check_blocks_custom_local_network_not_accepted() -> None:
         else:
             return "example3.com"
 
-    with (patch("tiled.server.webhooks.socket.getaddrinfo", side_effect=_fake),
-         patch("tiled.server.webhooks.socket.getfqdn", side_effect=_fake2)):
+    with patch("tiled.server.webhooks.socket.getaddrinfo", side_effect=_fake), patch(
+        "tiled.server.webhooks.socket.getfqdn", side_effect=_fake2
+    ):
         with pytest.raises(ValueError, match="blocked network 93.184.216.0/24"):
             check_url_ssrf_safety(
                 "https://example.com/hook", ["93.184.216.0/24"], ["example2.com"]
@@ -731,12 +733,19 @@ def test_ssrf_check_bad_network() -> None:
         else:
             return "example3.com"
 
-    with (patch("tiled.server.webhooks.socket.getaddrinfo", side_effect=_fake),
-           patch("tiled.server.webhooks.socket.getfqdn", side_effect=_fake2)) :
-        with pytest.raises(ValueError, match="'abcdef/24' does not appear to be an IPv4 or IPv6 network"):
+    with patch("tiled.server.webhooks.socket.getaddrinfo", side_effect=_fake), patch(
+        "tiled.server.webhooks.socket.getfqdn", side_effect=_fake2
+    ):
+        with pytest.raises(
+            ValueError,
+            match="'abcdef/24' does not appear to be an IPv4 or IPv6 network",
+        ):
             check_url_ssrf_safety(
-                "https://example.com/hook", ["93.184.216.0/24", "abcdef/24"], ["example.com"]
+                "https://example.com/hook",
+                ["93.184.216.0/24", "abcdef/24"],
+                ["example.com"],
             )
+
 
 def test_ssrf_check_bad_accepted_hostname() -> None:
     """An accepted hostname must be a valid hostname, not an IP."""
@@ -750,12 +759,17 @@ def test_ssrf_check_bad_accepted_hostname() -> None:
         else:
             return "example3.com"
 
-    with (patch("tiled.server.webhooks.socket.getaddrinfo", side_effect=_fake),
-           patch("tiled.server.webhooks.socket.getfqdn", side_effect=_fake2)) :
-        with pytest.raises(ValueError, match="Allow delivery host 93.184.216.34 must be a valid hostname"):
+    with patch("tiled.server.webhooks.socket.getaddrinfo", side_effect=_fake), patch(
+        "tiled.server.webhooks.socket.getfqdn", side_effect=_fake2
+    ):
+        with pytest.raises(
+            ValueError,
+            match="Allow delivery host 93.184.216.34 must be a valid hostname",
+        ):
             check_url_ssrf_safety(
                 "https://example.com/hook", ["93.184.216.0/24"], ["93.184.216.34"]
             )
+
 
 # ---------------------------------------------------------------------------
 # Unit tests: WebhookDispatcher shutdown drains pending tasks
