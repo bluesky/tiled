@@ -147,7 +147,7 @@ def check_url_ssrf_safety(
 
     if local_blocked_networks:
         for network in local_blocked_networks:
-            ipaddress.ip_network(network)
+            ipaddress.ip_network(network) # raises ValueError if not a valid network
     if allow_delivery_hosts:
         for host in allow_delivery_hosts:
             fqdn = socket.getfqdn(host)
