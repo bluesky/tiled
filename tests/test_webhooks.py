@@ -1013,7 +1013,7 @@ def test_ssrf_check_unresolvable_hostname() -> None:
         side_effect=socket.gaierror("Name or service not known"),
     ):
         with pytest.raises(ValueError, match="Cannot resolve"):
-            check_url_ssrf_safety("https://does-not-exist.invalid/hook", [])
+            check_url_ssrf_safety("https://does-not-exist.invalid/hook")
 
 
 # ---------------------------------------------------------------------------
