@@ -109,7 +109,7 @@ def get_combined_blocked_networks(
     local_blocked_networks: list[str],
 ) -> list[ipaddress.IPv4Network | ipaddress.IPv6Network]:
     """Return the union of the standard blocked networks and any local overrides."""
-    return _STANDARD_BLOCKED_NETWORKS + [
+    return _STANDARD_BLOCKED_NETWORKS if not local_blocked_networks else _STANDARD_BLOCKED_NETWORKS + [
         ipaddress.ip_network(net) for net in local_blocked_networks
     ]
 

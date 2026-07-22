@@ -653,7 +653,7 @@ def test_ssrf_check_blocks_private_ips(url: str, blocked_ip: str) -> None:
 
     with patch("tiled.server.webhooks.socket.getaddrinfo", side_effect=_fake):
         with pytest.raises(ValueError, match="blocked"):
-            check_url_ssrf_safety(url, [])
+            check_url_ssrf_safety(url)
 
 
 def test_ssrf_check_allows_public_ip() -> None:
@@ -663,7 +663,7 @@ def test_ssrf_check_allows_public_ip() -> None:
         return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 0))]
 
     with patch("tiled.server.webhooks.socket.getaddrinfo", side_effect=_fake):
-        check_url_ssrf_safety("https://example.com/hook", [])  # must not raise
+        check_url_ssrf_safety("https://example.com/hook")  # must not raise
 
 
 def test_ssrf_check_blocks_custom_local_networks() -> None:
