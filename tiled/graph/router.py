@@ -18,9 +18,14 @@ import logging
 import os
 from typing import Optional
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 from strawberry.fastapi import GraphQLRouter
 
+from ..server.authentication import (
+    get_current_access_tags,
+    get_current_principal,
+    get_current_scopes,
+)
 from .schema import schema
 from .store import SQLAlchemyStore as SQLiteStore
 from .store import Store, _url_from_path
@@ -42,8 +47,19 @@ def create_router(db_path: Optional[str] = None) -> APIRouter:
             store[0].close()
             logger.info("Links store closed")
 
-    async def get_context(request: Request) -> dict:
-        return {"store": store[0]}
+    async def get_context(
+        request: Request,
+        principal=Depends(get_current_principal),
+        authn_access_tags=Depends(get_current_access_tags),
+        authn_scopes=Depends(get_current_scopes),
+    ) -> dict:
+        return {
+            "store": store[0],
+            "principal": principal,
+            "authn_access_tags": authn_access_tags,
+            "authn_scopes": authn_scopes,
+            "access_policy": getattr(request.app.state, "access_policy", None),
+        }
 
     graphql_router = GraphQLRouter(
         schema,

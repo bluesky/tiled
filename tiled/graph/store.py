@@ -43,6 +43,8 @@ from sqlalchemy import (
 from sqlalchemy.engine import Engine
 from sqlalchemy.pool import StaticPool
 
+UNSET = object()
+
 # ---------------------------------------------------------------------------
 # Data records
 # ---------------------------------------------------------------------------
@@ -57,6 +59,7 @@ class EntityRecord(BaseModel):
     name: str
     uri: Optional[str]
     properties: dict
+    access_blob: dict
     created_at: datetime
 
 
@@ -68,6 +71,7 @@ class LinkRecord(BaseModel):
     predicate: str
     object_id: str
     properties: dict
+    access_blob: dict
     created_at: datetime
 
 
@@ -87,6 +91,7 @@ class Store(abc.ABC):
         node_id: Optional[int] = None,
         uri: Optional[str] = None,
         properties: Optional[dict] = None,
+        access_blob: Optional[dict] = None,
     ) -> EntityRecord:
         ...
 
@@ -112,8 +117,10 @@ class Store(abc.ABC):
         self,
         id: str,
         name: Optional[str] = None,
-        uri: Optional[str] = None,
+        node_id: object = UNSET,
+        uri: object = UNSET,
         entity_type: Optional[str] = None,
+        access_blob: object = UNSET,
     ) -> Optional[EntityRecord]:
         ...
 
@@ -124,6 +131,7 @@ class Store(abc.ABC):
         predicate: str,
         object_id: str,
         properties: Optional[dict] = None,
+        access_blob: Optional[dict] = None,
     ) -> LinkRecord:
         ...
 
@@ -147,7 +155,12 @@ class Store(abc.ABC):
         ...
 
     @abc.abstractmethod
-    def update_link(self, id: str, predicate: str) -> Optional[LinkRecord]:
+    def update_link(
+        self,
+        id: str,
+        predicate: object = UNSET,
+        access_blob: object = UNSET,
+    ) -> Optional[LinkRecord]:
         ...
 
     @abc.abstractmethod
@@ -175,6 +188,7 @@ _entities = Table(
     Column("name", String, nullable=False),
     Column("uri", String, nullable=True),
     Column("properties", JSON, nullable=False),
+    Column("access_blob", JSON, nullable=False),
     Column("created_at", DateTime(timezone=True), nullable=False),
     Index("entities_node_id_idx", "node_id"),
     Index("entities_type_created_idx", "entity_type", "created_at"),
@@ -199,6 +213,7 @@ _links = Table(
         nullable=False,
     ),
     Column("properties", JSON, nullable=False),
+    Column("access_blob", JSON, nullable=False),
     Column("created_at", DateTime(timezone=True), nullable=False),
     Index("links_subject_predicate_idx", "subject_id", "predicate"),
     Index("links_predicate_object_idx", "predicate", "object_id"),
@@ -268,6 +283,7 @@ class SQLAlchemyStore(Store):
             name=row.name,
             uri=row.uri,
             properties=row.properties or {},
+            access_blob=row.access_blob or {},
             created_at=row.created_at,
         )
 
@@ -279,6 +295,7 @@ class SQLAlchemyStore(Store):
             predicate=row.predicate,
             object_id=row.object_id,
             properties=row.properties or {},
+            access_blob=row.access_blob or {},
             created_at=row.created_at,
         )
 
@@ -293,6 +310,7 @@ class SQLAlchemyStore(Store):
         node_id: Optional[int] = None,
         uri: Optional[str] = None,
         properties: Optional[dict] = None,
+        access_blob: Optional[dict] = None,
     ) -> EntityRecord:
         id_ = str(uuid.uuid4())
         now = datetime.now(timezone.utc)
@@ -305,6 +323,7 @@ class SQLAlchemyStore(Store):
                     name=name,
                     uri=uri,
                     properties=properties or {},
+                    access_blob=access_blob or {},
                     created_at=now,
                 )
             )
@@ -345,20 +364,22 @@ class SQLAlchemyStore(Store):
         self,
         id: str,
         name: Optional[str] = None,
-        node_id: Optional[int] = None,
-        uri: Optional[str] = None,
+        node_id: object = UNSET,
+        uri: object = UNSET,
         entity_type: Optional[str] = None,
+        access_blob: object = UNSET,
     ) -> Optional[EntityRecord]:
         values: dict = {}
-        # Is it ok that the node_id, name and uri cannot be unset?
         if name is not None:
             values["name"] = name
-        if node_id is not None:
+        if node_id is not UNSET:
             values["node_id"] = node_id
-        if uri is not None:
+        if uri is not UNSET:
             values["uri"] = uri
         if entity_type is not None:
             values["entity_type"] = entity_type
+        if access_blob is not UNSET:
+            values["access_blob"] = access_blob
         with self._engine.begin() as conn:
             if values:
                 conn.execute(
@@ -379,6 +400,7 @@ class SQLAlchemyStore(Store):
         predicate: str,
         object_id: str,
         properties: Optional[dict] = None,
+        access_blob: Optional[dict] = None,
     ) -> LinkRecord:
         if not self.get_entity(subject_id):
             raise ValueError(f"Subject entity '{subject_id}' not found")
@@ -395,6 +417,7 @@ class SQLAlchemyStore(Store):
                     predicate=predicate,
                     object_id=object_id,
                     properties=properties or {},
+                    access_blob=access_blob or {},
                     created_at=now,
                 )
             )
@@ -430,11 +453,20 @@ class SQLAlchemyStore(Store):
             result = conn.execute(delete(_links).where(_links.c.id == id))
         return result.rowcount > 0
 
-    def update_link(self, id: str, predicate: str) -> Optional[LinkRecord]:
+    def update_link(
+        self,
+        id: str,
+        predicate: object = UNSET,
+        access_blob: object = UNSET,
+    ) -> Optional[LinkRecord]:
+        values: dict = {}
+        if predicate is not UNSET:
+            values["predicate"] = predicate
+        if access_blob is not UNSET:
+            values["access_blob"] = access_blob
         with self._engine.begin() as conn:
-            conn.execute(
-                update(_links).where(_links.c.id == id).values(predicate=predicate)
-            )
+            if values:
+                conn.execute(update(_links).where(_links.c.id == id).values(**values))
             row = conn.execute(select(_links).where(_links.c.id == id)).one_or_none()
         return self._to_link(row) if row else None
 

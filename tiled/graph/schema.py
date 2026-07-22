@@ -21,9 +21,15 @@ import logging
 from typing import Optional
 
 import strawberry
+from graphql import GraphQLError
 from strawberry.scalars import JSON as StrawberryJSON
 from strawberry.types import Info
+from strawberry.types.unset import UNSET, UnsetType
 
+from tiled.access_control.access_policies import NO_ACCESS
+from tiled.queries import AccessBlobFilter
+
+from .store import UNSET as STORE_UNSET
 from .store import EntityRecord, LinkRecord, Store
 
 logger = logging.getLogger(__name__)
@@ -44,6 +50,114 @@ def _store(info: Info) -> Store:
     return info.context["store"]
 
 
+class _PolicyNode:
+    def __init__(self, access_blob: Optional[dict]):
+        self.access_blob = access_blob or {}
+
+
+async def _is_allowed(info: Info, access_blob: Optional[dict], scope: str) -> bool:
+    authn_scopes = info.context["authn_scopes"]
+    if scope not in authn_scopes:
+        return False
+    policy = info.context.get("access_policy")
+    if policy is None or not hasattr(policy, "allowed_scopes"):
+        return True
+    allowed = await policy.allowed_scopes(
+        _PolicyNode(access_blob),
+        info.context["principal"],
+        info.context["authn_access_tags"],
+        authn_scopes,
+    )
+    return scope in allowed
+
+
+async def _assert_allowed(info: Info, access_blob: Optional[dict], scope: str) -> None:
+    if not await _is_allowed(info, access_blob, scope):
+        raise GraphQLError("Not permitted")
+
+
+def _assert_authn_scope(info: Info, scope: str) -> None:
+    if scope not in info.context["authn_scopes"]:
+        raise GraphQLError("Not permitted")
+
+
+def _matches_access_blob_filter(access_blob: dict, query: AccessBlobFilter) -> bool:
+    tags = set(access_blob.get("tags", []))
+    if tags.intersection(query.tags):
+        return True
+    user_id = access_blob.get("user")
+    if query.user_id is not None and user_id == query.user_id:
+        return True
+    return False
+
+
+async def _apply_policy_filters(info: Info, records: list, scope: str) -> list:
+    policy = info.context.get("access_policy")
+    if policy is None or not hasattr(policy, "filters"):
+        return records
+
+    queries = await policy.filters(
+        _PolicyNode({}),
+        info.context["principal"],
+        info.context["authn_access_tags"],
+        info.context["authn_scopes"],
+        {scope},
+    )
+    if queries is NO_ACCESS:
+        return []
+    if not queries:
+        return records
+
+    filtered = records
+    for query in queries:
+        if isinstance(query, AccessBlobFilter):
+            filtered = [
+                record
+                for record in filtered
+                if _matches_access_blob_filter(record.access_blob or {}, query)
+            ]
+        else:
+            raise GraphQLError(
+                f"Unsupported access-policy filter in graph queries: {type(query).__name__}"
+            )
+    return filtered
+
+
+async def _init_access_blob(info: Info, access_blob: Optional[dict]) -> dict:
+    policy = info.context.get("access_policy")
+    if policy is not None and hasattr(policy, "init_node"):
+        try:
+            _, new_access_blob = await policy.init_node(
+                info.context["principal"],
+                info.context["authn_access_tags"],
+                info.context["authn_scopes"],
+                access_blob=access_blob,
+            )
+        except ValueError as exc:
+            raise GraphQLError(f"Access policy rejects access blob: {exc}") from exc
+        return new_access_blob
+    return access_blob or {}
+
+
+async def _modify_access_blob(
+    info: Info, current_access_blob: dict, requested_access_blob: dict
+) -> dict:
+    policy = info.context.get("access_policy")
+    if policy is not None and hasattr(policy, "modify_node"):
+        try:
+            _, new_access_blob = await policy.modify_node(
+                _PolicyNode(current_access_blob),
+                info.context["principal"],
+                info.context["authn_access_tags"],
+                info.context["authn_scopes"],
+                requested_access_blob,
+            )
+        except ValueError as exc:
+            raise GraphQLError(f"Access policy rejects access blob: {exc}") from exc
+        return new_access_blob
+    return current_access_blob
+
+
 # ---------------------------------------------------------------------------
 # Output types
 # ---------------------------------------------------------------------------
@@ -52,6 +166,7 @@ def _store(info: Info) -> Store:
 @strawberry.type
 class Entity:
     id: strawberry.ID
+    node_id: Optional[int]
     entity_type: str
     name: str
     uri: Optional[str]
@@ -59,7 +174,7 @@ class Entity:
     created_at: str
 
     @strawberry.field(description="Links where this entity is the subject.")
-    def outgoing_links(
+    async def outgoing_links(
         self,
         info: Info,
         predicate: Optional[str] = None,
@@ -69,10 +184,15 @@ class Entity:
         records = _store(info).find_links(
             subject_id=str(self.id), predicate=predicate, limit=limit, offset=offset
         )
-        return [_link_from_record(r) for r in records]
+        records = await _apply_policy_filters(info, records, "read:metadata")
+        return [
+            _link_from_record(r)
+            for r in records
+            if await _is_allowed(info, r.access_blob, "read:metadata")
+        ]
 
     @strawberry.field(description="Links where this entity is the object.")
-    def incoming_links(
+    async def incoming_links(
         self,
         info: Info,
         predicate: Optional[str] = None,
@@ -82,7 +202,12 @@ class Entity:
         records = _store(info).find_links(
             object_id=str(self.id), predicate=predicate, limit=limit, offset=offset
         )
-        return [_link_from_record(r) for r in records]
+        records = await _apply_policy_filters(info, records, "read:metadata")
+        return [
+            _link_from_record(r)
+            for r in records
+            if await _is_allowed(info, r.access_blob, "read:metadata")
+        ]
 
 
 @strawberry.type
@@ -92,17 +217,26 @@ class Link:
     predicate: str
     object_id: strawberry.ID
     properties: Optional[JSON]  # type: ignore[valid-type]
+    access_blob: Optional[JSON]  # type: ignore[valid-type]
     created_at: str
 
     @strawberry.field
-    def subject(self, info: Info) -> Optional[Entity]:
+    async def subject(self, info: Info) -> Optional[Entity]:
         record = _store(info).get_entity(str(self.subject_id))
-        return _entity_from_record(record) if record else None
+        if not record or not await _is_allowed(
+            info, record.access_blob, "read:metadata"
+        ):
+            return None
+        return _entity_from_record(record)
 
     @strawberry.field
-    def object(self, info: Info) -> Optional[Entity]:
+    async def object(self, info: Info) -> Optional[Entity]:
         record = _store(info).get_entity(str(self.object_id))
-        return _entity_from_record(record) if record else None
+        if not record or not await _is_allowed(
+            info, record.access_blob, "read:metadata"
+        ):
+            return None
+        return _entity_from_record(record)
 
 
 # ---------------------------------------------------------------------------
@@ -113,6 +247,7 @@ class Link:
 def _entity_from_record(r: EntityRecord) -> Entity:
     return Entity(
         id=strawberry.ID(r.id),
+        node_id=r.node_id,
         entity_type=r.entity_type,
         name=r.name,
         uri=r.uri,
@@ -128,6 +263,7 @@ def _link_from_record(r: LinkRecord) -> Link:
         predicate=r.predicate,
         object_id=strawberry.ID(r.object_id),
         properties=r.properties if r.properties else None,
+        access_blob=r.access_blob if r.access_blob else None,
         created_at=r.created_at.isoformat(),
     )
 
@@ -140,21 +276,26 @@ def _link_from_record(r: LinkRecord) -> Link:
 @strawberry.input
 class UpdateEntityInput:
     name: Optional[str] = None
-    uri: Optional[str] = None
+    node_id: Optional[int] | UnsetType = UNSET
+    uri: Optional[str] | UnsetType = UNSET
     entity_type: Optional[str] = None
+    access_blob: Optional[JSON] | UnsetType = UNSET  # type: ignore[valid-type]
 
 
 @strawberry.input
 class UpdateLinkInput:
-    predicate: str
+    predicate: Optional[str] | UnsetType = UNSET
+    access_blob: Optional[JSON] | UnsetType = UNSET  # type: ignore[valid-type]
 
 
 @strawberry.input
 class CreateEntityInput:
     entity_type: str
     name: str
+    node_id: Optional[int] = None
     uri: Optional[str] = None
     properties: Optional[JSON] = None  # type: ignore[valid-type]
+    access_blob: Optional[JSON] = None  # type: ignore[valid-type]
 
 
 @strawberry.input
@@ -163,6 +304,7 @@ class CreateLinkInput:
     predicate: str
     object_id: strawberry.ID
     properties: Optional[JSON] = None  # type: ignore[valid-type]
+    access_blob: Optional[JSON] = None  # type: ignore[valid-type]
 
 
 # ---------------------------------------------------------------------------
@@ -173,12 +315,16 @@ class CreateLinkInput:
 @strawberry.type
 class Query:
     @strawberry.field
-    def entity(self, info: Info, id: strawberry.ID) -> Optional[Entity]:
+    async def entity(self, info: Info, id: strawberry.ID) -> Optional[Entity]:
         record = _store(info).get_entity(str(id))
+        if not record or not await _is_allowed(
+            info, record.access_blob, "read:metadata"
+        ):
+            return None
         return _entity_from_record(record) if record else None
 
     @strawberry.field
-    def entities(
+    async def entities(
         self,
         info: Info,
         entity_type: Optional[str] = None,
@@ -188,17 +334,26 @@ class Query:
         records = _store(info).list_entities(
             entity_type=entity_type, limit=limit, offset=offset
         )
-        return [_entity_from_record(r) for r in records]
+        records = await _apply_policy_filters(info, records, "read:metadata")
+        return [
+            _entity_from_record(r)
+            for r in records
+            if await _is_allowed(info, r.access_blob, "read:metadata")
+        ]
 
     @strawberry.field
-    def link(self, info: Info, id: strawberry.ID) -> Optional[Link]:
+    async def link(self, info: Info, id: strawberry.ID) -> Optional[Link]:
         record = _store(info).get_link(str(id))
+        if not record or not await _is_allowed(
+            info, record.access_blob, "read:metadata"
+        ):
+            return None
         return _link_from_record(record) if record else None
 
     @strawberry.field(
         description="Find links, optionally filtered by subject, predicate, and/or object."
     )
-    def links(
+    async def links(
         self,
         info: Info,
         subject_id: Optional[strawberry.ID] = None,
@@ -214,18 +369,27 @@ class Query:
             limit=limit,
             offset=offset,
         )
-        return [_link_from_record(r) for r in records]
+        records = await _apply_policy_filters(info, records, "read:metadata")
+        return [
+            _link_from_record(r)
+            for r in records
+            if await _is_allowed(info, r.access_blob, "read:metadata")
+        ]
 
 
 @strawberry.type
 class Mutation:
     @strawberry.mutation
-    def create_entity(self, info: Info, input: CreateEntityInput) -> Entity:
+    async def create_entity(self, info: Info, input: CreateEntityInput) -> Entity:
+        _assert_authn_scope(info, "write:metadata")
+        access_blob = await _init_access_blob(info, input.access_blob)
         record = _store(info).create_entity(
             entity_type=input.entity_type,
             name=input.name,
+            node_id=input.node_id,
             uri=input.uri,
             properties=input.properties,
+            access_blob=access_blob,
         )
         logger.info(
             "Created entity type=%r name=%r id=%s",
@@ -236,12 +400,23 @@ class Mutation:
         return _entity_from_record(record)
 
     @strawberry.mutation
-    def create_link(self, info: Info, input: CreateLinkInput) -> Link:
+    async def create_link(self, info: Info, input: CreateLinkInput) -> Link:
+        _assert_authn_scope(info, "write:metadata")
+        subject = _store(info).get_entity(str(input.subject_id))
+        if not subject:
+            raise GraphQLError(f"Subject entity '{input.subject_id}' not found")
+        await _assert_allowed(info, subject.access_blob, "write:metadata")
+        object_ = _store(info).get_entity(str(input.object_id))
+        if not object_:
+            raise GraphQLError(f"Object entity '{input.object_id}' not found")
+        await _assert_allowed(info, object_.access_blob, "write:metadata")
+        access_blob = await _init_access_blob(info, input.access_blob)
         record = _store(info).create_link(
             subject_id=str(input.subject_id),
             predicate=input.predicate,
             object_id=str(input.object_id),
             properties=input.properties,
+            access_blob=access_blob,
         )
         logger.info(
             "Created link %s -[%s]-> %s id=%s",
@@ -255,38 +430,75 @@ class Mutation:
     @strawberry.mutation(
         description="Delete an entity and all its attached links. Returns true if found."
     )
-    def delete_entity(self, info: Info, id: strawberry.ID) -> bool:
+    async def delete_entity(self, info: Info, id: strawberry.ID) -> bool:
+        record = _store(info).get_entity(str(id))
+        if not record:
+            return False
+        await _assert_allowed(info, record.access_blob, "write:metadata")
         deleted = _store(info).delete_entity(str(id))
         if deleted:
             logger.info("Deleted entity id=%s", id)
         return deleted
 
     @strawberry.mutation(description="Update an entity's name, uri, or entity_type.")
-    def update_entity(
+    async def update_entity(
         self, info: Info, id: strawberry.ID, input: UpdateEntityInput
     ) -> Optional[Entity]:
+        current = _store(info).get_entity(str(id))
+        if current is None:
+            return None
+        await _assert_allowed(info, current.access_blob, "write:metadata")
+        access_blob = UNSET
+        if input.access_blob is not UNSET:
+            requested_access_blob = input.access_blob or {}
+            access_blob = await _modify_access_blob(
+                info, current.access_blob, requested_access_blob
+            )
+        node_id = STORE_UNSET if input.node_id is UNSET else input.node_id
+        uri = STORE_UNSET if input.uri is UNSET else input.uri
         record = _store(info).update_entity(
             str(id),
             name=input.name,
-            uri=input.uri,
+            node_id=node_id,
+            uri=uri,
             entity_type=input.entity_type,
+            access_blob=access_blob,
         )
         if record:
             logger.info("Updated entity id=%s", id)
         return _entity_from_record(record) if record else None
 
     @strawberry.mutation(description="Delete a single link. Returns true if found.")
-    def delete_link(self, info: Info, id: strawberry.ID) -> bool:
+    async def delete_link(self, info: Info, id: strawberry.ID) -> bool:
+        record = _store(info).get_link(str(id))
+        if not record:
+            return False
+        await _assert_allowed(info, record.access_blob, "write:metadata")
         deleted = _store(info).delete_link(str(id))
         if deleted:
             logger.info("Deleted link id=%s", id)
         return deleted
 
     @strawberry.mutation(description="Update a link's predicate.")
-    def update_link(
+    async def update_link(
         self, info: Info, id: strawberry.ID, input: UpdateLinkInput
     ) -> Optional[Link]:
-        record = _store(info).update_link(str(id), predicate=input.predicate)
+        current = _store(info).get_link(str(id))
+        if current is None:
+            return None
+        await _assert_allowed(info, current.access_blob, "write:metadata")
+        access_blob = UNSET
+        if input.access_blob is not UNSET:
+            requested_access_blob = input.access_blob or {}
+            access_blob = await _modify_access_blob(
+                info, current.access_blob, requested_access_blob
+            )
+        predicate = STORE_UNSET if input.predicate is UNSET else input.predicate
+        record = _store(info).update_link(
+            str(id),
+            predicate=predicate,
+            access_blob=access_blob,
+        )
         if record:
             logger.info("Updated link id=%s predicate=%r", id, input.predicate)
         return _link_from_record(record) if record else None
