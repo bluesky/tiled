@@ -678,29 +678,84 @@ def test_ssrf_check_blocks_custom_local_networks() -> None:
 
 
 def test_ssrf_check_passes_exception() -> None:
-    """With an acceptable hostname even if within a valid network range, pass."""
+    """With an acceptable hostname even if within a valid blocked network range, pass."""
 
     def _fake(host, port, *args, **kwargs):
         return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 0))]
 
-    with patch("tiled.server.webhooks.socket.getaddrinfo", side_effect=_fake):
+    def _fake2(hostname):
+        print(f"hostname: {hostname}")
+        if hostname in ("example.com", "93.184.216.34"):
+            return "example.com"
+        else:
+            return "example3.com"
+
+    with (patch("tiled.server.webhooks.socket.getaddrinfo", side_effect=_fake),
+           patch("tiled.server.webhooks.socket.getfqdn", side_effect=_fake2)) :
         check_url_ssrf_safety(
-            "https://example.com/hook", ["93.184.216.0/24"], ["93.184.216.34"]
+            "https://example.com/hook", ["93.184.216.0/24"], ["example.com"]
         )  # must not raise
 
 
-def test_ssrf_check_blocks_custom_local_network() -> None:
+def test_ssrf_check_blocks_custom_local_network_not_accepted() -> None:
     """Fail if the destination is in a blocked network and not an accepted host."""
 
     def _fake(host, port, *args, **kwargs):
         return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 0))]
 
-    with patch("tiled.server.webhooks.socket.getaddrinfo", side_effect=_fake):
+    def _fake2(hostname):
+        if hostname == "example.com":
+            return "example.com"
+        elif hostname == "example2.com":
+            return "example2.com"
+        else:
+            return "example3.com"
+
+    with (patch("tiled.server.webhooks.socket.getaddrinfo", side_effect=_fake),
+         patch("tiled.server.webhooks.socket.getfqdn", side_effect=_fake2)):
         with pytest.raises(ValueError, match="blocked network 93.184.216.0/24"):
             check_url_ssrf_safety(
-                "https://example.com/hook", ["93.184.216.0/24"], ["93.184.216.1"]
+                "https://example.com/hook", ["93.184.216.0/24"], ["example2.com"]
             )
 
+
+def test_ssrf_check_bad_network() -> None:
+    """A bad network range for a blocked network is invalid."""
+
+    def _fake(host, port, *args, **kwargs):
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 0))]
+
+    def _fake2(hostname):
+        if hostname in ("example.com", "93.184.216.34"):
+            return "example.com"
+        else:
+            return "example3.com"
+
+    with (patch("tiled.server.webhooks.socket.getaddrinfo", side_effect=_fake),
+           patch("tiled.server.webhooks.socket.getfqdn", side_effect=_fake2)) :
+        with pytest.raises(ValueError, match="'abcdef/24' does not appear to be an IPv4 or IPv6 network"):
+            check_url_ssrf_safety(
+                "https://example.com/hook", ["93.184.216.0/24", "abcdef/24"], ["example.com"]
+            )
+
+def test_ssrf_check_bad_accepted_hostname() -> None:
+    """An accepted hostname must be a valid hostname, not an IP."""
+
+    def _fake(host, port, *args, **kwargs):
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 0))]
+
+    def _fake2(hostname):
+        if hostname in ("example.com", "93.184.216.34"):
+            return "example.com"
+        else:
+            return "example3.com"
+
+    with (patch("tiled.server.webhooks.socket.getaddrinfo", side_effect=_fake),
+           patch("tiled.server.webhooks.socket.getfqdn", side_effect=_fake2)) :
+        with pytest.raises(ValueError, match="Allow delivery host 93.184.216.34 must be a valid hostname"):
+            check_url_ssrf_safety(
+                "https://example.com/hook", ["93.184.216.0/24"], ["93.184.216.34"]
+            )
 
 # ---------------------------------------------------------------------------
 # Unit tests: WebhookDispatcher shutdown drains pending tasks
