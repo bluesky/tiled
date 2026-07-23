@@ -558,7 +558,7 @@ async def check_scopes(
                 ),
                 headers=headers_for_401(request, security_scopes),
             )
-    elif not set(security_scopes.scopes).issubset(scopes):
+    if not set(security_scopes.scopes).issubset(scopes):
         raise HTTPException(
             status_code=HTTP_401_UNAUTHORIZED,
             detail=(
