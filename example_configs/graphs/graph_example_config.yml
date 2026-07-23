@@ -1,0 +1,10 @@
+---
+authentication:
+  allow_anonymous_access: false
+  single_user_api_key: "secret"
+
+catalog:
+  uri: "sqlite:///./example_configs/graphs/data/catalog.db"
+  writable_storage:
+    - "./example_configs/graphs/data"
+  init_if_not_exists: true

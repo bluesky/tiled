@@ -1,0 +1,186 @@
+{
+  "@context": {
+    "@vocab": "https://blueskyproject.io/tiled/graph#",
+    "tiled": "https://blueskyproject.io/tiled/terms/",
+    "ro": "https://w3id.org/ro/terms/",
+    "schema": "https://schema.org/",
+    "prov": "http://www.w3.org/ns/prov#",
+    "subject": {
+      "@type": "@id"
+    },
+    "object": {
+      "@type": "@id"
+    }
+  },
+  "@graph": [
+    {
+      "@id": "urn:entity:raw_dataset",
+      "@type": "Entity",
+      "entityType": "dataset",
+      "name": "raw_dataset",
+      "uri": "/raw_dataset",
+      "properties": {
+        "@type": "Dataset",
+        "schema:encodingFormat": "application/x-zarr"
+      }
+    },
+    {
+      "@id": "urn:entity:derived_dataset_1",
+      "@type": "Entity",
+      "entityType": "dataset",
+      "name": "derived_dataset_1",
+      "uri": "/derived_dataset_1",
+      "properties": {
+        "@type": "Dataset",
+        "schema:encodingFormat": "application/x-zarr"
+      }
+    },
+    {
+      "@id": "urn:entity:derived_dataset_2",
+      "@type": "Entity",
+      "entityType": "dataset",
+      "name": "derived_dataset_2",
+      "uri": "/derived_dataset_2",
+      "properties": {
+        "@type": "Dataset",
+        "schema:encodingFormat": "application/x-zarr"
+      }
+    },
+    {
+      "@id": "urn:entity:derived_dataset_3",
+      "@type": "Entity",
+      "entityType": "dataset",
+      "name": "derived_dataset_3",
+      "uri": "/derived_dataset_3",
+      "properties": {
+        "@type": "Dataset",
+        "schema:encodingFormat": "application/x-zarr"
+      }
+    },
+    {
+      "@id": "urn:entity:ro-crate-metadata",
+      "@type": "Entity",
+      "entityType": "rocrate",
+      "name": "ro-crate-metadata.json",
+      "uri": "/ro-crate-metadata.json",
+      "properties": {
+        "@type": "CreativeWork",
+        "conformsTo": "https://w3id.org/ro/crate/1.1"
+      }
+    },
+    {
+      "@id": "urn:entity:analysis_workflow",
+      "@type": "Entity",
+      "entityType": "workflow",
+      "name": "analysis_workflow",
+      "uri": "/analysis/workflow",
+      "properties": {
+        "@type": "ComputationalWorkflow"
+      }
+    },
+    {
+      "@id": "urn:entity:processing_script",
+      "@type": "Entity",
+      "entityType": "software",
+      "name": "processing_script.py",
+      "uri": "/analysis/processing_script.py",
+      "properties": {
+        "@type": "SoftwareSourceCode"
+      }
+    },
+    {
+      "@id": "urn:link:derived1_raw",
+      "@type": "Link",
+      "subject": "urn:entity:derived_dataset_1",
+      "predicate": "prov:wasDerivedFrom",
+      "object": "urn:entity:raw_dataset",
+      "properties": {
+        "schema:description": "lineage"
+      }
+    },
+    {
+      "@id": "urn:link:derived2_raw",
+      "@type": "Link",
+      "subject": "urn:entity:derived_dataset_2",
+      "predicate": "prov:wasDerivedFrom",
+      "object": "urn:entity:raw_dataset",
+      "properties": {
+        "schema:description": "lineage"
+      }
+    },
+    {
+      "@id": "urn:link:derived3_raw",
+      "@type": "Link",
+      "subject": "urn:entity:derived_dataset_3",
+      "predicate": "prov:wasDerivedFrom",
+      "object": "urn:entity:raw_dataset",
+      "properties": {
+        "schema:description": "lineage"
+      }
+    },
+    {
+      "@id": "urn:link:crate_raw",
+      "@type": "Link",
+      "subject": "urn:entity:ro-crate-metadata",
+      "predicate": "ro:hasPart",
+      "object": "urn:entity:raw_dataset",
+      "properties": {}
+    },
+    {
+      "@id": "urn:link:crate_d1",
+      "@type": "Link",
+      "subject": "urn:entity:ro-crate-metadata",
+      "predicate": "ro:hasPart",
+      "object": "urn:entity:derived_dataset_1",
+      "properties": {}
+    },
+    {
+      "@id": "urn:link:crate_d2",
+      "@type": "Link",
+      "subject": "urn:entity:ro-crate-metadata",
+      "predicate": "ro:hasPart",
+      "object": "urn:entity:derived_dataset_2",
+      "properties": {}
+    },
+    {
+      "@id": "urn:link:crate_d3",
+      "@type": "Link",
+      "subject": "urn:entity:ro-crate-metadata",
+      "predicate": "ro:hasPart",
+      "object": "urn:entity:derived_dataset_3",
+      "properties": {}
+    },
+    {
+      "@id": "urn:link:wf_script",
+      "@type": "Link",
+      "subject": "urn:entity:analysis_workflow",
+      "predicate": "instrument",
+      "object": "urn:entity:processing_script",
+      "properties": {}
+    },
+    {
+      "@id": "urn:link:wf_result1",
+      "@type": "Link",
+      "subject": "urn:entity:analysis_workflow",
+      "predicate": "result",
+      "object": "urn:entity:derived_dataset_1",
+      "properties": {}
+    },
+    {
+      "@id": "urn:link:wf_result2",
+      "@type": "Link",
+      "subject": "urn:entity:analysis_workflow",
+      "predicate": "result",
+      "object": "urn:entity:derived_dataset_2",
+      "properties": {}
+    },
+    {
+      "@id": "urn:link:wf_result3",
+      "@type": "Link",
+      "subject": "urn:entity:analysis_workflow",
+      "predicate": "result",
+      "object": "urn:entity:derived_dataset_3",
+      "properties": {}
+    }
+  ]
+}

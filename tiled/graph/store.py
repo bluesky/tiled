@@ -1,23 +1,15 @@
 """
 Storage layer for the splash-links entity graph service.
 
-The abstract ``Store`` interface decouples the application from the
-underlying database.  The concrete ``SQLAlchemyStore`` targets any database
-supported by SQLAlchemy 2.x — SQLite (default), PostgreSQL, and DuckDB (via
-``duckdb-engine``) are the primary targets.
-
-Connection URL examples
------------------------
-SQLite (file):     sqlite:///links.sqlite
-SQLite (memory):   sqlite:///:memory:
-PostgreSQL:        postgresql+psycopg2://user:pass@host/dbname
-DuckDB (file):     duckdb:///links.duckdb
-DuckDB (memory):   duckdb:///:memory:
+``GraphSQLAlchemyStore`` attaches to the same process-global async
+engine/connection pool used by Tiled's catalog (see
+``tiled.server.connection_pool``), so the graph tables and the catalog
+tables are always served from a single shared pool rather than opening a
+second connection pool to the same database.
 """
 
 from __future__ import annotations
 
-import abc
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
@@ -33,15 +25,15 @@ from sqlalchemy import (
     MetaData,
     String,
     Table,
-    create_engine,
     delete,
-    event,
     insert,
     select,
     update,
 )
-from sqlalchemy.engine import Engine
-from sqlalchemy.pool import StaticPool
+from sqlalchemy.ext.asyncio import AsyncEngine
+
+from ..server.connection_pool import get_database_engine
+from ..server.settings import DatabaseSettings
 
 UNSET = object()
 
@@ -76,103 +68,19 @@ class LinkRecord(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Abstract interface
-# ---------------------------------------------------------------------------
-
-
-class Store(abc.ABC):
-    """Minimal interface for entity/link persistence."""
-
-    @abc.abstractmethod
-    def create_entity(
-        self,
-        entity_type: str,
-        name: str,
-        node_id: Optional[int] = None,
-        uri: Optional[str] = None,
-        properties: Optional[dict] = None,
-        access_blob: Optional[dict] = None,
-    ) -> EntityRecord:
-        ...
-
-    @abc.abstractmethod
-    def get_entity(self, id: str) -> Optional[EntityRecord]:
-        ...
-
-    @abc.abstractmethod
-    def list_entities(
-        self,
-        entity_type: Optional[str] = None,
-        limit: int = 100,
-        offset: int = 0,
-    ) -> list[EntityRecord]:
-        ...
-
-    @abc.abstractmethod
-    def delete_entity(self, id: str) -> bool:
-        ...
-
-    @abc.abstractmethod
-    def update_entity(
-        self,
-        id: str,
-        name: Optional[str] = None,
-        node_id: object = UNSET,
-        uri: object = UNSET,
-        entity_type: Optional[str] = None,
-        access_blob: object = UNSET,
-    ) -> Optional[EntityRecord]:
-        ...
-
-    @abc.abstractmethod
-    def create_link(
-        self,
-        subject_id: str,
-        predicate: str,
-        object_id: str,
-        properties: Optional[dict] = None,
-        access_blob: Optional[dict] = None,
-    ) -> LinkRecord:
-        ...
-
-    @abc.abstractmethod
-    def get_link(self, id: str) -> Optional[LinkRecord]:
-        ...
-
-    @abc.abstractmethod
-    def find_links(
-        self,
-        subject_id: Optional[str] = None,
-        predicate: Optional[str] = None,
-        object_id: Optional[str] = None,
-        limit: int = 100,
-        offset: int = 0,
-    ) -> list[LinkRecord]:
-        ...
-
-    @abc.abstractmethod
-    def delete_link(self, id: str) -> bool:
-        ...
-
-    @abc.abstractmethod
-    def update_link(
-        self,
-        id: str,
-        predicate: object = UNSET,
-        access_blob: object = UNSET,
-    ) -> Optional[LinkRecord]:
-        ...
-
-    @abc.abstractmethod
-    def close(self) -> None:
-        ...
-
-
-# ---------------------------------------------------------------------------
 # SQLAlchemy schema
 # ---------------------------------------------------------------------------
 
 _metadata = MetaData()
+
+# Register the catalog nodes table key so entities.node_id can resolve
+# ForeignKey("nodes.id") when SQLAlchemy sorts DDL dependencies.
+Table(
+    "nodes",
+    _metadata,
+    Column("id", Integer, primary_key=True),
+    extend_existing=True,
+)
 
 _entities = Table(
     "entities",
@@ -220,59 +128,36 @@ _links = Table(
     Index("links_triple_idx", "subject_id", "predicate", "object_id"),
 )
 
-
-def _make_engine(db_url: str) -> Engine:
-    """Create a SQLAlchemy engine from a URL, applying dialect-specific tuning."""
-    is_sqlite = db_url.startswith("sqlite")
-    is_memory = ":memory:" in db_url
-
-    kwargs: dict = {}
-    if is_sqlite:
-        kwargs["connect_args"] = {"check_same_thread": False}
-    if is_memory:
-        kwargs["poolclass"] = StaticPool
-
-    engine = create_engine(db_url, **kwargs)
-
-    if is_sqlite:
-        # Enable foreign-key enforcement for every new SQLite connection.
-        @event.listens_for(engine, "connect")
-        def _set_sqlite_pragma(conn, _record):
-            conn.execute("PRAGMA foreign_keys=ON")
-
-    return engine
+_namespaces = Table(
+    "namespaces",
+    _metadata,
+    Column("prefix", String, primary_key=True),
+    Column("uri", String, nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+)
 
 
-def _url_from_path(db_path: str) -> str:
-    """Convert a plain file path / ':memory:' to a sqlite:// URL."""
-    if "://" in db_path:
-        return db_path
-    if db_path == ":memory:":
-        return "sqlite:///:memory:"
-    return f"sqlite:///{db_path}"
-
-
-# ---------------------------------------------------------------------------
-# SQLAlchemy implementation
-# ---------------------------------------------------------------------------
-
-
-class SQLAlchemyStore(Store):
+class GraphSQLAlchemyStore:
     """
-    Database-agnostic store backed by SQLAlchemy Core.
+    Async SQLAlchemy-backed store that can reuse Tiled's shared DB pool.
 
-    ``db_url`` may be any SQLAlchemy connection URL.  For convenience,
-    plain file paths and ``':memory:'`` are auto-converted to
-    ``sqlite:///…`` / ``sqlite:///:memory:``.
+    Use ``from_database_settings`` to attach to the same async engine registry
+    used by the rest of the server.
     """
 
-    def __init__(self, db_url: str = ":memory:") -> None:
-        self._engine: Engine = _make_engine(_url_from_path(db_url))
-        _metadata.create_all(self._engine)
+    def __init__(self, engine: AsyncEngine, owns_engine: bool = False) -> None:
+        self._engine = engine
+        self._owns_engine = owns_engine
 
-    # ------------------------------------------------------------------
-    # Row conversion helpers
-    # ------------------------------------------------------------------
+    @classmethod
+    async def from_database_settings(
+        cls,
+        database_settings: DatabaseSettings,
+    ) -> "GraphSQLAlchemyStore":
+        engine = get_database_engine(database_settings)
+        store = cls(engine, owns_engine=False)
+        await store._initialize_schema()
+        return store
 
     @staticmethod
     def _to_entity(row) -> EntityRecord:
@@ -299,11 +184,11 @@ class SQLAlchemyStore(Store):
             created_at=row.created_at,
         )
 
-    # ------------------------------------------------------------------
-    # Entity operations
-    # ------------------------------------------------------------------
+    async def _initialize_schema(self) -> None:
+        async with self._engine.begin() as conn:
+            await conn.run_sync(_metadata.create_all)
 
-    def create_entity(
+    async def create_entity(
         self,
         entity_type: str,
         name: str,
@@ -314,8 +199,8 @@ class SQLAlchemyStore(Store):
     ) -> EntityRecord:
         id_ = str(uuid.uuid4())
         now = datetime.now(timezone.utc)
-        with self._engine.begin() as conn:
-            conn.execute(
+        async with self._engine.begin() as conn:
+            await conn.execute(
                 insert(_entities).values(
                     id=id_,
                     node_id=node_id,
@@ -327,17 +212,19 @@ class SQLAlchemyStore(Store):
                     created_at=now,
                 )
             )
-            row = conn.execute(select(_entities).where(_entities.c.id == id_)).one()
+            row = (
+                await conn.execute(select(_entities).where(_entities.c.id == id_))
+            ).one()
         return self._to_entity(row)
 
-    def get_entity(self, id: str) -> Optional[EntityRecord]:
-        with self._engine.connect() as conn:
-            row = conn.execute(
-                select(_entities).where(_entities.c.id == id)
+    async def get_entity(self, id: str) -> Optional[EntityRecord]:
+        async with self._engine.connect() as conn:
+            row = (
+                await conn.execute(select(_entities).where(_entities.c.id == id))
             ).one_or_none()
         return self._to_entity(row) if row else None
 
-    def list_entities(
+    async def list_entities(
         self,
         entity_type: Optional[str] = None,
         limit: int = 100,
@@ -351,16 +238,16 @@ class SQLAlchemyStore(Store):
         )
         if entity_type is not None:
             stmt = stmt.where(_entities.c.entity_type == entity_type)
-        with self._engine.connect() as conn:
-            rows = conn.execute(stmt).all()
+        async with self._engine.connect() as conn:
+            rows = (await conn.execute(stmt)).all()
         return [self._to_entity(r) for r in rows]
 
-    def delete_entity(self, id: str) -> bool:
-        with self._engine.begin() as conn:
-            result = conn.execute(delete(_entities).where(_entities.c.id == id))
+    async def delete_entity(self, id: str) -> bool:
+        async with self._engine.begin() as conn:
+            result = await conn.execute(delete(_entities).where(_entities.c.id == id))
         return result.rowcount > 0
 
-    def update_entity(
+    async def update_entity(
         self,
         id: str,
         name: Optional[str] = None,
@@ -380,21 +267,17 @@ class SQLAlchemyStore(Store):
             values["entity_type"] = entity_type
         if access_blob is not UNSET:
             values["access_blob"] = access_blob
-        with self._engine.begin() as conn:
+        async with self._engine.begin() as conn:
             if values:
-                conn.execute(
+                await conn.execute(
                     update(_entities).where(_entities.c.id == id).values(**values)
                 )
-            row = conn.execute(
-                select(_entities).where(_entities.c.id == id)
+            row = (
+                await conn.execute(select(_entities).where(_entities.c.id == id))
             ).one_or_none()
         return self._to_entity(row) if row else None
 
-    # ------------------------------------------------------------------
-    # Link operations
-    # ------------------------------------------------------------------
-
-    def create_link(
+    async def create_link(
         self,
         subject_id: str,
         predicate: str,
@@ -402,15 +285,15 @@ class SQLAlchemyStore(Store):
         properties: Optional[dict] = None,
         access_blob: Optional[dict] = None,
     ) -> LinkRecord:
-        if not self.get_entity(subject_id):
+        if not await self.get_entity(subject_id):
             raise ValueError(f"Subject entity '{subject_id}' not found")
-        if not self.get_entity(object_id):
+        if not await self.get_entity(object_id):
             raise ValueError(f"Object entity '{object_id}' not found")
 
         id_ = str(uuid.uuid4())
         now = datetime.now(timezone.utc)
-        with self._engine.begin() as conn:
-            conn.execute(
+        async with self._engine.begin() as conn:
+            await conn.execute(
                 insert(_links).values(
                     id=id_,
                     subject_id=subject_id,
@@ -421,15 +304,17 @@ class SQLAlchemyStore(Store):
                     created_at=now,
                 )
             )
-            row = conn.execute(select(_links).where(_links.c.id == id_)).one()
+            row = (await conn.execute(select(_links).where(_links.c.id == id_))).one()
         return self._to_link(row)
 
-    def get_link(self, id: str) -> Optional[LinkRecord]:
-        with self._engine.connect() as conn:
-            row = conn.execute(select(_links).where(_links.c.id == id)).one_or_none()
+    async def get_link(self, id: str) -> Optional[LinkRecord]:
+        async with self._engine.connect() as conn:
+            row = (
+                await conn.execute(select(_links).where(_links.c.id == id))
+            ).one_or_none()
         return self._to_link(row) if row else None
 
-    def find_links(
+    async def find_links(
         self,
         subject_id: Optional[str] = None,
         predicate: Optional[str] = None,
@@ -444,16 +329,16 @@ class SQLAlchemyStore(Store):
             stmt = stmt.where(_links.c.predicate == predicate)
         if object_id is not None:
             stmt = stmt.where(_links.c.object_id == object_id)
-        with self._engine.connect() as conn:
-            rows = conn.execute(stmt).all()
+        async with self._engine.connect() as conn:
+            rows = (await conn.execute(stmt)).all()
         return [self._to_link(r) for r in rows]
 
-    def delete_link(self, id: str) -> bool:
-        with self._engine.begin() as conn:
-            result = conn.execute(delete(_links).where(_links.c.id == id))
+    async def delete_link(self, id: str) -> bool:
+        async with self._engine.begin() as conn:
+            result = await conn.execute(delete(_links).where(_links.c.id == id))
         return result.rowcount > 0
 
-    def update_link(
+    async def update_link(
         self,
         id: str,
         predicate: object = UNSET,
@@ -464,16 +349,57 @@ class SQLAlchemyStore(Store):
             values["predicate"] = predicate
         if access_blob is not UNSET:
             values["access_blob"] = access_blob
-        with self._engine.begin() as conn:
+        async with self._engine.begin() as conn:
             if values:
-                conn.execute(update(_links).where(_links.c.id == id).values(**values))
-            row = conn.execute(select(_links).where(_links.c.id == id)).one_or_none()
+                await conn.execute(
+                    update(_links).where(_links.c.id == id).values(**values)
+                )
+            row = (
+                await conn.execute(select(_links).where(_links.c.id == id))
+            ).one_or_none()
         return self._to_link(row) if row else None
 
-    def close(self) -> None:
-        self._engine.dispose()
+    async def upsert_namespace(self, prefix: str, uri: str) -> None:
+        if not prefix:
+            raise ValueError("prefix must not be empty")
+        if not uri:
+            raise ValueError("uri must not be empty")
 
+        async with self._engine.begin() as conn:
+            existing = (
+                await conn.execute(
+                    select(_namespaces).where(_namespaces.c.prefix == prefix)
+                )
+            ).one_or_none()
+            if existing is None:
+                await conn.execute(
+                    insert(_namespaces).values(
+                        prefix=prefix,
+                        uri=uri,
+                        created_at=datetime.now(timezone.utc),
+                    )
+                )
+            else:
+                await conn.execute(
+                    update(_namespaces)
+                    .where(_namespaces.c.prefix == prefix)
+                    .values(uri=uri)
+                )
 
-# Backward-compatible aliases
-SQLiteStore = SQLAlchemyStore
-DuckDBStore = SQLAlchemyStore
+    async def list_namespaces(self) -> dict[str, str]:
+        async with self._engine.connect() as conn:
+            rows = (
+                await conn.execute(select(_namespaces).order_by(_namespaces.c.prefix))
+            ).all()
+        return {row.prefix: row.uri for row in rows}
+
+    async def delete_namespace(self, prefix: str) -> bool:
+        async with self._engine.begin() as conn:
+            result = await conn.execute(
+                delete(_namespaces).where(_namespaces.c.prefix == prefix)
+            )
+        return result.rowcount > 0
+
+    async def close(self) -> None:
+        if self._owns_engine:
+            await self._engine.dispose()

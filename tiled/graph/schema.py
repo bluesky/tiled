@@ -4,15 +4,24 @@ Strawberry GraphQL schema for splash-links.
 Graph model:
   - Entity  — a named node with a type and arbitrary JSON properties
   - Link     — a directed, predicate-labeled edge between two entities
+  - Namespace — a CURIE prefix -> URI mapping used to expand/compact terms
+    (property keys and link predicates) for JSON-LD import/export.
 
 Query highlights:
     - entity / entities — fetch nodes
     - link / links      — fetch edges, filterable by subject, predicate, object
+    - namespaces        — list registered CURIE prefixes
     - Entity.outgoing_links / incoming_links — graph traversal from a node
 
 Mutations:
     - createEntity / createLink
     - deleteEntity (cascades to attached links) / deleteLink
+    - upsertNamespace / deleteNamespace
+
+Property keys and link predicates are expanded against the namespace
+registry when written and compacted back to CURIEs when read, so a
+prefix registered through `upsertNamespace` (or through JSON-LD import)
+is resolved consistently regardless of which interface wrote the data.
 """
 
 from __future__ import annotations
@@ -29,8 +38,9 @@ from strawberry.types.unset import UNSET, UnsetType
 from tiled.access_control.access_policies import NO_ACCESS
 from tiled.queries import AccessBlobFilter
 
+from .curie import compact_term, compact_value, expand_term, expand_value
 from .store import UNSET as STORE_UNSET
-from .store import EntityRecord, LinkRecord, Store
+from .store import EntityRecord, GraphSQLAlchemyStore, LinkRecord
 
 logger = logging.getLogger(__name__)
 
@@ -46,8 +56,12 @@ JSON = StrawberryJSON
 # ---------------------------------------------------------------------------
 
 
-def _store(info: Info) -> Store:
+def _store(info: Info) -> GraphSQLAlchemyStore:
     return info.context["store"]
+
+
+async def _namespaces(info: Info) -> dict[str, str]:
+    return await _store(info).list_namespaces()
 
 
 class _PolicyNode:
@@ -181,12 +195,17 @@ class Entity:
         limit: int = 100,
         offset: int = 0,
     ) -> list["Link"]:
-        records = _store(info).find_links(
-            subject_id=str(self.id), predicate=predicate, limit=limit, offset=offset
+        namespaces = await _namespaces(info)
+        expanded_predicate = expand_term(predicate, namespaces) if predicate else None
+        records = await _store(info).find_links(
+            subject_id=str(self.id),
+            predicate=expanded_predicate,
+            limit=limit,
+            offset=offset,
         )
         records = await _apply_policy_filters(info, records, "read:metadata")
         return [
-            _link_from_record(r)
+            _link_from_record(r, namespaces)
             for r in records
             if await _is_allowed(info, r.access_blob, "read:metadata")
         ]
@@ -199,12 +218,17 @@ class Entity:
         limit: int = 100,
         offset: int = 0,
     ) -> list["Link"]:
-        records = _store(info).find_links(
-            object_id=str(self.id), predicate=predicate, limit=limit, offset=offset
+        namespaces = await _namespaces(info)
+        expanded_predicate = expand_term(predicate, namespaces) if predicate else None
+        records = await _store(info).find_links(
+            object_id=str(self.id),
+            predicate=expanded_predicate,
+            limit=limit,
+            offset=offset,
         )
         records = await _apply_policy_filters(info, records, "read:metadata")
         return [
-            _link_from_record(r)
+            _link_from_record(r, namespaces)
             for r in records
             if await _is_allowed(info, r.access_blob, "read:metadata")
         ]
@@ -222,21 +246,29 @@ class Link:
 
     @strawberry.field
     async def subject(self, info: Info) -> Optional[Entity]:
-        record = _store(info).get_entity(str(self.subject_id))
+        record = await _store(info).get_entity(str(self.subject_id))
         if not record or not await _is_allowed(
             info, record.access_blob, "read:metadata"
         ):
             return None
-        return _entity_from_record(record)
+        return _entity_from_record(record, await _namespaces(info))
 
     @strawberry.field
     async def object(self, info: Info) -> Optional[Entity]:
-        record = _store(info).get_entity(str(self.object_id))
+        record = await _store(info).get_entity(str(self.object_id))
         if not record or not await _is_allowed(
             info, record.access_blob, "read:metadata"
         ):
             return None
-        return _entity_from_record(record)
+        return _entity_from_record(record, await _namespaces(info))
+
+
+@strawberry.type(
+    description="A CURIE prefix -> URI mapping used to expand/compact terms."
+)
+class Namespace:
+    prefix: str
+    uri: str
 
 
 # ---------------------------------------------------------------------------
@@ -244,25 +276,27 @@ class Link:
 # ---------------------------------------------------------------------------
 
 
-def _entity_from_record(r: EntityRecord) -> Entity:
+def _entity_from_record(r: EntityRecord, namespaces: dict[str, str]) -> Entity:
+    properties = compact_value(r.properties, namespaces) if r.properties else None
     return Entity(
         id=strawberry.ID(r.id),
         node_id=r.node_id,
         entity_type=r.entity_type,
         name=r.name,
         uri=r.uri,
-        properties=r.properties if r.properties else None,
+        properties=properties,
         created_at=r.created_at.isoformat(),
     )
 
 
-def _link_from_record(r: LinkRecord) -> Link:
+def _link_from_record(r: LinkRecord, namespaces: dict[str, str]) -> Link:
+    properties = compact_value(r.properties, namespaces) if r.properties else None
     return Link(
         id=strawberry.ID(r.id),
         subject_id=strawberry.ID(r.subject_id),
-        predicate=r.predicate,
+        predicate=compact_term(r.predicate, namespaces),
         object_id=strawberry.ID(r.object_id),
-        properties=r.properties if r.properties else None,
+        properties=properties,
         access_blob=r.access_blob if r.access_blob else None,
         created_at=r.created_at.isoformat(),
     )
@@ -316,12 +350,12 @@ class CreateLinkInput:
 class Query:
     @strawberry.field
     async def entity(self, info: Info, id: strawberry.ID) -> Optional[Entity]:
-        record = _store(info).get_entity(str(id))
+        record = await _store(info).get_entity(str(id))
         if not record or not await _is_allowed(
             info, record.access_blob, "read:metadata"
         ):
             return None
-        return _entity_from_record(record) if record else None
+        return _entity_from_record(record, await _namespaces(info))
 
     @strawberry.field
     async def entities(
@@ -331,24 +365,25 @@ class Query:
         limit: int = 100,
         offset: int = 0,
     ) -> list[Entity]:
-        records = _store(info).list_entities(
+        records = await _store(info).list_entities(
             entity_type=entity_type, limit=limit, offset=offset
         )
         records = await _apply_policy_filters(info, records, "read:metadata")
+        namespaces = await _namespaces(info)
         return [
-            _entity_from_record(r)
+            _entity_from_record(r, namespaces)
             for r in records
             if await _is_allowed(info, r.access_blob, "read:metadata")
         ]
 
     @strawberry.field
     async def link(self, info: Info, id: strawberry.ID) -> Optional[Link]:
-        record = _store(info).get_link(str(id))
+        record = await _store(info).get_link(str(id))
         if not record or not await _is_allowed(
             info, record.access_blob, "read:metadata"
         ):
             return None
-        return _link_from_record(record) if record else None
+        return _link_from_record(record, await _namespaces(info))
 
     @strawberry.field(
         description="Find links, optionally filtered by subject, predicate, and/or object."
@@ -362,18 +397,29 @@ class Query:
         limit: int = 100,
         offset: int = 0,
     ) -> list[Link]:
-        records = _store(info).find_links(
+        namespaces = await _namespaces(info)
+        expanded_predicate = expand_term(predicate, namespaces) if predicate else None
+        records = await _store(info).find_links(
             subject_id=str(subject_id) if subject_id else None,
-            predicate=predicate,
+            predicate=expanded_predicate,
             object_id=str(object_id) if object_id else None,
             limit=limit,
             offset=offset,
         )
         records = await _apply_policy_filters(info, records, "read:metadata")
         return [
-            _link_from_record(r)
+            _link_from_record(r, namespaces)
             for r in records
             if await _is_allowed(info, r.access_blob, "read:metadata")
+        ]
+
+    @strawberry.field(description="List registered CURIE prefix -> URI mappings.")
+    async def namespaces(self, info: Info) -> list[Namespace]:
+        if "read:metadata" not in info.context["authn_scopes"]:
+            return []
+        mapping = await _namespaces(info)
+        return [
+            Namespace(prefix=prefix, uri=uri) for prefix, uri in sorted(mapping.items())
         ]
 
 
@@ -382,13 +428,14 @@ class Mutation:
     @strawberry.mutation
     async def create_entity(self, info: Info, input: CreateEntityInput) -> Entity:
         _assert_authn_scope(info, "write:metadata")
+        namespaces = await _namespaces(info)
         access_blob = await _init_access_blob(info, input.access_blob)
-        record = _store(info).create_entity(
+        record = await _store(info).create_entity(
             entity_type=input.entity_type,
             name=input.name,
             node_id=input.node_id,
             uri=input.uri,
-            properties=input.properties,
+            properties=expand_value(input.properties or {}, namespaces),
             access_blob=access_blob,
         )
         logger.info(
@@ -397,25 +444,26 @@ class Mutation:
             record.name,
             record.id,
         )
-        return _entity_from_record(record)
+        return _entity_from_record(record, namespaces)
 
     @strawberry.mutation
     async def create_link(self, info: Info, input: CreateLinkInput) -> Link:
         _assert_authn_scope(info, "write:metadata")
-        subject = _store(info).get_entity(str(input.subject_id))
+        namespaces = await _namespaces(info)
+        subject = await _store(info).get_entity(str(input.subject_id))
         if not subject:
             raise GraphQLError(f"Subject entity '{input.subject_id}' not found")
         await _assert_allowed(info, subject.access_blob, "write:metadata")
-        object_ = _store(info).get_entity(str(input.object_id))
+        object_ = await _store(info).get_entity(str(input.object_id))
         if not object_:
             raise GraphQLError(f"Object entity '{input.object_id}' not found")
         await _assert_allowed(info, object_.access_blob, "write:metadata")
         access_blob = await _init_access_blob(info, input.access_blob)
-        record = _store(info).create_link(
+        record = await _store(info).create_link(
             subject_id=str(input.subject_id),
-            predicate=input.predicate,
+            predicate=expand_term(input.predicate, namespaces),
             object_id=str(input.object_id),
-            properties=input.properties,
+            properties=expand_value(input.properties or {}, namespaces),
             access_blob=access_blob,
         )
         logger.info(
@@ -425,17 +473,17 @@ class Mutation:
             record.object_id[:8],
             record.id,
         )
-        return _link_from_record(record)
+        return _link_from_record(record, namespaces)
 
     @strawberry.mutation(
         description="Delete an entity and all its attached links. Returns true if found."
     )
     async def delete_entity(self, info: Info, id: strawberry.ID) -> bool:
-        record = _store(info).get_entity(str(id))
+        record = await _store(info).get_entity(str(id))
         if not record:
             return False
         await _assert_allowed(info, record.access_blob, "write:metadata")
-        deleted = _store(info).delete_entity(str(id))
+        deleted = await _store(info).delete_entity(str(id))
         if deleted:
             logger.info("Deleted entity id=%s", id)
         return deleted
@@ -444,7 +492,7 @@ class Mutation:
     async def update_entity(
         self, info: Info, id: strawberry.ID, input: UpdateEntityInput
     ) -> Optional[Entity]:
-        current = _store(info).get_entity(str(id))
+        current = await _store(info).get_entity(str(id))
         if current is None:
             return None
         await _assert_allowed(info, current.access_blob, "write:metadata")
@@ -456,7 +504,7 @@ class Mutation:
             )
         node_id = STORE_UNSET if input.node_id is UNSET else input.node_id
         uri = STORE_UNSET if input.uri is UNSET else input.uri
-        record = _store(info).update_entity(
+        record = await _store(info).update_entity(
             str(id),
             name=input.name,
             node_id=node_id,
@@ -466,15 +514,15 @@ class Mutation:
         )
         if record:
             logger.info("Updated entity id=%s", id)
-        return _entity_from_record(record) if record else None
+        return _entity_from_record(record, await _namespaces(info)) if record else None
 
     @strawberry.mutation(description="Delete a single link. Returns true if found.")
     async def delete_link(self, info: Info, id: strawberry.ID) -> bool:
-        record = _store(info).get_link(str(id))
+        record = await _store(info).get_link(str(id))
         if not record:
             return False
         await _assert_allowed(info, record.access_blob, "write:metadata")
-        deleted = _store(info).delete_link(str(id))
+        deleted = await _store(info).delete_link(str(id))
         if deleted:
             logger.info("Deleted link id=%s", id)
         return deleted
@@ -483,25 +531,49 @@ class Mutation:
     async def update_link(
         self, info: Info, id: strawberry.ID, input: UpdateLinkInput
     ) -> Optional[Link]:
-        current = _store(info).get_link(str(id))
+        current = await _store(info).get_link(str(id))
         if current is None:
             return None
         await _assert_allowed(info, current.access_blob, "write:metadata")
+        namespaces = await _namespaces(info)
         access_blob = UNSET
         if input.access_blob is not UNSET:
             requested_access_blob = input.access_blob or {}
             access_blob = await _modify_access_blob(
                 info, current.access_blob, requested_access_blob
             )
-        predicate = STORE_UNSET if input.predicate is UNSET else input.predicate
-        record = _store(info).update_link(
+        predicate = (
+            STORE_UNSET
+            if input.predicate is UNSET
+            else expand_term(input.predicate, namespaces)
+        )
+        record = await _store(info).update_link(
             str(id),
             predicate=predicate,
             access_blob=access_blob,
         )
         if record:
             logger.info("Updated link id=%s predicate=%r", id, input.predicate)
-        return _link_from_record(record) if record else None
+        return _link_from_record(record, namespaces) if record else None
+
+    @strawberry.mutation(
+        description="Register or update a CURIE prefix -> URI mapping."
+    )
+    async def upsert_namespace(self, info: Info, prefix: str, uri: str) -> Namespace:
+        _assert_authn_scope(info, "write:metadata")
+        await _store(info).upsert_namespace(prefix, uri)
+        logger.info("Upserted namespace prefix=%r uri=%r", prefix, uri)
+        return Namespace(prefix=prefix, uri=uri)
+
+    @strawberry.mutation(
+        description="Delete a registered namespace. Returns true if found."
+    )
+    async def delete_namespace(self, info: Info, prefix: str) -> bool:
+        _assert_authn_scope(info, "write:metadata")
+        deleted = await _store(info).delete_namespace(prefix)
+        if deleted:
+            logger.info("Deleted namespace prefix=%r", prefix)
+        return deleted
 
 
 # ---------------------------------------------------------------------------
