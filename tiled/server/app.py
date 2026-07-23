@@ -429,9 +429,15 @@ def build_app(
 
     app.include_router(get_zarr_router_v2(), prefix="/zarr/v2")
     app.include_router(get_zarr_router_v3(), prefix="/zarr/v3")
-    links_db_config = server_settings.get("links_database")
-    links_db_uri = links_db_config.uri if links_db_config is not None else None
-    app.include_router(get_links_router(links_db_uri))
+
+    # The graph (splash-links) feature stores its tables in the catalog
+    # database (entities.node_id is a foreign key to the catalog's nodes
+    # table), so it is only available when serving a catalog-backed tree.
+    # Note this is independent of `database:` config, which configures the
+    # unrelated authn/session database.
+    catalog_context = getattr(tree, "context", None)
+    if catalog_context is not None:
+        app.include_router(get_links_router(lambda: catalog_context.database_settings))
 
     # The Tree and Authenticator have the opportunity to add custom routes to
     # the server here. (Just for example, a Tree of BlueskyRuns uses this
@@ -757,82 +763,6 @@ def build_app(
             app.state.tasks.append(
                 asyncio.create_task(purge_expired_sessions_and_api_keys())
             )
-
-        if links_db_uri is not None and ":memory:" not in links_db_uri:
-            import sys
-
-            from sqlalchemy.ext.asyncio import create_async_engine
-
-            from ..alembic_utils import (
-                DatabaseUpgradeNeeded,
-                UninitializedDatabase,
-                check_database,
-            )
-            from ..catalog.core import (
-                ALL_REVISIONS,
-                REQUIRED_REVISION,
-                initialize_database,
-            )
-            from ..utils import ensure_specified_sql_driver
-
-            graph_engine = create_async_engine(
-                ensure_specified_sql_driver(links_db_uri)
-            )
-            redacted_graph_url = graph_engine.url._replace(password="[redacted]")
-            try:
-                await check_database(graph_engine, REQUIRED_REVISION, ALL_REVISIONS)
-            except UninitializedDatabase:
-                if settings.database_init_if_not_exists:
-                    import subprocess
-
-                    subprocess.run(
-                        [
-                            sys.executable,
-                            "-m",
-                            "tiled",
-                            "catalog",
-                            "init",
-                            str(graph_engine.url),
-                        ],
-                        capture_output=True,
-                        check=True,
-                    )
-                else:
-                    print(
-                        dedent(
-                            f"""
-
-                            No graph database found at {redacted_graph_url}
-
-                            To create one, run:
-
-                                tiled catalog init {redacted_graph_url}
-                            """
-                        ),
-                        file=sys.stderr,
-                    )
-                    raise
-            except DatabaseUpgradeNeeded as err:
-                print(
-                    dedent(
-                        f"""
-
-                        The graph database at {redacted_graph_url} was created by an older
-                        version of Tiled. It needs to be upgraded.
-
-                        Back up the database, and then run:
-
-                            tiled catalog upgrade-database {redacted_graph_url}
-                        """
-                    ),
-                    file=sys.stderr,
-                )
-                raise err from None
-            else:
-                logger.info(
-                    f"Connected to existing graph database at {redacted_graph_url}."
-                )
-            await graph_engine.dispose()
 
     async def shutdown_event():
         # Run shutdown tasks collected from trees (adapters).

@@ -3,9 +3,9 @@ from sqlalchemy import Column, Integer, Table
 from starlette.testclient import TestClient
 
 from tiled.catalog import in_memory
-from tiled.config import LinksDatabase
+from tiled.config import Database
 from tiled.graph.schema import schema
-from tiled.graph.store import SQLAlchemyStore, _metadata
+from tiled.graph.store import GraphSQLAlchemyStore, _metadata
 from tiled.queries import AccessBlobFilter
 from tiled.server.app import build_app
 from tiled.server.authentication import (
@@ -13,6 +13,8 @@ from tiled.server.authentication import (
     get_current_principal,
     get_current_scopes,
 )
+from tiled.server.connection_pool import close_database_connection_pool
+from tiled.server.settings import DatabaseSettings
 
 CREATE_ENTITY_MUTATION = """
 mutation($input: CreateEntityInput!) {
@@ -106,16 +108,20 @@ class FilterPolicy(FakeTagPolicy):
 
 
 @pytest.fixture
-def store():
+async def store():
     Table(
         "nodes",
         _metadata,
         Column("id", Integer, primary_key=True),
         extend_existing=True,
     )
-    s = SQLAlchemyStore(":memory:")
+    database_settings = DatabaseSettings(uri="sqlite:///:memory:")
+    s = await GraphSQLAlchemyStore.from_database_settings(database_settings)
     yield s
-    s.close()
+    # Tear down the shared pool entry (rather than just `s.close()`, which is
+    # a no-op here) so each test gets an isolated in-memory database instead
+    # of silently reusing state left behind by the previous test.
+    await close_database_connection_pool(database_settings)
 
 
 @pytest.fixture
@@ -172,7 +178,7 @@ async def test_entity_create_defaults_to_user_access_blob_and_read_visibility(
     assert result.errors is None
     entity_id = result.data["createEntity"]["id"]
 
-    record = store.get_entity(entity_id)
+    record = await store.get_entity(entity_id)
     assert record.access_blob == {"user": "alice"}
 
     alice_read = await _execute(READ_ENTITY_QUERY, alice_ctx, {"id": entity_id})
@@ -402,6 +408,140 @@ async def test_query_paths_use_access_policy_filters(store, filter_policy):
     assert filter_policy.filter_calls >= 1
 
 
+UPSERT_NAMESPACE_MUTATION = """
+mutation($prefix: String!, $uri: String!) {
+    upsertNamespace(prefix: $prefix, uri: $uri) { prefix uri }
+}
+"""
+
+NAMESPACES_QUERY = "query { namespaces { prefix uri } }"
+
+
+@pytest.mark.asyncio
+async def test_namespaces_query_and_mutations(store, policy):
+    """Namespaces are manageable and listable directly through GraphQL."""
+
+    alice_ctx = _context(store, policy, "alice", {"read:metadata", "write:metadata"})
+
+    upserted = await _execute(
+        UPSERT_NAMESPACE_MUTATION,
+        alice_ctx,
+        {"prefix": "schema", "uri": "https://schema.org/"},
+    )
+    assert upserted.errors is None
+    assert upserted.data["upsertNamespace"] == {
+        "prefix": "schema",
+        "uri": "https://schema.org/",
+    }
+
+    listed = await _execute(NAMESPACES_QUERY, alice_ctx)
+    assert listed.errors is None
+    assert listed.data["namespaces"] == [
+        {"prefix": "schema", "uri": "https://schema.org/"}
+    ]
+
+    # A principal without write:metadata cannot manage namespaces.
+    bob_ctx = _context(store, policy, "bob", {"read:metadata"})
+    denied = await _execute(
+        UPSERT_NAMESPACE_MUTATION,
+        bob_ctx,
+        {"prefix": "other", "uri": "https://example.org/"},
+    )
+    assert denied.errors
+    assert "Not permitted" in denied.errors[0].message
+
+    delete_mutation = "mutation($prefix: String!) { deleteNamespace(prefix: $prefix) }"
+    deleted = await _execute(delete_mutation, alice_ctx, {"prefix": "schema"})
+    assert deleted.errors is None
+    assert deleted.data["deleteNamespace"] is True
+
+    listed_after_delete = await _execute(NAMESPACES_QUERY, alice_ctx)
+    assert listed_after_delete.errors is None
+    assert listed_after_delete.data["namespaces"] == []
+
+
+@pytest.mark.asyncio
+async def test_graphql_expands_and_compacts_curies(store, policy):
+    """Entity/link terms written as CURIEs round-trip through GraphQL as CURIEs,
+    but are stored internally as fully-expanded IRIs (as JSON-LD export expects)."""
+
+    alice_ctx = _context(store, policy, "alice", {"read:metadata", "write:metadata"})
+    await _execute(
+        UPSERT_NAMESPACE_MUTATION,
+        alice_ctx,
+        {"prefix": "schema", "uri": "https://schema.org/"},
+    )
+
+    create_entity_with_properties = """
+    mutation($input: CreateEntityInput!) {
+        createEntity(input: $input) { id properties }
+    }
+    """
+    created = await _execute(
+        create_entity_with_properties,
+        alice_ctx,
+        {
+            "input": {
+                "entityType": "sample",
+                "name": "E",
+                "properties": {"schema:name": "hello"},
+            }
+        },
+    )
+    assert created.errors is None
+    entity_id = created.data["createEntity"]["id"]
+    assert created.data["createEntity"]["properties"] == {"schema:name": "hello"}
+
+    # The store holds the fully-expanded IRI, not the raw CURIE string.
+    raw_record = await store.get_entity(entity_id)
+    assert raw_record.properties == {"https://schema.org/name": "hello"}
+
+    # Reading back through GraphQL compacts it to a CURIE again.
+    read_query = "query($id: ID!) { entity(id: $id) { properties } }"
+    read_back = await _execute(read_query, alice_ctx, {"id": entity_id})
+    assert read_back.errors is None
+    assert read_back.data["entity"]["properties"] == {"schema:name": "hello"}
+
+    create_link_with_predicate = """
+    mutation($input: CreateLinkInput!) {
+        createLink(input: $input) { id predicate }
+    }
+    """
+    other = await _execute(
+        create_entity_with_properties,
+        alice_ctx,
+        {"input": {"entityType": "sample", "name": "O", "properties": {}}},
+    )
+    other_id = other.data["createEntity"]["id"]
+    link_created = await _execute(
+        create_link_with_predicate,
+        alice_ctx,
+        {
+            "input": {
+                "subjectId": entity_id,
+                "predicate": "schema:relatedTo",
+                "objectId": other_id,
+            }
+        },
+    )
+    assert link_created.errors is None
+    assert link_created.data["createLink"]["predicate"] == "schema:relatedTo"
+
+    raw_link = await store.get_link(link_created.data["createLink"]["id"])
+    assert raw_link.predicate == "https://schema.org/relatedTo"
+
+    # A CURIE predicate filter matches the expanded, stored predicate.
+    filtered = await _execute(
+        "query($p: String!) { links(predicate: $p) { predicate } }",
+        alice_ctx,
+        {"p": "schema:relatedTo"},
+    )
+    assert filtered.errors is None
+    assert [link["predicate"] for link in filtered.data["links"]] == [
+        "schema:relatedTo"
+    ]
+
+
 def test_graphql_http_route_access_control_integration(tmp_path, policy):
     """Validate HTTP GraphQL route wiring with auth dependencies and policy checks."""
 
@@ -417,7 +557,7 @@ def test_graphql_http_route_access_control_integration(tmp_path, policy):
     app = build_app(
         catalog,
         access_policy=policy,
-        server_settings={"links_database": LinksDatabase(uri="sqlite:///:memory:")},
+        server_settings={"database": Database(uri="sqlite:///:memory:")},
     )
 
     with TestClient(app) as client:
@@ -500,5 +640,203 @@ def test_graphql_http_route_access_control_integration(tmp_path, policy):
         payload = read_response.json()
         assert payload.get("errors") is None
         assert payload["data"]["link"]["id"] == link_id
+
+    app.dependency_overrides.clear()
+
+
+def test_graph_jsonld_export_respects_access_policy(tmp_path, policy):
+    """Export JSON-LD should include only records visible to the requesting user."""
+
+    Table(
+        "nodes",
+        _metadata,
+        Column("id", Integer, primary_key=True),
+        extend_existing=True,
+    )
+
+    catalog = in_memory(writable_storage=str(tmp_path / "storage"))
+    app = build_app(
+        catalog,
+        access_policy=policy,
+        server_settings={"database": Database(uri="sqlite:///:memory:")},
+    )
+
+    with TestClient(app) as client:
+        app.dependency_overrides[get_current_principal] = lambda: "alice"
+        app.dependency_overrides[get_current_access_tags] = lambda: None
+        app.dependency_overrides[get_current_scopes] = lambda: {
+            "read:metadata",
+            "write:metadata",
+        }
+
+        team_subject = client.post(
+            "/api/graphql",
+            json={
+                "query": CREATE_ENTITY_MUTATION,
+                "variables": {
+                    "input": {
+                        "entityType": "sample",
+                        "name": "team-s",
+                        "properties": {},
+                        "accessBlob": {"tags": ["team"]},
+                    }
+                },
+            },
+        ).json()["data"]["createEntity"]["id"]
+        team_object = client.post(
+            "/api/graphql",
+            json={
+                "query": CREATE_ENTITY_MUTATION,
+                "variables": {
+                    "input": {
+                        "entityType": "sample",
+                        "name": "team-o",
+                        "properties": {},
+                        "accessBlob": {"tags": ["team"]},
+                    }
+                },
+            },
+        ).json()["data"]["createEntity"]["id"]
+        client.post(
+            "/api/graphql",
+            json={
+                "query": CREATE_LINK_MUTATION,
+                "variables": {
+                    "input": {
+                        "subjectId": team_subject,
+                        "predicate": "relates_to",
+                        "objectId": team_object,
+                        "properties": {},
+                        "accessBlob": {"tags": ["team"]},
+                    }
+                },
+            },
+        )
+        client.post(
+            "/api/graphql",
+            json={
+                "query": CREATE_ENTITY_MUTATION,
+                "variables": {
+                    "input": {
+                        "entityType": "sample",
+                        "name": "alice-private",
+                        "properties": {},
+                    }
+                },
+            },
+        )
+
+        app.dependency_overrides[get_current_principal] = lambda: "bob"
+        app.dependency_overrides[get_current_access_tags] = lambda: None
+        app.dependency_overrides[get_current_scopes] = lambda: {"read:metadata"}
+
+        response = client.get("/api/v1/graph/jsonld")
+        assert response.status_code == 200
+        assert response.headers["content-type"].startswith("application/ld+json")
+        payload = response.json()
+        items = payload["@graph"]
+
+        names = {item.get("name") for item in items if item.get("@type") == "Entity"}
+        assert names == {"team-s", "team-o"}
+        link_items = [item for item in items if item.get("@type") == "Link"]
+        assert len(link_items) == 1
+
+    app.dependency_overrides.clear()
+
+
+def test_graph_jsonld_import_creates_entities_and_links(tmp_path, policy):
+    """Import JSON-LD should create entities and links using policy-aware writes."""
+
+    Table(
+        "nodes",
+        _metadata,
+        Column("id", Integer, primary_key=True),
+        extend_existing=True,
+    )
+
+    catalog = in_memory(writable_storage=str(tmp_path / "storage"))
+    app = build_app(
+        catalog,
+        access_policy=policy,
+        server_settings={"database": Database(uri="sqlite:///:memory:")},
+    )
+
+    document = {
+        "@context": {
+            "@vocab": "https://blueskyproject.io/tiled/graph#",
+            "ro": "https://w3id.org/ro/terms/",
+            "prov": "http://www.w3.org/ns/prov#",
+            "schema": "https://schema.org/",
+            "subject": {"@type": "@id"},
+            "object": {"@type": "@id"},
+        },
+        "@graph": [
+            {
+                "@id": "urn:entity:A",
+                "@type": "Entity",
+                "entityType": "sample",
+                "name": "import-a",
+                "properties": {"schema:encodingFormat": "application/x-zarr"},
+                "accessBlob": {"tags": ["team"]},
+            },
+            {
+                "@id": "urn:entity:B",
+                "@type": "Entity",
+                "entityType": "sample",
+                "name": "import-b",
+                "properties": {"ro:description": "derived"},
+                "accessBlob": {"tags": ["team"]},
+            },
+            {
+                "@id": "urn:link:AB",
+                "@type": "Link",
+                "subject": "urn:entity:A",
+                "predicate": "prov:wasDerivedFrom",
+                "object": "urn:entity:B",
+                "properties": {"schema:identifier": "L-1"},
+                "accessBlob": {"tags": ["team"]},
+            },
+        ],
+    }
+
+    with TestClient(app) as client:
+        app.dependency_overrides[get_current_principal] = lambda: "alice"
+        app.dependency_overrides[get_current_access_tags] = lambda: None
+        app.dependency_overrides[get_current_scopes] = lambda: {
+            "read:metadata",
+            "write:metadata",
+        }
+
+        response = client.post("/api/v1/graph/jsonld", json=document)
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["created_entities"] == 2
+        assert payload["created_links"] == 1
+
+        read_back = client.get("/api/v1/graph/jsonld")
+        assert read_back.status_code == 200
+        exported = read_back.json()
+        graph = exported["@graph"]
+        assert exported["@context"]["ro"] == "https://w3id.org/ro/terms/"
+        assert exported["@context"]["prov"] == "http://www.w3.org/ns/prov#"
+        assert exported["@context"]["schema"] == "https://schema.org/"
+        entity_names = {
+            item.get("name") for item in graph if item.get("@type") == "Entity"
+        }
+        assert entity_names == {"import-a", "import-b"}
+
+        entity_by_name = {
+            item["name"]: item for item in graph if item.get("@type") == "Entity"
+        }
+        assert (
+            entity_by_name["import-a"]["properties"]["schema:encodingFormat"]
+            == "application/x-zarr"
+        )
+        assert entity_by_name["import-b"]["properties"]["ro:description"] == "derived"
+
+        link_items = [item for item in graph if item.get("@type") == "Link"]
+        assert len(link_items) == 1
+        assert link_items[0]["predicate"] == "prov:wasDerivedFrom"
+        assert link_items[0]["properties"]["schema:identifier"] == "L-1"
 
     app.dependency_overrides.clear()
