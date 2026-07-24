@@ -5,6 +5,9 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## Unreleased
 
+- Add client_secret,redirect_on_success,redirect_on_failure to ProxiedOIDCAuthenticator. This is to allow login using Tiled-UI
+- Allow configuration of user_id_claim for OIDCAuthenticator
+
 ### Fixed
 
 - Skip the `array-ref` streaming-cache update in `put_data_source` when the
