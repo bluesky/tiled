@@ -1151,5 +1151,5 @@ class TestBuildUrlValidator:
                     allow_private_addresses=False,
                     allow_delivery_hosts=["notmyrealhost"],
                 )
-            ) # noqa: F841
+            )  # noqa: F841
         assert exc_info.value.status_code == 400
