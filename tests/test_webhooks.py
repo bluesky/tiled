@@ -770,7 +770,6 @@ def test_ssrf_check_bad_accepted_hostname() -> None:
                 "https://example.com/hook", ["93.184.216.0/24"], ["93.184.216.34"]
             )
 
-
 # ---------------------------------------------------------------------------
 # Unit tests: WebhookDispatcher shutdown drains pending tasks
 # ---------------------------------------------------------------------------
@@ -1142,3 +1141,10 @@ class TestBuildUrlValidator:
             WebhooksConfig(allow_http=True, allow_private_addresses=True)
         )
         assert validator is _noop_url_validator
+
+    def test_check_not_available_hostname(self) -> None:
+        """Invalid hostname must throw exception."""
+        with pytest.raises(HTTPException) as exc_info:
+            validator = _build_url_validator(
+                WebhooksConfig(allow_private_addresses=False, allow_delivery_hosts=["notmyrealhost"]))
+        assert exc_info.value.status_code == 400
