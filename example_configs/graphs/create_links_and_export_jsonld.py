@@ -37,8 +37,13 @@ query($subjectId: ID!, $predicate: String!, $objectId: ID!) {
 }
 """
 
-DATASET_UIDS_BY_NAME = {dataset["name"]: dataset["uid"] for dataset in DATASETS}
-DATASET_NAMES = set(DATASET_UIDS_BY_NAME)
+CATALOG_NODE_ID_QUERY = """
+query($path: [String!]!) {
+    catalogNodeId(path: $path)
+}
+"""
+
+DATASET_NAMES = {dataset["name"] for dataset in DATASETS}
 
 
 def _post_graphql(client: httpx.Client, query: str, variables: dict) -> dict:
@@ -110,13 +115,20 @@ def main() -> None:
                 raise RuntimeError(f"Entity '{name}' has non-object properties.")
 
             properties = dict(item.get("properties") or {})
-            if name in DATASET_UIDS_BY_NAME:
-                properties.setdefault("tiled:uid", DATASET_UIDS_BY_NAME[name])
+
+            if name in DATASET_NAMES:
+                # Points at data hosted by this server: link to it by its
+                # full Tiled URL rather than an ad hoc relative path.
+                uri = f"{base_url}/api/v1/metadata/{name}"
+            else:
+                # Points elsewhere (e.g. a dataset on another Tiled server)
+                # if the input document says so, or nowhere at all otherwise.
+                uri = item.get("uri")
 
             entity_input = {
                 "entityType": item.get("entityType", "entity"),
                 "name": name,
-                "uri": item.get("uri"),
+                "uri": uri,
                 "nodeId": item.get("nodeId"),
                 "properties": properties,
             }
@@ -158,6 +170,19 @@ def main() -> None:
         ).raise_for_status()
 
         entity_ids: dict[str, str] = {}
+
+        # For entities that are real catalog datasets, resolve the catalog
+        # node's internal id so it lands in the entity's `nodeId` (and thus
+        # the `node_id` column), instead of being duplicated into `properties`.
+        for name, entity in entities.items():
+            if entity["nodeId"] is None and name in DATASET_NAMES:
+                lookup = _post_graphql(client, CATALOG_NODE_ID_QUERY, {"path": [name]})
+                node_id = lookup["data"]["catalogNodeId"]
+                if node_id is None:
+                    raise RuntimeError(
+                        f"Could not resolve catalog node id for dataset '{name}'."
+                    )
+                entity["nodeId"] = node_id
 
         existing = _post_graphql(client, LIST_ENTITIES_QUERY, {})
         for entity in existing["data"]["entities"]:

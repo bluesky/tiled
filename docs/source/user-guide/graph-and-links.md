@@ -213,6 +213,87 @@ something meaningful rather than being stored as a literal string.
 `updateEntity`, `deleteEntity`, `updateLink`, and `deleteLink` are also
 available; deleting an entity cascades to any links attached to it.
 
+## Tie entities to data: `nodeId` vs `uri`
+
+An entity can reference the data it describes in two independent ways:
+
+- **`nodeId`** --- the internal id of a node in *this* server's own catalog
+  tree, for an entity that represents (or is closely tied to) a dataset
+  hosted right here. Catalog node ids are internal and are not otherwise
+  exposed to clients, so resolve one from a catalog path with the
+  `catalogNodeId` query before creating or updating an entity:
+
+  ```graphql
+  query {
+    catalogNodeId(path: ["raw_dataset"])
+  }
+  ```
+
+  `path` is the list of key segments leading to the node (`["raw_dataset"]`
+  for a top-level entry, `["a", "b"]` for a nested one). It returns `null` if
+  no such node exists.
+
+- **`uri`** --- a free-form locator, stored and returned verbatim with no
+  lookup or validation. Follow this convention when setting it:
+  - If the entity points at data hosted by *this* server, set `uri` to the
+    full Tiled URL alongside `nodeId` (e.g.
+    `http://host:port/api/v1/metadata/raw_dataset`), so the entity is
+    resolvable both internally (via `nodeId`) and as a plain link (via
+    `uri`).
+  - If it points at data hosted elsewhere (a dataset on a different Tiled
+    deployment, a DOI, anything with a stable external address), set `uri`
+    to that address and leave `nodeId` unset.
+  - If it doesn't point at any addressable resource (e.g. a workflow or
+    software entity that only exists as a description), leave `uri` unset
+    (`null`).
+
+  An entity tied to local data, with both fields set:
+
+  ```graphql
+  mutation {
+    createEntity(
+      input: {
+        entityType: "dataset"
+        name: "raw_dataset"
+        nodeId: 1
+        uri: "http://127.0.0.1:8000/api/v1/metadata/raw_dataset"
+        properties: { "schema:encodingFormat": "application/x-zarr" }
+      }
+    ) {
+      id
+      nodeId
+      uri
+    }
+  }
+  ```
+
+  An entity referencing a dataset hosted on a different Tiled server, with
+  only `uri` set:
+
+  ```graphql
+  mutation {
+    createEntity(
+      input: {
+        entityType: "dataset"
+        name: "dif_beam_hdf5_image"
+        uri: "https://tiled-demo.nsls2.bnl.gov/api/v1/metadata/csx/6cb250e3-3a4a-46e1-8fcb-a1caa0445f41/primary/dif_beam_hdf5_image"
+        properties: { "@type": "Dataset" }
+      }
+    ) {
+      id
+      uri
+    }
+  }
+  ```
+
+  This entity has no `nodeId`---it isn't in this server's catalog---but it
+  can still be linked into the graph like any other entity, for example as
+  the object of a `prov:wasDerivedFrom` link from a local dataset, to record
+  that the local data was derived from an experiment run somewhere else.
+
+  See the `dif_beam_hdf5_image` entity in `example_configs/graphs/input.json`
+  and `example_configs/graphs/exported_graph.jsonld` for a worked example.
+
 ## From the command line
 
 The same endpoint works with any HTTP client:

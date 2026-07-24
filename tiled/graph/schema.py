@@ -376,6 +376,17 @@ class Query:
             if await _is_allowed(info, r.access_blob, "read:metadata")
         ]
 
+    @strawberry.field(
+        description=(
+            "Resolve the internal catalog node id for a path of key "
+            "segments (e.g. ['raw_dataset']), for use as CreateEntityInput's "
+            "nodeId. Returns null if no such catalog node exists."
+        )
+    )
+    async def catalog_node_id(self, info: Info, path: list[str]) -> Optional[int]:
+        _assert_authn_scope(info, "read:metadata")
+        return await _store(info).resolve_node_id(path)
+
     @strawberry.field
     async def link(self, info: Info, id: strawberry.ID) -> Optional[Link]:
         record = await _store(info).get_link(str(id))

@@ -73,12 +73,17 @@ class LinkRecord(BaseModel):
 
 _metadata = MetaData()
 
-# Register the catalog nodes table key so entities.node_id can resolve
-# ForeignKey("nodes.id") when SQLAlchemy sorts DDL dependencies.
-Table(
+# Register the catalog nodes table so entities.node_id can resolve
+# ForeignKey("nodes.id") when SQLAlchemy sorts DDL dependencies, and so
+# resolve_node_id() below can look up a node's id by its catalog path
+# without importing tiled.catalog (this table always already exists---
+# it is created by the catalog's own migrations).
+_nodes = Table(
     "nodes",
     _metadata,
     Column("id", Integer, primary_key=True),
+    Column("parent", Integer, ForeignKey("nodes.id"), nullable=True),
+    Column("key", String, nullable=False),
     extend_existing=True,
 )
 
@@ -399,6 +404,29 @@ class GraphSQLAlchemyStore:
                 delete(_namespaces).where(_namespaces.c.prefix == prefix)
             )
         return result.rowcount > 0
+
+    async def resolve_node_id(self, path: list[str]) -> Optional[int]:
+        """
+        Look up the internal catalog node id for a path of key segments,
+        e.g. ``["raw_dataset"]`` for a top-level entry or ``["a", "b"]``
+        for a nested one. Returns None if no such node exists.
+
+        The catalog's root node always has id 0 (see
+        tiled.catalog.adapter.node_from_segments, which this mirrors).
+        """
+        if not path:
+            return 0
+        aliases = [_nodes.alias() for _ in path] + [_nodes]
+        statement = select(aliases[-1].c.id).select_from(aliases[0])
+        statement = statement.where(aliases[0].c.id == 0)
+        for i, segment in enumerate(path):
+            parent, child = aliases[i], aliases[i + 1]
+            statement = statement.join(child, child.c.parent == parent.c.id).where(
+                child.c.key == segment
+            )
+        async with self._engine.connect() as conn:
+            row = (await conn.execute(statement)).one_or_none()
+        return row.id if row else None
 
     async def close(self) -> None:
         if self._owns_engine:

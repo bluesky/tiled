@@ -11,6 +11,8 @@ API_KEY="${TILED_API_KEY:-secret}"
 
 SERVER_PID=""
 
+mkdir -p "$HERE/data"
+
 cd "$ROOT"
 
 cleanup() {
