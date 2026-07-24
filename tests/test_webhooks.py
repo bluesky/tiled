@@ -1146,10 +1146,10 @@ class TestBuildUrlValidator:
     def test_check_not_available_hostname(self) -> None:
         """Invalid hostname must throw exception."""
         with pytest.raises(HTTPException) as exc_info:
-            validator = _build_url_validator(
+            validator = _build_url_validator(  # noqa: F841
                 WebhooksConfig(
                     allow_private_addresses=False,
                     allow_delivery_hosts=["notmyrealhost"],
                 )
-            )  # noqa: F841
+            )
         assert exc_info.value.status_code == 400
