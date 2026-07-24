@@ -177,7 +177,7 @@ def check_url_ssrf_safety(
                     logger.info(
                         f"{addr} is in a blocked network {net} but is allowed because it is also in allowed hosts"
                     )
-                    continue
+                    break
                 raise ValueError(
                     f"Webhook URL {url!r} resolves to {addr}, which is in the "
                     f"blocked network {net} (private/loopback/reserved). "
