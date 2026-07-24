@@ -5,9 +5,9 @@ import time
 from typing import Any, Tuple
 
 import httpx
+import jwt
 import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
-import jwt
 from respx import MockRouter
 from starlette.datastructures import URL, QueryParams
 

@@ -2,12 +2,11 @@ import hashlib
 import secrets
 import uuid as uuid_module
 import warnings
-import jwt
-from jwt import ExpiredSignatureError
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Annotated, Any, Callable, List, Optional, Sequence
 
+import jwt
 from fastapi import (
     APIRouter,
     Depends,
@@ -29,6 +28,8 @@ from fastapi.security import (
 from fastapi.security.api_key import APIKeyCookie, APIKeyHeader, APIKeyQuery
 from fastapi.security.utils import get_authorization_scheme_param
 from fastapi.templating import Jinja2Templates
+from jwt import ExpiredSignatureError
+from pydantic import BaseModel
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -45,8 +46,6 @@ from starlette.status import (
 
 from tiled.access_control.scopes import NO_SCOPES, PUBLIC_SCOPES, SINGLE_USER_SCOPES
 from tiled.authenticators import ProxiedOIDCAuthenticator
-
-from pydantic import BaseModel
 
 from ..authn_database import orm
 from ..authn_database.core import (

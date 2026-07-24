@@ -10,10 +10,10 @@ from datetime import timedelta
 from typing import Any, Dict, List, Mapping, Optional, cast
 
 import httpx
+import jwt
 from cachetools import TTLCache, cached
 from fastapi import APIRouter, Request
 from fastapi.security import OAuth2, OAuth2AuthorizationCodeBearer
-import jwt
 from pydantic import Secret
 from starlette.responses import RedirectResponse
 
