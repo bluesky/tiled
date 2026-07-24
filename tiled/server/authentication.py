@@ -2,6 +2,8 @@ import hashlib
 import secrets
 import uuid as uuid_module
 import warnings
+import jwt
+from jwt import ExpiredSignatureError
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Annotated, Any, Callable, List, Optional, Sequence
@@ -161,7 +163,7 @@ def decode_token(
             return payload
         except ExpiredSignatureError:
             raise
-        except JWTError:
+        except jwt.PyJWTError:
             continue
     # If none of the tiled keys worked, try the proxied authenticator
     # (e.g. tokens issued directly by an OIDC provider in the device code flow).
