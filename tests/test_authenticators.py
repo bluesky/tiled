@@ -7,8 +7,7 @@ from typing import Any, Tuple
 import httpx
 import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
-from jose import ExpiredSignatureError, jwt
-from jose.backends import RSAKey
+import jwt
 from respx import MockRouter
 from starlette.datastructures import URL, QueryParams
 
@@ -145,7 +144,7 @@ def test_oidc_decoding(
         assert authenticator.decode_token(encrypted_access_token) == access_token
 
     else:
-        with pytest.raises(ExpiredSignatureError):
+        with pytest.raises(jwt.ExpiredSignatureError):
             authenticator.decode_token(encrypted_access_token)
 
 
@@ -293,8 +292,8 @@ async def test_OIDCAuthenticator_mock(
             pass
         return MockJWK()
 
-    monkeypatch.setattr("jose.jwt.decode", mock_jwt_decode)
-    monkeypatch.setattr("jose.jwk.construct", mock_jwk_construct)
+    monkeypatch.setattr("jwt.decode", mock_jwt_decode)
+    monkeypatch.setattr("jwk.construct", mock_jwk_construct)
 
     # Test authentication
     user_session = await authenticator.authenticate(mock_request)

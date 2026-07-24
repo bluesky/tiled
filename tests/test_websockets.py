@@ -4,7 +4,7 @@ import sys
 import urllib.parse
 
 import dask.array
-import jose.jwt
+import jwt
 import msgpack
 import numpy as np
 import pandas as pd
@@ -885,7 +885,7 @@ def test_expired_access_token_query_param(
     client.write_array(np.arange(10), key="test_expired_jwt")
 
     # Create an expired token using the same secret key.
-    expired_token = jose.jwt.encode(
+    expired_token = jwt.encode(
         {
             "sub": "fake",
             "type": "access",

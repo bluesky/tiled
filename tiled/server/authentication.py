@@ -44,13 +44,6 @@ from starlette.status import (
 from tiled.access_control.scopes import NO_SCOPES, PUBLIC_SCOPES, SINGLE_USER_SCOPES
 from tiled.authenticators import ProxiedOIDCAuthenticator
 
-# To hide third-party warning
-# .../jose/backends/cryptography_backend.py:18: CryptographyDeprecationWarning:
-#     int_from_bytes is deprecated, use int.from_bytes instead
-with warnings.catch_warnings():
-    warnings.simplefilter("ignore")
-    from jose import ExpiredSignatureError, JWTError, jwt
-
 from pydantic import BaseModel
 
 from ..authn_database import orm

@@ -93,7 +93,7 @@ all = [
     "prometheus_client",
     "pyarrow >=14.0.1",  # includes fix to CVE 2023-47248
     "python-dateutil",
-    "python-jose[cryptography]",
+    "pyjwt[crypto]",
     "python-multipart",
     "ragged",
     "redis",
@@ -183,7 +183,7 @@ minimal-server = [
     "packaging",
     "prometheus_client",
     "python-dateutil",
-    "python-jose[cryptography]",
+    "pyjwt[crypto]",
     "python-multipart",
     "redis",
     "sqlalchemy[asyncio] >=2",
@@ -231,7 +231,7 @@ server = [
     "prometheus_client",
     "pyarrow >=14.0.1",  # includes fix to CVE 2023-47248
     "python-dateutil",
-    "python-jose[cryptography]",
+    "pyjwt[crypto]",
     "python-multipart",
     "ragged",
     "sparse >=0.15.5",

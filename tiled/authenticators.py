@@ -13,7 +13,7 @@ import httpx
 from cachetools import TTLCache, cached
 from fastapi import APIRouter, Request
 from fastapi.security import OAuth2, OAuth2AuthorizationCodeBearer
-from jose import JWTError, jwt
+import jwt
 from pydantic import Secret
 from starlette.responses import RedirectResponse
 
@@ -246,10 +246,10 @@ properties:
         access_token = response_body["access_token"]
         try:
             verified_body = self.decode_token(id_token, access_token)
-        except JWTError:
+        except jwt.PyJWTError as e:
             logger.exception(
                 "Authentication error. Unverified token: %r",
-                jwt.get_unverified_claims(id_token),
+                e,
             )
             return None
         return UserSessionState(verified_body["sub"], {})
@@ -468,10 +468,10 @@ class EntraAuthenticator(ProxiedOIDCAuthenticator):
         refresh_token = response_body.get("refresh_token")
         try:
             verified_body = self.decode_token(id_token, access_token)
-        except JWTError:
+        except jwt.PyJWTError as e:
             logger.exception(
                 "Authentication error. Unverified token: %r",
-                jwt.get_unverified_claims(id_token),
+                e,
             )
             return None
         # Log the id_token claims available for username resolution so
