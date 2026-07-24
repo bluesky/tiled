@@ -149,7 +149,7 @@ properties:
         confirmation_message: str = "",
         redirect_on_success: Optional[str] = None,
         redirect_on_failure: Optional[str] = None,
-        user_id_claim:str = "sub"
+        user_id_claim: str = "sub",
     ):
         self._audience = audience
         self._client_id = client_id
@@ -294,7 +294,7 @@ properties:
         confirmation_message: str = "",
         redirect_on_success: Optional[str] = None,
         redirect_on_failure: Optional[str] = None,
-        user_id_claim:str = "sub"
+        user_id_claim: str = "sub",
     ):
         super().__init__(
             audience=audience,
@@ -304,7 +304,7 @@ properties:
             confirmation_message=confirmation_message,
             redirect_on_success=redirect_on_success,
             redirect_on_failure=redirect_on_failure,
-            user_id_claim = user_id_claim
+            user_id_claim=user_id_claim,
         )
         self.scopes = scopes
         self.device_flow_client_id = device_flow_client_id
@@ -341,7 +341,7 @@ class EntraAuthenticator(ProxiedOIDCAuthenticator):
             device_flow_client_id,
             scopes=None,  # not used by Entra; enforcement is via scopes_map
             confirmation_message=confirmation_message,
-            redirect_on_success = redirect_on_success
+            redirect_on_success=redirect_on_success,
         )
         # Override the empty secret from ProxiedOIDCAuthenticator if provided.
         if client_secret:
