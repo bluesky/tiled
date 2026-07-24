@@ -552,7 +552,7 @@ async def check_scopes(
             raise HTTPException(
                 status_code=HTTP_401_UNAUTHORIZED,
                 detail=(
-                    "Not enough permissions. "
+                    "Authenticator has scopes that the request does not have. "
                     f"Authenticator has scopes {settings.authenticator.scopes}. "
                     f"Request had scopes {list(scopes)}"
                 ),
