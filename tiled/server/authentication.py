@@ -1,7 +1,6 @@
 import hashlib
 import secrets
 import uuid as uuid_module
-import warnings
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Annotated, Any, Callable, List, Optional, Sequence

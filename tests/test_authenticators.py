@@ -2,12 +2,12 @@ import asyncio
 import logging
 import os
 import time
-from typing import Any, Tuple
+from typing import Any
 
 import httpx
 import jwt
 import pytest
-from cryptography.hazmat.primitives.asymmetric import rsa
+from jwcrypto.jwk import JWK
 from respx import MockRouter
 from starlette.datastructures import URL, QueryParams
 
@@ -132,12 +132,11 @@ def test_oidc_decoding(
     well_known_url: str,
     issued: bool,
     expired: bool,
-    keys: Tuple[rsa.RSAPrivateKey, rsa.RSAPublicKey]
+    rsa_private_key: str
 ):
-    private_key, _ = keys
     authenticator = OIDCAuthenticator("tiled", "tiled", "secret", well_known_uri=well_known_url)
     access_token = token(issued, expired)
-    encrypted_access_token = encrypted_token(access_token, private_key)
+    encrypted_access_token = encrypted_token(access_token, rsa_private_key)
 
     if not expired:
         # Decode does not currently care if issued_at_time > current time
@@ -178,20 +177,13 @@ def test_entra_decoding_ignores_unmapped_scopes(caplog):
         OIDCAuthenticator.decode_token = original_decode_token
 
 
-@pytest.fixture
-def keys() -> Tuple[rsa.RSAPrivateKey, rsa.RSAPublicKey]:
-    # Key generated just for these tests
-    private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-    public_key = private_key.public_key()
-    return (private_key, public_key)
+def rsa_private_key(json_web_keyset: JWK) -> str:
+    return json_web_keyset.export_to_pem("private_key", password=None).decode("utf-8")  # type: ignore
 
 
 @pytest.fixture
-def json_web_keyset(keys: Tuple[rsa.RSAPrivateKey, rsa.RSAPublicKey]) -> list[dict[str, Any]]:
-    _, public_key = keys
-    return [
-        RSAKey(key=public_key, algorithm="RS256").to_dict()
-    ]
+def json_web_keyset() -> JWK:
+    return JWK.generate(kty="RSA", size=2048, kid="secret", use="sig", alg="RS256")
 
 
 def token(issued: bool, expired: bool) -> dict[str, str]:
@@ -206,10 +198,10 @@ def token(issued: bool, expired: bool) -> dict[str, str]:
     return dummy_token
 
 
-def encrypted_token(token: dict[str, str], private_key: rsa.RSAPrivateKey) -> str:
+def encrypted_token(token: dict[str, str], rsa_private_key: str) -> str:
     return jwt.encode(
         token,
-        key=private_key,
+        key=rsa_private_key,
         algorithm="RS256",
         headers={"kid": "secret"},
     )

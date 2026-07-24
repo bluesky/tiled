@@ -281,7 +281,8 @@ test = [
     "python3-saml",
     "types-cachetools",
     "pytest-cov",
-    "pytest-xdist"
+    "pytest-xdist",
+    "jwcrypto"
 ]
 dev = [
   { include-group = "test" },
