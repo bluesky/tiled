@@ -151,7 +151,7 @@ def check_url_ssrf_safety(
     if allow_delivery_hosts:
         for host in allow_delivery_hosts:
             fqdn = socket.getfqdn(host)
-            if fqdn is not host:
+            if fqdn != host:
                 raise ValueError(f"Allow delivery host {host} must be a valid hostname")
     if not hostname:
         raise ValueError(f"Cannot parse hostname from URL: {url!r}")
