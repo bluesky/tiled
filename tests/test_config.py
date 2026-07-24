@@ -230,6 +230,7 @@ def test_proxied_authenticator_single_instance_required(
                             "args": {
                                 "audience": "tiled",
                                 "client_id": "tiled",
+                                "client_secret": "secret",
                                 "device_flow_client_id": "tiled-cli",
                                 "well_known_uri": "http://example.com",
                             },
@@ -240,8 +241,10 @@ def test_proxied_authenticator_single_instance_required(
                             "args": {
                                 "audience": "tiled",
                                 "client_id": "tiled",
+                                "client_secret": "secret",
                                 "device_flow_client_id": "tiled-cli",
                                 "well_known_uri": "http://example.com",
+                                "redirect_on_success": "https://example.com/ui/auth-callback",
                             },
                         },
                     ]
@@ -276,6 +279,7 @@ def test_proxied_authenticator_is_not_used_with_other_authenticators(
                             "args": {
                                 "audience": "tiled",
                                 "client_id": "tiled",
+                                "client_secret": "secret",
                                 "well_known_uri": "http://example.com",
                                 "device_flow_client_id": "tiled-cli",
                             },
