@@ -637,9 +637,7 @@ def test_history_and_delete_on_sub_path_mounted_catalog(
 
                 http.delete(f"/api/v1/webhooks/{webhook.id}").raise_for_status()
                 assert (
-                    http.get(
-                        f"/api/v1/webhooks/history/{webhook.id}"
-                    ).status_code
+                    http.get(f"/api/v1/webhooks/history/{webhook.id}").status_code
                     == 404
                 )
 
