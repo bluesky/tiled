@@ -287,9 +287,9 @@ properties:
         self,
         audience: str,
         client_id: str,
-        client_secret: str,
         well_known_uri: str,
         device_flow_client_id: str,
+        client_secret: str = "",
         scopes: Optional[List[str]] = None,
         confirmation_message: str = "",
         redirect_on_success: Optional[str] = None,
@@ -336,7 +336,6 @@ class EntraAuthenticator(ProxiedOIDCAuthenticator):
         super().__init__(
             audience,
             client_id,
-            client_secret,
             well_known_uri,
             device_flow_client_id,
             scopes=None,  # not used by Entra; enforcement is via scopes_map
