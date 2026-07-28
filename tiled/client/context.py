@@ -1405,8 +1405,8 @@ def device_code_grant(
                 verification_response = http_client.post(auth_endpoint)
                 handle_error(verification_response)
                 verification = verification_response.json()
-                token_endpoint = verification["authorization_uri"]
-                verification_uri = verification["verification_uri"]
+                token_endpoint = verification["verification_uri"]
+                verification_uri = verification["authorization_uri"]
     print(
         f"""
 You have {int(verification['expires_in']) // 60} minutes to visit this URL

@@ -7,14 +7,26 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Fixed
 
+- Fixed typo in the log writing of authenticators.py
+
+## v0.2.14 (2026-07-08)
+
+### Fixed
+
+- Skip the `array-ref` streaming-cache update in `put_data_source` when the
+  data source is not an array.
 - Strengthen the server-side backcompatibility. Strip the newly added `Asset.size` field
   from metadata responses when the request comes from a `python-tiled` client older than
   v0.2.13, whose `Asset` dataclass has no `size` field and would otherwise crash
   in `DataSource.from_json` with an unexpected keyword argument.
-- Fixed type in the log writing of authenticators.py
+- Widen `assets.size` from `INTEGER` (int32) to `BIGINT` (int64) so the
+  server can register single files larger than ~2.1 GB without an
+  `int32 out of range` error from PostgreSQL. Includes an alembic
+  migration; SQLite is unaffected (its `INTEGER` affinity already stores
+  64-bit values).
 
 
-## v0.2.13 (2026-07-08)
+## v0.2.13 (2026-07-07)
 
 ### Fixed
 
