@@ -10,12 +10,13 @@ if (!global.crypto) {
     require("crypto").randomFillSync(arr);
 }
 
-export default defineConfig(({ mode }) => {
+export default defineConfig(({ command, mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
   const target = env.VITE_API_TARGET || "http://127.0.0.1:8000";
   const redirectToLogin= env.VITE_LOGIN_REDIRECT || true;
   return {
-    base: "/ui/",
+    // Asset URLs resolve against index.html's <base>.
+    base: command === "build" ? "./" : "/ui/",
     redirectToLogin: redirectToLogin,
     server: {
       proxy: {
