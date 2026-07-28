@@ -1,0 +1,97 @@
+# Fork-only: build and push the LCLS Tiled image to cr.stanford.edu.
+#
+# Upstream's publish-image.yml pushes to ghcr.io on tags only. This one is for
+# our deployment images, triggered by pushing a branch, because our pull
+# requests target bluesky/tiled rather than this fork.
+#
+# Required repository secrets (Settings > Secrets and variables > Actions):
+#   REGISTRY_USER  - deploy token username, e.g. gitlab+deploy-token-42
+#   REGISTRY_TOKEN - deploy token value, scoped read_registry + write_registry
+
+name: "lcls: Publish image to cr.stanford.edu"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+on:
+  push:
+    branches:
+      - lcls-**
+      - deploy/**
+  workflow_dispatch:
+
+env:
+  REGISTRY: cr.stanford.edu
+  IMAGE_NAME: maiqmag/tiled-dev/swelborn/tiled
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0 # full history so `git describe` can derive a version
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      # SETUPTOOLS_SCM_PRETEND_VERSION wants PEP 440 (may contain '+'), but a
+      # Docker tag may not, so emit a sanitized variant for tagging.
+      - name: Derive version
+        id: version
+        run: |
+          set -euo pipefail
+          version=$(git describe --tags --always --dirty)
+          version=${version#v}
+          version=$(echo "$version" | sed 's/-\([0-9]\+\)-g\([0-9a-f]\+\)/.dev\1+\2/')
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=${version//+/-}" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to container registry
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.REGISTRY_USER }}
+          password: ${{ secrets.REGISTRY_TOKEN }}
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=sha
+            type=raw,value=${{ steps.version.outputs.tag }}
+
+      # TILED_BUILD_PUBLIC_PATH is deliberately unset: the UI resolves its
+      # base path per request, so one image works under any URL prefix.
+      - name: Build and push
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Containerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          annotations: ${{ steps.meta.outputs.annotations }}
+          platforms: linux/amd64
+          provenance: false
+          build-args: |
+            TILED_VERSION=${{ steps.version.outputs.version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Summary
+        run: |
+          {
+            echo "### Pushed images"
+            echo '```'
+            echo "${{ steps.meta.outputs.tags }}"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
