@@ -81,10 +81,10 @@ curl -fsS "$BASE_URL/api/v1" >/dev/null
 echo "Creating catalog datasets"
 python "$HERE/create_datasets.py"
 
-echo "Creating graph links through GraphQL"
-python "$HERE/create_links.py"
+echo "Creating graph links through GraphQL and exporting JSON-LD"
+python "$HERE/create_links_and_export_jsonld.py"
 
-echo "Done."
+echo "Done. JSON-LD export is at $HERE/exported_graph.jsonld"
 echo "Tiled server is still running at $BASE_URL"
 echo "Press Ctrl+C to stop."
 

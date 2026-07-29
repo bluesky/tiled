@@ -1,9 +1,9 @@
 # Explore the Entity/Link Graph with GraphQL
 
 Tiled can optionally serve a graph of entities and links alongside a
-catalog-backed tree, queryable through a GraphQL API. See
-{doc}`../explanations/graphs` for background on what this feature is and why
-it exists.
+catalog-backed tree, queryable through a GraphQL API and importable/exportable
+as JSON-LD. See {doc}`../explanations/graphs` for background on what this
+feature is and why it exists.
 
 This guide walks through starting a demo server with the graph enabled and
 exploring it interactively in the browser.
@@ -21,8 +21,8 @@ bash example_configs/graphs/run_demo.sh
 
 This starts a server, seeds a small catalog of datasets, creates a handful of
 graph entities and links between them (using [PROV](https://www.w3.org/TR/prov-o/)
-and [RO](https://w3id.org/ro/terms/) predicates), then leaves the server
-running.
+and [RO](https://w3id.org/ro/terms/) predicates), and exports the result to
+`example_configs/graphs/exported_graph.jsonld`, then leaves the server running.
 
 ```{note}
 The demo config (`example_configs/graphs/graph_example_config.yml`) disables
@@ -119,7 +119,8 @@ query {
 }
 ```
 
-Namespaces only appear here if something registered them, via an explicit
+Namespaces only appear here if something registered them---either a JSON-LD
+import (which auto-registers the prefixes in its `@context`) or an explicit
 mutation:
 
 ```graphql
@@ -211,10 +212,10 @@ mutation {
 }
 ```
 
-Property keys and predicates written this way are expanded against the
-namespace registry---register the `prov` or `schema` namespace first (as
-shown above) if you want the CURIE to resolve to something meaningful rather
-than being stored as a literal string.
+Properties keys and predicates written this way are expanded against the
+namespace registry just like a JSON-LD import would---register the `prov` or
+`schema` namespace first (as shown above) if you want the CURIE to resolve to
+something meaningful rather than being stored as a literal string.
 
 `updateEntity`, `deleteEntity`, `updateLink`, and `deleteLink` are also
 available; deleting an entity cascades to any links attached to it.
@@ -307,7 +308,7 @@ An entity can reference the data it describes in two independent ways:
   that the local data was derived from an experiment run somewhere else.
 
   See the `dif_beam_hdf5_image` entity in `example_configs/graphs/input.json`
-  for a worked example.
+  and `example_configs/graphs/exported_graph.jsonld` for a worked example.
 
 ## From the command line
 
@@ -320,7 +321,28 @@ curl -s http://127.0.0.1:8000/api/graphql \
   -d '{"query": "query { links { id predicate } entities { id name } }"}'
 ```
 
+## Import/export as JSON-LD
+
+Rather than issuing individual GraphQL mutations, you can import a whole
+JSON-LD document in one request:
+
+```
+curl -s -X POST http://127.0.0.1:8000/api/v1/graph/jsonld \
+  -H "Authorization: Apikey secret" \
+  -H "Content-Type: application/json" \
+  -d @example_configs/graphs/input.json
+```
+
+and export the current graph (filtered to what the requesting user is
+permitted to see) the same way:
+
+```
+curl -s http://127.0.0.1:8000/api/v1/graph/jsonld \
+  -H "Authorization: Apikey secret" \
+  -o exported_graph.jsonld
+```
+
 See `example_configs/graphs/input.json` and
-`example_configs/graphs/create_links.py` for a complete, runnable example of
-creating entities and links through GraphQL, including registering
-namespaces and resolving human-readable entity names to their generated ids.
+`example_configs/graphs/create_links_and_export_jsonld.py` for a complete,
+runnable example of this workflow, including registering namespaces and
+resolving human-readable entity names to their generated ids.

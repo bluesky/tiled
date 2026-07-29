@@ -2,7 +2,7 @@
 
 Alongside its tree of datasets, a catalog-backed Tiled server can optionally
 serve a graph of **entities** and **links** between them, queryable through a
-GraphQL API.
+GraphQL API and importable/exportable as JSON-LD.
 
 ## What problem this solves
 
@@ -42,16 +42,53 @@ first-class notion of blank nodes or named graphs. What it does provide is:
   prefix `schema` is registered to `https://schema.org/`, then the CURIE
   `schema:name` is shorthand for the full, unambiguous IRI
   `https://schema.org/name`. This lets property keys and link predicates be
-  written compactly (`schema:name`) while Tiled stores the full IRI
-  internally and compacts it back to a CURIE whenever it's read through the
-  GraphQL API, so there is never any ambiguity about which `name` (or
+  written compactly (`schema:name`) while Tiled stores and exports the full
+  IRI internally, so there is never any ambiguity about which `name` (or
   `wasDerivedFrom`, or `hasPart`) a given term refers to.
+
+## JSON-LD
+
+The graph's native interchange format is [JSON-LD](https://json-ld.org/), the
+W3C standard for expressing linked data as ordinary JSON. A Tiled graph can be
+exported as a single JSON-LD document (`GET /api/v1/graph/jsonld`) and
+imported from one (`POST /api/v1/graph/jsonld`):
+
+```json
+{
+  "@context": {
+    "@vocab": "https://blueskyproject.io/tiled/graph#",
+    "prov": "http://www.w3.org/ns/prov#",
+    "subject": {"@type": "@id"},
+    "object": {"@type": "@id"}
+  },
+  "@graph": [
+    {"@id": "urn:entity:1", "@type": "Entity", "name": "raw_dataset", "...": "..."},
+    {"@id": "urn:entity:2", "@type": "Entity", "name": "derived_dataset", "...": "..."},
+    {
+      "@id": "urn:link:1",
+      "@type": "Link",
+      "subject": "urn:entity:2",
+      "predicate": "prov:wasDerivedFrom",
+      "object": "urn:entity:1"
+    }
+  ]
+}
+```
+
+On import, any prefixes declared in `@context` are registered in the
+namespace registry and used to expand CURIEs (`prov:wasDerivedFrom` ->
+`http://www.w3.org/ns/prov#wasDerivedFrom`) before storing them. On export,
+the reverse happens: stored terms are compacted back into CURIEs using the
+same registry, so the exported document stays readable. The GraphQL API
+applies the same expansion/compaction rules when you write or read `predicate`
+or `properties` values (see {doc}`../user-guide/graph-and-links`), so the two
+interfaces stay consistent with each other.
 
 ## Why this matters for RO and PROV
 
-Because the graph lets you register *any* namespace and consistently
-expands/compacts CURIEs against it, it is a natural fit for existing,
-widely-used vocabularies rather than an ad hoc scheme invented per-deployment:
+Because the tiuled graph implemnetation speaks JSON-LD and lets you register *any* namespace, it is
+a natural fit for existing, widely-used vocabularies rather than an
+ad hoc scheme invented per-deployment:
 
 - [**PROV**](https://www.w3.org/TR/prov-o/) (the W3C provenance ontology)
   defines terms like `wasDerivedFrom`, `wasGeneratedBy`, `used`, `Agent`,
@@ -62,18 +99,17 @@ widely-used vocabularies rather than an ad hoc scheme invented per-deployment:
   Tiled-specific `derived_from` metadata field with no agreed-upon meaning.
 - [**RO-Crate**](https://www.researchobject.org/ro-crate/) (and the underlying
   [RO Terms](https://w3id.org/ro/terms/) vocabulary) is a lightweight
-  packaging convention for describing a research output---a dataset,
+  JSON-LD packaging convention for describing a research output---a dataset,
   workflow, or software package---as a self-describing bundle of files plus
   metadata. Its `hasPart` relationship (which of the assets an
-  `ro-crate-metadata.json` file describes) maps directly onto a Tiled link
-  between entities, using a predicate that RO-Crate-aware tooling already
-  recognizes.
+  `ro-crate-metadata.json` file describes) maps directly onto a Tiled link,
+  and an exported Tiled graph that uses RO/PROV terms can be consumed by other
+  RO-Crate-aware tooling without any Tiled-specific translation step.
 
-In short: the graph does not require RO or PROV, but registering their
-namespaces and using their predicates means links created in Tiled use the
-same vocabulary as the broader ecosystem of provenance- and
-research-object-aware tools, rather than an ad hoc scheme legible only to
-Tiled itself.
+In short: the graph does not require RO or PROV, but by registering their
+namespaces and using their predicates, links created in Tiled become
+interoperable with the broader ecosystem of provenance- and
+research-object-aware tools, rather than legible only to Tiled itself.
 
 ## What it is not
 

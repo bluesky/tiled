@@ -8,12 +8,6 @@ from typing import Any
 import httpx
 from create_datasets import DATASETS
 
-UPSERT_NAMESPACE_MUTATION = """
-mutation($prefix: String!, $uri: String!) {
-  upsertNamespace(prefix: $prefix, uri: $uri) { prefix uri }
-}
-"""
-
 CREATE_ENTITY_MUTATION = """
 mutation($input: CreateEntityInput!) {
   createEntity(input: $input) { id name }
@@ -70,20 +64,8 @@ def _load_input_document(path: Path) -> dict[str, Any]:
         raise RuntimeError("Input must be a JSON object.")
     graph = payload.get("@graph")
     if not isinstance(graph, list):
-        raise RuntimeError("Input must include '@graph' as a list.")
+        raise RuntimeError("Input JSON-LD must include '@graph' as a list.")
     return payload
-
-
-def _extract_namespaces(context: Any) -> dict[str, str]:
-    if not isinstance(context, dict):
-        return {}
-    return {
-        key: value
-        for key, value in context.items()
-        if not key.startswith("@")
-        and key not in {"subject", "object"}
-        and isinstance(value, str)
-    }
 
 
 def _resolve_entity_name(ref: str, entities_by_id: dict[str, str]) -> str:
@@ -97,16 +79,21 @@ def _resolve_entity_name(ref: str, entities_by_id: dict[str, str]) -> str:
 def main() -> None:
     base_url = os.getenv("TILED_BASE_URL", "http://127.0.0.1:8000")
     api_key = os.getenv("TILED_API_KEY", "secret")
+    output_path = Path(
+        os.getenv(
+            "GRAPH_JSONLD_OUTPUT",
+            "example_configs/graphs/exported_graph.jsonld",
+        )
+    )
     input_path = Path(
         os.getenv(
-            "GRAPH_INPUT",
+            "GRAPH_JSONLD_INPUT",
             "example_configs/graphs/input.json",
         )
     )
 
     document = _load_input_document(input_path)
     graph_items = document["@graph"]
-    namespaces = _extract_namespaces(document.get("@context"))
 
     headers = {"Authorization": f"Apikey {api_key}"}
     entities: dict[str, dict[str, Any]] = {}
@@ -120,7 +107,9 @@ def main() -> None:
         if item_type == "Entity":
             name = item.get("name")
             if not isinstance(name, str) or not name:
-                raise RuntimeError("Each Entity in input must have a non-empty 'name'.")
+                raise RuntimeError(
+                    "Each Entity in input JSON-LD must have a non-empty 'name'."
+                )
 
             if "properties" in item and not isinstance(item["properties"], dict):
                 raise RuntimeError(f"Entity '{name}' has non-object properties.")
@@ -156,7 +145,7 @@ def main() -> None:
             object_ = item.get("object")
             if not isinstance(subject, str) or not isinstance(object_, str):
                 raise RuntimeError(
-                    "Each Link in input must have string 'subject' and 'object'."
+                    "Each Link in input JSON-LD must have string 'subject' and 'object'."
                 )
             if "properties" in item and not isinstance(item["properties"], dict):
                 raise RuntimeError(
@@ -174,13 +163,11 @@ def main() -> None:
             links.append(link_input)
 
     with httpx.Client(base_url=base_url, headers=headers, timeout=30.0) as client:
-        for prefix, uri in namespaces.items():
-            _post_graphql(
-                client,
-                UPSERT_NAMESPACE_MUTATION,
-                {"prefix": prefix, "uri": uri},
-            )
-            print(f"Registered namespace: {prefix} -> {uri}")
+        # Persist namespace prefixes in the graph store for future exports.
+        client.post(
+            "/api/v1/graph/jsonld",
+            json={"@context": document.get("@context", {}), "@graph": []},
+        ).raise_for_status()
 
         entity_ids: dict[str, str] = {}
 
@@ -266,6 +253,15 @@ def main() -> None:
                 f"{subject_name} -[{predicate}]-> {object_name} "
                 f"(id={payload['data']['createLink']['id']})"
             )
+
+        export_response = client.get("/api/v1/graph/jsonld")
+        export_response.raise_for_status()
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(
+            json.dumps(export_response.json(), indent=2),
+            encoding="utf-8",
+        )
+        print(f"Exported JSON-LD to: {output_path}")
 
 
 if __name__ == "__main__":
