@@ -11,7 +11,8 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - Add client_secret,redirect_on_success,redirect_on_failure to
   ProxiedOIDCAuthenticator. This is to allow login using Tiled-UI
 - Allow configuration of user_id_claim for OIDCAuthenticator
-- Adds a graph of links triplestore-light feature to tiled using the catalog database
+- Add a new feature that stores a graph of links into the catalog database. Adds strawberry
+  as a dependency. Import/search/export of graph links is accomplished through graphql.
 
 ### Fixed
 
