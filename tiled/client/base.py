@@ -259,7 +259,7 @@ class BaseClient:
         validating metadata (useful with update_metadata())
         """
         metadata = deepcopy(self._item["attributes"]["metadata"])
-        specs = [Spec(**spec) for spec in self._item["attributes"]["specs"]]
+        specs = [Spec.from_json(spec) for spec in self._item["attributes"]["specs"]]
         access_tags = deepcopy(self._item["attributes"]["access_blob"].get("tags", []))
         return [
             md for md in [metadata, specs, access_tags] if md is not None
@@ -268,7 +268,9 @@ class BaseClient:
     @property
     def specs(self) -> ListView[Spec]:
         "List of specifications describing the structure of the metadata and/or data."
-        return ListView([Spec(**spec) for spec in self._item["attributes"]["specs"]])
+        return ListView(
+            [Spec.from_json(spec) for spec in self._item["attributes"]["specs"]]
+        )
 
     @property
     def access_blob(self) -> DictView[str, JSON_ITEM]:
@@ -418,7 +420,7 @@ class BaseClient:
             destination = kwargs.pop("destination_directory")
         if kwargs:
             raise TypeError(
-                f"raw_export() got unexpected keyword arguments: " f"{sorted(kwargs)!r}"
+                f"raw_export() got unexpected keyword arguments: {sorted(kwargs)!r}"
             )
 
         in_memory = isinstance(destination, MutableMapping)

@@ -7,19 +7,28 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Fixed
 
+- Fix the webhook `history` and `delete` endpoints when a catalog is mounted under
+  a sub-path (the `trees:` config form).
 - Skip the `array-ref` streaming-cache update in `put_data_source` when the
   data source is not an array.
 - Strengthen the server-side backcompatibility. Strip the newly added `Asset.size` field
   from metadata responses when the request comes from a `python-tiled` client older than
   v0.2.13, whose `Asset` dataclass has no `size` field and would otherwise crash
   in `DataSource.from_json` with an unexpected keyword argument.
+- Tolerate unknown fields on the client side when decoding server JSON into
+  `Asset`, `DataSource`, `Spec`, and structure dataclasses (`AwkwardStructure`,
+  `TableStructure`, `ContainerStructure`). Unknown keys are dropped and logged
+  at DEBUG so a client can talk to a newer server without crashing on
+  fields it does not recognize.
 - Widen `assets.size` from `INTEGER` (int32) to `BIGINT` (int64) so the
   server can register single files larger than ~2.1 GB without an
   `int32 out of range` error from PostgreSQL. Includes an alembic
   migration; SQLite is unaffected (its `INTEGER` affinity already stores
   64-bit values).
 - Ensure required scopes are present for actions when using ProxiedOIDCAuthenticator.
-
+- Restore layer-cache reuse when building the container image, which
+  previously rebuilt almost from scratch on every commit.
+- Fixed typo in the loggging from authenticators
 
 ## v0.2.13 (2026-07-08)
 
