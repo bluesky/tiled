@@ -900,7 +900,7 @@ class LDAPAuthenticator(InternalAuthenticator):
         is_bound = await asyncio.get_running_loop().run_in_executor(None, conn.bind)
         if not is_bound:
             msg = "Failed to connect to LDAP server with search user '{search_dn}'"
-            self.log.warning(msg.format(search_dn=search_dn))
+            logger.warning(msg.format(search_dn=search_dn))
             return (None, None)
 
         search_filter = self.lookup_dn_search_filter.format(
