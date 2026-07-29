@@ -27,8 +27,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
   64-bit values).
 - Restore layer-cache reuse when building the container image, which
   previously rebuilt almost from scratch on every commit.
-
-
+- Fixed typo in the loggging from authenticators
 
 ## v0.2.13 (2026-07-08)
 
