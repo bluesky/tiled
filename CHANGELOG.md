@@ -7,9 +7,8 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Changed
 
-- The links graph schema (`entities` and `links` tables) is now managed by the
-  catalog migration chain instead of a separate graph Alembic history, enabling
-  co-location with catalog tables in one database for SQL joins.
+- Add a new feature that stores a graph of links into the catalog database. Adds strawberry
+  as a dependency. Import/search/export of graph links is accomplished through graphql.
 
 ### Fixed
 
