@@ -5,7 +5,6 @@ This example adds a small graph workflow on top of a local Tiled catalog:
 1. Start a Tiled server from `graph_example_config.yml`
 2. Create one raw dataset and three derived datasets in the catalog, each with a stable `tiled_uid`
 3. Read `input.json` and create graph entities/links through GraphQL
-4. Export the graph as JSON-LD
 
 The graph now includes a richer RO-Crate-style relationship set, including:
 
@@ -22,28 +21,23 @@ From the repository root:
 bash example_configs/graphs/run_demo.sh
 ```
 
-The script seeds data, creates links, exports JSON-LD, and then keeps the
-server running until you press Ctrl+C.
-If port 8000 is already in use, it automatically selects the next free port
-and starts the server there instead.
-
-This writes the exported document to:
-
-- `example_configs/graphs/exported_graph.jsonld`
+The script seeds data, creates links, and then keeps the server running until
+you press Ctrl+C. If port 8000 is already in use, it automatically selects
+the next free port and starts the server there instead.
 
 The input graph definition is:
 
 - `example_configs/graphs/input.json`
 
-Edit `input.json` to add your own JSON-LD entities and links. Dataset names in
-that file should match the dataset keys defined in `create_datasets.py`.
+Edit `input.json` to add your own entities and links. Dataset names in that
+file should match the dataset keys defined in `create_datasets.py`.
 
 ## Files
 
 - `graph_example_config.yml`: server config with a local catalog database
 - `create_datasets.py`: seeds catalog datasets with stable `tiled_uid` metadata
-- `input.json`: editable JSON-LD source used by the graph script
-- `create_links_and_export_jsonld.py`: reads `input.json`, creates graph entities/links with GraphQL, and exports JSON-LD
+- `input.json`: editable source used by the graph script
+- `create_links.py`: reads `input.json` and creates graph entities/links with GraphQL
 - `run_demo.sh`: orchestration script
 - `serve_with_config.py`: starts server from `graph_example_config.yml` for this demo
 
@@ -110,8 +104,7 @@ query {
 
 Namespaces are CURIE prefix -> URI mappings (e.g. `schema -> https://schema.org/`)
 used to expand/compact property keys and link predicates. They only show up
-here if something registered them — either a JSON-LD import (which
-auto-registers its `@context` prefixes) or an explicit mutation:
+here if something registered them, via an explicit mutation:
 
 ```graphql
 mutation {
