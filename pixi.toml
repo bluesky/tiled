@@ -60,6 +60,7 @@ minio = "*"
 mistune = "*"
 myst-parser = "*"
 numpydoc = "*"
+pre-commit = "*"
 pytest = "*"
 pytest-asyncio = "*"
 pytest-mock = "*"
@@ -72,9 +73,6 @@ sphinx-copybutton = "*"
 sphinx_rtd_theme = "*"
 sphinxcontrib-mermaid = "*"
 types-cachetools = "*"
-
-[feature.dev.pypi-dependencies]
-pre-commit = ">=4.6.1, <5"
 
 [feature.formats.dependencies]
 h5netcdf = "*"
@@ -111,11 +109,9 @@ python-multipart = "*"
 redis-py = "*"
 sqlalchemy = ">=2"
 starlette = ">=0.48.0"
+strawberry-graphql = ">=0.315.3"
 uvicorn = "*"
 zarr = "*"
-
-[feature.server.pypi-dependencies]
-strawberry-graphql = {version = ">=0.315.3", extras = ["fastapi"]}
 
 [feature.sparse.dependencies]
 ndindex = "*"
