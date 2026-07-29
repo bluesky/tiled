@@ -18,6 +18,8 @@ Write the date in place of the "Unreleased" in the case a new version is release
   `int32 out of range` error from PostgreSQL. Includes an alembic
   migration; SQLite is unaffected (its `INTEGER` affinity already stores
   64-bit values).
+- Restore layer-cache reuse when building the container image, which
+  previously rebuilt almost from scratch on every commit.
 
 
 ## v0.2.13 (2026-07-08)
