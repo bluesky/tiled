@@ -170,20 +170,27 @@ against the `namespaces` list---a property stored internally as the full IRI
 ## Create entities and links
 
 Mutations require `write:metadata` scope (the demo's single-user API key has
-it). Create an entity:
+it). Create an entity. Because `properties` is a free-form JSON scalar, pass
+it through the query's **Variables** pane (the tab mentioned above,
+alongside **Headers**) rather than writing it inline---an object key like
+`"schema:encodingFormat"` is not valid GraphQL syntax in a literal:
 
 ```graphql
-mutation {
-  createEntity(
-    input: {
-      entityType: "dataset"
-      name: "my_dataset"
-      properties: { "schema:encodingFormat": "application/x-zarr" }
-    }
-  ) {
+mutation CreateEntity($input: CreateEntityInput!) {
+  createEntity(input: $input) {
     id
     name
     properties
+  }
+}
+```
+
+```json
+{
+  "input": {
+    "entityType": "dataset",
+    "name": "my_dataset",
+    "properties": { "schema:encodingFormat": "application/x-zarr" }
   }
 }
 ```
@@ -247,22 +254,27 @@ An entity can reference the data it describes in two independent ways:
     software entity that only exists as a description), leave `uri` unset
     (`null`).
 
-  An entity tied to local data, with both fields set:
+  An entity tied to local data, with both fields set (again, `properties`
+  goes in the Variables pane):
 
   ```graphql
-  mutation {
-    createEntity(
-      input: {
-        entityType: "dataset"
-        name: "raw_dataset"
-        nodeId: 1
-        uri: "http://127.0.0.1:8000/api/v1/metadata/raw_dataset"
-        properties: { "schema:encodingFormat": "application/x-zarr" }
-      }
-    ) {
+  mutation CreateEntity($input: CreateEntityInput!) {
+    createEntity(input: $input) {
       id
       nodeId
       uri
+    }
+  }
+  ```
+
+  ```json
+  {
+    "input": {
+      "entityType": "dataset",
+      "name": "raw_dataset",
+      "nodeId": 1,
+      "uri": "http://127.0.0.1:8000/api/v1/metadata/raw_dataset",
+      "properties": { "schema:encodingFormat": "application/x-zarr" }
     }
   }
   ```
@@ -271,17 +283,21 @@ An entity can reference the data it describes in two independent ways:
   only `uri` set:
 
   ```graphql
-  mutation {
-    createEntity(
-      input: {
-        entityType: "dataset"
-        name: "dif_beam_hdf5_image"
-        uri: "https://tiled-demo.nsls2.bnl.gov/api/v1/metadata/csx/6cb250e3-3a4a-46e1-8fcb-a1caa0445f41/primary/dif_beam_hdf5_image"
-        properties: { "@type": "Dataset" }
-      }
-    ) {
+  mutation CreateEntity($input: CreateEntityInput!) {
+    createEntity(input: $input) {
       id
       uri
+    }
+  }
+  ```
+
+  ```json
+  {
+    "input": {
+      "entityType": "dataset",
+      "name": "dif_beam_hdf5_image",
+      "uri": "https://tiled-demo.nsls2.bnl.gov/api/v1/metadata/csx/6cb250e3-3a4a-46e1-8fcb-a1caa0445f41/primary/dif_beam_hdf5_image",
+      "properties": { "@type": "Dataset" }
     }
   }
   ```
