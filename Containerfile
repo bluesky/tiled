@@ -1,5 +1,10 @@
 # syntax=docker/dockerfile:1.9
 ARG PYTHON_VERSION=3.12
+ARG UV_VERSION=0.12.0
+
+# `COPY --from` cannot expand a variable in an image ref
+FROM ghcr.io/astral-sh/uv:${UV_VERSION} AS uv_bin
+
 FROM --platform=linux/amd64 docker.io/node:22-alpine AS web_frontend_build
 WORKDIR /src
 COPY web-frontend .
@@ -28,7 +33,7 @@ apt-get install -qyy \
     ca-certificates \
     gcc
 
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+COPY --from=uv_bin /uv /usr/local/bin/uv
 
 # - Silence uv complaining about not being able to use hard links,
 # - tell uv to byte-compile packages for faster application startups,
