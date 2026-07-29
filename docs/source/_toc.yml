@@ -47,6 +47,7 @@ subtrees:
             - file: user-guide/retries
             - file: user-guide/webhooks
             - file: user-guide/bytes
+            - file: user-guide/graph-and-links
   - entries:
       - file: explanations/index
         subtrees:
@@ -65,6 +66,7 @@ subtrees:
             - file: explanations/roadmap
             - file: explanations/lineage
             - file: explanations/storage-database
+            - file: explanations/graphs
   - entries:
       - file: reference/index
         subtrees:

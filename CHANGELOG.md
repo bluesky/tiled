@@ -5,6 +5,11 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## Unreleased
 
+### Changed
+
+- Add a new feature that stores a graph of links into the catalog database. Adds strawberry
+  as a dependency. Import/search/export of graph links is accomplished through graphql.
+
 ### Fixed
 
 - Fix the webhook `history` and `delete` endpoints when a catalog is mounted under

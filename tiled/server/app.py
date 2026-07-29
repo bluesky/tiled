@@ -47,6 +47,7 @@ from ..config import (
     construct_build_app_kwargs,
     parse_configs,
 )
+from ..graph.router import create_router as get_links_router
 from ..media_type_registration import (
     CompressionRegistry,
     SerializationRegistry,
@@ -418,6 +419,15 @@ def build_app(
 
     app.include_router(get_zarr_router_v2(), prefix="/zarr/v2")
     app.include_router(get_zarr_router_v3(), prefix="/zarr/v3")
+
+    # The graph (splash-links) feature stores its tables in the catalog
+    # database (entities.node_id is a foreign key to the catalog's nodes
+    # table), so it is only available when serving a catalog-backed tree.
+    # Note this is independent of `database:` config, which configures the
+    # unrelated authn/session database.
+    catalog_context = getattr(tree, "context", None)
+    if catalog_context is not None:
+        app.include_router(get_links_router(lambda: catalog_context.database_settings))
 
     # The Tree and Authenticator have the opportunity to add custom routes to
     # the server here. (Just for example, a Tree of BlueskyRuns uses this
