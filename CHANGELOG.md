@@ -7,6 +7,8 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Fixed
 
+- Fix the webhook `history` and `delete` endpoints when a catalog is mounted under
+  a sub-path (the `trees:` config form).
 - Skip the `array-ref` streaming-cache update in `put_data_source` when the
   data source is not an array.
 - Strengthen the server-side backcompatibility. Strip the newly added `Asset.size` field
@@ -18,6 +20,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
   `int32 out of range` error from PostgreSQL. Includes an alembic
   migration; SQLite is unaffected (its `INTEGER` affinity already stores
   64-bit values).
+
 
 
 ## v0.2.13 (2026-07-08)
