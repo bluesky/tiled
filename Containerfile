@@ -7,8 +7,11 @@ FROM ghcr.io/astral-sh/uv:${UV_VERSION} AS uv_bin
 
 FROM --platform=linux/amd64 docker.io/node:22-alpine AS web_frontend_build
 WORKDIR /src
+# Install deps from the lockfile alone so editing UI source does not re-run npm.
+COPY web-frontend/package.json web-frontend/package-lock.json ./
+RUN set -ex && npm ci
 COPY web-frontend .
-RUN set -ex && npm install && npm run build
+RUN set -ex && npm run build
 
 ##########################################################################
 
