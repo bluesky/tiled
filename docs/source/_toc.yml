@@ -35,6 +35,7 @@ subtrees:
             - file: user-guide/client-logger
             - file: user-guide/docker
             - file: user-guide/helm
+            - file: user-guide/serve-behind-reverse-proxy
             - file: user-guide/configuration
             - file: user-guide/read-custom-formats
             - file: user-guide/custom-export-formats
