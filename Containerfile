@@ -18,8 +18,6 @@ RUN set -ex && npm run build
 # This stage doubles as setting up for the build and as the devcontainer
 FROM docker.io/python:${PYTHON_VERSION} AS developer
 ARG PYTHON_VERSION=3.12
-ARG TILED_VERSION=0.0.0
-ENV SETUPTOOLS_SCM_PRETEND_VERSION=${TILED_VERSION}
 
 # Ensure apt-get doesn't open a menu on you.
 ENV DEBIAN_FRONTEND=noninteractive
@@ -68,6 +66,10 @@ RUN set -ex && \
         --extra server \
         --no-dev \
         --no-install-project
+
+# Tiled version changes on every commit, put it here where it is needed
+ARG TILED_VERSION=0.0.0
+ENV SETUPTOOLS_SCM_PRETEND_VERSION=${TILED_VERSION}
 
 # Now install the rest from `./src`: The APPLICATION w/o dependencies.
 # `./src` will NOT be copied into the runtime container.
