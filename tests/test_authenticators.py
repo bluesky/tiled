@@ -358,7 +358,8 @@ async def test_OIDCAuthenticator_token_exchange_failure(
 
 async def test_ProxiedOIDCAuthenticator_requires_scopes_with_or(mock_oidc_server, well_known_url):
 
-    authenticator = ProxiedOIDCAuthenticator("tiled", "tiled", well_known_url, device_flow_client_id="tiled-cli")
+    authenticator = ProxiedOIDCAuthenticator("tiled", "tiled", well_known_url, device_flow_client_id="tiled-cli",
+                                             scopes=["read:data"])
 
     test_request = Request(scope={"type": "http", "scheme": "http", "headers": [(b"host", b"testserver")]}, )
 
