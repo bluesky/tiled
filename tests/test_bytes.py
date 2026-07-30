@@ -13,8 +13,9 @@ import pytest
 
 from tiled.adapters.bytes import BytesAdapter
 from tiled.catalog import in_memory
-from tiled.client import Context, from_context
+from tiled.client import Context, from_context, record_history
 from tiled.client.bytes import BytesClient
+from tiled.client.download import STREAMING_ACCEPT_ENCODING
 from tiled.server.app import build_app
 from tiled.structures.bytes import BytesStructure
 from tiled.structures.core import StructureFamily
@@ -402,6 +403,52 @@ def test_raw_export_blosc2_streaming_not_truncated(http_client, tmp_path):
     assert response.status_code == 200
     assert response.headers.get("Content-Encoding") == "blosc2"
     assert response.content == payload
+
+
+def _asset_bytes_exchange(history):
+    """Return the (request, response) pair for the `/asset/bytes` download."""
+    for request, response in zip(history.requests, history.responses):
+        if "/asset/bytes/" in str(request.url):
+            return request, response
+    raise AssertionError("no /asset/bytes request was recorded")
+
+
+def test_raw_export_streams_with_compression_but_not_blosc2(http_client, tmp_path):
+    """By default `raw_export` keeps on-the-fly compression but excludes blosc2.
+
+    blosc2's client decoder buffers the whole body (no streaming), so raw-asset
+    downloads advertise every supported encoding *except* blosc2. The server
+    then streams via zstd, which decompresses incrementally.
+    """
+    payload = (b"the quick brown fox " * 1024) * 8  # ~160 KiB, compressible
+    _register_bytes_node(http_client, tmp_path, payload, key="big")
+    dest = tmp_path / "out"
+    dest.mkdir()
+    with record_history() as history:
+        paths = http_client["big"].raw_export(dest)
+    assert Path(paths[0]).read_bytes() == payload
+    request, response = _asset_bytes_exchange(history)
+    # blosc2 must not be advertised on the download request...
+    assert request.headers["Accept-Encoding"] == STREAMING_ACCEPT_ENCODING
+    assert "blosc2" not in request.headers["Accept-Encoding"]
+    # ...and the server streams a compressed (zstd) response.
+    assert response.headers.get("Content-Encoding") == "zstd"
+
+
+def test_raw_export_compression_false_uses_identity(http_client, tmp_path):
+    """`compression=False` downloads uncompressed: `Accept-Encoding: identity`,
+    no `Content-Encoding`, and a `Content-Length` (so the bar is determinate)."""
+    payload = (b"the quick brown fox " * 1024) * 8  # ~160 KiB, compressible
+    _register_bytes_node(http_client, tmp_path, payload, key="big")
+    dest = tmp_path / "out"
+    dest.mkdir()
+    with record_history() as history:
+        paths = http_client["big"].raw_export(dest, compression=False)
+    assert Path(paths[0]).read_bytes() == payload
+    request, response = _asset_bytes_exchange(history)
+    assert request.headers["Accept-Encoding"] == "identity"
+    assert response.headers.get("Content-Encoding") in (None, "identity")
+    assert int(response.headers["Content-Length"]) == len(payload)
 
 
 def test_raw_export_handles_missing_content_length(http_client, tmp_path):
