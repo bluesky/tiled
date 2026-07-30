@@ -9,10 +9,26 @@ import sqlalchemy as sa  # noqa
 from alembic import op  # noqa
 ${imports if imports else ""}
 # revision identifiers, used by Alembic.
-revision = ${repr(up_revision).replace("'", '"')}
-down_revision = ${repr(down_revision).replace("'", '"')}
-branch_labels = ${repr(branch_labels).replace("'", '"')}
-depends_on = ${repr(depends_on).replace("'", '"')}
+% if isinstance(up_revision, str):
+revision = ${'"' + up_revision + '"'}
+% else:
+revision = ${repr(up_revision)}
+% endif
+% if isinstance(down_revision, str):
+down_revision = ${'"' + down_revision + '"'}
+% else:
+down_revision = ${repr(down_revision)}
+% endif
+% if isinstance(branch_labels, str):
+branch_labels = ${'"' + branch_labels + '"'}
+% else:
+branch_labels = ${repr(branch_labels)}
+% endif
+% if isinstance(depends_on, str):
+branch_labels = ${'"' + depends_on + '"'}
+% else:
+depends_on = ${repr(depends_on)}
+% endif
 
 
 def upgrade():
