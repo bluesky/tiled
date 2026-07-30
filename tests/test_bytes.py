@@ -6,16 +6,19 @@ asset through `/asset/bytes/{path}?id=N`, gated by `settings.expose_raw_assets`.
 These tests exercise that full round-trip end-to-end.
 """
 
+import os
 import warnings
 from pathlib import Path
+from unittest import mock
 
 import pytest
+from rich.progress import Progress
 
 from tiled.adapters.bytes import BytesAdapter
 from tiled.catalog import in_memory
 from tiled.client import Context, from_context, record_history
 from tiled.client.bytes import BytesClient
-from tiled.client.download import STREAMING_ACCEPT_ENCODING
+from tiled.client.download import STREAMING_ACCEPT_ENCODING, download
 from tiled.server.app import build_app
 from tiled.structures.bytes import BytesStructure
 from tiled.structures.core import StructureFamily
@@ -32,9 +35,17 @@ def http_client(tmpdir):
 
 
 def _register_bytes_node(
-    client, tmp_path, payload, key="blob", mimetype="application/octet-stream"
+    client,
+    tmp_path,
+    payload,
+    key="blob",
+    mimetype="application/octet-stream",
+    size="auto",
 ):
-    """Write `payload` to a file and register it as an external bytes node."""
+    """Write `payload` to a file and register it as an external bytes node.
+
+    `size` defaults to the payload length; pass `None` to register an asset
+    whose size is unknown (mimicking a legacy row)."""
     p = tmp_path / f"{key}.bin"
     p.write_bytes(payload)
     data_source = DataSource(
@@ -43,7 +54,7 @@ def _register_bytes_node(
             Asset(
                 data_uri=p.as_uri(),
                 is_directory=False,
-                size=len(payload),
+                size=len(payload) if size == "auto" else size,
                 parameter="data_uris",
                 num=0,
             )
@@ -446,6 +457,73 @@ def test_raw_export_compression_false_uses_identity(http_client, tmp_path):
     assert request.headers["Accept-Encoding"] == "identity"
     assert response.headers.get("Content-Encoding") in (None, "identity")
     assert int(response.headers["Content-Length"]) == len(payload)
+
+
+def _captured_task_totals(client, key, **export_kwargs):
+    """Run `raw_export` and record the `total` each progress task is seeded
+    with (via `Progress.add_task`)."""
+    totals = []
+    original = Progress.add_task
+
+    def spy(self, description, *args, total=None, **kwargs):
+        totals.append(total)
+        return original(self, description, *args, total=total, **kwargs)
+
+    with mock.patch.object(Progress, "add_task", spy):
+        client[key].raw_export(**export_kwargs)
+    return totals
+
+
+def test_raw_export_seeds_progress_total_from_asset_size(http_client, tmp_path):
+    """The progress task is seeded with the known asset size, so the bar shows
+    the right total even when the server omits `Content-Length` (compressed
+    streaming). When the size is unknown the total is `None` (indeterminate)."""
+    payload = (b"the quick brown fox " * 1024) * 8  # ~160 KiB
+    _register_bytes_node(http_client, tmp_path, payload, key="known")
+    _register_bytes_node(http_client, tmp_path, payload, key="unknown", size=None)
+
+    known_dest = tmp_path / "known_out"
+    known_dest.mkdir()
+    assert _captured_task_totals(http_client, "known", destination=known_dest) == [
+        len(payload)
+    ]
+
+    unknown_dest = tmp_path / "unknown_out"
+    unknown_dest.mkdir()
+    assert _captured_task_totals(http_client, "unknown", destination=unknown_dest) == [
+        None
+    ]
+
+
+@pytest.mark.parametrize("compression", [True, False])
+def test_raw_export_unknown_size_roundtrips(http_client, tmp_path, compression):
+    """A `bytes` node whose asset size is unknown (e.g. a legacy row) exports
+    correctly under both compression modes. With compression the bar is
+    indeterminate (no `Content-Length`); without it, `Content-Length` is present
+    so the bar is determinate."""
+    payload = os.urandom(200 * 1024)  # incompressible so zstd does not shrink it
+    _register_bytes_node(http_client, tmp_path, payload, key="blob", size=None)
+    dest = tmp_path / f"out_{compression}"
+    dest.mkdir()
+    with record_history() as history:
+        paths = http_client["blob"].raw_export(dest, compression=compression)
+    assert Path(paths[0]).read_bytes() == payload
+    _, response = _asset_bytes_exchange(history)
+    if compression:
+        assert "Content-Length" not in response.headers
+    else:
+        assert int(response.headers["Content-Length"]) == len(payload)
+
+
+def test_download_rejects_mismatched_totals(http_client):
+    """`download()` requires `totals` (when given) to be parallel to `urls`."""
+    with pytest.raises(ValueError, match="as many totals as URLs"):
+        download(
+            http_client.context.http_client,
+            ["u1", "u2"],
+            ["t1", "t2"],
+            totals=[1],
+        )
 
 
 def test_raw_export_handles_missing_content_length(http_client, tmp_path):
