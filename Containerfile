@@ -1,17 +1,23 @@
 # syntax=docker/dockerfile:1.9
 ARG PYTHON_VERSION=3.12
+ARG UV_VERSION=0.12.0
+
+# `COPY --from` cannot expand a variable in an image ref
+FROM ghcr.io/astral-sh/uv:${UV_VERSION} AS uv_bin
+
 FROM --platform=linux/amd64 docker.io/node:22-alpine AS web_frontend_build
 WORKDIR /src
+# Install deps from the lockfile alone so editing UI source does not re-run npm.
+COPY web-frontend/package.json web-frontend/package-lock.json ./
+RUN set -ex && npm ci
 COPY web-frontend .
-RUN set -ex && npm install && npm run build
+RUN set -ex && npm run build
 
 ##########################################################################
 
 # This stage doubles as setting up for the build and as the devcontainer
 FROM docker.io/python:${PYTHON_VERSION} AS developer
 ARG PYTHON_VERSION=3.12
-ARG TILED_VERSION=0.0.0
-ENV SETUPTOOLS_SCM_PRETEND_VERSION=${TILED_VERSION}
 
 # Ensure apt-get doesn't open a menu on you.
 ENV DEBIAN_FRONTEND=noninteractive
@@ -28,7 +34,7 @@ apt-get install -qyy \
     ca-certificates \
     gcc
 
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+COPY --from=uv_bin /uv /usr/local/bin/uv
 
 # - Silence uv complaining about not being able to use hard links,
 # - tell uv to byte-compile packages for faster application startups,
@@ -60,6 +66,10 @@ RUN set -ex && \
         --extra server \
         --no-dev \
         --no-install-project
+
+# Tiled version changes on every commit, put it here where it is needed
+ARG TILED_VERSION=0.0.0
+ENV SETUPTOOLS_SCM_PRETEND_VERSION=${TILED_VERSION}
 
 # Now install the rest from `./src`: The APPLICATION w/o dependencies.
 # `./src` will NOT be copied into the runtime container.
