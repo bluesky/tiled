@@ -365,14 +365,11 @@ def test_raw_export_destination_directory_kwarg_is_deprecated(http_client, tmp_p
 
 
 def test_raw_export_blosc2_streaming_not_truncated(http_client, tmp_path):
-    """Regression: a streaming `blosc2`-encoded body must round-trip in full.
+    """A streaming `blosc2`-encoded body must round-trip in full.
 
     `/asset/bytes` streams via `FileResponse` in 64 KiB chunks, and
     `BloscBuffer` compresses each chunk into an independent blosc2 frame, so the
-    wire body is `frame0 ++ frame1 ++ ...`. The client `Blosc2Decoder` used to
-    call `blosc2.decompress` once, decoding only the first frame and truncating
-    downloads at exactly 65536 bytes. The decoder now walks every frame, so the
-    full payload is recovered.
+    wire body is `frame0 ++ frame1 ++ ...`.
     """
     # Comfortably larger than the 65536-byte FileResponse chunk size, so the
     # body spans several chunks (i.e. several blosc2 frames). Compressible so
