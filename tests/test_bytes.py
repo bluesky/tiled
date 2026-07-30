@@ -363,6 +363,47 @@ def test_raw_export_destination_directory_kwarg_is_deprecated(http_client, tmp_p
         http_client["blob"].raw_export(dest, destination_directory=dest)
 
 
+def test_raw_export_blosc2_streaming_not_truncated(http_client, tmp_path):
+    """Regression: a streaming `blosc2`-encoded body must round-trip in full.
+
+    `/asset/bytes` streams via `FileResponse` in 64 KiB chunks, and
+    `BloscBuffer` compresses each chunk into an independent blosc2 frame, so the
+    wire body is `frame0 ++ frame1 ++ ...`. The client `Blosc2Decoder` used to
+    call `blosc2.decompress` once, decoding only the first frame and truncating
+    downloads at exactly 65536 bytes. The decoder now walks every frame, so the
+    full payload is recovered.
+    """
+    # Comfortably larger than the 65536-byte FileResponse chunk size, so the
+    # body spans several chunks (i.e. several blosc2 frames). Compressible so
+    # the middleware actually engages.
+    payload = (b"the quick brown fox " * 1024) * 8  # ~160 KiB, > 2 chunks
+    assert len(payload) > 2 * 65536
+    _register_bytes_node(http_client, tmp_path, payload, key="big")
+    # Prefer blosc2 so the server selects it (server-preferred among these) and
+    # the multi-frame streaming path is exercised end-to-end.
+    http_client.context.http_client.headers["Accept-Encoding"] = "blosc2, zstd, gzip"
+    dest = tmp_path / "out"
+    dest.mkdir()
+    paths = http_client["big"].raw_export(dest)
+    assert len(paths) == 1
+    downloaded = Path(paths[0]).read_bytes()
+    # The bug truncated this to exactly 65536 bytes; assert full length + bytes.
+    assert len(downloaded) == len(payload)
+    assert downloaded == payload
+    # Confirm we actually exercised the blosc2 streaming path (and its Content-
+    # Encoding), not a fallback encoding.
+    ds = http_client.context.http_client.get(
+        "/api/v1/metadata/big", params={"include_data_sources": True}
+    ).json()["data"]["attributes"]["data_sources"][0]
+    asset_id = ds["assets"][0]["id"]
+    response = http_client.context.http_client.get(
+        "/api/v1/asset/bytes/big", params={"id": asset_id}
+    )
+    assert response.status_code == 200
+    assert response.headers.get("Content-Encoding") == "blosc2"
+    assert response.content == payload
+
+
 def test_raw_export_handles_missing_content_length(http_client, tmp_path):
     """Regression: large compressed responses have no `Content-Length` header
     (the compression middleware strips it when streaming a chunked body).
