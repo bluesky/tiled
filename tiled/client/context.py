@@ -914,6 +914,19 @@ class Context:
                     )
                 )
 
+    def revoke_self_api_key(self):
+        """
+        Revoke the current user's API key.
+
+        The API key must be that of the currently-authenticated user or service.
+        """
+        if not self.api_key:
+            warnings.warn(
+                "You must be authenticated with an API key to revoke your API key."
+            )
+        else:
+            self.revoke_api_key(self.api_key[:8])
+
     @property
     def app(self):
         warnings.warn(

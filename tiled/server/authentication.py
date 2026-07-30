@@ -570,6 +570,44 @@ async def check_scopes(
         )
 
 
+async def check_scopes_with_or(
+    request: Request,
+    security_scopes: SecurityScopes,
+    scopes: set[str] = Depends(get_current_scopes),
+    settings: Settings = Depends(get_settings),
+) -> None:
+    if isinstance(settings.authenticator, ProxiedOIDCAuthenticator):
+        if settings.authenticator.scopes:
+            for scope in scopes:
+                if scope in set(settings.authenticator.scopes) and scope in set(
+                    security_scopes.scopes
+                ):
+                    return
+
+            raise HTTPException(
+                status_code=HTTP_401_UNAUTHORIZED,
+                detail=(
+                    "Authenticator has scopes that the request does not have. "
+                    f"Authenticator has scopes {settings.authenticator.scopes}. "
+                    f"Request had scopes {list(scopes)}"
+                ),
+                headers=headers_for_401(request, security_scopes),
+            )
+    for scope in scopes:
+        if scope in set(security_scopes.scopes):
+            return
+
+    raise HTTPException(
+        status_code=HTTP_401_UNAUTHORIZED,
+        detail=(
+            "Not enough permissions. "
+            f"Requires scopes {security_scopes.scopes}. "
+            f"Request had scopes {list(scopes)}"
+        ),
+        headers=headers_for_401(request, security_scopes),
+    )
+
+
 async def get_current_principal_from_api_key(
     api_key: str, authenticated: bool, db: AsyncSession, settings: Settings
 ):
@@ -1623,10 +1661,14 @@ def authentication_router() -> APIRouter:
         request: Request,
         first_eight: str,
         principal: Optional[schemas.Principal] = Depends(get_current_principal),
-        _=Security(check_scopes, scopes=["revoke:apikeys"]),
+        api_key: Optional[str] = Depends(get_api_key),
+        _=Security(
+            check_scopes_with_or, scopes=["revoke:apikeys", "revoke:apikeys:self"]
+        ),
         db_factory: Callable[[], Optional[AsyncSession]] = Depends(
             get_database_session_factory
         ),
+        scopes: set[str] = Depends(get_current_scopes),
     ):
         """
         Revoke an API belonging to the currently-authenticated user or service."""
@@ -1635,6 +1677,16 @@ def authentication_router() -> APIRouter:
         if principal is None:
             return None
         async with db_factory() as db:
+            if "revoke:apikeys" not in scopes:
+                if not api_key or first_eight[:8] != api_key[:8]:
+                    raise HTTPException(
+                        status_code=HTTP_401_UNAUTHORIZED,
+                        detail=(
+                            "Not enough permissions. "
+                            f"Requires scopes ['revoke:apikeys']. "
+                            f"Request had scopes {list(scopes)}"
+                        ),
+                    )
             api_key_orm = (
                 await db.execute(
                     select(orm.APIKey).filter(orm.APIKey.first_eight == first_eight[:8])

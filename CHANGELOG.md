@@ -5,16 +5,19 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## Unreleased
 
+### Added
+
+- A new "revoke:apikeys:self" scope that allows a user to revoke only the API key they are currently authenticated with.
+
 ### Fixed
 
-- Fix the webhook `history` and `delete` endpoints when a catalog is mounted under
-  a sub-path (the `trees:` config form).
+- Widen `assets.size` from `INTEGER` (int32) to `BIGINT` (int64) so the
+  server can register single files larger than ~2.1 GB without an
+  `int32 out of range` error from PostgreSQL. Includes an alembic
+  migration; SQLite is unaffected (its `INTEGER` affinity already stores
+  64-bit values).
 - Skip the `array-ref` streaming-cache update in `put_data_source` when the
   data source is not an array.
-- Strengthen the server-side backcompatibility. Strip the newly added `Asset.size` field
-  from metadata responses when the request comes from a `python-tiled` client older than
-  v0.2.13, whose `Asset` dataclass has no `size` field and would otherwise crash
-  in `DataSource.from_json` with an unexpected keyword argument.
 - Tolerate unknown fields on the client side when decoding server JSON into
   `Asset`, `DataSource`, `Spec`, and structure dataclasses (`AwkwardStructure`,
   `TableStructure`, `ContainerStructure`). Unknown keys are dropped and logged
@@ -29,7 +32,24 @@ Write the date in place of the "Unreleased" in the case a new version is release
   previously rebuilt almost from scratch on every commit.
 - Fixed typo in the loggging from authenticators
 
-## v0.2.13 (2026-07-08)
+
+## v0.2.14 (2026-07-08)
+
+### Fixed
+
+- Fix the webhook `history` and `delete` endpoints when a catalog is mounted under
+  a sub-path (the `trees:` config form).
+- Skip the `array-ref` streaming-cache update in `put_data_source` when the
+  data source is not an array.
+- Strengthen the server-side backcompatibility. Strip the newly added `Asset.size` field
+  from metadata responses when the request comes from a `python-tiled` client older than
+  v0.2.13, whose `Asset` dataclass has no `size` field and would otherwise crash
+  in `DataSource.from_json` with an unexpected keyword argument.
+- Including a check for authentication links when running whoami to allow for a graceful message when authentication links are not present.
+- Ensuring that the metadata parameter value entered when calling update_metadata is of the proper type (will serialize as a JSON object) before altering the metadata.
+
+
+## v0.2.13 (2026-07-07)
 
 ### Fixed
 
@@ -53,11 +73,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
   destination, streaming each asset into an in-memory `io.BytesIO` keyed by
   the on-disk-equivalent layout (`<filename>` for a single asset;
   `<asset_id>/<filename>` for multi-asset nodes). No filesystem I/O is performed in this mode.
-
-
-### Fixed
-
-- Including a check for authentication links when running whoami to allow for a graceful message when authentication links are not present.
+- Fixed authentication check in from_context to prevent the user from being re-prompted to login.
 
 
 ## v0.2.12 (2026-06-16)
@@ -77,14 +93,6 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - Fail fast instead of retrying on deterministic client request errors that a
   retry cannot fix: an unsupported URL scheme and an invalid request such as an
   illegal header value.
-
-### Fixed
-
-- Fixed authentication check in from_context to prevent the user from being re-prompted to login.
-
-### Fixed
-
-- Ensuring that the metadata parameter value entered when calling update_metadata is of the proper type (will serialize as a JSON object) before altering the metadata.
 
 
 ## v0.2.11 (2026-05-27)

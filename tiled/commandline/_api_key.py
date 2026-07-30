@@ -77,3 +77,13 @@ def revoke_api_key(
 ):
     context = get_context(profile)
     context.revoke_api_key(first_eight[:8])
+
+
+@api_key_app.command("revoke_self")
+def revoke_self_api_key(
+    profile: Optional[str] = typer.Option(
+        None, help="If you use more than one Tiled server, use this to specify which."
+    ),
+):
+    context = get_context(profile)
+    context.revoke_self_api_key()
