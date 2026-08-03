@@ -149,6 +149,7 @@ properties:
         confirmation_message: str = "",
         redirect_on_success: Optional[str] = None,
         redirect_on_failure: Optional[str] = None,
+        user_id_claim: str = "sub",
     ):
         self._audience = audience
         self._client_id = client_id
@@ -157,6 +158,7 @@ properties:
         self.confirmation_message = confirmation_message
         self.redirect_on_success = redirect_on_success
         self.redirect_on_failure = redirect_on_failure
+        self.user_id_claim = user_id_claim
 
     @functools.cached_property
     def _config_from_oidc_url(self) -> dict[str, Any]:
@@ -252,7 +254,7 @@ properties:
                 jwt.get_unverified_claims(id_token),
             )
             return None
-        return UserSessionState(verified_body["sub"], {})
+        return UserSessionState(verified_body[self.user_id_claim], {})
 
 
 class ProxiedOIDCAuthenticator(OIDCAuthenticator):
@@ -287,15 +289,22 @@ properties:
         client_id: str,
         well_known_uri: str,
         device_flow_client_id: str,
+        client_secret: str = "",
         scopes: Optional[List[str]] = None,
         confirmation_message: str = "",
+        redirect_on_success: Optional[str] = None,
+        redirect_on_failure: Optional[str] = None,
+        user_id_claim: str = "sub",
     ):
         super().__init__(
             audience=audience,
             client_id=client_id,
-            client_secret="",
+            client_secret=client_secret,
             well_known_uri=well_known_uri,
             confirmation_message=confirmation_message,
+            redirect_on_success=redirect_on_success,
+            redirect_on_failure=redirect_on_failure,
+            user_id_claim=user_id_claim,
         )
         self.scopes = scopes
         self.device_flow_client_id = device_flow_client_id
@@ -331,11 +340,11 @@ class EntraAuthenticator(ProxiedOIDCAuthenticator):
             device_flow_client_id,
             scopes=None,  # not used by Entra; enforcement is via scopes_map
             confirmation_message=confirmation_message,
+            redirect_on_success=redirect_on_success,
         )
         # Override the empty secret from ProxiedOIDCAuthenticator if provided.
         if client_secret:
             self._client_secret = Secret(client_secret)
-        self.redirect_on_success = redirect_on_success
 
         @property
         def scopes(self):

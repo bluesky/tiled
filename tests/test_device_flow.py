@@ -36,6 +36,7 @@ def oidc_config(well_known_url: str) -> Dict[str, Any]:
                     "args": {
                         "audience": "tiled_aud",
                         "client_id": "tiled",
+                        "client_secret": "secret",
                         "device_flow_client_id": "tiled-cli",
                         "well_known_uri": well_known_url,
                         "confirmation_message": "You have logged in with Proxied OIDC as {id}.",
