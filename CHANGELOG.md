@@ -14,6 +14,10 @@ Write the date in place of the "Unreleased" in the case a new version is release
   a sub-path (the `trees:` config form).
 - Skip the `array-ref` streaming-cache update in `put_data_source` when the
   data source is not an array.
+- Retry (with jitter) the automatic `database.init_if_not_exists` schema
+  initialization on startup instead of crashing when multiple server
+  processes/replicas start concurrently against the same brand-new database
+  and race to create tables/stamp the alembic revision.
 - Strengthen the server-side backcompatibility. Strip the newly added `Asset.size` field
   from metadata responses when the request comes from a `python-tiled` client older than
   v0.2.13, whose `Asset` dataclass has no `size` field and would otherwise crash

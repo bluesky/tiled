@@ -116,6 +116,50 @@ def custom_openapi(app):
     return app.openapi_schema
 
 
+async def _ensure_authn_database_initialized(engine) -> None:
+    """
+    Create tables and stamp the alembic revision, via `tiled admin initialize-database`.
+
+    Multiple processes may call this concurrently against the same brand-new
+    database (e.g. several replicas starting up at once). Only one wins the
+    race; retry, re-checking in case another process has since finished,
+    rather than crashing.
+    """
+    import subprocess
+
+    import stamina
+
+    from ..alembic_utils import UninitializedDatabase, check_database
+    from ..authn_database.core import ALL_REVISIONS, REQUIRED_REVISION
+
+    async for attempt in stamina.retry_context(
+        on=(subprocess.CalledProcessError, UninitializedDatabase),
+        attempts=5,
+        wait_initial=0.5,
+        wait_max=2.0,
+        wait_jitter=0.5,
+        timeout=None,
+    ):
+        with attempt:
+            try:
+                subprocess.run(
+                    [
+                        sys.executable,
+                        "-m",
+                        "tiled",
+                        "admin",
+                        "initialize-database",
+                        str(engine.url),
+                    ],
+                    capture_output=True,
+                    check=True,
+                )
+            except subprocess.CalledProcessError:
+                # Another process may have already won the race and
+                # initialized the database.
+                await check_database(engine, REQUIRED_REVISION, ALL_REVISIONS)
+
+
 def build_app(
     tree,
     authentication: Optional[Authentication] = None,
@@ -648,24 +692,10 @@ def build_app(
                     await check_database(engine, REQUIRED_REVISION, ALL_REVISIONS)
                 except UninitializedDatabase:
                     if settings.database_init_if_not_exists:
-                        # The alembic stamping can only be does synchronously.
+                        # The alembic stamping can only be done synchronously.
                         # The cleanest option available is to start a subprocess
                         # because SQLite is allergic to threads.
-                        import subprocess
-
-                        # TODO Check if catalog exists.
-                        subprocess.run(
-                            [
-                                sys.executable,
-                                "-m",
-                                "tiled",
-                                "admin",
-                                "initialize-database",
-                                str(engine.url),
-                            ],
-                            capture_output=True,
-                            check=True,
-                        )
+                        await _ensure_authn_database_initialized(engine)
                     else:
                         print(
                             dedent(
