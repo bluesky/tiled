@@ -430,7 +430,7 @@ def build_app(
     app.include_router(get_zarr_router_v2(), prefix="/zarr/v2")
     app.include_router(get_zarr_router_v3(), prefix="/zarr/v3")
 
-    # The graph (splash-links) feature stores its tables in the catalog
+    # The graph feature stores its tables in the catalog
     # database (entities.node_id is a foreign key to the catalog's nodes
     # table), so it is only available when serving a catalog-backed tree.
     # Note this is independent of `database:` config, which configures the

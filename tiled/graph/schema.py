@@ -1,5 +1,5 @@
 """
-Strawberry GraphQL schema for splash-links.
+Strawberry GraphQL schema for tiled graph.
 
 Graph model:
   - Entity  — a named node with a type and arbitrary JSON properties
