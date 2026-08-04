@@ -10,11 +10,35 @@ import cachetools
 import orjson
 from fastapi import WebSocketDisconnect
 from redis import asyncio as redis
+from redis.asyncio.sentinel import Sentinel
 
 from ..ndslice import NDSlice
 from ..utils import safe_json_dump as _safe_json_dump
 
 logger = logging.getLogger(__name__)
+
+
+def _build_redis_client(settings: Dict[str, Any]) -> redis.Redis:
+    """Build the async Redis client for the streaming datastore.
+
+    - ``uri`` (``redis://`` / ``rediss://``) — a single standalone node.
+    - ``sentinels`` (a list of ``"host:port"``) plus ``service_name`` — a
+      Sentinel-managed cluster; the client follows failover to the current
+      primary.
+    """
+    kwargs = dict(
+        socket_timeout=settings["socket_timeout"],
+        socket_connect_timeout=settings["socket_connect_timeout"],
+    )
+    sentinels = settings.get("sentinels")
+    if sentinels:
+        hosts = [
+            (host, int(port))
+            for host, _, port in (s.rpartition(":") for s in sentinels)
+        ]
+        sentinel = Sentinel(hosts, password=settings.get("password"), **kwargs)
+        return sentinel.master_for(settings["service_name"])
+    return redis.from_url(settings["uri"], **kwargs)
 
 
 def safe_json_dump(content):
@@ -431,13 +455,7 @@ class TTLCacheDatastore(StreamingDatastore):
 class RedisStreamingDatastore(StreamingDatastore):
     def __init__(self, settings: Dict[str, Any]):
         self._settings = settings
-        socket_timeout = self._settings["socket_timeout"]
-        socket_connect_timeout = self._settings["socket_connect_timeout"]
-        self._client = redis.from_url(
-            self._settings["uri"],
-            socket_timeout=socket_timeout,
-            socket_connect_timeout=socket_connect_timeout,
-        )
+        self._client = _build_redis_client(settings)
         self.data_ttl = self._settings["data_ttl"]
         self.seq_ttl = self._settings["seq_ttl"]
 

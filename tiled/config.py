@@ -228,7 +228,14 @@ class ValidationSpec(BaseSettings):
 
 
 class StreamingCacheConfig(BaseSettings):
-    uri: str
+    # A single standalone node: ``redis://`` / ``rediss://`` / ``memory``.
+    uri: Optional[str] = None
+    # Or a Redis Sentinel cluster: a list of ``"host:port"`` Sentinels plus
+    # the ``service_name`` of the monitored primary. The client follows
+    # failover to the current primary.
+    sentinels: Optional[list[str]] = None
+    service_name: Optional[str] = None
+    password: Optional[str] = None
     data_ttl: int = 3600  # 1 hr
     seq_ttl: int = 2592000  # 30 days
     socket_timeout: int = 86400  # 1 day
@@ -236,6 +243,20 @@ class StreamingCacheConfig(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="TILED_STREAMING_CACHE_")
     settings_customise_sources = classmethod(settings_customise_sources)
+
+    @model_validator(mode="after")
+    def check_source(self) -> "StreamingCacheConfig":
+        if self.sentinels:
+            if not self.service_name:
+                raise ValueError(
+                    "streaming_cache: 'service_name' is required when "
+                    "'sentinels' is set."
+                )
+        elif not self.uri:
+            raise ValueError(
+                "streaming_cache: set either 'uri' or 'sentinels' + 'service_name'."
+            )
+        return self
 
 
 class WebhooksConfig(BaseSettings):

@@ -48,6 +48,59 @@ def test_streaming_cache_unknown_backend():
         raise AssertionError("StreamingCache should reject unknown backends.")
 
 
+def _base_settings(**extra):
+    settings = {"socket_timeout": 5, "socket_connect_timeout": 5}
+    settings.update(extra)
+    return settings
+
+
+def test_build_redis_client_standalone():
+    # A ``uri`` builds a plain standalone client.
+    client = streaming._build_redis_client(_base_settings(uri="redis://localhost:6379"))
+    from redis.asyncio.sentinel import SentinelConnectionPool
+
+    assert not isinstance(client.connection_pool, SentinelConnectionPool)
+
+
+def test_build_redis_client_sentinel():
+    # ``sentinels`` + ``service_name`` builds a Sentinel-managed client that
+    # follows failover to the current primary.
+    from redis.asyncio.sentinel import SentinelConnectionPool
+
+    client = streaming._build_redis_client(
+        _base_settings(
+            sentinels=["h1:26379", "h2:26379"],
+            service_name="mymaster",
+            password="secret",
+        )
+    )
+    assert isinstance(client.connection_pool, SentinelConnectionPool)
+    assert client.connection_pool.service_name == "mymaster"
+
+
+def test_streaming_cache_config_requires_source():
+    # Neither ``uri`` nor ``sentinels`` set is a configuration error.
+    from pydantic import ValidationError
+
+    from tiled.config import StreamingCacheConfig
+
+    with pytest.raises(ValidationError):
+        StreamingCacheConfig()
+
+
+def test_streaming_cache_config_sentinels_require_service_name():
+    from pydantic import ValidationError
+
+    from tiled.config import StreamingCacheConfig
+
+    with pytest.raises(ValidationError):
+        StreamingCacheConfig(sentinels=["h1:26379"])
+    # With a service_name it validates.
+    config = StreamingCacheConfig(sentinels=["h1:26379"], service_name="mymaster")
+    assert config.uri is None
+    assert config.service_name == "mymaster"
+
+
 def test_websocket_replay_and_live_events(tiled_websocket_context):
     context = tiled_websocket_context
     client = from_context(context)
