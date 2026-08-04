@@ -48,54 +48,49 @@ def test_streaming_cache_unknown_backend():
         raise AssertionError("StreamingCache should reject unknown backends.")
 
 
-def _base_settings(**extra):
-    settings = {"socket_timeout": 5, "socket_connect_timeout": 5}
-    settings.update(extra)
-    return settings
-
-
-def test_build_redis_client_standalone():
-    # A ``uri`` builds a plain standalone client.
-    client = streaming._build_redis_client(_base_settings(uri="redis://localhost:6379"))
+def test_build_redis_client():
     from redis.asyncio.sentinel import SentinelConnectionPool
 
-    assert not isinstance(client.connection_pool, SentinelConnectionPool)
+    base = {
+        "socket_timeout": 5,
+        "socket_connect_timeout": 5,
+        "health_check_interval": 30,
+    }
 
+    # A ``uri`` builds a plain standalone client, with health_check_interval
+    # threaded through to the connection.
+    standalone = streaming._build_redis_client(
+        {**base, "uri": "redis://localhost:6379"}
+    )
+    assert not isinstance(standalone.connection_pool, SentinelConnectionPool)
+    assert standalone.connection_pool.connection_kwargs["health_check_interval"] == 30
 
-def test_build_redis_client_sentinel():
     # ``sentinels`` + ``service_name`` builds a Sentinel-managed client that
     # follows failover to the current primary.
-    from redis.asyncio.sentinel import SentinelConnectionPool
-
-    client = streaming._build_redis_client(
-        _base_settings(
-            sentinels=["h1:26379", "h2:26379"],
-            service_name="mymaster",
-            password="secret",
-        )
+    sentinel = streaming._build_redis_client(
+        {
+            **base,
+            "sentinels": ["h1:26379", "h2:26379"],
+            "service_name": "mymaster",
+            "password": "secret",
+        }
     )
-    assert isinstance(client.connection_pool, SentinelConnectionPool)
-    assert client.connection_pool.service_name == "mymaster"
+    assert isinstance(sentinel.connection_pool, SentinelConnectionPool)
+    assert sentinel.connection_pool.service_name == "mymaster"
 
 
-def test_streaming_cache_config_requires_source():
-    # Neither ``uri`` nor ``sentinels`` set is a configuration error.
+def test_streaming_cache_config_source_validation():
     from pydantic import ValidationError
 
     from tiled.config import StreamingCacheConfig
 
+    # Neither ``uri`` nor ``sentinels`` set is a configuration error, as is
+    # ``sentinels`` without a ``service_name``.
     with pytest.raises(ValidationError):
         StreamingCacheConfig()
-
-
-def test_streaming_cache_config_sentinels_require_service_name():
-    from pydantic import ValidationError
-
-    from tiled.config import StreamingCacheConfig
-
     with pytest.raises(ValidationError):
         StreamingCacheConfig(sentinels=["h1:26379"])
-    # With a service_name it validates.
+    # ``sentinels`` + ``service_name`` validates, leaving ``uri`` unset.
     config = StreamingCacheConfig(sentinels=["h1:26379"], service_name="mymaster")
     assert config.uri is None
     assert config.service_name == "mymaster"

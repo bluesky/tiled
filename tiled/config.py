@@ -240,6 +240,10 @@ class StreamingCacheConfig(BaseSettings):
     seq_ttl: int = 2592000  # 30 days
     socket_timeout: int = 86400  # 1 day
     socket_connect_timeout: int = 10
+    # Interval (seconds) between health-check PINGs on idle connections. Lets
+    # redis-py detect a stalled connection (e.g. after a Sentinel failover) and
+    # reconnect + re-subscribe instead of blocking on the dead primary.
+    health_check_interval: int = 30
 
     model_config = SettingsConfigDict(env_prefix="TILED_STREAMING_CACHE_")
     settings_customise_sources = classmethod(settings_customise_sources)
