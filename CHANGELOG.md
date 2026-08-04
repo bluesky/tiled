@@ -17,10 +17,6 @@ Write the date in place of the "Unreleased" in the case a new version is release
   The spinner is animated in Jupyter notebooks as well as TTY terminals.
 - Respect the `Retry-After` header on HTTP 429 (Too Many Requests) responses.
 
-### Fixed
-
-- Modified the alembic templates to generate code consistent with the linter.
-
 
 ## v0.2.11 (2026-05-27)
 
