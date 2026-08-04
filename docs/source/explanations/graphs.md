@@ -1,3 +1,5 @@
+The Graph of Links feature is experimental. The APIs may change.
+
 # Entity/Link Graphs
 
 Alongside its tree of datasets, a catalog-backed Tiled server can optionally

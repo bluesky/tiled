@@ -1,3 +1,5 @@
+The Graph of Links feature is experimental. The APIs may change.
+
 # Explore the Entity/Link Graph with GraphQL
 
 Tiled can optionally serve a graph of entities and links alongside a
