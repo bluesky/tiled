@@ -189,7 +189,6 @@ mutation CreateEntity($input: CreateEntityInput!) {
   "input": {
     "entityType": "dataset",
     "name": "my_dataset",
-    "properties": { "schema:encodingFormat": "application/x-zarr" }
   }
 }
 ```
