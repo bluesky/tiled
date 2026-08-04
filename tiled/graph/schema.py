@@ -93,20 +93,18 @@ def _assert_authn_scope(info: Info, scope: str) -> None:
         raise GraphQLError("Not permitted")
 
 
-def _matches_access_blob_filter(access_blob: dict, query: AccessBlobFilter) -> bool:
-    tags = set(access_blob.get("tags", []))
-    if tags.intersection(query.tags):
-        return True
-    user_id = access_blob.get("user")
-    if query.user_id is not None and user_id == query.user_id:
-        return True
-    return False
-
-
-async def _apply_policy_filters(info: Info, records: list, scope: str) -> list:
+async def _policy_access_filters(info: Info, scope: str) -> object:
+    """
+    Return the access-policy filters for a listing query: either a list of
+    AccessBlobFilter (possibly empty, meaning no restriction) or the
+    NO_ACCESS sentinel. Callers pass the result straight to the store so
+    filtering happens in SQL before LIMIT/OFFSET, rather than filtering a
+    page of results after the fact (which would return fewer than `limit`
+    rows even when more visible rows exist).
+    """
     policy = info.context.get("access_policy")
     if policy is None or not hasattr(policy, "filters"):
-        return records
+        return []
 
     queries = await policy.filters(
         _PolicyNode({}),
@@ -116,23 +114,13 @@ async def _apply_policy_filters(info: Info, records: list, scope: str) -> list:
         {scope},
     )
     if queries is NO_ACCESS:
-        return []
-    if not queries:
-        return records
-
-    filtered = records
+        return NO_ACCESS
     for query in queries:
-        if isinstance(query, AccessBlobFilter):
-            filtered = [
-                record
-                for record in filtered
-                if _matches_access_blob_filter(record.access_blob or {}, query)
-            ]
-        else:
+        if not isinstance(query, AccessBlobFilter):
             raise GraphQLError(
                 f"Unsupported access-policy filter in graph queries: {type(query).__name__}"
             )
-    return filtered
+    return queries
 
 
 async def _init_access_blob(info: Info, access_blob: Optional[dict]) -> dict:
@@ -193,6 +181,9 @@ class Entity:
         limit: int = 100,
         offset: int = 0,
     ) -> list["Link"]:
+        access_filters = await _policy_access_filters(info, "read:metadata")
+        if access_filters is NO_ACCESS:
+            return []
         namespaces = await _namespaces(info)
         expanded_predicate = expand_term(predicate, namespaces) if predicate else None
         records = await _store(info).find_links(
@@ -200,8 +191,8 @@ class Entity:
             predicate=expanded_predicate,
             limit=limit,
             offset=offset,
+            access_filters=access_filters or None,
         )
-        records = await _apply_policy_filters(info, records, "read:metadata")
         return [_link_from_record(r, namespaces) for r in records]
 
     @strawberry.field(description="Links where this entity is the object.")
@@ -212,6 +203,9 @@ class Entity:
         limit: int = 100,
         offset: int = 0,
     ) -> list["Link"]:
+        access_filters = await _policy_access_filters(info, "read:metadata")
+        if access_filters is NO_ACCESS:
+            return []
         namespaces = await _namespaces(info)
         expanded_predicate = expand_term(predicate, namespaces) if predicate else None
         records = await _store(info).find_links(
@@ -219,8 +213,8 @@ class Entity:
             predicate=expanded_predicate,
             limit=limit,
             offset=offset,
+            access_filters=access_filters or None,
         )
-        records = await _apply_policy_filters(info, records, "read:metadata")
         return [_link_from_record(r, namespaces) for r in records]
 
 
@@ -355,10 +349,15 @@ class Query:
         limit: int = 100,
         offset: int = 0,
     ) -> list[Entity]:
+        access_filters = await _policy_access_filters(info, "read:metadata")
+        if access_filters is NO_ACCESS:
+            return []
         records = await _store(info).list_entities(
-            entity_type=entity_type, limit=limit, offset=offset
+            entity_type=entity_type,
+            limit=limit,
+            offset=offset,
+            access_filters=access_filters or None,
         )
-        records = await _apply_policy_filters(info, records, "read:metadata")
         namespaces = await _namespaces(info)
         return [_entity_from_record(r, namespaces) for r in records]
 
@@ -394,6 +393,9 @@ class Query:
         limit: int = 100,
         offset: int = 0,
     ) -> list[Link]:
+        access_filters = await _policy_access_filters(info, "read:metadata")
+        if access_filters is NO_ACCESS:
+            return []
         namespaces = await _namespaces(info)
         expanded_predicate = expand_term(predicate, namespaces) if predicate else None
         records = await _store(info).find_links(
@@ -402,8 +404,8 @@ class Query:
             object_id=str(object_id) if object_id else None,
             limit=limit,
             offset=offset,
+            access_filters=access_filters or None,
         )
-        records = await _apply_policy_filters(info, records, "read:metadata")
         return [_link_from_record(r, namespaces) for r in records]
 
     @strawberry.field(description="List registered CURIE prefix -> URI mappings.")
