@@ -25,15 +25,24 @@ from sqlalchemy import (
     MetaData,
     String,
     Table,
+    and_,
     delete,
+    false,
+    func,
     insert,
+    or_,
     select,
+    type_coerce,
     update,
 )
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, TEXT
 from sqlalchemy.ext.asyncio import AsyncEngine
+from sqlalchemy.sql.expression import cast as sql_cast
 
+from ..queries import AccessBlobFilter
 from ..server.connection_pool import get_database_engine
 from ..server.settings import DatabaseSettings
+from ..utils import UnsupportedQueryType
 
 UNSET = object()
 
@@ -142,6 +151,58 @@ _namespaces = Table(
 )
 
 
+def _access_blob_condition(
+    dialect_name: str, access_blob_column, query: AccessBlobFilter
+):
+    """
+    Translate one AccessBlobFilter into a SQL condition on a JSON
+    access_blob column, mirroring tiled.catalog.adapter.access_blob_filter
+    so that pagination (LIMIT/OFFSET) is applied to already-filtered rows
+    instead of filtering a page after the fact.
+    """
+    if not (query.user_id or query.tags):
+        # Results cannot possibly match an empty value or list,
+        # so put a False condition in the list ensuring that
+        # there are no rows returned.
+        return false()
+    if dialect_name == "sqlite":
+        access_tags_json = func.json_each(access_blob_column["tags"]).table_valued(
+            "value"
+        )
+        condition = (
+            select(1)
+            .select_from(access_tags_json)
+            .where(access_tags_json.c.value.in_(query.tags))
+            .exists()
+        )
+        if query.user_id is not None:
+            user_match = (
+                func.json_extract(func.json_quote(access_blob_column["user"]), "$")
+                == query.user_id
+            )
+            condition = or_(condition, user_match)
+    elif dialect_name == "postgresql":
+        access_blob_jsonb = type_coerce(access_blob_column, JSONB)
+        condition = access_blob_jsonb["tags"].has_any(sql_cast(query.tags, ARRAY(TEXT)))
+        if query.user_id is not None:
+            user_match = access_blob_jsonb["user"].astext == query.user_id
+            condition = or_(condition, user_match)
+    else:
+        raise UnsupportedQueryType("access_blob_filter")
+    return condition
+
+
+def _access_filters_condition(
+    dialect_name: str, access_blob_column, queries: list[AccessBlobFilter]
+):
+    condition = _access_blob_condition(dialect_name, access_blob_column, queries[0])
+    for query in queries[1:]:
+        condition = and_(
+            condition, _access_blob_condition(dialect_name, access_blob_column, query)
+        )
+    return condition
+
+
 class GraphSQLAlchemyStore:
     """
     Async SQLAlchemy-backed store that can reuse Tiled's shared DB pool.
@@ -234,15 +295,19 @@ class GraphSQLAlchemyStore:
         entity_type: Optional[str] = None,
         limit: int = 100,
         offset: int = 0,
+        access_filters: Optional[list[AccessBlobFilter]] = None,
     ) -> list[EntityRecord]:
-        stmt = (
-            select(_entities)
-            .order_by(_entities.c.created_at)
-            .limit(limit)
-            .offset(offset)
-        )
+        stmt = select(_entities).order_by(_entities.c.created_at)
         if entity_type is not None:
             stmt = stmt.where(_entities.c.entity_type == entity_type)
+        if access_filters:
+            dialect_name = self._engine.url.get_dialect().name
+            stmt = stmt.where(
+                _access_filters_condition(
+                    dialect_name, _entities.c.access_blob, access_filters
+                )
+            )
+        stmt = stmt.limit(limit).offset(offset)
         async with self._engine.connect() as conn:
             rows = (await conn.execute(stmt)).all()
         return [self._to_entity(r) for r in rows]
@@ -326,14 +391,23 @@ class GraphSQLAlchemyStore:
         object_id: Optional[str] = None,
         limit: int = 100,
         offset: int = 0,
+        access_filters: Optional[list[AccessBlobFilter]] = None,
     ) -> list[LinkRecord]:
-        stmt = select(_links).order_by(_links.c.created_at).limit(limit).offset(offset)
+        stmt = select(_links).order_by(_links.c.created_at)
         if subject_id is not None:
             stmt = stmt.where(_links.c.subject_id == subject_id)
         if predicate is not None:
             stmt = stmt.where(_links.c.predicate == predicate)
         if object_id is not None:
             stmt = stmt.where(_links.c.object_id == object_id)
+        if access_filters:
+            dialect_name = self._engine.url.get_dialect().name
+            stmt = stmt.where(
+                _access_filters_condition(
+                    dialect_name, _links.c.access_blob, access_filters
+                )
+            )
+        stmt = stmt.limit(limit).offset(offset)
         async with self._engine.connect() as conn:
             rows = (await conn.execute(stmt)).all()
         return [self._to_link(r) for r in rows]

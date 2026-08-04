@@ -408,6 +408,61 @@ async def test_query_paths_use_access_policy_filters(store, filter_policy):
     assert filter_policy.filter_calls >= 1
 
 
+@pytest.mark.asyncio
+async def test_pagination_applies_after_access_filtering(store, filter_policy):
+    """
+    A `limit` smaller than the number of visible rows must still return
+    `limit` rows, even when invisible rows are interleaved among them.
+    Filtering a fixed-size page after the fact (instead of filtering before
+    LIMIT/OFFSET) would silently return fewer than `limit` rows here.
+    """
+
+    alice_ctx = _context(
+        store, filter_policy, "alice", {"read:metadata", "write:metadata"}
+    )
+
+    for i in range(3):
+        private = await _execute(
+            CREATE_ENTITY_MUTATION,
+            alice_ctx,
+            {
+                "input": {
+                    "entityType": "sample",
+                    "name": f"private-{i}",
+                    "properties": {},
+                }
+            },
+        )
+        assert private.errors is None
+        team = await _execute(
+            CREATE_ENTITY_MUTATION,
+            alice_ctx,
+            {
+                "input": {
+                    "entityType": "sample",
+                    "name": f"team-{i}",
+                    "properties": {},
+                    "accessBlob": {"tags": ["team"]},
+                }
+            },
+        )
+        assert team.errors is None
+
+    bob_ctx = _context(store, filter_policy, "bob", {"read:metadata"})
+    entities_query = "query($limit: Int!) { entities(limit: $limit) { name } }"
+
+    result = await _execute(entities_query, bob_ctx, {"limit": 2})
+    assert result.errors is None
+    names = [item["name"] for item in result.data["entities"]]
+    assert len(names) == 2
+    assert all(name.startswith("team-") for name in names)
+
+    result_all = await _execute(entities_query, bob_ctx, {"limit": 10})
+    assert result_all.errors is None
+    all_names = {item["name"] for item in result_all.data["entities"]}
+    assert all_names == {"team-0", "team-1", "team-2"}
+
+
 UPSERT_NAMESPACE_MUTATION = """
 mutation($prefix: String!, $uri: String!) {
     upsertNamespace(prefix: $prefix, uri: $uri) { prefix uri }
