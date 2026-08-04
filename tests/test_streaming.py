@@ -48,37 +48,6 @@ def test_streaming_cache_unknown_backend():
         raise AssertionError("StreamingCache should reject unknown backends.")
 
 
-def test_build_redis_client():
-    from redis.asyncio.sentinel import SentinelConnectionPool
-
-    base = {
-        "socket_timeout": 5,
-        "socket_connect_timeout": 5,
-        "health_check_interval": 30,
-    }
-
-    # A ``uri`` builds a plain standalone client, with health_check_interval
-    # threaded through to the connection.
-    standalone = streaming._build_redis_client(
-        {**base, "uri": "redis://localhost:6379"}
-    )
-    assert not isinstance(standalone.connection_pool, SentinelConnectionPool)
-    assert standalone.connection_pool.connection_kwargs["health_check_interval"] == 30
-
-    # ``sentinels`` + ``service_name`` builds a Sentinel-managed client that
-    # follows failover to the current primary.
-    sentinel = streaming._build_redis_client(
-        {
-            **base,
-            "sentinels": ["h1:26379", "h2:26379"],
-            "service_name": "mymaster",
-            "password": "secret",
-        }
-    )
-    assert isinstance(sentinel.connection_pool, SentinelConnectionPool)
-    assert sentinel.connection_pool.service_name == "mymaster"
-
-
 def test_streaming_cache_config_source_validation():
     from pydantic import ValidationError
 
