@@ -11,7 +11,6 @@ import orjson
 from fastapi import WebSocketDisconnect
 from redis import asyncio as redis
 from redis.asyncio.sentinel import Sentinel
-from redis.exceptions import ConnectionError as RedisConnectionError
 
 from ..ndslice import NDSlice
 from ..utils import safe_json_dump as _safe_json_dump
@@ -194,6 +193,12 @@ class PubSub:
         return gen()
 
 
+# Sentinel pushed onto the live-event buffer when the live subscription drops
+# (e.g. a Redis failover). It signals the handler to close the socket abnormally
+# so the client reconnects and replays any sequences missed during the outage.
+_LIVE_SUBSCRIPTION_LOST = object()
+
+
 def _make_ws_handler_common(
     *,
     websocket,
@@ -302,6 +307,9 @@ def _make_ws_handler_common(
                 logger.exception(
                     f"Live subscription error for node {node_id}: {e}",
                 )
+                # Signal the handler to close the socket abnormally so the client
+                # reconnects and replays any sequences missed during the outage.
+                await stream_buffer.put(_LIVE_SUBSCRIPTION_LOST)
             finally:
                 if live_cleanup is not None:
                     await live_cleanup()
@@ -319,6 +327,13 @@ def _make_ws_handler_common(
         try:
             while not end_stream.is_set():
                 live_seq = await stream_buffer.get()
+
+                if live_seq is _LIVE_SUBSCRIPTION_LOST:
+                    # Close abnormally (1012) so the client's reconnect loop
+                    # resumes from its last received sequence and replays any
+                    # events missed while the subscription was down.
+                    await websocket.close(code=1012, reason="Live subscription lost")
+                    return
 
                 # Skip duplicates or already replayed messages
                 if live_seq <= last_sent:
@@ -522,28 +537,12 @@ class RedisStreamingDatastore(StreamingDatastore):
             await pubsub.subscribe(f"notify:{node_id}")
 
             async def live_iter():
-                nonlocal pubsub
-                while True:
-                    try:
-                        async for message in pubsub.listen():
-                            if message.get("type") == "message":
-                                try:
-                                    yield int(message["data"])
-                                except Exception as e:
-                                    logger.exception(f"Error parsing live message: {e}")
-                    except RedisConnectionError:
-                        # A Sentinel failover closes the pub/sub link; re-create
-                        # it (re-resolving the current primary) and resubscribe.
-                        logger.warning(
-                            "Streaming pub/sub connection lost; resubscribing."
-                        )
+                async for message in pubsub.listen():
+                    if message.get("type") == "message":
                         try:
-                            await pubsub.aclose()
-                        except Exception:
-                            pass
-                        await asyncio.sleep(0.5)
-                        pubsub = self.client.pubsub()
-                        await pubsub.subscribe(f"notify:{node_id}")
+                            yield int(message["data"])
+                        except Exception as e:
+                            logger.exception(f"Error parsing live message: {e}")
 
             async def cleanup():
                 await pubsub.unsubscribe(f"notify:{node_id}")
