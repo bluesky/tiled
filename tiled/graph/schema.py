@@ -202,11 +202,7 @@ class Entity:
             offset=offset,
         )
         records = await _apply_policy_filters(info, records, "read:metadata")
-        return [
-            _link_from_record(r, namespaces)
-            for r in records
-            if await _is_allowed(info, r.access_blob, "read:metadata")
-        ]
+        return [_link_from_record(r, namespaces) for r in records]
 
     @strawberry.field(description="Links where this entity is the object.")
     async def incoming_links(
@@ -225,11 +221,7 @@ class Entity:
             offset=offset,
         )
         records = await _apply_policy_filters(info, records, "read:metadata")
-        return [
-            _link_from_record(r, namespaces)
-            for r in records
-            if await _is_allowed(info, r.access_blob, "read:metadata")
-        ]
+        return [_link_from_record(r, namespaces) for r in records]
 
 
 @strawberry.type
@@ -368,11 +360,7 @@ class Query:
         )
         records = await _apply_policy_filters(info, records, "read:metadata")
         namespaces = await _namespaces(info)
-        return [
-            _entity_from_record(r, namespaces)
-            for r in records
-            if await _is_allowed(info, r.access_blob, "read:metadata")
-        ]
+        return [_entity_from_record(r, namespaces) for r in records]
 
     @strawberry.field(
         description=(
@@ -416,11 +404,7 @@ class Query:
             offset=offset,
         )
         records = await _apply_policy_filters(info, records, "read:metadata")
-        return [
-            _link_from_record(r, namespaces)
-            for r in records
-            if await _is_allowed(info, r.access_blob, "read:metadata")
-        ]
+        return [_link_from_record(r, namespaces) for r in records]
 
     @strawberry.field(description="List registered CURIE prefix -> URI mappings.")
     async def namespaces(self, info: Info) -> list[Namespace]:
