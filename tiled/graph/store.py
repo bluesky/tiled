@@ -1,5 +1,5 @@
 """
-Storage layer for the splash-links entity graph service.
+Storage layer for the graph links entity graph service.
 
 ``GraphSQLAlchemyStore`` attaches to the same process-global async
 engine/connection pool used by Tiled's catalog (see
