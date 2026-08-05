@@ -307,8 +307,8 @@ def _make_ws_handler_common(
                 logger.exception(
                     f"Live subscription error for node {node_id}: {e}",
                 )
-                # Signal the handler to close the socket abnormally so the client
-                # reconnects and replays any sequences missed during the outage.
+                # Enqueue a sentinel to wake the main loop, which is otherwise
+                # blocked forever on an empty buffer now that this task has died.
                 await stream_buffer.put(_LIVE_SUBSCRIPTION_LOST)
             finally:
                 if live_cleanup is not None:
@@ -329,9 +329,10 @@ def _make_ws_handler_common(
                 live_seq = await stream_buffer.get()
 
                 if live_seq is _LIVE_SUBSCRIPTION_LOST:
-                    # Close abnormally (1012) so the client's reconnect loop
-                    # resumes from its last received sequence and replays any
-                    # events missed while the subscription was down.
+                    # Must be an *abnormal* close: a graceful 1000 reads as
+                    # ConnectionClosedOK on the client and would not reconnect.
+                    # 1012 yields ConnectionClosedError, so the client reconnects
+                    # and resumes from its last received sequence.
                     await websocket.close(code=1012, reason="Live subscription lost")
                     return
 
