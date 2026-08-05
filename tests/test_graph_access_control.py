@@ -1,11 +1,13 @@
 import pytest
+from sqlalchemy import insert as sa_insert
+from sqlalchemy.exc import IntegrityError
 from starlette.testclient import TestClient
 
 from tiled.catalog import in_memory
-from tiled.catalog.core import initialize_database
+from tiled.catalog.orm import Node
 from tiled.config import Database
 from tiled.graph.schema import schema
-from tiled.graph.store import GraphSQLAlchemyStore
+from tiled.graph.store import GraphSQLAlchemyStore, _nodes
 from tiled.queries import AccessBlobFilter
 from tiled.server.app import build_app
 from tiled.server.authentication import (
@@ -13,7 +15,10 @@ from tiled.server.authentication import (
     get_current_principal,
     get_current_scopes,
 )
-from tiled.server.connection_pool import close_database_connection_pool
+from tiled.server.connection_pool import (
+    close_database_connection_pool,
+    get_database_engine,
+)
 from tiled.server.settings import DatabaseSettings
 
 CREATE_ENTITY_MUTATION = """
@@ -110,6 +115,13 @@ class FilterPolicy(FakeTagPolicy):
 @pytest.fixture
 async def store():
     database_settings = DatabaseSettings(uri="sqlite:///:memory:")
+    # entities.node_id has a foreign key to the real catalog nodes table
+    # (tiled.catalog.orm.Node), so it must exist before
+    # GraphSQLAlchemyStore creates the graph tables. Create just that one
+    # table -- not the full catalog schema -- to keep these tests lean.
+    engine = get_database_engine(database_settings)
+    async with engine.begin() as conn:
+        await conn.run_sync(Node.__table__.create, checkfirst=True)
     s = await GraphSQLAlchemyStore.from_database_settings(database_settings)
     # The store no longer creates its own tables; provision the catalog schema
     # (which now includes the graph tables and the `nodes` table that
@@ -159,6 +171,22 @@ async def _execute(query, context, variables=None):
         context_value=context,
     )
     return result
+
+
+async def _insert_node(store, node_id, access_blob, key="node", parent=None):
+    """Insert a synthetic catalog node row for entity/node delegation tests."""
+    async with store._engine.begin() as conn:
+        await conn.execute(
+            sa_insert(_nodes).values(
+                id=node_id,
+                parent=parent,
+                key=key,
+                structure_family="container",
+                metadata={},
+                specs=[],
+                access_blob=access_blob,
+            )
+        )
 
 
 @pytest.mark.asyncio
@@ -461,6 +489,159 @@ async def test_pagination_applies_after_access_filtering(store, filter_policy):
     assert all_names == {"team-0", "team-1", "team-2"}
 
 
+@pytest.mark.asyncio
+async def test_entity_node_access_blob_trigger_rejects_both_set(store):
+    """
+    The database trigger is the data-integrity backstop: even calling the
+    store directly (bypassing the GraphQL mutation's app-level validation)
+    must fail if node_id and access_blob are both set, on insert or update.
+    """
+    await _insert_node(store, 1, {"tags": ["team"]})
+
+    with pytest.raises(IntegrityError):
+        await store.create_entity(
+            entity_type="sample",
+            name="bad",
+            node_id=1,
+            access_blob={"tags": ["team"]},
+        )
+
+    entity = await store.create_entity(
+        entity_type="sample", name="ok", node_id=1, access_blob=None
+    )
+    with pytest.raises(IntegrityError):
+        await store.update_entity(entity.id, access_blob={"tags": ["team"]})
+
+
+@pytest.mark.asyncio
+async def test_create_entity_rejects_node_id_with_access_blob(store, policy):
+    """The GraphQL mutation gives a friendly error instead of a raw DB error."""
+    await _insert_node(store, 1, {"tags": ["team"]})
+    alice_ctx = _context(store, policy, "alice", {"read:metadata", "write:metadata"})
+
+    result = await _execute(
+        CREATE_ENTITY_MUTATION,
+        alice_ctx,
+        {
+            "input": {
+                "entityType": "sample",
+                "name": "bad",
+                "nodeId": 1,
+                "accessBlob": {"tags": ["team"]},
+            }
+        },
+    )
+    assert result.errors
+    assert "access is controlled by the referenced node" in result.errors[0].message
+
+
+@pytest.mark.asyncio
+async def test_update_entity_rejects_setting_access_blob_on_node_linked_entity(
+    store, policy
+):
+    await _insert_node(store, 1, {"tags": ["team"]})
+    alice_ctx = _context(store, policy, "alice", {"read:metadata", "write:metadata"})
+
+    created = await _execute(
+        CREATE_ENTITY_MUTATION,
+        alice_ctx,
+        {"input": {"entityType": "sample", "name": "linked", "nodeId": 1}},
+    )
+    assert created.errors is None
+    entity_id = created.data["createEntity"]["id"]
+
+    update_mutation = """
+    mutation($id: ID!, $input: UpdateEntityInput!) {
+      updateEntity(id: $id, input: $input) { id }
+    }
+    """
+    result = await _execute(
+        update_mutation,
+        alice_ctx,
+        {"id": entity_id, "input": {"accessBlob": {"tags": ["other"]}}},
+    )
+    assert result.errors
+    assert "access is controlled by the referenced node" in result.errors[0].message
+
+
+@pytest.mark.asyncio
+async def test_update_entity_detaching_node_reinitializes_access_blob(store, policy):
+    """
+    Detaching node_id (setting it to null) with no access_blob supplied in
+    the same call must not leave the entity with node_id=None AND
+    access_blob=None -- that would make it invisible to everyone.
+    """
+    await _insert_node(store, 1, {"tags": ["team"]})
+    alice_ctx = _context(store, policy, "alice", {"read:metadata", "write:metadata"})
+
+    created = await _execute(
+        CREATE_ENTITY_MUTATION,
+        alice_ctx,
+        {"input": {"entityType": "sample", "name": "linked", "nodeId": 1}},
+    )
+    assert created.errors is None
+    entity_id = created.data["createEntity"]["id"]
+
+    update_mutation = """
+    mutation($id: ID!, $input: UpdateEntityInput!) {
+      updateEntity(id: $id, input: $input) { id }
+    }
+    """
+    detached = await _execute(
+        update_mutation, alice_ctx, {"id": entity_id, "input": {"nodeId": None}}
+    )
+    assert detached.errors is None
+
+    record = await store.get_entity(entity_id)
+    assert record.node_id is None
+    assert record.access_blob == {"user": "alice"}
+
+
+@pytest.mark.asyncio
+async def test_entity_read_access_delegates_to_node_access_blob(store):
+    """
+    An entity with node_id set has no access_blob of its own (enforced by
+    the trigger), so its visibility must be resolved from the node's
+    access_blob instead.
+    """
+    node_policy = FakeTagPolicy({"alice": {"node_team"}, "bob": {"team"}})
+    await _insert_node(store, 1, {"tags": ["node_team"]})
+    entity = await store.create_entity(
+        entity_type="sample", name="linked", node_id=1, access_blob=None
+    )
+
+    alice_ctx = _context(store, node_policy, "alice", {"read:metadata"})
+    bob_ctx = _context(store, node_policy, "bob", {"read:metadata"})
+
+    alice_read = await _execute(READ_ENTITY_QUERY, alice_ctx, {"id": entity.id})
+    assert alice_read.errors is None
+    assert alice_read.data["entity"]["id"] == entity.id
+
+    bob_read = await _execute(READ_ENTITY_QUERY, bob_ctx, {"id": entity.id})
+    assert bob_read.errors is None
+    assert bob_read.data["entity"] is None
+
+
+@pytest.mark.asyncio
+async def test_entities_listing_filters_by_node_access_blob(store, filter_policy):
+    """The paginated `entities` query's SQL-level access filter must also
+    resolve through the node when node_id is set (not just single fetches)."""
+    await _insert_node(store, 1, {"tags": ["team"]}, key="visible-node")
+    await _insert_node(store, 2, {"tags": ["other"]}, key="hidden-node")
+    await store.create_entity(
+        entity_type="sample", name="node-linked-visible", node_id=1, access_blob=None
+    )
+    await store.create_entity(
+        entity_type="sample", name="node-linked-hidden", node_id=2, access_blob=None
+    )
+
+    bob_ctx = _context(store, filter_policy, "bob", {"read:metadata"})
+    result = await _execute("query { entities { name } }", bob_ctx)
+    assert result.errors is None
+    names = {item["name"] for item in result.data["entities"]}
+    assert names == {"node-linked-visible"}
+
+
 UPSERT_NAMESPACE_MUTATION = """
 mutation($prefix: String!, $uri: String!) {
     upsertNamespace(prefix: $prefix, uri: $uri) { prefix uri }
@@ -600,7 +781,7 @@ def test_graphql_http_route_access_control_integration(tmp_path, policy):
 
     catalog = in_memory(writable_storage=str(tmp_path / "storage"))
     app = build_app(
-        catalog,
+        catalog,WE
         access_policy=policy,
         server_settings={"database": Database(uri="sqlite:///:memory:")},
     )
