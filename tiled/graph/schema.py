@@ -39,6 +39,7 @@ from tiled.access_control.access_policies import NO_ACCESS
 from tiled.queries import AccessBlobFilter
 
 from .curie import compact_term, compact_value, expand_term, expand_value
+from .store import _ENTITY_NODE_ACCESS_BLOB_ERROR as ENTITY_NODE_ACCESS_BLOB_ERROR
 from .store import UNSET as STORE_UNSET
 from .store import EntityRecord, GraphSQLAlchemyStore, LinkRecord
 
@@ -95,6 +96,18 @@ async def _assert_allowed(info: Info, access_blob: Optional[dict], scope: str) -
         raise GraphQLError("Not permitted")
 
 
+async def _effective_access_blob(info: Info, record: EntityRecord) -> Optional[dict]:
+    """
+    An entity that points to a catalog node (node_id set) delegates its
+    access control to that node, rather than carrying its own access_blob
+    (which is NULL in that case; see the entities_node_access_blob_*
+    trigger in tiled.graph.store). Resolve whichever one is authoritative.
+    """
+    if record.node_id is not None:
+        return await _store(info).get_node_access_blob(record.node_id)
+    return record.access_blob
+
+
 def _assert_authn_scope(info: Info, scope: str) -> None:
     if scope not in info.context["authn_scopes"]:
         raise GraphQLError("Not permitted")
@@ -147,7 +160,7 @@ async def _init_access_blob(info: Info, access_blob: Optional[dict]) -> dict:
 
 
 async def _modify_access_blob(
-    info: Info, current_access_blob: dict, requested_access_blob: dict
+    info: Info, current_access_blob: Optional[dict], requested_access_blob: dict
 ) -> dict:
     policy = info.context.get("access_policy")
     if policy is not None and hasattr(policy, "modify_node"):
@@ -238,18 +251,20 @@ class Link:
     @strawberry.field
     async def subject(self, info: Info) -> Optional[Entity]:
         record = await _store(info).get_entity(str(self.subject_id))
-        if not record or not await _is_allowed(
-            info, record.access_blob, "read:metadata"
-        ):
+        if record is None:
+            return None
+        access_blob = await _effective_access_blob(info, record)
+        if not await _is_allowed(info, access_blob, "read:metadata"):
             return None
         return _entity_from_record(record, await _namespaces(info))
 
     @strawberry.field
     async def object(self, info: Info) -> Optional[Entity]:
         record = await _store(info).get_entity(str(self.object_id))
-        if not record or not await _is_allowed(
-            info, record.access_blob, "read:metadata"
-        ):
+        if record is None:
+            return None
+        access_blob = await _effective_access_blob(info, record)
+        if not await _is_allowed(info, access_blob, "read:metadata"):
             return None
         return _entity_from_record(record, await _namespaces(info))
 
@@ -342,9 +357,10 @@ class Query:
     @strawberry.field
     async def entity(self, info: Info, id: strawberry.ID) -> Optional[Entity]:
         record = await _store(info).get_entity(str(id))
-        if not record or not await _is_allowed(
-            info, record.access_blob, "read:metadata"
-        ):
+        if record is None:
+            return None
+        access_blob = await _effective_access_blob(info, record)
+        if not await _is_allowed(info, access_blob, "read:metadata"):
             return None
         return _entity_from_record(record, await _namespaces(info))
 
@@ -431,7 +447,12 @@ class Mutation:
     async def create_entity(self, info: Info, input: CreateEntityInput) -> Entity:
         _assert_authn_scope(info, "write:metadata")
         namespaces = await _namespaces(info)
-        access_blob = await _init_access_blob(info, input.access_blob)
+        if input.node_id is not None:
+            if input.access_blob:
+                raise GraphQLError(ENTITY_NODE_ACCESS_BLOB_ERROR)
+            access_blob = None
+        else:
+            access_blob = await _init_access_blob(info, input.access_blob)
         record = await _store(info).create_entity(
             entity_type=input.entity_type,
             name=input.name,
@@ -455,11 +476,15 @@ class Mutation:
         subject = await _store(info).get_entity(str(input.subject_id))
         if not subject:
             raise GraphQLError(f"Subject entity '{input.subject_id}' not found")
-        await _assert_allowed(info, subject.access_blob, "write:metadata")
+        await _assert_allowed(
+            info, await _effective_access_blob(info, subject), "write:metadata"
+        )
         object_ = await _store(info).get_entity(str(input.object_id))
         if not object_:
             raise GraphQLError(f"Object entity '{input.object_id}' not found")
-        await _assert_allowed(info, object_.access_blob, "write:metadata")
+        await _assert_allowed(
+            info, await _effective_access_blob(info, object_), "write:metadata"
+        )
         access_blob = await _init_access_blob(info, input.access_blob)
         record = await _store(info).create_link(
             subject_id=str(input.subject_id),
@@ -484,7 +509,9 @@ class Mutation:
         record = await _store(info).get_entity(str(id))
         if not record:
             return False
-        await _assert_allowed(info, record.access_blob, "write:metadata")
+        await _assert_allowed(
+            info, await _effective_access_blob(info, record), "write:metadata"
+        )
         deleted = await _store(info).delete_entity(str(id))
         if deleted:
             logger.info("Deleted entity id=%s", id)
@@ -497,13 +524,25 @@ class Mutation:
         current = await _store(info).get_entity(str(id))
         if current is None:
             return None
-        await _assert_allowed(info, current.access_blob, "write:metadata")
+        await _assert_allowed(
+            info, await _effective_access_blob(info, current), "write:metadata"
+        )
+        effective_node_id = current.node_id if input.node_id is UNSET else input.node_id
         access_blob = UNSET
-        if input.access_blob is not UNSET:
+        if effective_node_id is not None:
+            if input.access_blob is not UNSET and (input.access_blob or {}):
+                raise GraphQLError(ENTITY_NODE_ACCESS_BLOB_ERROR)
+            access_blob = None
+        elif input.access_blob is not UNSET:
             requested_access_blob = input.access_blob or {}
             access_blob = await _modify_access_blob(
                 info, current.access_blob, requested_access_blob
             )
+        elif input.node_id is not UNSET and current.access_blob is None:
+            # Detaching from a node (node_id set to null) with no
+            # access_blob supplied in the same call: the entity needs its
+            # own access_blob now that it no longer delegates to a node.
+            access_blob = await _init_access_blob(info, None)
         node_id = STORE_UNSET if input.node_id is UNSET else input.node_id
         uri = STORE_UNSET if input.uri is UNSET else input.uri
         record = await _store(info).update_entity(
