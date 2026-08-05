@@ -1,9 +1,8 @@
 """
 CURIE (Compact URI) expansion/compaction against the namespace registry.
 
-Shared between the GraphQL schema (which expands terms written through
-mutations and compacts terms read back out) and the JSON-LD REST import/
-export routes, so both interfaces resolve prefixes the same way.
+Used by the GraphQL schema to expand terms written through mutations and
+compact terms read back out, so prefixes resolve consistently.
 """
 
 from __future__ import annotations

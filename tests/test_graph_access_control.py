@@ -1,11 +1,11 @@
 import pytest
-from sqlalchemy import Column, Integer, Table
 from starlette.testclient import TestClient
 
 from tiled.catalog import in_memory
+from tiled.catalog.core import initialize_database
 from tiled.config import Database
 from tiled.graph.schema import schema
-from tiled.graph.store import GraphSQLAlchemyStore, _metadata
+from tiled.graph.store import GraphSQLAlchemyStore
 from tiled.queries import AccessBlobFilter
 from tiled.server.app import build_app
 from tiled.server.authentication import (
@@ -109,14 +109,12 @@ class FilterPolicy(FakeTagPolicy):
 
 @pytest.fixture
 async def store():
-    Table(
-        "nodes",
-        _metadata,
-        Column("id", Integer, primary_key=True),
-        extend_existing=True,
-    )
     database_settings = DatabaseSettings(uri="sqlite:///:memory:")
     s = await GraphSQLAlchemyStore.from_database_settings(database_settings)
+    # The store no longer creates its own tables; provision the catalog schema
+    # (which now includes the graph tables and the `nodes` table that
+    # entities.node_id references) on the shared in-memory database.
+    await initialize_database(s._engine)
     yield s
     # Tear down the shared pool entry (rather than just `s.close()`, which is
     # a no-op here) so each test gets an isolated in-memory database instead
@@ -599,14 +597,6 @@ async def test_graphql_expands_and_compacts_curies(store, policy):
 
 def test_graphql_http_route_access_control_integration(tmp_path, policy):
     """Validate HTTP GraphQL route wiring with auth dependencies and policy checks."""
-
-    # Ensure graph metadata can resolve the entities.node_id foreign key.
-    Table(
-        "nodes",
-        _metadata,
-        Column("id", Integer, primary_key=True),
-        extend_existing=True,
-    )
 
     catalog = in_memory(writable_storage=str(tmp_path / "storage"))
     app = build_app(

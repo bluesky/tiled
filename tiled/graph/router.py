@@ -15,6 +15,7 @@ the server auto-initialize when database_init_if_not_exists is set.
 from __future__ import annotations
 
 import logging
+import re
 from typing import Callable
 
 from fastapi import APIRouter, Depends, Request
@@ -30,6 +31,69 @@ from .schema import schema
 from .store import GraphSQLAlchemyStore
 
 logger = logging.getLogger(__name__)
+
+# The query pre-loaded into the GraphiQL editor. It orients newcomers to the
+# entity/link graph rather than showing GraphiQL's generic welcome text. Keep
+# this free of backticks and `${...}` so it stays a valid JavaScript template
+# literal when injected into the IDE HTML below.
+DEFAULT_GRAPHIQL_QUERY = """# Tiled — Entity/Link Graph explorer
+#
+# This endpoint serves the graph of entities (nodes) and the links (edges)
+# between them, alongside the catalog tree.
+#
+# Access is controlled, so most queries need an API key. Open the "Headers"
+# tab below and add your key:
+#
+#     { "Authorization": "Apikey YOUR_API_KEY" }
+#
+# Without it, queries do not error — they just return empty results.
+#
+# Run a query with Ctrl-Enter (or the play button). Browse the schema in the
+# "Docs" and "Explorer" panels on the left.
+
+query ExploreGraph {
+  entities(limit: 10) {
+    id
+    name
+    entityType
+    uri
+    outgoingLinks(limit: 5) {
+      predicate
+      object {
+        id
+        name
+      }
+    }
+  }
+  namespaces {
+    prefix
+    uri
+  }
+}
+"""
+
+# Matches Strawberry's bundled `const EXAMPLE_QUERY = ` ... ` ;` assignment.
+_EXAMPLE_QUERY_RE = re.compile(r"const EXAMPLE_QUERY = `.*?`;", re.DOTALL)
+
+
+class _TiledGraphQLRouter(GraphQLRouter):
+    """GraphQLRouter that preloads a Tiled-specific default query.
+
+    Strawberry bundles a static GraphiQL page whose editor opens with a
+    generic welcome message. We reuse that page but swap the default query for
+    one tailored to the entity/link graph. If Strawberry ever changes the
+    template and the marker is not found, the original HTML is served
+    unchanged.
+    """
+
+    @property
+    def graphql_ide_html(self) -> str:
+        html = super().graphql_ide_html
+        return _EXAMPLE_QUERY_RE.sub(
+            lambda _: f"const EXAMPLE_QUERY = `{DEFAULT_GRAPHIQL_QUERY}`;",
+            html,
+            count=1,
+        )
 
 
 def create_router(get_database_settings: Callable[[], DatabaseSettings]) -> APIRouter:
@@ -59,7 +123,7 @@ def create_router(get_database_settings: Callable[[], DatabaseSettings]) -> APIR
             "access_policy": getattr(request.app.state, "access_policy", None),
         }
 
-    graphql_router = GraphQLRouter(
+    graphql_router = _TiledGraphQLRouter(
         schema,
         context_getter=get_context,
         graphql_ide="graphiql",
