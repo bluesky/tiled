@@ -1,4 +1,4 @@
-"""Add graph entities and links tables
+"""Add graph entities, links, and namespaces tables
 
 Revision ID: c31f6a1d7e20
 Revises: 9bc9b57294b9
@@ -71,8 +71,18 @@ def upgrade():
         unique=False,
     )
 
+    op.create_table(
+        "namespaces",
+        sa.Column("prefix", sa.String(), nullable=False),
+        sa.Column("uri", sa.String(), nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+        sa.PrimaryKeyConstraint("prefix"),
+    )
+
 
 def downgrade():
+    op.drop_table("namespaces")
+
     op.drop_index("links_triple_idx", table_name="links")
     op.drop_index("links_predicate_object_idx", table_name="links")
     op.drop_index("links_subject_predicate_idx", table_name="links")

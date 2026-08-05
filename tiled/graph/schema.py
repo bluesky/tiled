@@ -5,7 +5,7 @@ Graph model:
   - Entity  — a named node with a type and arbitrary JSON properties
   - Link     — a directed, predicate-labeled edge between two entities
   - Namespace — a CURIE prefix -> URI mapping used to expand/compact terms
-    (property keys and link predicates) for JSON-LD import/export.
+    (property keys and link predicates).
 
 Query highlights:
     - entity / entities — fetch nodes
@@ -20,8 +20,7 @@ Mutations:
 
 Property keys and link predicates are expanded against the namespace
 registry when written and compacted back to CURIEs when read, so a
-prefix registered through `upsertNamespace` (or through JSON-LD import)
-is resolved consistently regardless of which interface wrote the data.
+prefix registered through `upsertNamespace` is resolved consistently.
 """
 
 from __future__ import annotations
@@ -31,6 +30,7 @@ from typing import Optional
 
 import strawberry
 from graphql import GraphQLError
+from strawberry.extensions import QueryDepthLimiter
 from strawberry.scalars import JSON as StrawberryJSON
 from strawberry.types import Info
 from strawberry.types.unset import UNSET, UnsetType
@@ -43,6 +43,13 @@ from .store import UNSET as STORE_UNSET
 from .store import EntityRecord, GraphSQLAlchemyStore, LinkRecord
 
 logger = logging.getLogger(__name__)
+
+# Maximum nesting depth allowed in a single GraphQL query. The entity/link
+# graph is recursively traversable (Entity.outgoingLinks -> Link.object ->
+# Entity.outgoingLinks -> ...), so an unbounded query could force arbitrarily
+# deep and expensive resolution. Introspection queries are exempt (the limiter
+# ignores them by default), so the GraphiQL "Docs" panel is unaffected.
+MAX_QUERY_DEPTH = 10
 
 # ---------------------------------------------------------------------------
 # JSON scalar — pass arbitrary dicts / lists / primitives through GraphQL
@@ -575,4 +582,8 @@ class Mutation:
 # Schema
 # ---------------------------------------------------------------------------
 
-schema = strawberry.Schema(query=Query, mutation=Mutation)
+schema = strawberry.Schema(
+    query=Query,
+    mutation=Mutation,
+    extensions=[lambda: QueryDepthLimiter(max_depth=MAX_QUERY_DEPTH)],
+)

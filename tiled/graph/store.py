@@ -6,6 +6,11 @@ engine/connection pool used by Tiled's catalog (see
 ``tiled.server.connection_pool``), so the graph tables and the catalog
 tables are always served from a single shared pool rather than opening a
 second connection pool to the same database.
+
+The graph tables themselves are defined in ``tiled.graph.orm`` (attached to
+the catalog's ``Base.metadata``) and provisioned by the catalog's database
+initialization / Alembic migrations. This store only reads and writes rows; it
+does not create tables.
 """
 
 from __future__ import annotations
@@ -16,15 +21,6 @@ from typing import Optional
 
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import (
-    JSON,
-    Column,
-    DateTime,
-    ForeignKey,
-    Index,
-    Integer,
-    MetaData,
-    String,
-    Table,
     and_,
     delete,
     false,
@@ -36,15 +32,23 @@ from sqlalchemy import (
     update,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, TEXT
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncEngine
 from sqlalchemy.sql.expression import cast as sql_cast
 
+from ..catalog.orm import Node
 from ..queries import AccessBlobFilter
 from ..server.connection_pool import get_database_engine
 from ..server.settings import DatabaseSettings
 from ..utils import UnsupportedQueryType
+from .orm import entities as _entities
+from .orm import links as _links
+from .orm import namespaces as _namespaces
 
 UNSET = object()
+
+# The catalog ``nodes`` table, used to resolve entities.node_id by catalog path.
+_nodes = Node.__table__
 
 # ---------------------------------------------------------------------------
 # Data records
@@ -74,81 +78,6 @@ class LinkRecord(BaseModel):
     properties: dict
     access_blob: dict
     created_at: datetime
-
-
-# ---------------------------------------------------------------------------
-# SQLAlchemy schema
-# ---------------------------------------------------------------------------
-
-_metadata = MetaData()
-
-# Register the catalog nodes table so entities.node_id can resolve
-# ForeignKey("nodes.id") when SQLAlchemy sorts DDL dependencies, and so
-# resolve_node_id() below can look up a node's id by its catalog path
-# without importing tiled.catalog (this table always already exists---
-# it is created by the catalog's own migrations).
-_nodes = Table(
-    "nodes",
-    _metadata,
-    Column("id", Integer, primary_key=True),
-    Column("parent", Integer, ForeignKey("nodes.id"), nullable=True),
-    Column("key", String, nullable=False),
-    extend_existing=True,
-)
-
-_entities = Table(
-    "entities",
-    _metadata,
-    Column("id", String, primary_key=True),
-    Column(
-        "node_id",
-        Integer,
-        ForeignKey("nodes.id", ondelete="SET NULL"),
-        nullable=True,
-    ),
-    Column("entity_type", String, nullable=False),
-    Column("name", String, nullable=False),
-    Column("uri", String, nullable=True),
-    Column("properties", JSON, nullable=False),
-    Column("access_blob", JSON, nullable=False),
-    Column("created_at", DateTime(timezone=True), nullable=False),
-    Index("entities_node_id_idx", "node_id"),
-    Index("entities_type_created_idx", "entity_type", "created_at"),
-    Index("entities_uri_idx", "uri"),
-)
-
-_links = Table(
-    "links",
-    _metadata,
-    Column("id", String, primary_key=True),
-    Column(
-        "subject_id",
-        String,
-        ForeignKey("entities.id", ondelete="CASCADE"),
-        nullable=False,
-    ),
-    Column("predicate", String, nullable=False),
-    Column(
-        "object_id",
-        String,
-        ForeignKey("entities.id", ondelete="CASCADE"),
-        nullable=False,
-    ),
-    Column("properties", JSON, nullable=False),
-    Column("access_blob", JSON, nullable=False),
-    Column("created_at", DateTime(timezone=True), nullable=False),
-    Index("links_subject_predicate_idx", "subject_id", "predicate"),
-    Index("links_predicate_object_idx", "predicate", "object_id"),
-    Index("links_triple_idx", "subject_id", "predicate", "object_id"),
-)
-
-_namespaces = Table(
-    "namespaces",
-    _metadata,
-    Column("prefix", String, primary_key=True),
-    Column("uri", String, nullable=False),
-    Column("created_at", DateTime(timezone=True), nullable=False),
-)
 
 
 def _access_blob_condition(
@@ -208,7 +137,9 @@ class GraphSQLAlchemyStore:
     Async SQLAlchemy-backed store that can reuse Tiled's shared DB pool.
 
     Use ``from_database_settings`` to attach to the same async engine registry
-    used by the rest of the server.
+    used by the rest of the server. The graph tables are provisioned by the
+    catalog database (see ``tiled.graph.orm``); this store does not create
+    them.
     """
 
     def __init__(self, engine: AsyncEngine, owns_engine: bool = False) -> None:
@@ -221,9 +152,7 @@ class GraphSQLAlchemyStore:
         database_settings: DatabaseSettings,
     ) -> "GraphSQLAlchemyStore":
         engine = get_database_engine(database_settings)
-        store = cls(engine, owns_engine=False)
-        await store._initialize_schema()
-        return store
+        return cls(engine, owns_engine=False)
 
     @staticmethod
     def _to_entity(row) -> EntityRecord:
@@ -249,10 +178,6 @@ class GraphSQLAlchemyStore:
             access_blob=row.access_blob or {},
             created_at=row.created_at,
         )
-
-    async def _initialize_schema(self) -> None:
-        async with self._engine.begin() as conn:
-            await conn.run_sync(_metadata.create_all)
 
     async def create_entity(
         self,
@@ -355,26 +280,38 @@ class GraphSQLAlchemyStore:
         properties: Optional[dict] = None,
         access_blob: Optional[dict] = None,
     ) -> LinkRecord:
-        if not await self.get_entity(subject_id):
-            raise ValueError(f"Subject entity '{subject_id}' not found")
-        if not await self.get_entity(object_id):
-            raise ValueError(f"Object entity '{object_id}' not found")
-
         id_ = str(uuid.uuid4())
         now = datetime.now(timezone.utc)
-        async with self._engine.begin() as conn:
-            await conn.execute(
-                insert(_links).values(
-                    id=id_,
-                    subject_id=subject_id,
-                    predicate=predicate,
-                    object_id=object_id,
-                    properties=properties or {},
-                    access_blob=access_blob or {},
-                    created_at=now,
+        # The subject_id/object_id foreign keys reference entities.id, so the
+        # database rejects a link to a nonexistent entity (SQLite enforces this
+        # too: the shared pool sets PRAGMA foreign_keys=ON). Insert directly and
+        # let the constraint do the checking, rather than pre-querying both
+        # endpoints on every create.
+        try:
+            async with self._engine.begin() as conn:
+                await conn.execute(
+                    insert(_links).values(
+                        id=id_,
+                        subject_id=subject_id,
+                        predicate=predicate,
+                        object_id=object_id,
+                        properties=properties or {},
+                        access_blob=access_blob or {},
+                        created_at=now,
+                    )
                 )
-            )
-            row = (await conn.execute(select(_links).where(_links.c.id == id_))).one()
+                row = (
+                    await conn.execute(select(_links).where(_links.c.id == id_))
+                ).one()
+        except IntegrityError as exc:
+            # A foreign-key violation means one of the endpoints is missing.
+            # Resolve which one only on this failure path so the success path
+            # stays a single INSERT.
+            if not await self.get_entity(subject_id):
+                raise ValueError(f"Subject entity '{subject_id}' not found") from exc
+            if not await self.get_entity(object_id):
+                raise ValueError(f"Object entity '{object_id}' not found") from exc
+            raise
         return self._to_link(row)
 
     async def get_link(self, id: str) -> Optional[LinkRecord]:

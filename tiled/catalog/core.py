@@ -35,6 +35,11 @@ REQUIRED_REVISION = ALL_REVISIONS[0]
 
 async def initialize_database(engine: AsyncEngine):
     # The definitions in .orm alter Base.metadata.
+    # The graph (splash-links) tables also live in the catalog database and
+    # attach to Base.metadata, so importing them here ensures create_all
+    # provisions them on fresh databases (existing databases get them via the
+    # Alembic migration c31f6a1d7e20).
+    from ..graph import orm as graph_orm  # noqa: F401
     from . import orm  # noqa: F401
 
     async with engine.connect() as connection:

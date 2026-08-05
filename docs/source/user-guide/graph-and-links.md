@@ -2,19 +2,19 @@ The Graph of Links feature is experimental. The APIs may change.
 
 # Explore the Entity/Link Graph with GraphQL
 
-Tiled can optionally serve a graph of entities and links alongside a
+Tiled can optionally serve a graph of entities connected by links, alongside a
 catalog-backed tree, queryable through a GraphQL API. See
 {doc}`../explanations/graphs` for background on what this feature is and why
 it exists.
 
-This guide walks through starting a demo server with the graph enabled and
+This guide walks you through the process of starting a demo server with the graph enabled and
 exploring it interactively in the browser.
 
 ## Enable the graph feature
 
 The graph is available automatically whenever a server is serving a
 catalog-backed tree (see {doc}`example-server-config`)---there is no separate
-configuration flag. A ready-to-run demo lives in
+configuration flag. A ready-to-run demo can be found in
 `example_configs/graphs/` in the Tiled source repository:
 
 ```
