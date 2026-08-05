@@ -29,6 +29,7 @@ import adbc_driver_manager
 import numpy
 import pandas
 import pyarrow
+from fastapi import HTTPException
 from sqlalchemy.sql.compiler import RESERVED_WORDS
 
 from tiled.adapters.core import Adapter
@@ -245,9 +246,12 @@ class SQLAdapter(Adapter[TableStructure]):
         schema = schema.insert(0, pyarrow.field("_partition_id", pyarrow.int16()))
         schema = schema.insert(0, pyarrow.field("_dataset_id", pyarrow.int32()))
         table_name = cls.get_table_name(data_source)
-        create_table_statement = arrow_schema_to_create_table(
-            schema, table_name, cast(DIALECTS, storage.dialect)
-        )
+        try:
+            create_table_statement = arrow_schema_to_create_table(
+                schema, table_name, cast(DIALECTS, storage.dialect)
+            )
+        except ValueError as err:
+            raise HTTPException(status_code=422, detail=str(err))
 
         # If there is a primary_key parameter, first validate it against the table schema
         if primary_key := data_source.parameters.get("primary_key"):
