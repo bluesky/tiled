@@ -39,7 +39,7 @@ from tiled.access_control.access_policies import NO_ACCESS
 from tiled.queries import AccessBlobFilter
 
 from .curie import compact_term, compact_value, expand_term, expand_value
-from .store import _ENTITY_NODE_ACCESS_BLOB_ERROR as ENTITY_NODE_ACCESS_BLOB_ERROR
+from .orm import ENTITY_NODE_ACCESS_BLOB_ERROR
 from .store import UNSET as STORE_UNSET
 from .store import EntityRecord, GraphSQLAlchemyStore, LinkRecord
 

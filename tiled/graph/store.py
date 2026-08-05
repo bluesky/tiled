@@ -21,16 +21,15 @@ from typing import Optional
 
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import (
+    JSON,
     and_,
     case,
     delete,
-    event,
     false,
     func,
     insert,
     or_,
     select,
-    text,
     type_coerce,
     update,
 )
@@ -82,149 +81,6 @@ class LinkRecord(BaseModel):
     properties: dict
     access_blob: dict
     created_at: datetime
-
-
-# ---------------------------------------------------------------------------
-# SQLAlchemy schema
-# ---------------------------------------------------------------------------
-
-_metadata = MetaData()
-
-# The real catalog nodes table (tiled.catalog.orm.Node), reused directly
-# rather than re-declared here, so an entity's effective access control can
-# be resolved from its node when the entity points to one (see
-# get_node_access_blob below). It lives in Base.metadata, not this module's
-# own _metadata -- _metadata.create_all() below never tries to create it.
-_nodes = Node.__table__
-
-_entities = Table(
-    "entities",
-    _metadata,
-    Column("id", String, primary_key=True),
-    Column(
-        "node_id",
-        Integer,
-        # A Column object (rather than the string "nodes.id") is required
-        # here: nodes lives in tiled.catalog.orm's Base.metadata, not this
-        # module's own _metadata, so string-based FK resolution (which
-        # looks within the owning Table's own MetaData) would not find it.
-        ForeignKey(_nodes.c.id, ondelete="SET NULL"),
-        nullable=True,
-    ),
-    Column("entity_type", String, nullable=False),
-    Column("name", String, nullable=False),
-    Column("uri", String, nullable=True),
-    Column("properties", JSON, nullable=False),
-    # Nullable: an entity with node_id set must not have its own
-    # access_blob (enforced by the trigger below and in
-    # tiled.graph.schema); access control for such an entity is delegated
-    # to the node it points to. none_as_null=True: without it, SQLAlchemy's
-    # JSON type stores Python None as the JSON literal 'null' (a non-NULL
-    # string), which would defeat both the trigger's and our own
-    # IS NULL / IS NOT NULL checks.
-    Column("access_blob", JSON(none_as_null=True), nullable=True),
-    Column("created_at", DateTime(timezone=True), nullable=False),
-    Index("entities_node_id_idx", "node_id"),
-    Index("entities_type_created_idx", "entity_type", "created_at"),
-    Index("entities_uri_idx", "uri"),
-)
-
-_ENTITY_NODE_ACCESS_BLOB_ERROR = (
-    "An entity with node_id set must not have its own access_blob; "
-    "access is controlled by the referenced node."
-)
-
-
-@event.listens_for(_entities, "after_create")
-def _create_entities_node_access_blob_trigger(target, connection, **kw):
-    """
-    Enforce, at the database level, that an entity pointing to a catalog
-    node (node_id set) does not also carry its own access_blob. This
-    mirrors the trigger created by the
-    c31f6a1d7e20_add_graph_entities_and_links_tables alembic migration,
-    which applies the same DDL for databases provisioned via `alembic
-    upgrade` rather than `create_all` (e.g. GraphSQLAlchemyStore's own
-    schema initialization, which is what the test suite exercises).
-    """
-    if connection.engine.dialect.name == "sqlite":
-        connection.execute(
-            text(
-                f"""
-CREATE TRIGGER entities_node_access_blob_insert
-BEFORE INSERT ON entities
-WHEN (NEW.node_id IS NOT NULL AND NEW.access_blob IS NOT NULL)
-BEGIN
-    SELECT RAISE(ABORT, '{_ENTITY_NODE_ACCESS_BLOB_ERROR}');
-END"""
-            )
-        )
-        connection.execute(
-            text(
-                f"""
-CREATE TRIGGER entities_node_access_blob_update
-BEFORE UPDATE ON entities
-WHEN (NEW.node_id IS NOT NULL AND NEW.access_blob IS NOT NULL)
-BEGIN
-    SELECT RAISE(ABORT, '{_ENTITY_NODE_ACCESS_BLOB_ERROR}');
-END"""
-            )
-        )
-    elif connection.engine.dialect.name == "postgresql":
-        connection.execute(
-            text(
-                f"""
-CREATE OR REPLACE FUNCTION entities_reject_node_access_blob()
-RETURNS TRIGGER AS $$
-BEGIN
-    RAISE EXCEPTION '{_ENTITY_NODE_ACCESS_BLOB_ERROR}';
-END;
-$$ LANGUAGE plpgsql;"""
-            )
-        )
-        connection.execute(
-            text(
-                """
-CREATE TRIGGER entities_node_access_blob_check
-BEFORE INSERT OR UPDATE ON entities
-FOR EACH ROW
-WHEN (NEW.node_id IS NOT NULL AND NEW.access_blob IS NOT NULL)
-EXECUTE FUNCTION entities_reject_node_access_blob();"""
-            )
-        )
-
-
-_links = Table(
-    "links",
-    _metadata,
-    Column("id", String, primary_key=True),
-    Column(
-        "subject_id",
-        String,
-        ForeignKey("entities.id", ondelete="CASCADE"),
-        nullable=False,
-    ),
-    Column("predicate", String, nullable=False),
-    Column(
-        "object_id",
-        String,
-        ForeignKey("entities.id", ondelete="CASCADE"),
-        nullable=False,
-    ),
-    Column("properties", JSON, nullable=False),
-    Column("access_blob", JSON, nullable=False),
-    Column("created_at", DateTime(timezone=True), nullable=False),
-    Index("links_subject_predicate_idx", "subject_id", "predicate"),
-    Index("links_predicate_object_idx", "predicate", "object_id"),
-    Index("links_triple_idx", "subject_id", "predicate", "object_id"),
-)
-
-_namespaces = Table(
-    "namespaces",
-    _metadata,
-    Column("prefix", String, primary_key=True),
-    Column("uri", String, nullable=False),
-    Column("created_at", DateTime(timezone=True), nullable=False),
-)
 
 
 def _access_blob_condition(

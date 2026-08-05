@@ -4,7 +4,7 @@ from sqlalchemy.exc import IntegrityError
 from starlette.testclient import TestClient
 
 from tiled.catalog import in_memory
-from tiled.catalog.orm import Node
+from tiled.catalog.core import initialize_database
 from tiled.config import Database
 from tiled.graph.schema import schema
 from tiled.graph.store import GraphSQLAlchemyStore, _nodes
@@ -115,18 +115,13 @@ class FilterPolicy(FakeTagPolicy):
 @pytest.fixture
 async def store():
     database_settings = DatabaseSettings(uri="sqlite:///:memory:")
-    # entities.node_id has a foreign key to the real catalog nodes table
-    # (tiled.catalog.orm.Node), so it must exist before
-    # GraphSQLAlchemyStore creates the graph tables. Create just that one
-    # table -- not the full catalog schema -- to keep these tests lean.
+    # tiled.graph.orm's tables live on the catalog's Base.metadata (already
+    # imported transitively via tiled.graph.store), so a single
+    # initialize_database() call provisions nodes, entities, links, and
+    # namespaces together -- the store itself no longer creates tables.
     engine = get_database_engine(database_settings)
-    async with engine.begin() as conn:
-        await conn.run_sync(Node.__table__.create, checkfirst=True)
+    await initialize_database(engine)
     s = await GraphSQLAlchemyStore.from_database_settings(database_settings)
-    # The store no longer creates its own tables; provision the catalog schema
-    # (which now includes the graph tables and the `nodes` table that
-    # entities.node_id references) on the shared in-memory database.
-    await initialize_database(s._engine)
     yield s
     # Tear down the shared pool entry (rather than just `s.close()`, which is
     # a no-op here) so each test gets an isolated in-memory database instead
@@ -781,7 +776,7 @@ def test_graphql_http_route_access_control_integration(tmp_path, policy):
 
     catalog = in_memory(writable_storage=str(tmp_path / "storage"))
     app = build_app(
-        catalog,WE
+        catalog,
         access_policy=policy,
         server_settings={"database": Database(uri="sqlite:///:memory:")},
     )
