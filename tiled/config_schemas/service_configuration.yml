@@ -162,9 +162,9 @@ properties:
           `wait_timeout` milliseconds) so an in-flight write survives a Sentinel
           failover. If unset, this defaults to 1 when a Sentinel cluster
           (`sentinels`) is configured and 0 (disabled) otherwise. A value of 0
-          is a strict no-op. Replication shortfalls are logged and counted via
-          the `tiled_streaming_replication_shortfall_total` metric but never fail
-          the client write (best-effort end-to-end).
+          is a strict no-op. On a shortfall (fewer replicas acknowledge than
+          requested within `wait_timeout`), the publish raises and the client's
+          write fails, as it does for any other Redis write error.
 
       wait_timeout:
         type: number

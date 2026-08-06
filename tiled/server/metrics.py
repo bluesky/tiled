@@ -116,13 +116,6 @@ DB_POOL_AT_MAX_TOTAL = Counter(
     ["uri"],
 )
 
-STREAMING_REPLICATION_SHORTFALL_TOTAL = Counter(
-    "tiled_streaming_replication_shortfall_total",
-    "Number of streaming publishes where the Redis WAIT write-concern was not "
-    "satisfied (fewer replicas acknowledged than requested, or the write was "
-    "rejected). Best-effort: these do not fail the client write.",
-)
-
 # Initialize labels in advance so that the metrics exist (and can be used in
 # dashboards and alerts) even if they have not yet occurred.
 for code in ["200", "304", "500"]:

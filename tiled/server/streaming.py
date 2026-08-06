@@ -14,7 +14,6 @@ from redis.asyncio.sentinel import Sentinel
 
 from ..ndslice import NDSlice
 from ..utils import safe_json_dump as _safe_json_dump
-from .metrics import STREAMING_REPLICATION_SHORTFALL_TOTAL
 
 logger = logging.getLogger(__name__)
 
@@ -477,45 +476,27 @@ class RedisStreamingDatastore(StreamingDatastore):
         self._client = _build_redis_client(settings)
         self.data_ttl = self._settings["data_ttl"]
         self.seq_ttl = self._settings["seq_ttl"]
-        self.wait_num_replicas = self._settings.get("wait_num_replicas") or 0
-        self.wait_timeout = self._settings.get("wait_timeout", 1000)
+        self.wait_num_replicas = self._settings["wait_num_replicas"]
+        self.wait_timeout = self._settings["wait_timeout"]
 
     @property
     def client(self) -> redis.Redis:
         return self._client
 
-    async def _wait_for_replicas(self, node_id) -> None:
-        """Best-effort Redis WAIT write-concern for a just-published write.
+    async def _wait_for_replicas(self, node_id: str) -> None:
+        """Block until ``wait_num_replicas`` acknowledge the latest write.
 
-        Block until ``wait_num_replicas`` replicas acknowledge the write, up to
-        ``wait_timeout`` ms, so an in-flight write survives a Sentinel failover.
-        A shortfall (or any Redis error) is logged and counted but never raised:
-        the client write has already succeeded against the primary.
+        Raises ``redis.RedisError`` if fewer than the requested number of
+        replicas ack within ``wait_timeout`` ms, so the client's write fails
+        rather than silently going unreplicated.
         """
-        if self.wait_num_replicas <= 0:
+        if not self.wait_num_replicas:
             return
-        try:
-            acked = await self.client.execute_command(
-                "WAIT", self.wait_num_replicas, self.wait_timeout
-            )
-        except redis.RedisError:
-            STREAMING_REPLICATION_SHORTFALL_TOTAL.inc()
-            logger.warning(
-                "Redis WAIT failed for node %s; streamed write may not be "
-                "replicated.",
-                node_id,
-                exc_info=True,
-            )
-            return
+        acked = await self.client.wait(self.wait_num_replicas, self.wait_timeout)
         if acked < self.wait_num_replicas:
-            STREAMING_REPLICATION_SHORTFALL_TOTAL.inc()
-            logger.warning(
-                "Redis WAIT for node %s: %d of %d replicas acknowledged within "
-                "%d ms; streamed write may be lost on failover.",
-                node_id,
-                acked,
-                self.wait_num_replicas,
-                self.wait_timeout,
+            raise redis.RedisError(
+                f"Streaming write for {node_id} replicated to {acked} of "
+                f"{self.wait_num_replicas} required replicas."
             )
 
     async def incr_seq(self, node_id: str) -> int:

@@ -247,7 +247,8 @@ class StreamingCacheConfig(BaseSettings):
     # Redis WAIT write-concern: after each streaming publish, block until this
     # many replicas ack (up to ``wait_timeout`` ms) so an in-flight write
     # survives a failover. ``None`` auto-selects 1 under HA (Sentinel) else 0.
-    # Best-effort: a shortfall is logged + counted, never failing the write.
+    # On shortfall (fewer acks than requested within the timeout) the publish
+    # raises, surfacing as an error to the client, as any Redis write error does.
     wait_num_replicas: Optional[int] = None
     wait_timeout: Optional[int] = None  # ms; only applies when WAIT is active
 

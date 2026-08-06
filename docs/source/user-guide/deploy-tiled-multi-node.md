@@ -19,11 +19,15 @@ Sentinel) and configure Tiled with `sentinels` and `service_name` instead of a
 single `uri`; the client then follows Sentinel through a failover and resumes
 subscriptions against the newly promoted primary. Because Redis replication is
 asynchronous, a failover can drop a streamed write that was acknowledged by the
-old primary but not yet replicated. To bound that window, Tiled issues a Redis
-`WAIT` write-concern after each publish (`wait_num_replicas`, on by default
-under Sentinel); this is best-effort and never fails the client write, so
-subscribers needing stronger guarantees should treat delivery as at-least-once
-and dedupe on the `sequence` field. See {doc}`../reference/service-configuration`
-for the full `streaming_cache` field reference.
+old primary but not yet replicated. To bound that window, after each publish
+Tiled issues a Redis `WAIT` (`wait_num_replicas`, on by default under Sentinel)
+to wait for replicas to acknowledge the write. If the requested number of
+replicas do not confirm within `wait_timeout`, the publish fails the client
+request, just as any other failed write to Redis does. Note the durable write to
+the SQL database has already committed at that point, so a client retry can
+duplicate it; subscribers and writers should treat delivery as at-least-once and
+dedupe on the `sequence` field. See
+{doc}`../reference/service-configuration` for the full `streaming_cache` field
+reference.
 
 [Helm chart]: https://github.com/bluesky/tiled/pkgs/container/charts%2Ftiled
