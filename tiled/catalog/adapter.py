@@ -856,22 +856,22 @@ class CatalogNodeAdapter:
                     data_sources_with_ids.append(ds)
 
                 # Notify subscribers of the *parent* node about the new child.
-                sequence = await self.context.streaming_cache.incr_seq(self.node.id)
-                metadata = {
-                    "type": "container-child-created",
-                    "sequence": sequence,
-                    "timestamp": datetime.now().isoformat(),
-                    "key": key,
-                    "structure_family": structure_family,
-                    "specs": [spec.model_dump() for spec in (specs or [])],
-                    "metadata": metadata,
-                    "data_sources": [d.model_dump() for d in data_sources_with_ids],
-                    "access_blob": refreshed_node.access_blob,
-                }
-
-                # Cache data in Redis with a TTL, and publish
-                # a notification about it.
-                await self.context.streaming_cache.set(self.node.id, sequence, metadata)
+                # Cache data in Redis with a TTL, and publish a notification
+                # about it. Best-effort: a Redis failure will not fail the write.
+                await self.context.streaming_cache.publish_update(
+                    self.node.id,
+                    lambda sequence: {
+                        "type": "container-child-created",
+                        "sequence": sequence,
+                        "timestamp": datetime.now().isoformat(),
+                        "key": key,
+                        "structure_family": structure_family,
+                        "specs": [spec.model_dump() for spec in (specs or [])],
+                        "metadata": metadata,
+                        "data_sources": [d.model_dump() for d in data_sources_with_ids],
+                        "access_blob": refreshed_node.access_blob,
+                    },
+                )
             if self.context.webhook_dispatcher:
                 segments = list(await self.path_segments())
                 child_path = segments + [key]
@@ -978,19 +978,19 @@ class CatalogNodeAdapter:
             self.context.streaming_cache
             and data_source.structure_family == StructureFamily.array
         ):
-            sequence = await self.context.streaming_cache.incr_seq(self.node.id)
-            metadata = {
-                "type": "array-ref",
-                "sequence": sequence,
-                "timestamp": datetime.now().isoformat(),
-                "data_source": data_source.model_dump(),
-                "patch": patch.model_dump() if patch else None,
-                "shape": structure["shape"],
-            }
-
-            # Cache data in Redis with a TTL, and publish
-            # a notification about it.
-            await self.context.streaming_cache.set(self.node.id, sequence, metadata)
+            # Cache data in Redis with a TTL, and publish a notification about
+            # it. Best-effort: a Redis failure will not fail the write.
+            await self.context.streaming_cache.publish_update(
+                self.node.id,
+                lambda sequence: {
+                    "type": "array-ref",
+                    "sequence": sequence,
+                    "timestamp": datetime.now().isoformat(),
+                    "data_source": data_source.model_dump(),
+                    "patch": patch.model_dump() if patch else None,
+                    "shape": structure["shape"],
+                },
+            )
 
     async def revisions(self, offset: int = 0, limit=None):
         async with self.context.session() as db:
@@ -1319,19 +1319,23 @@ class CatalogNodeAdapter:
             await db.commit()
             # Upon successful update, inform websocket subscribers through redis
             if self.context.streaming_cache:
-                sequence = await self.context.streaming_cache.incr_seq(self.node.parent)
-                metadata = {
-                    "type": "container-child-metadata-updated",
-                    "key": self.node.key,
-                    "sequence": sequence,
-                    "timestamp": datetime.now().isoformat(),
-                    "specs": [spec.model_dump() for spec in (specs or [])],
-                    "metadata": metadata,
-                }
-                if not drop_revision:
-                    metadata["revision_number"] = next_revision_number
-                await self.context.streaming_cache.set(
-                    self.node.parent, sequence, metadata
+
+                def _build_metadata(sequence):
+                    payload = {
+                        "type": "container-child-metadata-updated",
+                        "key": self.node.key,
+                        "sequence": sequence,
+                        "timestamp": datetime.now().isoformat(),
+                        "specs": [spec.model_dump() for spec in (specs or [])],
+                        "metadata": metadata,
+                    }
+                    if not drop_revision:
+                        payload["revision_number"] = next_revision_number
+                    return payload
+
+                # Best-effort: a Redis failure will not fail the write.
+                await self.context.streaming_cache.publish_update(
+                    self.node.parent, _build_metadata
                 )
             if self.context.webhook_dispatcher:
                 segments = list(await self.path_segments())
@@ -1641,19 +1645,19 @@ class CatalogArrayAdapter(CatalogNodeAdapter):
         )
 
     async def _stream(self, media_type, entry, body, shape, block=None, offset=None):
-        sequence = await self.context.streaming_cache.incr_seq(self.node.id)
-        metadata = {
-            "type": "array-data",
-            "sequence": sequence,
-            "timestamp": datetime.now().isoformat(),
-            "mimetype": media_type,
-            "shape": shape,
-            "offset": offset,
-            "block": block,
-        }
-
-        await self.context.streaming_cache.set(
-            self.node.id, sequence, metadata, payload=body
+        # Best-effort: a Redis failure will not fail the write.
+        await self.context.streaming_cache.publish_update(
+            self.node.id,
+            lambda sequence: {
+                "type": "array-data",
+                "sequence": sequence,
+                "timestamp": datetime.now().isoformat(),
+                "mimetype": media_type,
+                "shape": shape,
+                "offset": offset,
+                "block": block,
+            },
+            payload=body,
         )
 
     def make_ws_schema(self):
@@ -1769,18 +1773,19 @@ class CatalogRaggedAdapter(CatalogArrayAdapter):
         }
 
     async def _stream(self, media_type, entry, body, shape, block=None, offset=None):
-        sequence = await self.context.streaming_cache.incr_seq(self.node.id)
-        metadata = {
-            "type": "ragged-data",
-            "sequence": sequence,
-            "timestamp": datetime.now().isoformat(),
-            "mimetype": media_type,
-            "shape": shape,
-            "offset": offset,
-            "block": block,
-        }
-        await self.context.streaming_cache.set(
-            self.node.id, sequence, metadata, payload=body
+        # Best-effort: a Redis failure will not fail the write.
+        await self.context.streaming_cache.publish_update(
+            self.node.id,
+            lambda sequence: {
+                "type": "ragged-data",
+                "sequence": sequence,
+                "timestamp": datetime.now().isoformat(),
+                "mimetype": media_type,
+                "shape": shape,
+                "offset": offset,
+                "block": block,
+            },
+            payload=body,
         )
 
     async def write_block(
@@ -1857,18 +1862,18 @@ class CatalogTableAdapter(CatalogNodeAdapter):
         }
 
     async def _stream(self, media_type, entry, body, partition, append):
-        sequence = await self.context.streaming_cache.incr_seq(self.node.id)
-        metadata = {
-            "type": "table-data",
-            "sequence": sequence,
-            "timestamp": datetime.now().isoformat(),
-            "mimetype": media_type,
-            "partition": partition,
-            "append": append,
-        }
-
-        await self.context.streaming_cache.set(
-            self.node.id, sequence, metadata, payload=body
+        # Best-effort: a Redis failure will not fail the write.
+        await self.context.streaming_cache.publish_update(
+            self.node.id,
+            lambda sequence: {
+                "type": "table-data",
+                "sequence": sequence,
+                "timestamp": datetime.now().isoformat(),
+                "mimetype": media_type,
+                "partition": partition,
+                "append": append,
+            },
+            payload=body,
         )
 
     async def get(self, *args, **kwargs):

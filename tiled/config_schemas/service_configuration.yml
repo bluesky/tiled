@@ -154,6 +154,24 @@ properties:
           a Sentinel failover) and reconnect and re-subscribe rather than
           blocking on the old primary. The default is 30 (seconds).
 
+      wait_num_replicas:
+        type: number
+        description: |
+          Redis WAIT write-concern for streaming publishes. After each publish,
+          block until this many replicas acknowledge the write (up to
+          `wait_timeout` milliseconds) so an in-flight write survives a Sentinel
+          failover. If unset, this defaults to 1 when a Sentinel cluster
+          (`sentinels`) is configured and 0 (disabled) otherwise. A value of 0
+          is a strict no-op. Replication shortfalls are logged and counted via
+          the `tiled_streaming_replication_shortfall_total` metric but never fail
+          the client write (best-effort end-to-end).
+
+      wait_timeout:
+        type: number
+        description: |
+          Timeout, in milliseconds, for the Redis WAIT write-concern (see
+          `wait_num_replicas`). The default is 1000 (1 second).
+
   media_types:
     type: object
     additionalProperties: true

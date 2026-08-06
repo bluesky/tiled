@@ -14,6 +14,7 @@ from redis.asyncio.sentinel import Sentinel
 
 from ..ndslice import NDSlice
 from ..utils import safe_json_dump as _safe_json_dump
+from .metrics import STREAMING_REPLICATION_SHORTFALL_TOTAL
 
 logger = logging.getLogger(__name__)
 
@@ -109,6 +110,31 @@ class StreamingCache:
 
     async def set(self, node_id, sequence, metadata, payload=None):
         await self._datastore.set(node_id, sequence, metadata, payload)
+
+    async def publish_update(self, node_id, build_metadata, payload=None):
+        """Best-effort streaming publish: incr sequence, build metadata, set.
+
+        The catalog (Postgres) commit is the source of truth and has already
+        succeeded by the time this is called. Redis errors here — a connection
+        failure mid-failover, or a ``NOREPLICAS`` rejection from a
+        ``min-replicas-to-write`` write-concern gate — are logged and counted
+        but never raised, so a streaming hiccup cannot fail a client write.
+
+        ``build_metadata`` is a callable taking the freshly incremented
+        ``sequence`` and returning the metadata dict to publish.
+        """
+        try:
+            sequence = await self._datastore.incr_seq(node_id)
+            metadata = build_metadata(sequence)
+            await self._datastore.set(node_id, sequence, metadata, payload)
+        except redis.RedisError:
+            STREAMING_REPLICATION_SHORTFALL_TOTAL.inc()
+            logger.warning(
+                "Streaming publish to node %s failed; live subscribers will "
+                "not receive this update (catalog commit already persisted).",
+                node_id,
+                exc_info=True,
+            )
 
     @property
     def client(self):
@@ -476,10 +502,46 @@ class RedisStreamingDatastore(StreamingDatastore):
         self._client = _build_redis_client(settings)
         self.data_ttl = self._settings["data_ttl"]
         self.seq_ttl = self._settings["seq_ttl"]
+        self.wait_num_replicas = self._settings.get("wait_num_replicas") or 0
+        self.wait_timeout = self._settings.get("wait_timeout", 1000)
 
     @property
     def client(self) -> redis.Redis:
         return self._client
+
+    async def _wait_for_replicas(self, node_id) -> None:
+        """Best-effort Redis WAIT write-concern for a just-published write.
+
+        Block until ``wait_num_replicas`` replicas acknowledge the write, up to
+        ``wait_timeout`` ms, so an in-flight write survives a Sentinel failover.
+        A shortfall (or any Redis error) is logged and counted but never raised:
+        the client write has already succeeded against the primary.
+        """
+        if self.wait_num_replicas <= 0:
+            return
+        try:
+            acked = await self.client.execute_command(
+                "WAIT", self.wait_num_replicas, self.wait_timeout
+            )
+        except redis.RedisError:
+            STREAMING_REPLICATION_SHORTFALL_TOTAL.inc()
+            logger.warning(
+                "Redis WAIT failed for node %s; streamed write may not be "
+                "replicated.",
+                node_id,
+                exc_info=True,
+            )
+            return
+        if acked < self.wait_num_replicas:
+            STREAMING_REPLICATION_SHORTFALL_TOTAL.inc()
+            logger.warning(
+                "Redis WAIT for node %s: %d of %d replicas acknowledged within "
+                "%d ms; streamed write may be lost on failover.",
+                node_id,
+                acked,
+                self.wait_num_replicas,
+                self.wait_timeout,
+            )
 
     async def incr_seq(self, node_id: str) -> int:
         return await self.client.incr(f"sequence:{node_id}")
@@ -498,6 +560,7 @@ class RedisStreamingDatastore(StreamingDatastore):
         # Extend the lifetime of the sequence counter.
         pipeline.expire(f"sequence:{node_id}", self.seq_ttl)
         await pipeline.execute()
+        await self._wait_for_replicas(node_id)
 
     async def close(self, node_id):
         # Increment the counter for this node.
@@ -524,6 +587,7 @@ class RedisStreamingDatastore(StreamingDatastore):
         pipeline.expire(f"sequence:{node_id}", 1 + self.data_ttl)
         pipeline.publish(f"notify:{node_id}", sequence)
         await pipeline.execute()
+        await self._wait_for_replicas(node_id)
 
     async def get(self, key, *fields):
         return await self.client.hmget(key, *fields)

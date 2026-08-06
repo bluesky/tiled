@@ -65,6 +65,41 @@ def test_streaming_cache_config_source_validation():
     assert config.service_name == "mymaster"
 
 
+def test_streaming_cache_wait_num_replicas_default():
+    from tiled.config import StreamingCacheConfig
+
+    # Standalone (uri only): the WAIT write-concern is off by default, so the
+    # standalone code path is unchanged.
+    standalone = StreamingCacheConfig(uri="redis://localhost:6379")
+    assert standalone.wait_num_replicas == 0
+    assert standalone.wait_timeout == 1000
+
+    # Sentinel/HA cluster: WAIT auto-defaults on (1 replica).
+    ha = StreamingCacheConfig(sentinels=["h1:26379"], service_name="mymaster")
+    assert ha.wait_num_replicas == 1
+
+
+@pytest.mark.asyncio
+async def test_redis_datastore_wait_no_op_when_disabled():
+    # With wait_num_replicas at its standalone default (0), no WAIT command is
+    # ever issued -- the standalone publish path behaves exactly as before.
+    datastore = streaming.RedisStreamingDatastore.__new__(
+        streaming.RedisStreamingDatastore
+    )
+    datastore.wait_num_replicas = 0
+    datastore.wait_timeout = 1000
+
+    calls = []
+
+    class _FakeClient:
+        async def execute_command(self, *args):
+            calls.append(args)
+
+    datastore._client = _FakeClient()
+    await datastore._wait_for_replicas("node-x")
+    assert calls == []
+
+
 def test_websocket_replay_and_live_events(tiled_websocket_context):
     context = tiled_websocket_context
     client = from_context(context)

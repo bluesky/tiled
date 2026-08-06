@@ -244,6 +244,15 @@ class StreamingCacheConfig(BaseSettings):
     # redis-py detect a stalled connection (e.g. after a Sentinel failover) and
     # reconnect + re-subscribe instead of blocking on the dead primary.
     health_check_interval: int = 30
+    # Redis WAIT write-concern for streaming publishes. After each publish, block
+    # until this many replicas ack the write (up to ``wait_timeout`` ms) so an
+    # in-flight write survives a Sentinel failover. ``None`` auto-selects: 1 when
+    # a Sentinel cluster is configured, else 0 (disabled). In other words it is
+    # on by default under HA (opt-out) -- set to 0 to disable -- while 0 is a
+    # strict no-op that keeps the standalone path unchanged. Shortfalls are
+    # logged + counted, never failing the client write (best-effort end-to-end).
+    wait_num_replicas: Optional[int] = None
+    wait_timeout: int = 1000  # ms
 
     model_config = SettingsConfigDict(env_prefix="TILED_STREAMING_CACHE_")
     settings_customise_sources = classmethod(settings_customise_sources)
@@ -260,6 +269,10 @@ class StreamingCacheConfig(BaseSettings):
             raise ValueError(
                 "streaming_cache: set either 'uri' or 'sentinels' + 'service_name'."
             )
+        # HA-only activation: default WAIT on when a Sentinel cluster is
+        # configured, off for a single standalone node.
+        if self.wait_num_replicas is None:
+            self.wait_num_replicas = 1 if self.sentinels else 0
         return self
 
 
