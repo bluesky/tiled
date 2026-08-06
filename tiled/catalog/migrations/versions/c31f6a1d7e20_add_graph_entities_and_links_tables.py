@@ -74,6 +74,14 @@ def upgrade():
         unique=False,
     )
 
+    op.create_table(
+        "namespaces",
+        sa.Column("prefix", sa.String(), nullable=False),
+        sa.Column("uri", sa.String(), nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+        sa.PrimaryKeyConstraint("prefix"),
+    )
+
     # An entity that points to a catalog node delegates access control to
     # that node, so its own access_blob must be NULL. The application layer
     # (tiled.graph.schema) validates this up front for a friendly error
@@ -144,6 +152,8 @@ def downgrade():
             sa.text("DROP TRIGGER entities_node_access_blob_check ON entities")
         )
         connection.execute(sa.text("DROP FUNCTION entities_reject_node_access_blob"))
+
+    op.drop_table("namespaces")
 
     op.drop_index("links_triple_idx", table_name="links")
     op.drop_index("links_predicate_object_idx", table_name="links")
