@@ -240,19 +240,16 @@ class StreamingCacheConfig(BaseSettings):
     seq_ttl: int = 2592000  # 30 days
     socket_timeout: int = 86400  # 1 day
     socket_connect_timeout: int = 10
-    # Interval (seconds) between health-check PINGs on idle connections. Lets
-    # redis-py detect a stalled connection (e.g. after a Sentinel failover) and
-    # reconnect + re-subscribe instead of blocking on the dead primary.
+    # Interval (seconds) between health-check PINGs on idle connections, so
+    # redis-py detects a stalled connection after a Sentinel failover and
+    # reconnects instead of blocking on the dead primary.
     health_check_interval: int = 30
-    # Redis WAIT write-concern for streaming publishes. After each publish, block
-    # until this many replicas ack the write (up to ``wait_timeout`` ms) so an
-    # in-flight write survives a Sentinel failover. ``None`` auto-selects: 1 when
-    # a Sentinel cluster is configured, else 0 (disabled). In other words it is
-    # on by default under HA (opt-out) -- set to 0 to disable -- while 0 is a
-    # strict no-op that keeps the standalone path unchanged. Shortfalls are
-    # logged + counted, never failing the client write (best-effort end-to-end).
+    # Redis WAIT write-concern: after each streaming publish, block until this
+    # many replicas ack (up to ``wait_timeout`` ms) so an in-flight write
+    # survives a failover. ``None`` auto-selects 1 under HA (Sentinel) else 0.
+    # Best-effort: a shortfall is logged + counted, never failing the write.
     wait_num_replicas: Optional[int] = None
-    wait_timeout: int = 1000  # ms
+    wait_timeout: Optional[int] = None  # ms; only applies when WAIT is active
 
     model_config = SettingsConfigDict(env_prefix="TILED_STREAMING_CACHE_")
     settings_customise_sources = classmethod(settings_customise_sources)
@@ -273,6 +270,10 @@ class StreamingCacheConfig(BaseSettings):
         # configured, off for a single standalone node.
         if self.wait_num_replicas is None:
             self.wait_num_replicas = 1 if self.sentinels else 0
+        # ``wait_timeout`` only applies when WAIT is active; give it a concrete
+        # default in that case and leave it unset (not applicable) otherwise.
+        if self.wait_num_replicas > 0 and self.wait_timeout is None:
+            self.wait_timeout = 1000
         return self
 
 

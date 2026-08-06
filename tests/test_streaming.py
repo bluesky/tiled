@@ -72,7 +72,6 @@ def test_streaming_cache_wait_num_replicas_default():
     # standalone code path is unchanged.
     standalone = StreamingCacheConfig(uri="redis://localhost:6379")
     assert standalone.wait_num_replicas == 0
-    assert standalone.wait_timeout == 1000
 
     # Sentinel/HA cluster: WAIT auto-defaults on (1 replica).
     ha = StreamingCacheConfig(sentinels=["h1:26379"], service_name="mymaster")

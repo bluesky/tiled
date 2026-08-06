@@ -170,7 +170,9 @@ properties:
         type: number
         description: |
           Timeout, in milliseconds, for the Redis WAIT write-concern (see
-          `wait_num_replicas`). The default is 1000 (1 second).
+          `wait_num_replicas`). Only applies when WAIT is active
+          (`wait_num_replicas` > 0); it defaults to 1000 (1 second) in that
+          case and is otherwise unset.
 
   media_types:
     type: object
