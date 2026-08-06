@@ -111,31 +111,6 @@ class StreamingCache:
     async def set(self, node_id, sequence, metadata, payload=None):
         await self._datastore.set(node_id, sequence, metadata, payload)
 
-    async def publish_update(self, node_id, build_metadata, payload=None):
-        """Best-effort streaming publish: incr sequence, build metadata, set.
-
-        The catalog (Postgres) commit is the source of truth and has already
-        succeeded by the time this is called. Redis errors here — a connection
-        failure mid-failover, or a ``NOREPLICAS`` rejection from a
-        ``min-replicas-to-write`` write-concern gate — are logged and counted
-        but never raised, so a streaming hiccup cannot fail a client write.
-
-        ``build_metadata`` is a callable taking the freshly incremented
-        ``sequence`` and returning the metadata dict to publish.
-        """
-        try:
-            sequence = await self._datastore.incr_seq(node_id)
-            metadata = build_metadata(sequence)
-            await self._datastore.set(node_id, sequence, metadata, payload)
-        except redis.RedisError:
-            STREAMING_REPLICATION_SHORTFALL_TOTAL.inc()
-            logger.warning(
-                "Streaming publish to node %s failed; live subscribers will "
-                "not receive this update (catalog commit already persisted).",
-                node_id,
-                exc_info=True,
-            )
-
     @property
     def client(self):
         return self._datastore.client
