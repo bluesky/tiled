@@ -98,7 +98,7 @@ properties:
           - "redis-sentinel-1:26379"
           - "redis-sentinel-2:26379"
           - "redis-sentinel-3:26379"
-        service_name: "mymaster"
+        service_name: "tiled-streaming-cache"
         password: "password"
         ssl: true
       ```
@@ -122,8 +122,11 @@ properties:
       service_name:
         type: string
         description: |
-          The name of the Sentinel-monitored primary (e.g. `mymaster`).
-          Required when `sentinels` is set.
+          The name of the Sentinel-monitored replica set (Redis calls it the
+          "master name"): an arbitrary label for the primary-plus-replicas group,
+          which stays fixed across a failover and always resolves to the current
+          primary. Must match the name the Sentinels are configured with (e.g.
+          `tiled-streaming-cache`). Required when `sentinels` is set.
       password:
         type: string
         description: |
