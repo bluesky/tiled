@@ -21,12 +21,18 @@ subscriptions against the newly promoted primary.
 
 Live streaming is **best-effort, not a durable channel**: it rides Redis
 Pub/Sub, which is at-most-once, and the durable record is the SQL catalog, which
-is committed before the streaming publish. Because Redis replication is
-asynchronous and there is no per-write replication confirmation, a Sentinel
-failover can drop streamed updates that the old primary acknowledged but had not
-yet replicated to the promoted replica (the sequence counter may even rewind).
-Setting `min-replicas-to-write` / `min-replicas-max-lag` on the Redis primary
-narrows this window but does not close it. See
+is committed before the streaming publish. An ordinary connection drop is
+lossless — the client reconnects and resumes from the sequence number after the
+last one it received, and the server replays anything it missed — so a normal
+reconnect neither loses nor duplicates updates.
+
+The residual risk is a Sentinel failover to a **replica that had not yet caught
+up**. Redis replication is asynchronous and there is no per-write replication
+confirmation, so a write the old primary acknowledged but had not replicated is
+lost, and because the promoted replica's sequence counter is behind, it can
+re-issue already-used sequence numbers for new data (re-delivering them as
+duplicates). Setting `min-replicas-to-write` / `min-replicas-max-lag` on the
+Redis primary narrows this window but does not close it. See
 {doc}`../reference/service-configuration` for the full `streaming_cache` field
 reference.
 
