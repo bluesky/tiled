@@ -32,9 +32,6 @@ def _build_redis_client(settings: Dict[str, Any]) -> redis.Redis:
     kwargs = dict(
         socket_timeout=settings["socket_timeout"],
         socket_connect_timeout=settings["socket_connect_timeout"],
-        # Default mirrors StreamingCacheConfig; tolerate a partial cache_config
-        # (e.g. from a direct from_uri call) as the memory datastore does.
-        health_check_interval=settings.get("health_check_interval", 10),
     )
     sentinels = settings.get("sentinels")
     if sentinels:
@@ -42,6 +39,12 @@ def _build_redis_client(settings: Dict[str, Any]) -> redis.Redis:
             (host, int(port))
             for host, _, port in (s.rpartition(":") for s in sentinels)
         ]
+        # health_check_interval only matters for Sentinel failover detection, so
+        # it is applied on the HA path only -- the standalone from_url call below
+        # stays identical to the pre-HA behavior. Default mirrors
+        # StreamingCacheConfig; tolerate a partial cache_config (e.g. from a
+        # direct from_uri call) as the memory datastore does.
+        kwargs["health_check_interval"] = settings.get("health_check_interval", 10)
         sentinel_kwargs = None
         if settings.get("ssl"):
             # TLS for both Sentinel discovery and data-node connections.

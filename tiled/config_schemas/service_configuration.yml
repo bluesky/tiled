@@ -167,10 +167,10 @@ properties:
         type: number
         description: |
           Interval, in seconds, between health-check PINGs on idle Redis
-          connections. Lets the client detect a stalled connection (e.g. after
-          a Sentinel failover) and reconnect and re-subscribe rather than
-          blocking on the old primary. The default is 10 (seconds); it bounds
-          how quickly the client notices a silently-dead primary.
+          connections. Applies to the Sentinel (HA) path only, where it lets the
+          client detect a stalled connection after a failover and reconnect
+          rather than blocking on the old primary. The default is 10 (seconds);
+          it bounds how quickly the client notices a silently-dead primary.
 
   media_types:
     type: object
