@@ -771,6 +771,44 @@ streaming_cache:
     assert config.streaming_cache.seq_ttl == 60
     assert config.streaming_cache.socket_timeout == 11
     assert config.streaming_cache.socket_connect_timeout == 12
+    # On the standalone path the HA-only fields take their (off) defaults.
+    assert config.streaming_cache.sentinels is None
+    assert config.streaming_cache.service_name is None
+    assert config.streaming_cache.ssl is False
+    assert config.streaming_cache.health_check_interval == 10
+
+
+def test_streaming_cache_sentinel_config(tmp_path):
+    "A Sentinel (HA) streaming_cache parses end-to-end, with uri left unset."
+    config_path = tmp_path / "config.yml"
+    with open(config_path, "w") as file:
+        file.write(
+            f"""
+trees:
+ - path: /
+   tree: catalog
+   args:
+     uri: "sqlite:///:memory:"
+     writable_storage:
+        - "file://localhost{str(tmp_path / "data")}"
+     init_if_not_exists: true
+streaming_cache:
+  sentinels:
+    - "redis-sentinel-1:26379"
+    - "redis-sentinel-2:26379"
+  service_name: "tiled-streaming-cache"
+  password: "secret"
+  ssl: true
+"""
+        )
+    config = parse_configs(config_path)
+    assert config.streaming_cache.uri is None
+    assert config.streaming_cache.sentinels == [
+        "redis-sentinel-1:26379",
+        "redis-sentinel-2:26379",
+    ]
+    assert config.streaming_cache.service_name == "tiled-streaming-cache"
+    assert config.streaming_cache.ssl is True
 
 
 def _receive_schema(websocket, envelope_format):

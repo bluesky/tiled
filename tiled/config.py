@@ -246,20 +246,39 @@ class StreamingCacheConfig(BaseSettings):
     socket_connect_timeout: int = 10
     # Interval (seconds) between health-check PINGs on idle connections, so
     # redis-py detects a stalled connection after a Sentinel failover and
-    # reconnects instead of blocking on the dead primary.
-    health_check_interval: int = 30
+    # reconnects instead of blocking on the dead primary. Kept low because
+    # socket_timeout is long: on a silent primary death (no TCP reset) this
+    # PING is the client's main timely signal, so it bounds failover detection.
+    health_check_interval: int = 10
 
     model_config = SettingsConfigDict(env_prefix="TILED_STREAMING_CACHE_")
     settings_customise_sources = classmethod(settings_customise_sources)
 
     @model_validator(mode="after")
     def check_source(self) -> "StreamingCacheConfig":
+        # 'uri' and 'sentinels' are mutually exclusive; setting both is
+        # ambiguous (which one wins?), so reject it rather than silently
+        # ignoring one.
+        if self.uri and self.sentinels:
+            raise ValueError(
+                "streaming_cache: set only one of 'uri' or 'sentinels', not both."
+            )
         if self.sentinels:
             if not self.service_name:
                 raise ValueError(
                     "streaming_cache: 'service_name' is required when "
                     "'sentinels' is set."
                 )
+            # Each Sentinel entry must be 'host:port' (parsed the same way as
+            # the client, via rpartition), else the client fails cryptically at
+            # connect time on int('') / a missing host.
+            for entry in self.sentinels:
+                host, sep, port = entry.rpartition(":")
+                if not (sep and host and port.isdigit()):
+                    raise ValueError(
+                        f"streaming_cache: sentinel entry {entry!r} must be "
+                        "'host:port'."
+                    )
         elif not self.uri:
             raise ValueError(
                 "streaming_cache: set either 'uri' or 'sentinels' + 'service_name'."

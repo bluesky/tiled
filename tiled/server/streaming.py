@@ -34,7 +34,7 @@ def _build_redis_client(settings: Dict[str, Any]) -> redis.Redis:
         socket_connect_timeout=settings["socket_connect_timeout"],
         # Default mirrors StreamingCacheConfig; tolerate a partial cache_config
         # (e.g. from a direct from_uri call) as the memory datastore does.
-        health_check_interval=settings.get("health_check_interval", 30),
+        health_check_interval=settings.get("health_check_interval", 10),
     )
     sentinels = settings.get("sentinels")
     if sentinels:
