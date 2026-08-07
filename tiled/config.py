@@ -279,7 +279,21 @@ class StreamingCacheConfig(BaseSettings):
                         f"streaming_cache: sentinel entry {entry!r} must be "
                         "'host:port'."
                     )
-        elif not self.uri:
+        elif self.uri:
+            # 'ssl' and 'service_name' apply only to the Sentinel path and are
+            # ignored with a 'uri'. Reject them so a misconfiguration fails loud
+            # -- especially 'ssl', where silently ignoring it would leave a
+            # connection the operator believes is encrypted running in plaintext.
+            if self.ssl:
+                raise ValueError(
+                    "streaming_cache: 'ssl' applies to the 'sentinels' path; for "
+                    "a single-node 'uri' use the rediss:// scheme instead."
+                )
+            if self.service_name:
+                raise ValueError(
+                    "streaming_cache: 'service_name' is only used with 'sentinels'."
+                )
+        else:
             raise ValueError(
                 "streaming_cache: set either 'uri' or 'sentinels' + 'service_name'."
             )

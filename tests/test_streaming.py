@@ -67,6 +67,12 @@ def test_streaming_cache_config_source_validation():
     # ...and each sentinel must be host:port.
     with pytest.raises(ValidationError, match="must be 'host:port'"):
         StreamingCacheConfig(sentinels=["h1"], service_name="c")
+    # Sentinel-only fields with a 'uri' are rejected (ssl would otherwise leave
+    # a connection the operator thinks is encrypted running in plaintext).
+    with pytest.raises(ValidationError, match="'ssl' applies to the 'sentinels'"):
+        StreamingCacheConfig(uri="redis://h:6379", ssl=True)
+    with pytest.raises(ValidationError, match="'service_name' is only used"):
+        StreamingCacheConfig(uri="redis://h:6379", service_name="c")
 
     # Valid standalone (uri) and Sentinel configs.
     assert StreamingCacheConfig(uri="redis://h:6379").sentinels is None
