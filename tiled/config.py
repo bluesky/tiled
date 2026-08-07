@@ -248,13 +248,6 @@ class StreamingCacheConfig(BaseSettings):
     # redis-py detects a stalled connection after a Sentinel failover and
     # reconnects instead of blocking on the dead primary.
     health_check_interval: int = 30
-    # Redis WAIT write-concern: after each streaming publish, block until this
-    # many replicas ack (up to ``wait_timeout`` ms) so an in-flight write
-    # survives a failover. ``None`` auto-selects 1 under HA (Sentinel) else 0.
-    # On shortfall (fewer acks than requested within the timeout) the publish
-    # raises, surfacing as an error to the client, as any Redis write error does.
-    wait_num_replicas: Optional[int] = None
-    wait_timeout: Optional[int] = None  # ms; only applies when WAIT is active
 
     model_config = SettingsConfigDict(env_prefix="TILED_STREAMING_CACHE_")
     settings_customise_sources = classmethod(settings_customise_sources)
@@ -271,14 +264,6 @@ class StreamingCacheConfig(BaseSettings):
             raise ValueError(
                 "streaming_cache: set either 'uri' or 'sentinels' + 'service_name'."
             )
-        # HA-only activation: default WAIT on when a Sentinel cluster is
-        # configured, off for a single standalone node.
-        if self.wait_num_replicas is None:
-            self.wait_num_replicas = 1 if self.sentinels else 0
-        # ``wait_timeout`` only applies when WAIT is active; give it a concrete
-        # default in that case and leave it unset (not applicable) otherwise.
-        if self.wait_num_replicas > 0 and self.wait_timeout is None:
-            self.wait_timeout = 1000
         return self
 
 

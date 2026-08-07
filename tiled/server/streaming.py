@@ -32,7 +32,9 @@ def _build_redis_client(settings: Dict[str, Any]) -> redis.Redis:
     kwargs = dict(
         socket_timeout=settings["socket_timeout"],
         socket_connect_timeout=settings["socket_connect_timeout"],
-        health_check_interval=settings["health_check_interval"],
+        # Default mirrors StreamingCacheConfig; tolerate a partial cache_config
+        # (e.g. from a direct from_uri call) as the memory datastore does.
+        health_check_interval=settings.get("health_check_interval", 30),
     )
     sentinels = settings.get("sentinels")
     if sentinels:
@@ -490,28 +492,10 @@ class RedisStreamingDatastore(StreamingDatastore):
         self._client = _build_redis_client(settings)
         self.data_ttl = self._settings["data_ttl"]
         self.seq_ttl = self._settings["seq_ttl"]
-        self.wait_num_replicas = self._settings["wait_num_replicas"]
-        self.wait_timeout = self._settings["wait_timeout"]
 
     @property
     def client(self) -> redis.Redis:
         return self._client
-
-    async def _wait_for_replicas(self, node_id: str) -> None:
-        """Block until ``wait_num_replicas`` acknowledge the latest write.
-
-        Raises ``redis.RedisError`` if fewer than the requested number of
-        replicas ack within ``wait_timeout`` ms, so the client's write fails
-        rather than silently going unreplicated.
-        """
-        if not self.wait_num_replicas:
-            return
-        acked = await self.client.wait(self.wait_num_replicas, self.wait_timeout)
-        if acked < self.wait_num_replicas:
-            raise redis.RedisError(
-                f"Streaming write for {node_id} replicated to {acked} of "
-                f"{self.wait_num_replicas} required replicas."
-            )
 
     async def incr_seq(self, node_id: str) -> int:
         return await self.client.incr(f"sequence:{node_id}")
@@ -530,7 +514,6 @@ class RedisStreamingDatastore(StreamingDatastore):
         # Extend the lifetime of the sequence counter.
         pipeline.expire(f"sequence:{node_id}", self.seq_ttl)
         await pipeline.execute()
-        await self._wait_for_replicas(node_id)
 
     async def close(self, node_id):
         # Increment the counter for this node.
@@ -557,7 +540,6 @@ class RedisStreamingDatastore(StreamingDatastore):
         pipeline.expire(f"sequence:{node_id}", 1 + self.data_ttl)
         pipeline.publish(f"notify:{node_id}", sequence)
         await pipeline.execute()
-        await self._wait_for_replicas(node_id)
 
     async def get(self, key, *fields):
         return await self.client.hmget(key, *fields)

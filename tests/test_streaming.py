@@ -65,19 +65,6 @@ def test_streaming_cache_config_source_validation():
     assert config.service_name == "mymaster"
 
 
-def test_streaming_cache_wait_num_replicas_default():
-    from tiled.config import StreamingCacheConfig
-
-    # Standalone (uri only): the WAIT write-concern is off by default, so the
-    # standalone code path is unchanged.
-    standalone = StreamingCacheConfig(uri="redis://localhost:6379")
-    assert standalone.wait_num_replicas == 0
-
-    # Sentinel/HA cluster: WAIT auto-defaults on (1 replica).
-    ha = StreamingCacheConfig(sentinels=["h1:26379"], service_name="mymaster")
-    assert ha.wait_num_replicas == 1
-
-
 def test_websocket_replay_and_live_events(tiled_websocket_context):
     context = tiled_websocket_context
     client = from_context(context)
