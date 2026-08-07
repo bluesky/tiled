@@ -1912,7 +1912,9 @@ def get_router(
         links = links_for_node(
             structure_family, structure, get_base_url(request), path + f"/{node.key}"
         )
-        data_sources_dump = [ds.model_dump() for ds in node.data_sources]
+        data_sources_dump = [
+            ds.model_dump() for ds in await node.data_sources(include_assets=True)
+        ]
         strip_asset_fields_for_client(
             data_sources_dump, parse_python_tiled_client_version(request)
         )

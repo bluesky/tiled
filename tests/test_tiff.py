@@ -278,6 +278,88 @@ a,b,c
         assert client["other_file2"].columns == ["a", "b", "c"]
 
 
+@pytest.mark.asyncio
+async def test_tiff_sequence_client_data_sources_assets(tmpdir):
+    """A file-sequence node exposes ALL its assets to the client via
+    `c.data_sources()[0].assets`, even though the server loads assets
+    lazily (asset-free `data_sources` property + on-demand per-frame reads).
+
+    Also confirms single-frame reads return correct data, exercising the lazy
+    per-frame resolution path end-to-end through the catalog.
+    """
+    num_frames = 10
+    base = numpy.random.default_rng(0).integers(0, 255, size=(3, 5), dtype="uint8")
+    frames = []
+    for i in range(num_frames):
+        arr = (base + i).astype("uint8")
+        tf.imwrite(Path(tmpdir / f"image{i:05}.tif"), arr)
+        frames.append(arr)
+    adapter = in_memory(readable_storage=[tmpdir])
+    with Context.from_app(build_app(adapter)) as context:
+        client = from_context(context)
+        await register(client, tmpdir)
+        seq = client["image"]
+        assert seq.shape == (num_frames, 3, 5)
+
+        # Client-facing data_sources() must still expose every asset.
+        data_sources = seq.data_sources()
+        assert data_sources is not None
+        assert len(data_sources) == 1
+        assets = data_sources[0].assets
+        assert len(assets) == num_frames
+        assert all(asset.data_uri for asset in assets)
+
+        # Single-frame reads via the lazy path return the correct frame.
+        for i in (0, 3, num_frames - 1):
+            numpy.testing.assert_array_equal(seq[i], frames[i])
+        # A multi-frame slice also resolves correctly.
+        numpy.testing.assert_array_equal(seq[2:5], numpy.stack(frames[2:5]))
+
+
+@pytest.mark.asyncio
+async def test_tiff_sequence_lazy_http_block_and_slice_reads(tmpdir):
+    """End-to-end HTTP exercise of the lazy per-frame path.
+
+    Reads reach the server via the `/array/full` (slice) and `/array/block`
+    routes, which dispatch to the catalog's lazy resolver. Confirms both give
+    data identical to the eager reference for whole-array, sliced, strided, and
+    single-block reads.
+    """
+    num_frames = 6
+    base = numpy.random.default_rng(1).integers(0, 255, size=(3, 5), dtype="uint8")
+    frames = []
+    for i in range(num_frames):
+        arr = (base + i).astype("uint8")
+        tf.imwrite(Path(tmpdir / f"image{i:05}.tif"), arr)
+        frames.append(arr)
+    stacked = numpy.stack(frames)
+
+    adapter = in_memory(readable_storage=[tmpdir])
+    with Context.from_app(build_app(adapter)) as context:
+        client = from_context(context)
+        await register(client, tmpdir)
+        seq = client["image"]
+        assert seq.shape == (num_frames, 3, 5)
+
+        # Full read over HTTP (/array/full).
+        numpy.testing.assert_array_equal(seq.read(), stacked)
+        # Contiguous and strided slice reads over HTTP.
+        numpy.testing.assert_array_equal(seq.read(slice=(slice(1, 4),)), stacked[1:4])
+        numpy.testing.assert_array_equal(
+            seq.read(slice=(slice(0, num_frames, 2),)), stacked[0:num_frames:2]
+        )
+        # Per-block reads over HTTP (/array/block): each file is one block on axis 0.
+        for i in (0, 2, num_frames - 1):
+            block = seq.read_block((i, 0, 0))
+            numpy.testing.assert_array_equal(block, frames[i][numpy.newaxis])
+        # Block read with a within-block slice (/array/block?slice=...): the block
+        # selects the file(s) to resolve; the within-block slice is applied to the
+        # already-loaded block data and must never change which files are read.
+        for i in (0, 3, num_frames - 1):
+            block = seq.read_block((i, 0, 0), slice=(0, slice(1, 3)))
+            numpy.testing.assert_array_equal(block, frames[i][1:3])
+
+
 def test_rgb(client):
     "Test an RGB TIFF."
     arr = client["color"].read()
