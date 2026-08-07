@@ -109,7 +109,11 @@ properties:
         type: string
         description: |
           Connection string for a single, standalone Redis node, e.g.
-          `redis://:password@host:port`. Mutually exclusive with `sentinels`.
+          `redis://:password@host:port`. The username is optional: omit it
+          (`redis://:password@host:port`) to authenticate as the default user
+          with `requirepass`, or include it (`redis://user:password@host:port`)
+          for a Redis 6+ ACL user. Use the `rediss://` scheme for TLS. Mutually
+          exclusive with `sentinels`.
       sentinels:
         type: array
         items:
