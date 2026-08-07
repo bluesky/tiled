@@ -73,6 +73,8 @@ def test_streaming_cache_config_source_validation():
         StreamingCacheConfig(uri="redis://h:6379", ssl=True)
     with pytest.raises(ValidationError, match="'service_name' is only used"):
         StreamingCacheConfig(uri="redis://h:6379", service_name="c")
+    with pytest.raises(ValidationError, match="'password' is only used"):
+        StreamingCacheConfig(uri="redis://h:6379", password="secret")
 
     # Valid standalone (uri) and Sentinel configs.
     assert StreamingCacheConfig(uri="redis://h:6379").sentinels is None
