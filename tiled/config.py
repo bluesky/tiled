@@ -236,6 +236,10 @@ class StreamingCacheConfig(BaseSettings):
     sentinels: Optional[list[str]] = None
     service_name: Optional[str] = None
     password: Optional[str] = None
+    # TLS for the Sentinel path (the standalone ``uri`` path uses ``rediss://``
+    # instead). Applies to both Sentinel discovery and data-node connections;
+    # verification uses redis-py's default, matching ``rediss://``.
+    ssl: bool = False
     data_ttl: int = 3600  # 1 hr
     seq_ttl: int = 2592000  # 30 days
     socket_timeout: int = 86400  # 1 day

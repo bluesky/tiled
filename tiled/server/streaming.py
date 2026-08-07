@@ -25,6 +25,9 @@ def _build_redis_client(settings: Dict[str, Any]) -> redis.Redis:
     - ``sentinels`` (a list of ``"host:port"``) plus ``service_name`` — a
       Sentinel-managed cluster; the client follows failover to the current
       primary.
+
+    When ``ssl`` is set (Sentinel path), TLS is applied to both the Sentinel
+    discovery and the data-node connections.
     """
     kwargs = dict(
         socket_timeout=settings["socket_timeout"],
@@ -37,7 +40,18 @@ def _build_redis_client(settings: Dict[str, Any]) -> redis.Redis:
             (host, int(port))
             for host, _, port in (s.rpartition(":") for s in sentinels)
         ]
-        sentinel = Sentinel(hosts, password=settings.get("password"), **kwargs)
+        sentinel_kwargs = None
+        if settings.get("ssl"):
+            # TLS for both Sentinel discovery and data-node connections.
+            tls_kwargs = {"ssl": True}
+            kwargs.update(tls_kwargs)
+            sentinel_kwargs = tls_kwargs
+        sentinel = Sentinel(
+            hosts,
+            password=settings.get("password"),
+            sentinel_kwargs=sentinel_kwargs,
+            **kwargs,
+        )
         return sentinel.master_for(settings["service_name"])
     return redis.from_url(settings["uri"], **kwargs)
 

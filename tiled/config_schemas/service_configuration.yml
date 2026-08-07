@@ -100,6 +100,7 @@ properties:
           - "redis-sentinel-3:26379"
         service_name: "mymaster"
         password: "password"
+        ssl: true
       ```
     type: object
     additionalProperties: false
@@ -128,6 +129,15 @@ properties:
         description: |
           Password for the Redis data nodes, used with `sentinels`. (For a
           single-node deployment, include the password in `uri` instead.)
+      ssl:
+        type: boolean
+        description: |
+          Enable TLS for the `sentinels` path, securing both the Sentinel
+          discovery connections and the data-node (primary/replica) connections
+          the client follows failover across. Certificate verification uses the
+          same default as the standalone `rediss://` path. Defaults to `false`.
+          (For a single-node deployment, use the `rediss://` scheme in `uri`
+          instead.)
       data_ttl:
         type: number
         description: Max retention time for streaming data (seconds)
