@@ -262,11 +262,12 @@ class HDF5ArrayAdapter(ArrayAdapter):
             rest_shape = shapes_chunks_dtypes[0][0][1:]
             rest_row_bytes = math.prod(rest_shape) * dtype.itemsize
             rest_chunks: Tuple[Tuple[int, ...], ...]
-            if not rest_shape or 0 < rest_row_bytes <= READ_BATCH_BYTES:
+            read_batch_bytes = READ_BATCH_BYTES
+            if not rest_shape or 0 < rest_row_bytes <= read_batch_bytes:
                 # Read whole rows (full rest dimensions) in blocks along axis 0,
                 # sized up to the batch limit but never smaller than the native
                 # chunk along axis 0.
-                rows_per_block = max(1, READ_BATCH_BYTES // (rest_row_bytes or 1))
+                rows_per_block = max(1, read_batch_bytes // (rest_row_bytes or 1))
                 file_chunks = tuple(
                     split_chunks(shp[0], max(chk[0], rows_per_block))
                     for shp, chk, _ in shapes_chunks_dtypes

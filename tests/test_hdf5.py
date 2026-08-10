@@ -670,9 +670,44 @@ def test_adapter_from_catalog(example_file, shape, error):
         assert adp.read().shape == shape
 
 
+# The fixture datasets are int64 (8 bytes) with per-file native chunks
+#   a/b: shape (4, 5, 6),  native chunk (1, 2, 3) -> one row is 5*6*8 = 240 bytes
+#   a/c: shape (10, 1),    native chunk (2, 1)    -> one row is 1*8   =   8 bytes
+#   a/d: shape (10,),      native chunk (3,)      -> one row is        =   8 bytes
+# The coalescing groups whole rows (full trailing dims) into blocks along the
+# leading axis up to READ_BATCH_BYTES, never smaller than the native chunk along
+# that axis; if a single row already exceeds the limit it falls back to the
+# files' native tiling in every dimension. Each expected chunk pattern below is
+# per-file (repeated once per file, since all files are identical).
+@pytest.mark.parametrize(
+    "read_batch_bytes, b_dim0, b_rest, c_dim0, c_rest, d_dim0",
+    [
+        # Default (1 GiB): everything coalesces to a single block per file.
+        (1 << 30, (4,), ((5,), (6,)), (10,), ((1,),), (10,)),
+        # 480 bytes = 2 rows of `b`: `b` coalesces to 2 blocks per file; `c`/`d`
+        # (tiny rows) still fit one block per file.
+        (480, (2, 2), ((5,), (6,)), (10,), ((1,),), (10,)),
+        # 40 bytes < one row of `b` (240 B) *and* < its native chunk (48 B): `b`
+        # falls back to native tiling in every dimension; `c`/`d` coalesce to
+        # 5-row blocks (2 blocks per file).
+        (40, (1, 1, 1, 1), ((2, 2, 1), (3, 3)), (5, 5), ((1,),), (5, 5)),
+    ],
+)
 @pytest.mark.parametrize("num_files", [1, 3])
-def test_chunked_arrays_from_uris(example_files_with_chunked_arrays, num_files):
-    # Test that chunked arrays can be read and reshaped correctly
+def test_chunked_arrays_from_uris(
+    example_files_with_chunked_arrays,
+    num_files,
+    read_batch_bytes,
+    b_dim0,
+    b_rest,
+    c_dim0,
+    c_rest,
+    d_dim0,
+    monkeypatch,
+):
+    # Test that chunked arrays can be read and reshaped correctly, and that the
+    # native HDF5 chunks are coalesced according to READ_BATCH_BYTES.
+    monkeypatch.setattr("tiled.adapters.hdf5.READ_BATCH_BYTES", read_batch_bytes)
     fpaths = example_files_with_chunked_arrays[:num_files]
     tree = HDF5Adapter.from_uris(*fpaths)
     with Context.from_app(build_app(tree)) as context:
@@ -680,9 +715,9 @@ def test_chunked_arrays_from_uris(example_files_with_chunked_arrays, num_files):
 
     arr_b = client["a"]["b"]
     assert arr_b.shape == (4 * num_files, 5, 6)
-    # Native HDF5 chunks are coalesced into whole per-file blocks (bounded by
-    # READ_BATCH_BYTES) to avoid a task/open per tiny native chunk.
-    assert arr_b.chunks == ((4,) * num_files, (5,), (6,))
+    # Native HDF5 chunks are coalesced into blocks (bounded by READ_BATCH_BYTES)
+    # to avoid a task/open per tiny native chunk.
+    assert arr_b.chunks == (b_dim0 * num_files, *b_rest)
     assert arr_b.dtype == "int64"
     arr_true_b = numpy.concatenate(
         [
@@ -695,7 +730,7 @@ def test_chunked_arrays_from_uris(example_files_with_chunked_arrays, num_files):
 
     arr_c = client["a"]["c"]
     assert arr_c.shape == (10 * num_files, 1)
-    assert arr_c.chunks == ((10,) * num_files, (1,))
+    assert arr_c.chunks == (c_dim0 * num_files, *c_rest)
     assert arr_c.dtype == "int64"
     arr_true_c = numpy.concatenate(
         [
@@ -708,7 +743,7 @@ def test_chunked_arrays_from_uris(example_files_with_chunked_arrays, num_files):
 
     arr_d = client["a"]["d"]
     assert arr_d.shape == (10 * num_files,)
-    assert arr_d.chunks == ((10,) * num_files,)
+    assert arr_d.chunks == (d_dim0 * num_files,)
     assert arr_d.dtype == "int64"
     arr_true_d = numpy.concatenate(
         [
