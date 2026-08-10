@@ -176,7 +176,7 @@ def build_app(
 
     if scalable:
         streaming_cache = server_settings.get("streaming_cache", None)
-        if streaming_cache and streaming_cache["uri"].startswith("memory"):
+        if streaming_cache and (streaming_cache.get("uri") or "").startswith("memory"):
             raise UnscalableConfig(
                 dedent(
                     """

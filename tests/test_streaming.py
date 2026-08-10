@@ -48,6 +48,41 @@ def test_streaming_cache_unknown_backend():
         raise AssertionError("StreamingCache should reject unknown backends.")
 
 
+def test_streaming_cache_config_source_validation():
+    from pydantic import ValidationError
+
+    from tiled.config import StreamingCacheConfig
+
+    # Exactly one source is required: neither is an error...
+    with pytest.raises(ValidationError, match="either 'uri' or 'sentinels'"):
+        StreamingCacheConfig()
+    # ...and setting both is ambiguous.
+    with pytest.raises(ValidationError, match="only one of 'uri' or 'sentinels'"):
+        StreamingCacheConfig(
+            uri="redis://h:6379", sentinels=["h1:26379"], service_name="c"
+        )
+    # The Sentinel path requires a service_name...
+    with pytest.raises(ValidationError, match="'service_name' is required"):
+        StreamingCacheConfig(sentinels=["h1:26379"])
+    # ...and each sentinel must be host:port.
+    with pytest.raises(ValidationError, match="must be 'host:port'"):
+        StreamingCacheConfig(sentinels=["h1"], service_name="c")
+    # Sentinel-only fields with a 'uri' are rejected (ssl would otherwise leave
+    # a connection the operator thinks is encrypted running in plaintext).
+    with pytest.raises(ValidationError, match="'ssl' applies to the 'sentinels'"):
+        StreamingCacheConfig(uri="redis://h:6379", ssl=True)
+    with pytest.raises(ValidationError, match="'service_name' is only used"):
+        StreamingCacheConfig(uri="redis://h:6379", service_name="c")
+    with pytest.raises(ValidationError, match="'password' is only used"):
+        StreamingCacheConfig(uri="redis://h:6379", password="secret")
+
+    # Valid standalone (uri) and Sentinel configs.
+    assert StreamingCacheConfig(uri="redis://h:6379").sentinels is None
+    ha = StreamingCacheConfig(sentinels=["h1:26379", "h2:26379"], service_name="c")
+    assert ha.uri is None
+    assert ha.service_name == "c"
+
+
 def test_websocket_replay_and_live_events(tiled_websocket_context):
     context = tiled_websocket_context
     client = from_context(context)
