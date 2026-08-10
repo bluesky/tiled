@@ -286,7 +286,7 @@ async def test_lazy_reshaped_sequence_selects_correct_assets(tmpdir, slice_input
     slice needs, and reads back data identical to the eager reference.
 
     Files are stored MxN but the structure declares (P, Q, R, M, N); this
-    exercises the reshape branch of `stack_indices_for_slice`/`read` for
+    exercises the reshape branch of `file_indices_for_slice`/`read` for
     complex slices (strides, ellipsis, integer index reduction).
     """
     P, Q, R, M, N = _RESHAPE_P, _RESHAPE_Q, _RESHAPE_R, _RESHAPE_M, _RESHAPE_N

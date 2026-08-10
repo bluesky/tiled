@@ -726,7 +726,7 @@ class CatalogNodeAdapter:
             if any(block[1:]):
                 raise IndexError(block)
             slice = block.slice_from_chunks(structure.chunks)[0]
-        indices = adapter_cls.stack_indices_for_slice(structure, chunks, slice)
+        indices = adapter_cls.file_indices_for_slice(structure, chunks, slice)
         if indices is None:
             # The reshape interleaves file contents (not file-boundary-aligned),
             # so every file must be loaded: the lazy path offers no benefit. Fall

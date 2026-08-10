@@ -406,7 +406,7 @@ class FileSequenceAdapter(Adapter[ArrayStructure]):
         """The shape of the file-stacking dimensions, or None if not partially-loadable.
 
         Pure function of the structure shape and the true (stored) shape -- no
-        adapter state, no I/O -- so both `read` and the `stack_indices_for_slice`
+        adapter state, no I/O -- so both `read` and the `file_indices_for_slice`
         classmethod (used by the catalog before any adapter is built) can share it.
 
         Each file contributes one element along the left-most stored axis, so a
@@ -440,7 +440,7 @@ class FileSequenceAdapter(Adapter[ArrayStructure]):
         return None
 
     @classmethod
-    def stack_indices_for_slice(
+    def file_indices_for_slice(
         cls,
         structure: ArrayStructure,
         chunks: Optional[tuple[tuple[int, ...], ...]],
