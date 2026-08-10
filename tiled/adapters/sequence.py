@@ -1,6 +1,8 @@
 import builtins
 import math
+import os
 from abc import abstractmethod
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Iterable, List, Optional, Union
 
 import numpy as np
@@ -17,6 +19,24 @@ from ..structures.data_source import DataSource
 from ..type_aliases import JSON, EllipsisType
 from ..utils import path_from_uri
 from .utils import force_reshape
+
+# Concurrency and memory knobs for reads that span many files of a sequence.
+#
+# IO_WORKERS: how many files to read concurrently. Reading a file is I/O-bound
+#   (open + read + decode, releasing the GIL in the C codecs), so a worker count
+#   somewhat above the CPU count keeps the storage busy. Override with
+#   TILED_SEQUENCE_IO_WORKERS.
+# READ_BATCH_BYTES: soft cap on the *full-frame* bytes held in memory at once
+#   while a multi-file read is in flight. A read that touches many files but
+#   keeps only a few pixels of each (e.g. one pixel from every file of a large
+#   stack) reads each file on a worker, reduces the frame, and drops it before
+#   the next, so peak memory stays near `min(IO_WORKERS, READ_BATCH_BYTES /
+#   frame_bytes)` full frames plus the (reduced) result, never the whole stack.
+#   Override with TILED_SEQUENCE_READ_BATCH_BYTES.
+IO_WORKERS = int(
+    os.environ.get("TILED_SEQUENCE_IO_WORKERS") or min(32, (os.cpu_count() or 4) + 4)
+)
+READ_BATCH_BYTES = int(os.environ.get("TILED_SEQUENCE_READ_BATCH_BYTES") or (1 << 30))
 
 
 class _LazyFilepaths:
@@ -183,6 +203,86 @@ class FileSequenceAdapter(Adapter[ArrayStructure]):
 
         pass
 
+    def _read_one(self, filepath: str) -> NDArray[Any]:
+        """Read a single file into an array of its stored (per-file) shape.
+
+        The per-file primitive used by the concurrent readers below. Subclasses
+        implement the format-specific single-file read (e.g. `numpy.load`,
+        `tifffile.imread`, `PIL.Image.open`).
+        """
+        raise NotImplementedError
+
+    def _map_read(self, filepaths: Iterable[str]) -> List[NDArray[Any]]:
+        """Read files concurrently via `_read_one`, preserving input order.
+
+        Overlaps the (I/O-bound) per-file reads across `IO_WORKERS` threads.
+        Falls back to a serial map for a single file or when `IO_WORKERS == 1`.
+        """
+        filepaths = list(filepaths)
+        if IO_WORKERS <= 1 or len(filepaths) <= 1:
+            return [self._read_one(fp) for fp in filepaths]
+        with ThreadPoolExecutor(max_workers=min(IO_WORKERS, len(filepaths))) as ex:
+            return list(ex.map(self._read_one, filepaths))
+
+    def _read_selected(
+        self,
+        file_indices: tuple[int, ...],
+        frame_slice: tuple[Any, ...],
+        frame_shape: tuple[int, ...],
+    ) -> NDArray[Any]:
+        """Read the selected files and reduce each frame, with bounded memory.
+
+        `file_indices` are flat stacking-grid indices (in read order);
+        `frame_slice` is the trailing part of the selection that applies within
+        each file, expressed in *structure* coordinates; `frame_shape` is the
+        per-file structure shape (the structure dims after the stacking grid) --
+        i.e. what each loaded frame is reshaped to before `frame_slice` applies.
+
+        Each file is read on a worker, reshaped to `frame_shape`, reduced by
+        `frame_slice`, and written straight into the preallocated output; the
+        full frame is then dropped. Reducing *before* stacking is what keeps a
+        read that touches many files but keeps only a few pixels of each from
+        materializing the whole stack -- peak extra memory is about
+        `min(IO_WORKERS, READ_BATCH_BYTES / frame_bytes)` full frames in flight,
+        not `n_files x full_frame`. A single persistent pool reads all files
+        (no per-batch spin-up/idle-tail), keeping storage continuously busy.
+        Returns the reduced frames stacked along a new leading axis: shape
+        `(len(file_indices), *frame_slice applied to frame_shape)`.
+        """
+        dtype = self.structure().data_type.to_numpy_dtype()
+        key = tuple(frame_slice)
+        reduced_frame_shape = (
+            ndindex(key).newshape(tuple(frame_shape)) if key else tuple(frame_shape)
+        )
+        out = np.empty((len(file_indices), *reduced_frame_shape), dtype=dtype)
+        if len(file_indices) == 0:
+            return out
+
+        frame_nbytes = max(1, math.prod(frame_shape) * dtype.itemsize)
+        # Cap concurrent in-flight full frames so peak memory stays near
+        # READ_BATCH_BYTES regardless of how many files the read touches.
+        max_workers = max(1, min(IO_WORKERS, READ_BATCH_BYTES // frame_nbytes))
+
+        def fill(pos: int) -> None:
+            frame = self._read_one(self.filepaths[file_indices[pos]])
+            # Reshape the stored frame to the per-file structure shape so the
+            # (structure-space) `frame_slice` applies; `prod(frame_shape)` equals
+            # the stored size, so this never crosses a file boundary. The reduced
+            # frame is copied into `out[pos]`, so the full frame can be freed.
+            frame = force_reshape(frame, tuple(frame_shape))
+            out[pos] = frame[key] if key else frame
+
+        if max_workers <= 1 or len(file_indices) <= 1:
+            for pos in range(len(file_indices)):
+                fill(pos)
+        else:
+            with ThreadPoolExecutor(
+                max_workers=min(max_workers, len(file_indices))
+            ) as ex:
+                # Consume to propagate any worker exception and wait for all.
+                list(ex.map(fill, range(len(file_indices))))
+        return out
+
     def metadata(self) -> JSON:
         # TODO How to deal with the many headers?
         return super().metadata()
@@ -238,19 +338,20 @@ class FileSequenceAdapter(Adapter[ArrayStructure]):
             # Map the leading (stacking) part of the selection onto flat file indices.
             file_indx_list = NDSlice(file_indx_slice).flat_indices(stacking_grid_shape)
 
-            # The remaining slice to be applied after loading the data from files and stacking;
-            # expand to include any non-degenerate leading dimensions along the file axis
-            tail_dims_slice = expanded[len(stacking_grid_shape) :]  # noqa: E203
-            for slc in file_indx_slice:
-                if not isinstance(slc, int):
-                    tail_dims_slice = NDSlice(builtins.slice(None), *tail_dims_slice)
-
-            arr = self._load_from_files(slice=file_indx_list)
-            stacked_shape = ndindex(file_indx_slice).newshape(struct_shape)
-            arr = force_reshape(arr, stacked_shape)
-            arr = np.atleast_1d(arr[tail_dims_slice])
-
-            return force_reshape(arr, ndindex(expanded).newshape(struct_shape))
+            # The trailing part of the selection applies within each file (frame).
+            # Push it into the batched loader so each frame is reduced *before*
+            # frames are stacked -- this keeps a read that touches many files but
+            # keeps only a few pixels of each from materializing the whole stack.
+            # `frame_slice` and the per-file structure shape are both in structure
+            # coordinates; `_read_selected` reshapes each stored frame to that
+            # shape before applying `frame_slice`. Reducing per-file and reshaping
+            # the file axis afterward commute, so the result matches a full read.
+            frame_slice = expanded[len(stacking_grid_shape) :]  # noqa: E203
+            struct_frame_shape = struct_shape[len(stacking_grid_shape) :]  # noqa: E203
+            reduced = self._read_selected(
+                file_indx_list, frame_slice, struct_frame_shape
+            )
+            return force_reshape(reduced, ndindex(expanded).newshape(struct_shape))
 
         # Load the data from files, applying the slice along the left-most dimension if possible
         if slice is Ellipsis:

@@ -185,6 +185,41 @@ def test_tiff_sequence_block(client, block_input, correct_shape):
     assert arr.shape == correct_shape
 
 
+@pytest.mark.parametrize(
+    "slice_input, correct_shape",
+    [
+        ((slice(None), slice(None), 0, 0, 0), (3, 4)),
+        ((..., 0, 0, 0, 0), (3,)),
+        ((slice(None), slice(None), slice(None), 0, 0), (3, 4, 5)),
+        ((slice(0, 2), slice(None), 1, 2, 3), (2, 4)),
+        ((slice(None),) * 5, (3, 4, 5, 7, 4)),
+    ],
+)
+def test_reshaped_sequence_reducing_slice_is_batch_invariant(
+    client, monkeypatch, slice_input, correct_shape
+):
+    """A slice that touches many files but keeps only part of each frame must be
+    read in memory-bounded batches without changing the result. Force a tiny
+    per-batch budget so every file lands in its own batch, and check the result
+    matches both numpy ground truth and a single-batch read.
+    """
+    import tiled.adapters.sequence as sequence_module
+
+    true_arr = tiff_data.reshape(3, 4, 5, 7, 4)[slice_input]
+
+    # Single batch (generous budget).
+    monkeypatch.setattr(sequence_module, "READ_BATCH_BYTES", 1 << 30)
+    single = client["5d_sequence_first_and_second_dim"].read(slice=slice_input)
+    assert single.shape == correct_shape
+    numpy.testing.assert_equal(single, true_arr)
+
+    # Force one file per batch; result must be identical.
+    monkeypatch.setattr(sequence_module, "READ_BATCH_BYTES", 1)
+    batched = client["5d_sequence_first_and_second_dim"].read(slice=slice_input)
+    assert batched.shape == correct_shape
+    numpy.testing.assert_equal(batched, true_arr)
+
+
 @pytest.mark.asyncio
 async def test_tiff_sequence_order(tmpdir):
     """
