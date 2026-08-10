@@ -106,7 +106,7 @@ class FileSequenceAdapter(Adapter[ArrayStructure]):
 
     # When True, the catalog may build this adapter with a partially-populated
     # list of `data_uris` and resolve only the URIs needed for a given read
-    supports_lazy_filepaths = True
+    supports_lazy_assets = True
 
     structure_family = StructureFamily.array
 

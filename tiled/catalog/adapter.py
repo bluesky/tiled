@@ -669,7 +669,7 @@ class CatalogNodeAdapter:
         Returns `None` (so the caller falls back to :meth:`get_adapter`) unless
         every precondition for lazy per-frame resolution holds:
         a single file-scheme data source whose adapter class opts in via
-        `supports_lazy_filepaths` and whose `properties` carry `chunks`, and
+        `supports_lazy_assets` and whose `properties` carry `chunks`, and
         whose asset `num`s form a contiguous run of length n (any starting
         offset -- 0-based, 1-based, etc. -- so stacking rank == num - offset).
 
@@ -705,7 +705,7 @@ class CatalogNodeAdapter:
             adapter_cls = self.context.adapters_by_mimetype[ds.mimetype]
         except KeyError:
             return None
-        if not getattr(adapter_cls, "supports_lazy_filepaths", False):
+        if not getattr(adapter_cls, "supports_lazy_assets", False):
             return None
 
         n = sum(int(c) for c in chunks[0])  # stack length == number of files
