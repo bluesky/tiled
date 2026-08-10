@@ -394,21 +394,15 @@ def test_write_read_one_batch_many_part(
     [
         (
             "table_abcdefg12423pnjsbldfhjdfbv_hbdhfljb128w40_ndgjfsdflfnscljm",
-            pytest.raises(
-                ValueError, match=r"Invalid SQL identifier.+max character number is 63"
-            ),
+            pytest.raises(ValueError, match=r"Invalid SQL identifier.+max bytes is 63"),
         ),
         (
             "create_abcdefg12423pnjsbldfhjdfbv_hbdhfljb128w40_ndgjfsdflfnscljk_sdbf_jhvjkbefl",
-            pytest.raises(
-                ValueError, match=r"Invalid SQL identifier.+max character number is 63"
-            ),
+            pytest.raises(ValueError, match=r"Invalid SQL identifier.+max bytes is 63"),
         ),
         (
             "hello_abcdefg12423pnjsbldfhjdfbv_hbdhfljb128w40_ndgjfsdflfnscljk_sdbf_jhvjkbefl",
-            pytest.raises(
-                ValueError, match=r"Invalid SQL identifier.+max character number is 63"
-            ),
+            pytest.raises(ValueError, match=r"Invalid SQL identifier.+max bytes is 63"),
         ),
         ("my_table_here_123_", None),
         ("the_short_table12374620_hello_table23704ynnm", None),
@@ -511,9 +505,7 @@ def test_check_table_name_is_safe(table_name: str, expected: Union[None, Any]) -
         # Invalid identifiers - length
         (
             "a" * 64,
-            pytest.raises(
-                ValueError, match=r"Invalid SQL identifier.+max character number is 63"
-            ),
+            pytest.raises(ValueError, match=r"Invalid SQL identifier.+max bytes is 63"),
         ),
         # Invalid identifiers - malformed
         (
@@ -1257,7 +1249,7 @@ def test_column_name_too_long(data_uri: str, request: pytest.FixtureRequest) -> 
     storage = cast(SQLStorage, parse_storage(data_uri))
     register_storage(storage)
 
-    # Create a table with a column name that exceeds the maximum length of 63 characters
+    # Create a table with a column name that exceeds the maximum of 63 bytes
     table = pa.Table.from_arrays(
         [[1, 2, 3], [4, 5, 6]],
         [
@@ -1277,7 +1269,7 @@ def test_column_name_too_long(data_uri: str, request: pytest.FixtureRequest) -> 
     )
     with pytest.raises(
         UnsafeIdentifier,
-        match='Invalid SQL identifier "column_name_that_is_way_too_long_and_should_'
-        'return_an_exception_because_it_is_over_sixty_three_characters": max character number is 63',
+        match=r'Invalid SQL identifier "column_name_that_is_way_too_long_and_should_'
+        r'return_an_exception_because_it_is_over_sixty_three_characters": max bytes is 63+',
     ):
         SQLAdapter.init_storage(data_source=data_source, storage=storage)
