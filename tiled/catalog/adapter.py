@@ -259,9 +259,10 @@ class Context:
 
         self.streaming_cache = None
         if self.cache_config:
-            if self.cache_config["uri"].startswith("redis"):
+            uri = self.cache_config.get("uri")
+            if self.cache_config.get("sentinels") or (uri and uri.startswith("redis")):
                 self.cache_config["datastore"] = "redis"
-            elif self.cache_config["uri"].startswith("memory"):
+            elif uri and uri.startswith("memory"):
                 self.cache_config["datastore"] = "memory"
             self.streaming_cache = StreamingCache(self.cache_config)
 
