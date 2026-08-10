@@ -1,9 +1,11 @@
 import builtins
 import copy
 import itertools
+import math
 import os
 import sys
 import warnings
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Iterator, List, Optional, Tuple, Union
 
@@ -29,6 +31,8 @@ from ..structures.data_source import DataSource
 from ..type_aliases import JSON
 from ..utils import BrokenLink, Sentinel, node_repr, path_from_uri
 from .array import ArrayAdapter
+from .resource_cache import with_resource_cache
+from .sequence import IO_WORKERS, READ_BATCH_BYTES
 from .utils import split_chunks
 
 SWMR_DEFAULT = bool(int(os.getenv("TILED_HDF5_SWMR_DEFAULT", "0")))
@@ -182,8 +186,16 @@ class HDF5ArrayAdapter(ArrayAdapter):
                 result = ds.shape, ds.chunks or ds.shape, ds.dtype
             return result
 
-        # Need to know shapes/dtypes of constituent arrays to load them lazily
-        shapes_chunks_dtypes = [_get_hdf5_specs(fpath) for fpath in file_paths]
+        # Need to know shapes/dtypes of constituent arrays to load them lazily.
+        # Reading specs opens every file (twice, for external links), so for
+        # many-file datasets do this in parallel while preserving order.
+        if len(file_paths) > 1:
+            with ThreadPoolExecutor(
+                max_workers=min(IO_WORKERS, len(file_paths))
+            ) as executor:
+                shapes_chunks_dtypes = list(executor.map(_get_hdf5_specs, file_paths))
+        else:
+            shapes_chunks_dtypes = [_get_hdf5_specs(fpath) for fpath in file_paths]
         dtype = shapes_chunks_dtypes[0][2]
         if dtype == numpy.dtype("O"):
             # h5py uses NumPy's object dtype to represent variable-length
@@ -239,18 +251,40 @@ class HDF5ArrayAdapter(ArrayAdapter):
 
         else:
             # Use delayed loading to read and conactenate arrays from multiple files
-            # First, find chunks along the left axis (split per file),
-            # and chunks in the rest of the dimensions (same for each file)
-            file_chunks = tuple(
-                split_chunks(shp[0], max(chk[0], MIN_CHUNK_SIZE))
-                for shp, chk, _ in shapes_chunks_dtypes
-            )
-            # Shape of the rest of dimensions
+            # Determine chunks along the leftmost (concatenation) axis, split
+            # per file, and chunks in the rest of the dimensions (shared by all
+            # files). The constituent files' native HDF5 chunks are often tiny
+            # (e.g. a single frame per chunk, with thousands of frames per
+            # file), which explodes the number of Dask tasks -- and every task
+            # re-opens the file. To avoid that, coalesce native chunks into
+            # blocks of whole rows (full rest dimensions) up to READ_BATCH_BYTES,
+            # so each file is read in as few tasks as possible.
             rest_shape = shapes_chunks_dtypes[0][0][1:]
-            rest_chunks = tuple(
-                split_chunks(shp, min(chk[i + 1] for _, chk, _ in shapes_chunks_dtypes))
-                for i, shp in enumerate(rest_shape)
-            )
+            rest_row_bytes = math.prod(rest_shape) * dtype.itemsize
+            rest_chunks: Tuple[Tuple[int, ...], ...]
+            if not rest_shape or 0 < rest_row_bytes <= READ_BATCH_BYTES:
+                # Read whole rows (full rest dimensions) in blocks along axis 0,
+                # sized up to the batch limit but never smaller than the native
+                # chunk along axis 0.
+                rows_per_block = max(1, READ_BATCH_BYTES // (rest_row_bytes or 1))
+                file_chunks = tuple(
+                    split_chunks(shp[0], max(chk[0], rows_per_block))
+                    for shp, chk, _ in shapes_chunks_dtypes
+                )
+                rest_chunks = tuple((shp,) for shp in rest_shape)
+            else:
+                # A single row already exceeds the batch limit: fall back to the
+                # files' native tiling in every dimension.
+                file_chunks = tuple(
+                    split_chunks(shp[0], max(chk[0], MIN_CHUNK_SIZE))
+                    for shp, chk, _ in shapes_chunks_dtypes
+                )
+                rest_chunks = tuple(
+                    split_chunks(
+                        shp, min(chk[i + 1] for _, chk, _ in shapes_chunks_dtypes)
+                    )
+                    for i, shp in enumerate(rest_shape)
+                )
             dim0_chunks = tuple(size for fc in file_chunks for size in fc)
             chunks_final = (dim0_chunks, *[tuple(d) for d in rest_chunks])
 
@@ -327,8 +361,26 @@ class HDF5ArrayAdapter(ArrayAdapter):
         ] or [assets[0].data_uri]
         file_paths = [path_from_uri(uri) for uri in data_uris]
 
-        array = cls.lazy_load_hdf5_array(
-            *file_paths, dataset=dataset, swmr=swmr, libver=libver, locking=locking
+        # Building the lazy Dask array opens every constituent file to read its
+        # specs. Cache the array so repeated reads of the same dataset reuse the
+        # graph instead of re-opening all files. Slicing the cached array below
+        # returns a new array, leaving the cached one unmodified.
+        cache_key = (
+            HDF5ArrayAdapter.lazy_load_hdf5_array,
+            dataset,
+            tuple(file_paths),
+            swmr,
+            libver,
+            locking,
+        )
+        array = with_resource_cache(
+            cache_key,
+            cls.lazy_load_hdf5_array,
+            *file_paths,
+            dataset=dataset,
+            swmr=swmr,
+            libver=libver,
+            locking=locking,
         )
 
         if slice:

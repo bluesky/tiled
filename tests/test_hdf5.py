@@ -680,7 +680,9 @@ def test_chunked_arrays_from_uris(example_files_with_chunked_arrays, num_files):
 
     arr_b = client["a"]["b"]
     assert arr_b.shape == (4 * num_files, 5, 6)
-    assert arr_b.chunks == ((1, 1, 1, 1) * num_files, (2, 2, 1), (3, 3))
+    # Native HDF5 chunks are coalesced into whole per-file blocks (bounded by
+    # READ_BATCH_BYTES) to avoid a task/open per tiny native chunk.
+    assert arr_b.chunks == ((4,) * num_files, (5,), (6,))
     assert arr_b.dtype == "int64"
     arr_true_b = numpy.concatenate(
         [
@@ -693,7 +695,7 @@ def test_chunked_arrays_from_uris(example_files_with_chunked_arrays, num_files):
 
     arr_c = client["a"]["c"]
     assert arr_c.shape == (10 * num_files, 1)
-    assert arr_c.chunks == ((2, 2, 2, 2, 2) * num_files, (1,))
+    assert arr_c.chunks == ((10,) * num_files, (1,))
     assert arr_c.dtype == "int64"
     arr_true_c = numpy.concatenate(
         [
@@ -706,7 +708,7 @@ def test_chunked_arrays_from_uris(example_files_with_chunked_arrays, num_files):
 
     arr_d = client["a"]["d"]
     assert arr_d.shape == (10 * num_files,)
-    assert arr_d.chunks == ((3, 3, 3, 1) * num_files,)
+    assert arr_d.chunks == ((10,) * num_files,)
     assert arr_d.dtype == "int64"
     arr_true_d = numpy.concatenate(
         [
@@ -782,7 +784,7 @@ def test_files_opened_and_closed(example_files_with_chunked_arrays, swmr):
     h5py = pytest.importorskip("h5py")
 
     # Use the example with two files chunked along a single dimension;
-    # total chunks across the two files: ((3, 3, 3, 1)*2, )
+    # native chunks are coalesced into one block per file: ((10,) * 2, )
     file_uris = example_files_with_chunked_arrays[:2]
     file_paths = [path_from_uri(uri) for uri in file_uris]
     with patch(
@@ -816,21 +818,22 @@ def test_files_opened_and_closed(example_files_with_chunked_arrays, swmr):
         mock_h5open.reset_mock()
         arr = client["a"]["d"]
         assert arr.structure().shape == (20,)
-        assert arr.structure().chunks == ((3, 3, 3, 1) * 2,)
+        assert arr.structure().chunks == ((10,) * 2,)
         assert arr.metadata is not None
         mock_h5open.assert_not_called()
 
-        # Read the entire array: files are opened once to get the specs and then again,
-        # four times each, to fetch each chunk separately. Additionally, the first file is opened once
-        # adain when initialized from catalog to get the metadata
+        # Read the entire array: files are opened once to get the specs and then
+        # once more each to fetch the single coalesced chunk. Additionally, the
+        # first file is opened once again when initialized from catalog to get
+        # the metadata
         assert arr.read() is not None
-        # 2 for specs, 4*2 for chunks, 1 for metadata
-        assert mock_h5open.call_count == 2 + 4 * 2 + 1
+        # 2 for specs, 1*2 for chunks (one block per file), 1 for metadata
+        assert mock_h5open.call_count == 2 + 1 * 2 + 1
         files_opened = [call.args[0].name for call in mock_h5open.call_args_list]
-        # First file: 1 for specs, 4 for chunks, 1 for metadata
-        assert files_opened.count(file_paths[0].name) == 4 + 1 + 1
-        # Second file: 1 for specs, 4 for chunks
-        assert files_opened.count(file_paths[1].name) == 4 + 1
+        # First file: 1 for specs, 1 for chunk, 1 for metadata
+        assert files_opened.count(file_paths[0].name) == 1 + 1 + 1
+        # Second file: 1 for specs, 1 for chunk
+        assert files_opened.count(file_paths[1].name) == 1 + 1
 
         # Read a slice that only touches one file: only the relevant file should be opened
         mock_h5open.reset_mock()
@@ -843,12 +846,12 @@ def test_files_opened_and_closed(example_files_with_chunked_arrays, swmr):
         # Read everything from the second file
         mock_h5open.reset_mock()
         assert arr[-10:] is not None
-        assert mock_h5open.call_count == 7
+        assert mock_h5open.call_count == 2 + 1 + 1  # 2 specs, 1 chunk, 1 metadata
         files_opened = [call.args[0].name for call in mock_h5open.call_args_list]
         # First file: 1 for specs, 1 for metadata
         assert files_opened.count(file_paths[0].name) == 1 + 1
-        # Second file: 4 for chunks, 1 for specs
-        assert files_opened.count(file_paths[1].name) == 4 + 1
+        # Second file: 1 for chunk, 1 for specs
+        assert files_opened.count(file_paths[1].name) == 1 + 1
 
         # Read a slice that has one value from each of the files
         mock_h5open.reset_mock()
