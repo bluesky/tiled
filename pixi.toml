@@ -109,6 +109,7 @@ python-multipart = "*"
 redis-py = "*"
 sqlalchemy = ">=2"
 starlette = ">=0.48.0"
+strawberry-graphql = ">=0.315.3"
 uvicorn = "*"
 zarr = "*"
 
