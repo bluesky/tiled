@@ -11,8 +11,24 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - Add client_secret,redirect_on_success,redirect_on_failure to
   ProxiedOIDCAuthenticator. This is to allow login using Tiled-UI
 - Allow configuration of user_id_claim for OIDCAuthenticator
+- Lazy asset resolution for array datasets backed by many files: reading a
+  slice or block now resolves only the assets (files) the read touches,
+  computed purely from the structure geometry, instead of materializing every
+  asset row to build the adapter. (#1463)
+- Parallel, memory-bounded reads for many-file sequence datasets: files are
+  read concurrently and reduced per file before stacking, so peak memory stays
+  bounded regardless of how many files a slice spans. Tunable via the
+  `TILED_SEQUENCE_IO_WORKERS` and `TILED_SEQUENCE_READ_BATCH_BYTES` environment
+  variables. (#1463)
 - Add a new feature that stores a graph of links into the catalog database. Adds strawberry
   as a dependency. Import/search/export of graph links is accomplished through graphql.
+
+### Changed
+
+- Server-side `CatalogNodeAdapter.data_sources` is now an async method taking
+  `include_assets` (default `False`) so common metadata and structure paths no
+  longer load asset rows; callers that need assets must
+  `await data_sources(include_assets=True)`. (#1463)
 
 ### Fixed
 
