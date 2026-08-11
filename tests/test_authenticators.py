@@ -7,10 +7,14 @@ from typing import Any, Tuple
 import httpx
 import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
+from fastapi import HTTPException
+from fastapi.security import SecurityScopes
 from jose import ExpiredSignatureError, jwt
 from jose.backends import RSAKey
 from respx import MockRouter
 from starlette.datastructures import URL, QueryParams
+from starlette.requests import Request
+from starlette.status import HTTP_401_UNAUTHORIZED
 
 from tiled.authenticators import (
     EntraAuthenticator,
@@ -18,6 +22,8 @@ from tiled.authenticators import (
     OIDCAuthenticator,
     ProxiedOIDCAuthenticator,
 )
+from tiled.server.authentication import check_scopes
+from tiled.server.settings import Settings
 
 # Set this if there is an LDAP container running for testing.
 # See continuous_integration/docker-configs/ldap-docker-compose.yml
@@ -348,3 +354,18 @@ async def test_OIDCAuthenticator_token_exchange_failure(
     # This should return None, not raise an exception
     result = await authenticator.authenticate(mock_request)
     assert result is None
+
+
+async def test_ProxiedOIDCAuthenticator_requires_scopes(mock_oidc_server, well_known_url):
+
+    authenticator = ProxiedOIDCAuthenticator("tiled", "tiled", well_known_url, device_flow_client_id="tiled-cli",
+                                             scopes=["read:data"])
+
+    test_request = Request(scope={"type": "http", "scheme": "http", "headers": [(b"host", b"testserver")]}, )
+
+    settings = Settings(authenticator=authenticator)
+    security_scopes = SecurityScopes(scopes=["create:apikeys"])
+    with pytest.raises(HTTPException) as exception:
+        await check_scopes(request=test_request, settings=settings, scopes=["read:data"],
+                           security_scopes=security_scopes)
+    assert exception.value.status_code == HTTP_401_UNAUTHORIZED
