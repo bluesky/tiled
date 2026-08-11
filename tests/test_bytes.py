@@ -6,15 +6,19 @@ asset through `/asset/bytes/{path}?id=N`, gated by `settings.expose_raw_assets`.
 These tests exercise that full round-trip end-to-end.
 """
 
+import os
 import warnings
 from pathlib import Path
+from unittest import mock
 
 import pytest
+from rich.progress import Progress
 
 from tiled.adapters.bytes import BytesAdapter
 from tiled.catalog import in_memory
-from tiled.client import Context, from_context
+from tiled.client import Context, from_context, record_history
 from tiled.client.bytes import BytesClient
+from tiled.client.download import STREAMING_ACCEPT_ENCODING, download
 from tiled.server.app import build_app
 from tiled.structures.bytes import BytesStructure
 from tiled.structures.core import StructureFamily
@@ -31,9 +35,17 @@ def http_client(tmpdir):
 
 
 def _register_bytes_node(
-    client, tmp_path, payload, key="blob", mimetype="application/octet-stream"
+    client,
+    tmp_path,
+    payload,
+    key="blob",
+    mimetype="application/octet-stream",
+    size="auto",
 ):
-    """Write `payload` to a file and register it as an external bytes node."""
+    """Write `payload` to a file and register it as an external bytes node.
+
+    `size` defaults to the payload length; pass `None` to register an asset
+    whose size is unknown (mimicking a legacy row)."""
     p = tmp_path / f"{key}.bin"
     p.write_bytes(payload)
     data_source = DataSource(
@@ -42,7 +54,7 @@ def _register_bytes_node(
             Asset(
                 data_uri=p.as_uri(),
                 is_directory=False,
-                size=len(payload),
+                size=len(payload) if size == "auto" else size,
                 parameter="data_uris",
                 num=0,
             )
@@ -361,6 +373,157 @@ def test_raw_export_destination_directory_kwarg_is_deprecated(http_client, tmp_p
 
     with pytest.raises(TypeError, match="both 'destination'"):
         http_client["blob"].raw_export(dest, destination_directory=dest)
+
+
+def test_raw_export_blosc2_streaming_not_truncated(http_client, tmp_path):
+    """A streaming `blosc2`-encoded body must round-trip in full.
+
+    `/asset/bytes` streams via `FileResponse` in 64 KiB chunks, and
+    `BloscBuffer` compresses each chunk into an independent blosc2 frame, so the
+    wire body is `frame0 ++ frame1 ++ ...`.
+    """
+    # Comfortably larger than the 65536-byte FileResponse chunk size, so the
+    # body spans several chunks (i.e. several blosc2 frames). Compressible so
+    # the middleware actually engages.
+    payload = (b"the quick brown fox " * 1024) * 8  # ~160 KiB, > 2 chunks
+    assert len(payload) > 2 * 65536
+    _register_bytes_node(http_client, tmp_path, payload, key="big")
+    # Prefer blosc2 so the server selects it (server-preferred among these) and
+    # the multi-frame streaming path is exercised end-to-end.
+    http_client.context.http_client.headers["Accept-Encoding"] = "blosc2, zstd, gzip"
+    dest = tmp_path / "out"
+    dest.mkdir()
+    paths = http_client["big"].raw_export(dest)
+    assert len(paths) == 1
+    downloaded = Path(paths[0]).read_bytes()
+    # The bug truncated this to exactly 65536 bytes; assert full length + bytes.
+    assert len(downloaded) == len(payload)
+    assert downloaded == payload
+    # Confirm we actually exercised the blosc2 streaming path (and its Content-
+    # Encoding), not a fallback encoding.
+    ds = http_client.context.http_client.get(
+        "/api/v1/metadata/big", params={"include_data_sources": True}
+    ).json()["data"]["attributes"]["data_sources"][0]
+    asset_id = ds["assets"][0]["id"]
+    response = http_client.context.http_client.get(
+        "/api/v1/asset/bytes/big", params={"id": asset_id}
+    )
+    assert response.status_code == 200
+    assert response.headers.get("Content-Encoding") == "blosc2"
+    assert response.content == payload
+
+
+def _asset_bytes_exchange(history):
+    """Return the (request, response) pair for the `/asset/bytes` download."""
+    for request, response in zip(history.requests, history.responses):
+        if "/asset/bytes/" in str(request.url):
+            return request, response
+    raise AssertionError("no /asset/bytes request was recorded")
+
+
+def test_raw_export_streams_with_compression_but_not_blosc2(http_client, tmp_path):
+    """By default `raw_export` keeps on-the-fly compression but excludes blosc2.
+
+    blosc2's client decoder buffers the whole body (no streaming), so raw-asset
+    downloads advertise every supported encoding *except* blosc2. The server
+    then streams via zstd, which decompresses incrementally.
+    """
+    payload = (b"the quick brown fox " * 1024) * 8  # ~160 KiB, compressible
+    _register_bytes_node(http_client, tmp_path, payload, key="big")
+    dest = tmp_path / "out"
+    dest.mkdir()
+    with record_history() as history:
+        paths = http_client["big"].raw_export(dest)
+    assert Path(paths[0]).read_bytes() == payload
+    request, response = _asset_bytes_exchange(history)
+    # blosc2 must not be advertised on the download request...
+    assert request.headers["Accept-Encoding"] == STREAMING_ACCEPT_ENCODING
+    assert "blosc2" not in request.headers["Accept-Encoding"]
+    # ...and the server streams a compressed (zstd) response.
+    assert response.headers.get("Content-Encoding") == "zstd"
+
+
+def test_raw_export_compression_false_uses_identity(http_client, tmp_path):
+    """`compression=False` downloads uncompressed: `Accept-Encoding: identity`,
+    no `Content-Encoding`, and a `Content-Length` (so the bar is determinate)."""
+    payload = (b"the quick brown fox " * 1024) * 8  # ~160 KiB, compressible
+    _register_bytes_node(http_client, tmp_path, payload, key="big")
+    dest = tmp_path / "out"
+    dest.mkdir()
+    with record_history() as history:
+        paths = http_client["big"].raw_export(dest, compression=False)
+    assert Path(paths[0]).read_bytes() == payload
+    request, response = _asset_bytes_exchange(history)
+    assert request.headers["Accept-Encoding"] == "identity"
+    assert response.headers.get("Content-Encoding") in (None, "identity")
+    assert int(response.headers["Content-Length"]) == len(payload)
+
+
+def _captured_task_totals(client, key, **export_kwargs):
+    """Run `raw_export` and record the `total` each progress task is seeded
+    with (via `Progress.add_task`)."""
+    totals = []
+    original = Progress.add_task
+
+    def spy(self, description, *args, total=None, **kwargs):
+        totals.append(total)
+        return original(self, description, *args, total=total, **kwargs)
+
+    with mock.patch.object(Progress, "add_task", spy):
+        client[key].raw_export(**export_kwargs)
+    return totals
+
+
+def test_raw_export_seeds_progress_total_from_asset_size(http_client, tmp_path):
+    """The progress task is seeded with the known asset size, so the bar shows
+    the right total even when the server omits `Content-Length` (compressed
+    streaming). When the size is unknown the total is `None` (indeterminate)."""
+    payload = (b"the quick brown fox " * 1024) * 8  # ~160 KiB
+    _register_bytes_node(http_client, tmp_path, payload, key="known")
+    _register_bytes_node(http_client, tmp_path, payload, key="unknown", size=None)
+
+    known_dest = tmp_path / "known_out"
+    known_dest.mkdir()
+    assert _captured_task_totals(http_client, "known", destination=known_dest) == [
+        len(payload)
+    ]
+
+    unknown_dest = tmp_path / "unknown_out"
+    unknown_dest.mkdir()
+    assert _captured_task_totals(http_client, "unknown", destination=unknown_dest) == [
+        None
+    ]
+
+
+@pytest.mark.parametrize("compression", [True, False])
+def test_raw_export_unknown_size_roundtrips(http_client, tmp_path, compression):
+    """A `bytes` node whose asset size is unknown (e.g. a legacy row) exports
+    correctly under both compression modes. With compression the bar is
+    indeterminate (no `Content-Length`); without it, `Content-Length` is present
+    so the bar is determinate."""
+    payload = os.urandom(200 * 1024)  # incompressible so zstd does not shrink it
+    _register_bytes_node(http_client, tmp_path, payload, key="blob", size=None)
+    dest = tmp_path / f"out_{compression}"
+    dest.mkdir()
+    with record_history() as history:
+        paths = http_client["blob"].raw_export(dest, compression=compression)
+    assert Path(paths[0]).read_bytes() == payload
+    _, response = _asset_bytes_exchange(history)
+    if compression:
+        assert "Content-Length" not in response.headers
+    else:
+        assert int(response.headers["Content-Length"]) == len(payload)
+
+
+def test_download_rejects_mismatched_totals(http_client):
+    """`download()` requires `totals` (when given) to be parallel to `urls`."""
+    with pytest.raises(ValueError, match="as many totals as URLs"):
+        download(
+            http_client.context.http_client,
+            ["u1", "u2"],
+            ["t1", "t2"],
+            totals=[1],
+        )
 
 
 def test_raw_export_handles_missing_content_length(http_client, tmp_path):
