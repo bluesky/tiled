@@ -113,3 +113,42 @@ def split_chunks(total: int, chunk: int) -> tuple[int, ...]:
     "Split total into repeated chunks of size `chunk`, with a remainder at the end."
     num_full_chunks, remainder = divmod(total, chunk)
     return tuple([chunk] * num_full_chunks + ([remainder] if remainder else []))
+
+
+def grid_shape_for_files(
+    struct_shape: Tuple[int, ...], n_files: int
+) -> Optional[Tuple[int, ...]]:
+    """Return the leading axes of `struct_shape` that enumerate the files, one
+    grid cell per file, or `None` when no such clean split exists.
+
+    Context: `n_files` files were each read as one fixed-shape frame, stacked
+    into a new leading axis of length `n_files`, and that axis was then reshaped
+    into one or more leading dimensions of `struct_shape` (the trailing
+    dimensions are the shared per-frame shape). This recovers the grid of those
+    leading dimensions so a caller can map a grid cell back to its one file.
+
+    The split is clean only when a prefix of `struct_shape` multiplies to exactly
+    `n_files`: the smallest `j` with `prod(struct_shape[:j]) == n_files`. Then the
+    leading `j` dimensions index the files and this returns `struct_shape[:j]`.
+
+    For example, 12 files reshaped to `(3, 4, H, W)` returns `(3, 4)` -- the file
+    at grid cell `(i, j)` supplies the `H x W` frame at `[i, j]`. But `(5, ...)`
+    with 12 files returns `None`: no prefix hits 12, so a single file's frame
+    would straddle a dimension boundary and the leading indices no longer
+    correspond one-to-one with files.
+
+    This is a pure function of the shape and the file count -- no array, no I/O --
+    so a running adapter's `read` and the catalog's `file_indices_for_slice`
+    (which runs before any adapter exists) share one file-selection geometry.
+
+    The running product only grows (every dimension is `>= 1`), so once it passes
+    `n_files` without landing on it, no aligned split can exist and this stops.
+    """
+    product = 1
+    for j, dim in enumerate(struct_shape, start=1):
+        product *= dim
+        if product == n_files:
+            return struct_shape[:j]
+        if product > n_files:
+            break
+    return None
