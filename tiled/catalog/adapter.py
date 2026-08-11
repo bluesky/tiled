@@ -757,12 +757,18 @@ class CatalogNodeAdapter:
 
             # Which stack indices does this read need? Pure geometry -- a
             # classmethod of the structure, the file count and the data source
-            # `properties`, needing no adapter instance or I/O. The adapter alone
-            # interprets `properties` (e.g. HDF5's per-asset `extents`); the catalog
-            # stays ignorant of the internals. Returns None when the files can not
-            # be located from the structure (a slice may then need every file).
+            # `properties`/`parameters`, needing no adapter instance or I/O. The
+            # adapter alone interprets these (e.g. HDF5's per-asset `extents`, or
+            # a `slice`/`squeeze` transform that precludes file selection); the
+            # catalog stays ignorant of the internals. Returns None when the files
+            # can not be located from the structure (a slice may then need every
+            # file).
             indices = adapter_cls.file_indices_for_slice(
-                structure, n, slice, properties=ds.properties or {}
+                structure,
+                n,
+                slice,
+                properties=ds.properties or {},
+                parameters=ds.parameters or {},
             )
             if indices is None:
                 return None

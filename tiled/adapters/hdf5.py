@@ -221,15 +221,16 @@ class HDF5ArrayAdapter(ArrayAdapter):
         n_files: int,
         slice: Any = ...,
         properties: Optional[Dict[str, Any]] = None,
+        parameters: Optional[Dict[str, Any]] = None,
     ) -> Optional[Tuple[int, ...]]:
         """Return the global file indices needed to satisfy `slice`.
 
         A pure classmethod of the structure, the file count and the data source
-        `properties` -- it touches no file or database and needs no adapter
-        instance -- so the catalog can prefetch exactly the assets that a read
-        will touch before building any adapter (for a `read_block`, the catalog
-        first converts the block to the equivalent slice). It mirrors the file
-        selection in the lazy `read()`.
+        `properties`/`parameters` -- it touches no file or database and needs no
+        adapter instance -- so the catalog can prefetch exactly the assets that a
+        read will touch before building any adapter (for a `read_block`, the
+        catalog first converts the block to the equivalent slice). It mirrors the
+        file selection in the lazy `read()`.
 
         `n_files` is the number of backing files (the catalog passes the asset
         count). `_file_layout` locates the files within the structure; this
@@ -238,9 +239,19 @@ class HDF5ArrayAdapter(ArrayAdapter):
         `("grid", grid_shape)`, the leading grid dimensions index the files
         directly.
 
-        Returns `None` when the files can not be located from the structure -- a
-        slice may then need every file -- to tell the catalog to skip the lazy path.
+        Returns `None` when the files can not be located -- so a slice may need
+        every file -- to tell the catalog to skip the lazy path. This includes
+        the case of a `slice`/`squeeze` adapter parameter: those transforms
+        reshape each file when building the served array (see `from_catalog`), so
+        the served axis 0 is no longer a plain concatenation of whole files and
+        the requested slice (in served coordinates) can not be mapped back onto
+        the stored per-file boundaries. `_file_layout` alone can not detect this
+        -- `structure.chunks[0]` may still look one-per-file -- so it is caught
+        here from the data source `parameters`.
         """
+        parameters = parameters or {}
+        if parameters.get("slice") is not None or parameters.get("squeeze"):
+            return None
         layout = cls._file_layout(structure, n_files, properties)
         if layout is None:
             return None
@@ -708,9 +719,10 @@ class HDF5Adapter(
         n_files: int,
         slice: Any = ...,
         properties: Optional[Dict[str, Any]] = None,
+        parameters: Optional[Dict[str, Any]] = None,
     ) -> Optional[Tuple[int, ...]]:
         return HDF5ArrayAdapter.file_indices_for_slice(
-            structure, n_files, slice, properties
+            structure, n_files, slice, properties, parameters
         )
 
     def __init__(

@@ -429,6 +429,7 @@ class FileSequenceAdapter(Adapter[ArrayStructure]):
         n_files: int,
         slice: Any = ...,
         properties: Optional[Dict[str, Any]] = None,
+        parameters: Optional[Dict[str, Any]] = None,
     ) -> Optional[tuple[int, ...]]:
         """Return the global file (stack) indices needed to satisfy `slice`.
 
@@ -443,8 +444,8 @@ class FileSequenceAdapter(Adapter[ArrayStructure]):
 
         A sequence stacks uniform files (each adds one frame on a new leading
         axis), so the geometry follows from the structure alone; `properties`
-        is accepted for interface parity with adapters that need it (e.g. HDF5)
-        and ignored here.
+        and `parameters` are accepted for interface parity with adapters that
+        need them (e.g. HDF5) and ignored here.
 
         Returns `None` when the reshape is not file-boundary-aligned (every file
         may need to be loaded), signalling the catalog to skip the lazy loading path.

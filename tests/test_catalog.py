@@ -998,6 +998,112 @@ async def test_lazy_hdf5_nonuniform_requires_extents(tmpdir):
         await adapter.shutdown()
 
 
+@pytest.mark.parametrize("transform", [{"slice": ":,0,:"}, {"squeeze": True}])
+def test_file_indices_for_slice_declines_under_transform(transform):
+    """A `slice`/`squeeze` adapter parameter reshapes each file when the served
+    array is built, so the served axis 0 no longer maps to whole backing files.
+    `file_indices_for_slice` must decline (return None) so the catalog skips the
+    lazy path -- even when the structure alone (one leading chunk per file) would
+    otherwise let the files be located from `chunks[0]`.
+    """
+    from tiled.adapters.hdf5 import HDF5ArrayAdapter
+
+    # One leading chunk per file: without a transform the files ARE locatable.
+    struct = ArrayStructure(
+        shape=(3, 2, 3),
+        chunks=((1, 1, 1), (2,), (3,)),
+        data_type=BuiltinDtype.from_numpy_dtype(numpy.dtype("uint8")),
+    )
+    sl = (slice(0, 2),)
+
+    # Baseline: no transform -> the lazy path can locate the touched files.
+    assert HDF5ArrayAdapter.file_indices_for_slice(struct, 3, sl) == (0, 1)
+    assert HDF5ArrayAdapter.file_indices_for_slice(struct, 3, sl, parameters={}) == (
+        0,
+        1,
+    )
+    # A slice/squeeze transform is present -> decline regardless of the layout.
+    assert (
+        HDF5ArrayAdapter.file_indices_for_slice(struct, 3, sl, parameters=transform)
+        is None
+    )
+
+
+@pytest.mark.asyncio
+async def test_lazy_hdf5_declines_under_slice_squeeze(tmpdir):
+    """A data source carrying a `slice`/`squeeze` parameter must not take the lazy
+    path even when its structure would otherwise locate files: those transforms
+    reshape each file on read, breaking the served-axis-0 -> file mapping. The
+    catalog threads the data source `parameters` to the adapter, which declines,
+    and the eager build still reads correctly.
+    """
+    from tiled.ndslice import NDSlice
+
+    h5py = pytest.importorskip("h5py")
+    # Uniform files, one leading chunk each: the structure alone locates files
+    # (len(chunks[0]) == n_files), so only the transform can hold back the lazy path.
+    K, M, N = 4, 2, 3
+    rng = numpy.random.default_rng(11)
+    files = [rng.integers(0, 255, size=(1, M, N), dtype="uint8") for _ in range(K)]
+    data_uris = []
+    for i, file_data in enumerate(files):
+        filepath = Path(tmpdir) / f"file{i:05}.h5"
+        with h5py.File(filepath, "w") as f:
+            f.create_dataset("a/b", data=file_data, chunks=(1, M, N))
+        data_uris.append(ensure_uri(str(filepath)))
+
+    full = numpy.concatenate(files, axis=0)  # (K, M, N)
+    struct = ArrayStructure(
+        shape=(K, M, N),
+        chunks=((1,) * K, (M,), (N,)),
+        data_type=BuiltinDtype.from_numpy_dtype(numpy.dtype("uint8")),
+    )
+
+    async def _make_node(adapter, key, parameters):
+        await adapter.create_node(
+            key=key,
+            structure_family="array",
+            metadata={},
+            data_sources=[
+                DataSource(
+                    structure_family="array",
+                    mimetype="application/x-hdf5",
+                    structure=asdict(struct),
+                    parameters=parameters,
+                    properties={"chunks": [[M] * K, [M], [N]]},
+                    management="external",
+                    assets=[
+                        Asset(
+                            parameter="data_uris",
+                            num=i,
+                            data_uri=data_uri,
+                            is_directory=False,
+                        )
+                        for i, data_uri in enumerate(data_uris)
+                    ],
+                )
+            ],
+        )
+
+    adapter = in_memory(readable_storage=[tmpdir])
+    await adapter.startup()
+    try:
+        # Control: no transform -> the structure lets the lazy path engage.
+        await _make_node(adapter, "plain", {"dataset": "a/b"})
+        ctrl = await adapter.lookup_adapter(["plain"])
+        assert await ctrl._get_lazy_adapter(slice=(slice(0, 2),)) is not None
+
+        # A squeeze parameter (a no-op on this non-singleton array) is enough to
+        # hold back the lazy path; the eager read still returns the whole array.
+        await _make_node(adapter, "squeezed", {"dataset": "a/b", "squeeze": True})
+        x = await adapter.lookup_adapter(["squeezed"])
+        assert await x._get_lazy_adapter(slice=(slice(0, 2),)) is None
+        result = await x.read(slice=NDSlice((slice(0, 2),)))
+        numpy.testing.assert_array_equal(result, full[0:2])
+    finally:
+        await adapter.shutdown()
+
+
 @pytest.mark.asyncio
 async def test_write_table_external_direct(a, tmpdir):
     df = pandas.DataFrame(numpy.ones((5, 3)), columns=list("abc"))

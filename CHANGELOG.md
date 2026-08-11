@@ -28,7 +28,9 @@ Write the date in place of the "Unreleased" in the case a new version is release
   optional per-asset `extents` property records each file's length along that
   axis, so a read opens only the files its slice touches; the adapter also
   infers the layout from the structure chunks or grid shape when the property
-  is absent. (#1465)
+  is absent. Datasets served through a `slice`/`squeeze` adapter transform fall
+  back to a full build, since the transform reshapes each file and breaks the
+  mapping from the served axis to whole files. (#1465)
 - Add a new feature that stores a graph of links into the catalog database. Adds strawberry
   as a dependency. Import/search/export of graph links is accomplished through graphql.
 
