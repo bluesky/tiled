@@ -3,7 +3,7 @@ import math
 import os
 from abc import abstractmethod
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any, Iterable, List, Optional, Union
+from typing import Any, Dict, Iterable, List, Optional, Union
 
 import numpy as np
 from ndindex import ndindex
@@ -18,7 +18,7 @@ from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import DataSource
 from ..type_aliases import JSON, EllipsisType
 from ..utils import path_from_uri
-from .utils import force_reshape
+from .utils import force_reshape, grid_shape_for_files
 
 # Concurrency and memory knobs for reads that span many files of a sequence.
 #
@@ -409,62 +409,51 @@ class FileSequenceAdapter(Adapter[ArrayStructure]):
         adapter state, no I/O -- so both `read` and the `file_indices_for_slice`
         classmethod (used by the catalog before any adapter is built) can share it.
 
-        Each file contributes one element along the left-most stored axis, so a
-        file spans `P = prod(true_shape[1:])` contiguous elements of the row-major
-        flat array. Whole-file (partial) loading is possible only when the file
-        boundary aligns with a structure dimension boundary -- i.e. there is a
-        split `j` with `prod(struct_shape[:j]) == n_files` -- in which case the
-        leading `j` structure dimensions map onto the files and this returns
-        `struct_shape[:j]`. When no such split exists the reshape interleaves file
-        contents across the file boundary (every file must be loaded) and this
-        returns `None`. The caller derives `partial_loadable` as `result is not
-        None` and `reshaped` as `true_shape != struct_shape`.
+        Each file contributes one element along the left-most stored axis, so
+        `n_files == true_shape[0]`, and the shared `grid_shape_for_files` helper
+        computes the file-alignment geometry. The caller derives
+        `partial_loadable` as `result is not None` and `reshaped` as
+        `true_shape != struct_shape`.
         """
         if math.prod(true_shape) != math.prod(struct_shape):
             raise RuntimeError(
                 f"Array with shape {true_shape} derived from storage can not be reshaped "
                 f"to match the desired structure, {struct_shape}."
             )
-        # Locate the file boundary within the structure shape: the smallest split
-        # `j` whose leading dimensions multiply to the file count. Products grow
-        # monotonically (dimensions >= 1), so once the running product passes
-        # `n_files` without landing on it, no aligned split exists.
-        n_files = true_shape[0]
-        product = 1
-        for j, dim in enumerate(struct_shape, start=1):
-            product *= dim
-            if product == n_files:
-                return struct_shape[:j]
-            if product > n_files:
-                break
-        return None
+        return grid_shape_for_files(struct_shape, true_shape[0])
 
     @classmethod
     def file_indices_for_slice(
         cls,
         structure: ArrayStructure,
-        chunks: Optional[tuple[tuple[int, ...], ...]],
+        n_files: int,
         slice: Any = ...,
+        properties: Optional[Dict[str, Any]] = None,
     ) -> Optional[tuple[int, ...]]:
         """Return the global file (stack) indices needed to satisfy `slice`.
 
-        Pure classmethod of the structure and chunks only -- performs no file or
-        database I/O and needs no adapter instance -- so the catalog can prefetch
-        exactly the assets a read will touch before building any adapter (a
-        `read_block` is handled by first converting the block to the equivalent
-        slice). The leading `stacking_grid_shape` dimensions of the structure map onto
-        the files, so the files touched are the flat positions the slice selects
-        within them. Mirrors the file selection in `read()`.
+        Pure classmethod of the structure and the file count -- performs no file
+        or database I/O and needs no adapter instance -- so the catalog can
+        prefetch exactly the assets that a read will touch before building any
+        adapter (a `read_block` is handled by first converting the block to the
+        equivalent slice). The leading `grid_shape_for_files` dimensions of the
+        structure map onto the `n_files` files (the catalog passes the asset
+        count), so the files touched are the flat positions that the slice
+        selects within them. Mirrors the file selection in `read()`.
+
+        A sequence stacks uniform files (each adds one frame on a new leading
+        axis), so the geometry follows from the structure alone; `properties`
+        is accepted for interface parity with adapters that need it (e.g. HDF5)
+        and ignored here.
 
         Returns `None` when the reshape is not file-boundary-aligned (every file
         may need to be loaded), signalling the catalog to skip the lazy loading path.
         """
         struct_shape = structure.shape
-        true_shape = tuple(map(sum, chunks)) if chunks else struct_shape
-        stacking_grid_shape = cls._stacking_grid_shape(struct_shape, true_shape)
-        if stacking_grid_shape is None:
+        grid_shape = grid_shape_for_files(struct_shape, n_files)
+        if grid_shape is None:
             return None
         file_indx_slice = NDSlice(slice).expand_for_shape(struct_shape)[
-            : len(stacking_grid_shape)
+            : len(grid_shape)
         ]
-        return NDSlice(file_indx_slice).flat_indices(stacking_grid_shape)
+        return NDSlice(file_indx_slice).flat_indices(grid_shape)

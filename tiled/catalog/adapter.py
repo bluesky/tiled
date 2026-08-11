@@ -670,14 +670,15 @@ class CatalogNodeAdapter:
         Returns `None` (so the caller falls back to :meth:`get_adapter`) unless
         every precondition for lazy per-frame resolution holds:
         a single file-scheme data source whose adapter class opts in via
-        `supports_lazy_assets` and whose `properties` carry `chunks`, and
-        whose asset `num`s form a contiguous run of length n (any starting
-        offset -- 0-based, 1-based, etc. -- so stacking rank == num - offset).
+        `supports_lazy_assets`, whose asset `num`s form a contiguous run of
+        length n (any starting offset -- 0-based, 1-based, etc. -- so stacking
+        rank == num - offset), and whose adapter can determine, from the
+        structure and the data source `properties`, which files a slice touches.
 
         Instead of materializing all N asset rows, this reads only the data
-        source's structure/chunks (no assets), asks the adapter class which
-        stack indices (== stacking ranks) the given `block`/`slice` needs, and
-        fetches just those URIs. Keeps all DB access in the async layer; the
+        source's structure and properties (no assets), asks the adapter class
+        which stack indices (== stacking ranks) the given `block`/`slice` needs,
+        and fetches just those URIs. Keeps all DB access in the async layer; the
         adapter (built through its normal `from_catalog` entry point with a
         partially-populated URI list) resolves each URI to a filepath lazily,
         only for the indices actually read.
@@ -696,8 +697,6 @@ class CatalogNodeAdapter:
             # Zero or multiple data sources: not supported by the lazy path.
             return None
         ds = data_source_orms[0]
-        if (chunks := (ds.properties or {}).get("chunks")) is None:
-            return None
         if ds.structure is None:
             return None
 
@@ -709,44 +708,37 @@ class CatalogNodeAdapter:
         if not getattr(adapter_cls, "supports_lazy_assets", False):
             return None
 
-        n = sum(int(c) for c in chunks[0])  # stack length == number of files
-
-        # Data source meta only (no assets); the structure/chunks are enough to
-        # compute the file geometry.
+        # Data source meta only (no assets); the structure is enough (with the
+        # file count) to compute the file geometry.
         data_source = DataSource.from_orm(ds, include_assets=False)
         structure = data_source.structure
 
-        # Which stack indices does this read need? Pure geometry -- a classmethod
-        # of the structure and chunks, needing no adapter instance or I/O.
-        #
-        # File selection for a block read depends ONLY on the block:
-        # FileSequenceAdapter.read_block loads the whole block along the stacking
-        # axis (`self.read(block.slice_from_chunks(...)[0])`) and applies any
-        # within-block slice AFTER, to the already-loaded data.
+        # A block read's file selection depends ONLY on the block: read_block
+        # loads the whole block along the stacking axis and applies any
+        # within-block slice AFTER, to the already-loaded data. Convert the block
+        # to the equivalent leading-axis slice here (pure; uses structure.chunks).
         if block is not None:
             if any(block[1:]):
                 raise IndexError(block)
             slice = block.slice_from_chunks(structure.chunks)[0]
-        indices = adapter_cls.file_indices_for_slice(structure, chunks, slice)
-        if indices is None:
-            # The reshape interleaves file contents (not file-boundary-aligned),
-            # so every file must be loaded: the lazy path offers no benefit. Fall
-            # back to the full adapter build.
-            return None
 
-        # Contiguity precheck: the lazy path maps each 0-based stacking rank to
-        # an asset `num`. That mapping is well-defined only when the `num`s form
-        # a contiguous run of length n with no gaps -- then rank == num - offset,
-        # where offset is the smallest num (0 for 0-based numbering, 1 for
-        # 1-based, and so on). Verify cheaply with an aggregate query (no asset
-        # rows materialized): count == n AND max - min == n - 1 holds iff the n
-        # distinct `num`s are exactly {offset .. offset + n - 1}. A set-equality
-        # check on only the requested `num`s is insufficient: a present-but-
-        # mis-ranked `num` (e.g. a silent gap elsewhere shifting ranks) would
-        # pass yet map to the wrong file. On any mismatch, fall back to the full
-        # build, whose asset-ordering logic does not rely on this assumption.
+        # The file count is the number of backing files == the number of numbered
+        # assets, NOT len(chunks[0]): a file may hold several chunks along the
+        # concatenation axis (e.g. one frame per native chunk, many frames per
+        # file), so the native-chunk count overcounts files. The lazy path maps
+        # each 0-based stacking rank to an asset `num`; that mapping is
+        # well-defined only when the `num`s form a contiguous run of length n with
+        # no gaps -- then rank == num - offset, where offset is the smallest num
+        # (0 for 0-based numbering, 1 for 1-based, and so on). One aggregate query
+        # (no asset rows materialized) yields both the count and the contiguity
+        # check: count == n AND max - min == n - 1 holds iff the n distinct `num`s
+        # are exactly {offset .. offset + n - 1}. A set-equality check on only the
+        # requested `num`s is insufficient: a present-but-mis-ranked `num` (e.g. a
+        # silent gap elsewhere shifting ranks) would pass yet map to the wrong
+        # file. On any mismatch, fall back to the full build, whose asset-ordering
+        # logic does not rely on this assumption.
         # TODO: It might be worth ensuring zero-based contiguous `num`s when writing
-        # assets; then this check can be dropped.
+        # assets; then the contiguity check can be dropped.
         count_stmt = (
             select(
                 func.count(orm.DataSourceAssetAssociation.num),
@@ -758,10 +750,22 @@ class CatalogNodeAdapter:
         )
 
         async with self.context.session() as db:
-            count, min_num, max_num = (await db.execute(count_stmt)).one()
-            if count != n or (n and max_num - min_num != n - 1):
+            n, min_num, max_num = (await db.execute(count_stmt)).one()
+            if not n or max_num - min_num != n - 1:
                 return None
             offset = min_num or 0  # `num`s run [offset, offset + n - 1]
+
+            # Which stack indices does this read need? Pure geometry -- a
+            # classmethod of the structure, the file count and the data source
+            # `properties`, needing no adapter instance or I/O. The adapter alone
+            # interprets `properties` (e.g. HDF5's per-asset `extents`); the catalog
+            # stays ignorant of the internals. Returns None when the files can not
+            # be located from the structure (a slice may then need every file).
+            indices = adapter_cls.file_indices_for_slice(
+                structure, n, slice, properties=ds.properties or {}
+            )
+            if indices is None:
+                return None
 
             # Fetch only the needed assets' URIs (indexed by
             # (data_source_id, parameter, num)). The read's 0-based stack indices
@@ -793,8 +797,12 @@ class CatalogNodeAdapter:
             data_uris[num - offset] = data_uri
 
         # One entry point for both eager and lazy: pass the partially-populated
-        # URI list as the `data_uris` kwarg. `from_catalog` derives chunks/metadata/specs.
-        return adapter_cls.from_catalog(data_source, self.node, data_uris=data_uris)
+        # URI list as the `data_uris` kwarg. `from_catalog` derives metadata/specs.
+        # Forward the data source parameters too (as the eager `get_adapter`
+        # does), so adapters needing them (e.g. HDF5's `dataset`) are configured.
+        return adapter_cls.from_catalog(
+            data_source, self.node, data_uris=data_uris, **data_source.parameters
+        )
 
     def new_variation(
         self,
