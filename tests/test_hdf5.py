@@ -670,9 +670,44 @@ def test_adapter_from_catalog(example_file, shape, error):
         assert adp.read().shape == shape
 
 
+# The fixture datasets are int64 (8 bytes) with per-file native chunks
+#   a/b: shape (4, 5, 6),  native chunk (1, 2, 3) -> one row is 5*6*8 = 240 bytes
+#   a/c: shape (10, 1),    native chunk (2, 1)    -> one row is 1*8   =   8 bytes
+#   a/d: shape (10,),      native chunk (3,)      -> one row is        =   8 bytes
+# The coalescing groups whole rows (full trailing dims) into blocks along the
+# leading axis up to READ_BATCH_BYTES, never smaller than the native chunk along
+# that axis; if a single row already exceeds the limit it falls back to the
+# files' native tiling in every dimension. Each expected chunk pattern below is
+# per-file (repeated once per file, since all files are identical).
+@pytest.mark.parametrize(
+    "read_batch_bytes, b_dim0, b_rest, c_dim0, c_rest, d_dim0",
+    [
+        # Default (1 GiB): everything coalesces to a single block per file.
+        (1 << 30, (4,), ((5,), (6,)), (10,), ((1,),), (10,)),
+        # 480 bytes = 2 rows of `b`: `b` coalesces to 2 blocks per file; `c`/`d`
+        # (tiny rows) still fit one block per file.
+        (480, (2, 2), ((5,), (6,)), (10,), ((1,),), (10,)),
+        # 40 bytes < one row of `b` (240 B) *and* < its native chunk (48 B): `b`
+        # falls back to native tiling in every dimension; `c`/`d` coalesce to
+        # 5-row blocks (2 blocks per file).
+        (40, (1, 1, 1, 1), ((2, 2, 1), (3, 3)), (5, 5), ((1,),), (5, 5)),
+    ],
+)
 @pytest.mark.parametrize("num_files", [1, 3])
-def test_chunked_arrays_from_uris(example_files_with_chunked_arrays, num_files):
-    # Test that chunked arrays can be read and reshaped correctly
+def test_chunked_arrays_from_uris(
+    example_files_with_chunked_arrays,
+    num_files,
+    read_batch_bytes,
+    b_dim0,
+    b_rest,
+    c_dim0,
+    c_rest,
+    d_dim0,
+    monkeypatch,
+):
+    # Test that chunked arrays can be read and reshaped correctly, and that the
+    # native HDF5 chunks are coalesced according to READ_BATCH_BYTES.
+    monkeypatch.setattr("tiled.adapters.hdf5.READ_BATCH_BYTES", read_batch_bytes)
     fpaths = example_files_with_chunked_arrays[:num_files]
     tree = HDF5Adapter.from_uris(*fpaths)
     with Context.from_app(build_app(tree)) as context:
@@ -680,7 +715,9 @@ def test_chunked_arrays_from_uris(example_files_with_chunked_arrays, num_files):
 
     arr_b = client["a"]["b"]
     assert arr_b.shape == (4 * num_files, 5, 6)
-    assert arr_b.chunks == ((1, 1, 1, 1) * num_files, (2, 2, 1), (3, 3))
+    # Native HDF5 chunks are coalesced into blocks (bounded by READ_BATCH_BYTES)
+    # to avoid a task/open per tiny native chunk.
+    assert arr_b.chunks == (b_dim0 * num_files, *b_rest)
     assert arr_b.dtype == "int64"
     arr_true_b = numpy.concatenate(
         [
@@ -693,7 +730,7 @@ def test_chunked_arrays_from_uris(example_files_with_chunked_arrays, num_files):
 
     arr_c = client["a"]["c"]
     assert arr_c.shape == (10 * num_files, 1)
-    assert arr_c.chunks == ((2, 2, 2, 2, 2) * num_files, (1,))
+    assert arr_c.chunks == (c_dim0 * num_files, *c_rest)
     assert arr_c.dtype == "int64"
     arr_true_c = numpy.concatenate(
         [
@@ -706,7 +743,7 @@ def test_chunked_arrays_from_uris(example_files_with_chunked_arrays, num_files):
 
     arr_d = client["a"]["d"]
     assert arr_d.shape == (10 * num_files,)
-    assert arr_d.chunks == ((3, 3, 3, 1) * num_files,)
+    assert arr_d.chunks == (d_dim0 * num_files,)
     assert arr_d.dtype == "int64"
     arr_true_d = numpy.concatenate(
         [
@@ -782,7 +819,7 @@ def test_files_opened_and_closed(example_files_with_chunked_arrays, swmr):
     h5py = pytest.importorskip("h5py")
 
     # Use the example with two files chunked along a single dimension;
-    # total chunks across the two files: ((3, 3, 3, 1)*2, )
+    # native chunks are coalesced into one block per file: ((10,) * 2, )
     file_uris = example_files_with_chunked_arrays[:2]
     file_paths = [path_from_uri(uri) for uri in file_uris]
     with patch(
@@ -816,21 +853,22 @@ def test_files_opened_and_closed(example_files_with_chunked_arrays, swmr):
         mock_h5open.reset_mock()
         arr = client["a"]["d"]
         assert arr.structure().shape == (20,)
-        assert arr.structure().chunks == ((3, 3, 3, 1) * 2,)
+        assert arr.structure().chunks == ((10,) * 2,)
         assert arr.metadata is not None
         mock_h5open.assert_not_called()
 
-        # Read the entire array: files are opened once to get the specs and then again,
-        # four times each, to fetch each chunk separately. Additionally, the first file is opened once
-        # adain when initialized from catalog to get the metadata
+        # Read the entire array: files are opened once to get the specs and then
+        # once more each to fetch the single coalesced chunk. Additionally, the
+        # first file is opened once again when initialized from catalog to get
+        # the metadata
         assert arr.read() is not None
-        # 2 for specs, 4*2 for chunks, 1 for metadata
-        assert mock_h5open.call_count == 2 + 4 * 2 + 1
+        # 2 for specs, 1*2 for chunks (one block per file), 1 for metadata
+        assert mock_h5open.call_count == 2 + 1 * 2 + 1
         files_opened = [call.args[0].name for call in mock_h5open.call_args_list]
-        # First file: 1 for specs, 4 for chunks, 1 for metadata
-        assert files_opened.count(file_paths[0].name) == 4 + 1 + 1
-        # Second file: 1 for specs, 4 for chunks
-        assert files_opened.count(file_paths[1].name) == 4 + 1
+        # First file: 1 for specs, 1 for chunk, 1 for metadata
+        assert files_opened.count(file_paths[0].name) == 1 + 1 + 1
+        # Second file: 1 for specs, 1 for chunk
+        assert files_opened.count(file_paths[1].name) == 1 + 1
 
         # Read a slice that only touches one file: only the relevant file should be opened
         mock_h5open.reset_mock()
@@ -843,12 +881,12 @@ def test_files_opened_and_closed(example_files_with_chunked_arrays, swmr):
         # Read everything from the second file
         mock_h5open.reset_mock()
         assert arr[-10:] is not None
-        assert mock_h5open.call_count == 7
+        assert mock_h5open.call_count == 2 + 1 + 1  # 2 specs, 1 chunk, 1 metadata
         files_opened = [call.args[0].name for call in mock_h5open.call_args_list]
         # First file: 1 for specs, 1 for metadata
         assert files_opened.count(file_paths[0].name) == 1 + 1
-        # Second file: 4 for chunks, 1 for specs
-        assert files_opened.count(file_paths[1].name) == 4 + 1
+        # Second file: 1 for chunk, 1 for specs
+        assert files_opened.count(file_paths[1].name) == 1 + 1
 
         # Read a slice that has one value from each of the files
         mock_h5open.reset_mock()

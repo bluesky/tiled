@@ -329,6 +329,42 @@ def test_compose_slices(shape, data):
     np.testing.assert_array_equal(arr[slc1][slc2], arr[slc1[slc2]])
 
 
+@given(
+    shape=st.lists(st.integers(1, 6), min_size=1, max_size=4),
+    data=st.data(),
+)
+def test_flat_indices(shape, data):
+    """`flat_indices` returns the C-order positions a slice selects.
+
+    Ground truth: label every cell with its flat position and apply the same
+    slice with NumPy.
+    """
+    shape = tuple(shape)
+    grid = np.arange(np.prod(shape)).reshape(shape)
+    ndslice = NDSlice(data.draw(ndslice_strategy(shape)))
+
+    result = ndslice.flat_indices(shape)
+    expected = tuple(np.atleast_1d(grid[ndslice].ravel()).tolist())
+
+    assert result == expected
+    # Result is a plain tuple of ints labeling valid, unique flat positions.
+    assert isinstance(result, tuple)
+    assert set(result) <= set(range(grid.size))
+    assert len(set(result)) == len(result)
+
+
+def test_flat_indices_examples():
+    # Empty/':'/'...' select everything, in C order.
+    assert NDSlice().flat_indices((2, 3)) == tuple(range(6))
+    assert NDSlice(Ellipsis).flat_indices((2, 3)) == tuple(range(6))
+    # An integer drops the leading dimension.
+    assert NDSlice(1).flat_indices((3, 4)) == (4, 5, 6, 7)
+    # Strides are honored exactly (no contiguous over-selection).
+    assert NDSlice(slice(0, 4, 2)).flat_indices((4,)) == (0, 2)
+    # Selecting only stacking (leading) dimensions of a larger grid.
+    assert NDSlice(slice(0, 2), 1).flat_indices((2, 3)) == (1, 4)
+
+
 def chunks_strategy(shape):
     """Generate valid chunking schemes for a given shape."""
 
