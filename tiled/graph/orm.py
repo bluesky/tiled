@@ -42,7 +42,7 @@ entities = Table(
     Column(
         "node_id",
         Integer,
-        ForeignKey("nodes.id", ondelete="SET NULL"),
+        ForeignKey("nodes.id", ondelete="CASCADE"),
         nullable=True,
     ),
     Column("entity_type", String, nullable=False),
