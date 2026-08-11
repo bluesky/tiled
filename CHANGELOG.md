@@ -14,6 +14,18 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Fixed
 
+- Fix the `raw_export` download progress bar, which showed a wrong total (e.g.
+  `1,257,333,024/100 bytes`) and did not advance during the transfer. The bar
+  now seeds each task's total from the known asset size, and raw-asset downloads
+  no longer negotiate `blosc2` (whose client decoder buffers the whole response
+  in memory and emits it only at the end, freezing the bar and spiking memory).
+  Downloads instead stream via `zstd`/`gzip`; pass `compression=False` to
+  `raw_export` to download uncompressed (`Accept-Encoding: identity`).
+- Fix truncation of `blosc2`-encoded downloads at exactly 65536 bytes. Streaming
+  responses (e.g. `raw_export` of a `bytes` node via `/asset/bytes`) are emitted
+  in 64 KiB chunks, and the server compresses each chunk into an independent
+  blosc2 frame. The client `Blosc2Decoder` decoded only the first frame; it now
+  walks every concatenated frame and reassembles the full payload.
 - Fix the webhook `history` and `delete` endpoints when a catalog is mounted under
   a sub-path (the `trees:` config form).
 - Skip the `array-ref` streaming-cache update in `put_data_source` when the
