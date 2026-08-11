@@ -151,9 +151,11 @@ def check_url_ssrf_safety(
             ipaddress.ip_network(network)  # raises ValueError if not a valid network
     if allow_delivery_hosts:
         for host in allow_delivery_hosts:
-            fqdn = socket.getfqdn(host)
-            if fqdn != host:
-                raise ValueError(f"Allow delivery host {host} must be a valid hostname")
+            try:
+                ipaddress.ip_address(host)
+            except ValueError:
+                continue
+            raise ValueError(f"Allow delivery host {host} must be a valid hostname")
     if not hostname:
         raise ValueError(f"Cannot parse hostname from URL: {url!r}")
     try:
