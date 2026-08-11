@@ -92,9 +92,10 @@ def _build_url_validator(config: WebhooksConfig) -> UrlValidator:
                 ),
             )
         try:
-             socket.gethostbyname(hostname)
+            socket.gethostbyname(hostname)
         except socket.gaierror as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+    for network in config.blocked_networks:
         try:
             ipaddress.ip_network(network)
         except ValueError as exc:
