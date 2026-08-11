@@ -259,7 +259,7 @@ class BaseClient:
         validating metadata (useful with update_metadata())
         """
         metadata = deepcopy(self._item["attributes"]["metadata"])
-        specs = [Spec(**spec) for spec in self._item["attributes"]["specs"]]
+        specs = [Spec.from_json(spec) for spec in self._item["attributes"]["specs"]]
         access_tags = deepcopy(self._item["attributes"]["access_blob"].get("tags", []))
         return [
             md for md in [metadata, specs, access_tags] if md is not None
@@ -268,7 +268,9 @@ class BaseClient:
     @property
     def specs(self) -> ListView[Spec]:
         "List of specifications describing the structure of the metadata and/or data."
-        return ListView([Spec(**spec) for spec in self._item["attributes"]["specs"]])
+        return ListView(
+            [Spec.from_json(spec) for spec in self._item["attributes"]["specs"]]
+        )
 
     @property
     def access_blob(self) -> DictView[str, JSON_ITEM]:
@@ -377,7 +379,7 @@ class BaseClient:
                 manifests[asset.id] = manifest
         return manifests
 
-    def raw_export(self, destination=None, max_workers=4, **kwargs):
+    def raw_export(self, destination=None, max_workers=4, compression=True, **kwargs):
         """Download the raw assets backing this node.
 
         This may produce a single file or a directory.
@@ -394,6 +396,13 @@ class BaseClient:
             the current working directory.
         max_workers : int, optional
             Number of parallel workers downloading data. Default is 4.
+        compression : bool, optional
+            Whether to let the server compress the response on the fly. Default
+            is `True`, which streams via zstd/gzip (blosc2 is excluded because
+            its client decoder cannot stream). Set to `False` to download
+            uncompressed (`Accept-Encoding: identity`), which avoids wasting CPU
+            on already-incompressible assets and yields a `Content-Length` (and
+            thus a determinate progress bar).
 
         Returns
         -------
@@ -418,7 +427,7 @@ class BaseClient:
             destination = kwargs.pop("destination_directory")
         if kwargs:
             raise TypeError(
-                f"raw_export() got unexpected keyword arguments: " f"{sorted(kwargs)!r}"
+                f"raw_export() got unexpected keyword arguments: {sorted(kwargs)!r}"
             )
 
         in_memory = isinstance(destination, MutableMapping)
@@ -426,10 +435,15 @@ class BaseClient:
             destination = Path(destination or Path.cwd())
 
         # Import here to defer the import of rich (for progress bar).
-        from .download import ATTACHMENT_FILENAME_PLACEHOLDER, download
+        from .download import (
+            ATTACHMENT_FILENAME_PLACEHOLDER,
+            STREAMING_ACCEPT_ENCODING,
+            download,
+        )
 
         urls = []
         targets = []  # Paths or posix-style string keys.
+        sizes = []  # Known content lengths (parallel to urls); None if unknown.
         data_sources = self.include_data_sources().data_sources()
         asset_manifest = self.asset_manifest(data_sources)
         if len(data_sources) != 1:
@@ -464,6 +478,8 @@ class BaseClient:
                             for relative_path in relative_paths
                         ]
                     )
+                    # Per-file sizes within a directory asset are not known.
+                    sizes.extend([None] * len(relative_paths))
                     if in_memory:
                         targets.extend(
                             [f"{base}/{rp}" if base else rp for rp in relative_paths]
@@ -480,6 +496,7 @@ class BaseClient:
                             },
                         )
                     )
+                    sizes.append(asset.size)
                     if in_memory:
                         targets.append(
                             f"{base}/{ATTACHMENT_FILENAME_PLACEHOLDER}"
@@ -488,6 +505,7 @@ class BaseClient:
                         )
                     else:
                         targets.append(Path(base, ATTACHMENT_FILENAME_PLACEHOLDER))
+        accept_encoding = STREAMING_ACCEPT_ENCODING if compression else "identity"
         if in_memory:
             return download(
                 self.context.http_client,
@@ -495,9 +513,16 @@ class BaseClient:
                 targets,
                 mapping=destination,
                 max_workers=max_workers,
+                totals=sizes,
+                accept_encoding=accept_encoding,
             )
         return download(
-            self.context.http_client, urls, targets, max_workers=max_workers
+            self.context.http_client,
+            urls,
+            targets,
+            max_workers=max_workers,
+            totals=sizes,
+            accept_encoding=accept_encoding,
         )
 
     @property

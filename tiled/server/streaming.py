@@ -10,11 +10,55 @@ import cachetools
 import orjson
 from fastapi import WebSocketDisconnect
 from redis import asyncio as redis
+from redis.asyncio.sentinel import Sentinel
 
 from ..ndslice import NDSlice
 from ..utils import safe_json_dump as _safe_json_dump
 
 logger = logging.getLogger(__name__)
+
+
+def _build_redis_client(settings: Dict[str, Any]) -> redis.Redis:
+    """Build the async Redis client for the streaming datastore.
+
+    - ``uri`` (``redis://`` / ``rediss://``) — a single standalone node.
+    - ``sentinels`` (a list of ``"host:port"``) plus ``service_name`` — a
+      Sentinel-managed cluster; the client follows failover to the current
+      primary.
+
+    When ``ssl`` is set (Sentinel path), TLS is applied to both the Sentinel
+    discovery and the data-node connections.
+    """
+    kwargs = dict(
+        socket_timeout=settings["socket_timeout"],
+        socket_connect_timeout=settings["socket_connect_timeout"],
+    )
+    sentinels = settings.get("sentinels")
+    if sentinels:
+        hosts = [
+            (host, int(port))
+            for host, _, port in (s.rpartition(":") for s in sentinels)
+        ]
+        # health_check_interval only matters for Sentinel failover detection, so
+        # it is applied on the HA path only -- the standalone from_url call below
+        # stays identical to the pre-HA behavior. Default mirrors
+        # StreamingCacheConfig; tolerate a partial cache_config (e.g. from a
+        # direct from_uri call) as the memory datastore does.
+        kwargs["health_check_interval"] = settings.get("health_check_interval", 10)
+        sentinel_kwargs = None
+        if settings.get("ssl"):
+            # TLS for both Sentinel discovery and data-node connections.
+            tls_kwargs = {"ssl": True}
+            kwargs.update(tls_kwargs)
+            sentinel_kwargs = tls_kwargs
+        sentinel = Sentinel(
+            hosts,
+            password=settings.get("password"),
+            sentinel_kwargs=sentinel_kwargs,
+            **kwargs,
+        )
+        return sentinel.master_for(settings["service_name"])
+    return redis.from_url(settings["uri"], **kwargs)
 
 
 def safe_json_dump(content):
@@ -168,6 +212,12 @@ class PubSub:
         return gen()
 
 
+# Sentinel pushed onto the live-event buffer when the live subscription drops
+# (e.g. a Redis failover). It signals the handler to close the socket abnormally
+# so the client reconnects and replays any sequences missed during the outage.
+_LIVE_SUBSCRIPTION_LOST = object()
+
+
 def _make_ws_handler_common(
     *,
     websocket,
@@ -276,6 +326,9 @@ def _make_ws_handler_common(
                 logger.exception(
                     f"Live subscription error for node {node_id}: {e}",
                 )
+                # Enqueue a sentinel to wake the main loop, which is otherwise
+                # blocked forever on an empty buffer now that this task has died.
+                await stream_buffer.put(_LIVE_SUBSCRIPTION_LOST)
             finally:
                 if live_cleanup is not None:
                     await live_cleanup()
@@ -293,6 +346,14 @@ def _make_ws_handler_common(
         try:
             while not end_stream.is_set():
                 live_seq = await stream_buffer.get()
+
+                if live_seq is _LIVE_SUBSCRIPTION_LOST:
+                    # Must be an *abnormal* close: a graceful 1000 reads as
+                    # ConnectionClosedOK on the client and would not reconnect.
+                    # 1012 yields ConnectionClosedError, so the client reconnects
+                    # and resumes from its last received sequence.
+                    await websocket.close(code=1012, reason="Live subscription lost")
+                    return
 
                 # Skip duplicates or already replayed messages
                 if live_seq <= last_sent:
@@ -431,13 +492,7 @@ class TTLCacheDatastore(StreamingDatastore):
 class RedisStreamingDatastore(StreamingDatastore):
     def __init__(self, settings: Dict[str, Any]):
         self._settings = settings
-        socket_timeout = self._settings["socket_timeout"]
-        socket_connect_timeout = self._settings["socket_connect_timeout"]
-        self._client = redis.from_url(
-            self._settings["uri"],
-            socket_timeout=socket_timeout,
-            socket_connect_timeout=socket_connect_timeout,
-        )
+        self._client = _build_redis_client(settings)
         self.data_ttl = self._settings["data_ttl"]
         self.seq_ttl = self._settings["seq_ttl"]
 

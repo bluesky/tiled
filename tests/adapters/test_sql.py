@@ -20,6 +20,7 @@ from tiled.storage import (
 from tiled.structures.core import StructureFamily
 from tiled.structures.data_source import DataSource, Management
 from tiled.structures.table import TableStructure
+from tiled.utils import UnsafeIdentifier
 
 names = ["f0", "f1", "f2", "f3"]
 data0 = [
@@ -393,21 +394,15 @@ def test_write_read_one_batch_many_part(
     [
         (
             "table_abcdefg12423pnjsbldfhjdfbv_hbdhfljb128w40_ndgjfsdflfnscljm",
-            pytest.raises(
-                ValueError, match=r"Invalid SQL identifier.+max character number is 63"
-            ),
+            pytest.raises(ValueError, match=r"Invalid SQL identifier.+max bytes is 63"),
         ),
         (
             "create_abcdefg12423pnjsbldfhjdfbv_hbdhfljb128w40_ndgjfsdflfnscljk_sdbf_jhvjkbefl",
-            pytest.raises(
-                ValueError, match=r"Invalid SQL identifier.+max character number is 63"
-            ),
+            pytest.raises(ValueError, match=r"Invalid SQL identifier.+max bytes is 63"),
         ),
         (
             "hello_abcdefg12423pnjsbldfhjdfbv_hbdhfljb128w40_ndgjfsdflfnscljk_sdbf_jhvjkbefl",
-            pytest.raises(
-                ValueError, match=r"Invalid SQL identifier.+max character number is 63"
-            ),
+            pytest.raises(ValueError, match=r"Invalid SQL identifier.+max bytes is 63"),
         ),
         ("my_table_here_123_", None),
         ("the_short_table12374620_hello_table23704ynnm", None),
@@ -510,9 +505,7 @@ def test_check_table_name_is_safe(table_name: str, expected: Union[None, Any]) -
         # Invalid identifiers - length
         (
             "a" * 64,
-            pytest.raises(
-                ValueError, match=r"Invalid SQL identifier.+max character number is 63"
-            ),
+            pytest.raises(ValueError, match=r"Invalid SQL identifier.+max bytes is 63"),
         ),
         # Invalid identifiers - malformed
         (
@@ -1247,3 +1240,36 @@ def test_primary_key_invalid_type_raises(
     data_source = data_source_from_init_storage(data_uri_val, 1, schema.empty_table())
     with pytest.raises(ValueError, match="bad_col"):
         adapter_from_data_source(data_source, primary_key=["bad_col"])
+
+
+@pytest.mark.parametrize("data_uri", ["sqlite_uri", "duckdb_uri", "postgres_uri"])
+def test_column_name_too_long(data_uri: str, request: pytest.FixtureRequest) -> None:
+    # Define a table and a storage
+    data_uri = request.getfixturevalue(data_uri)
+    storage = cast(SQLStorage, parse_storage(data_uri))
+    register_storage(storage)
+
+    # Create a table with a column name that exceeds the maximum of 63 bytes
+    table = pa.Table.from_arrays(
+        [[1, 2, 3], [4, 5, 6]],
+        [
+            "column_name_that_is_way_too_long_and_should_"
+            "return_an_exception_because_it_is_over_sixty_three_characters",
+            "COLUMN_NAME",
+        ],
+    )
+    structure = TableStructure.from_arrow_table(table)
+    data_source = DataSource(
+        management=Management.writable,
+        mimetype="application/x-tiled-sql-table",
+        structure_family=StructureFamily.table,
+        structure=structure,
+        parameters={"table_name": "table_name"},
+        assets=[],
+    )
+    with pytest.raises(
+        UnsafeIdentifier,
+        match=r'Invalid SQL identifier "column_name_that_is_way_too_long_and_should_'
+        r'return_an_exception_because_it_is_over_sixty_three_characters": max bytes is 63+',
+    ):
+        SQLAdapter.init_storage(data_source=data_source, storage=storage)

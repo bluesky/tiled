@@ -158,6 +158,52 @@ async def _node_path_from_id(ctx, node_id: int) -> str:
     return "/".join(keys)
 
 
+def _iter_catalog_contexts(tree, prefix: tuple = ()):
+    """Yield ``(mount_prefix, catalog_context)`` pairs reachable from ``tree``.
+
+    A catalog-backed adapter exposes a ``context`` attribute.  When catalogs are
+    mounted under sub-paths (the ``trees:`` config form), the root is a
+    ``MapAdapter`` whose children are the mounted trees; descend into it to find
+    each catalog and remember the path prefix it is mounted at.
+    """
+    context = getattr(tree, "context", None)
+    if context is not None:
+        yield prefix, context
+        return
+    mapping = getattr(tree, "_mapping", None)
+    if mapping:
+        for key, child in mapping.items():
+            yield from _iter_catalog_contexts(child, prefix + (key,))
+
+
+async def _resolve_webhook_context(root_tree, webhook_id: int):
+    """Locate the catalog context owning ``webhook_id`` and load the webhook.
+
+    Returns ``(mount_prefix, context, webhook)``.  Searches every catalog
+    reachable from the root so that both root-mounted and sub-path-mounted
+    catalogs are supported.  Raises 404 if no catalog exists or the webhook is
+    not found in any of them.
+    """
+    contexts = list(_iter_catalog_contexts(root_tree))
+    if not contexts:
+        raise HTTPException(
+            status_code=HTTP_404_NOT_FOUND,
+            detail="Webhooks are only supported on catalog-backed trees.",
+        )
+    for prefix, ctx in contexts:
+        async with ctx.session() as db:
+            wh = await db.get(orm.Webhook, webhook_id)
+            if wh is not None:
+                return prefix, ctx, wh
+    raise HTTPException(status_code=HTTP_404_NOT_FOUND, detail="Webhook not found.")
+
+
+def _global_node_path(prefix: tuple, local_path: str) -> str:
+    """Join a catalog's mount prefix with a node path local to that catalog."""
+    local_segments = local_path.split("/") if local_path else []
+    return "/".join([*prefix, *local_segments])
+
+
 def get_webhook_router(
     webhook_settings: WebhooksConfig,
     webhook_url_validator: UrlValidator | None = None,
@@ -280,34 +326,32 @@ def get_webhook_router(
         session_state: dict = Depends(get_session_state),
         _=Security(check_scopes, scopes=["write:webhooks"]),
     ):
-        root_ctx = _get_catalog_context(root_tree)
+        # Locate the catalog that owns this webhook (supports catalogs mounted
+        # at the root or under sub-paths).
+        prefix, ctx, wh = await _resolve_webhook_context(root_tree, webhook_id)
+        node_id = wh.node_id
 
-        # Load webhook, verify caller access, and delete
-        async with root_ctx.session() as db:
+        # Verify the caller has write:webhooks access to the webhook's node.
+        local_path = await _node_path_from_id(ctx, node_id)
+        node_path = _global_node_path(prefix, local_path)
+        await get_entry(
+            path=node_path,
+            security_scopes=["write:webhooks"],
+            principal=principal,
+            authn_access_tags=authn_access_tags,
+            authn_scopes=authn_scopes,
+            root_tree=root_tree,
+            session_state=session_state,
+            metrics=request.state.metrics,
+            structure_families=None,
+            access_policy=getattr(request.app.state, "access_policy", None),
+        )
+
+        async with ctx.session() as db:
             wh = await db.get(orm.Webhook, webhook_id)
-            if wh is None:
-                raise HTTPException(
-                    status_code=HTTP_404_NOT_FOUND, detail="Webhook not found."
-                )
-            node_id = wh.node_id
-
-            # Verify the caller has write:metadata access to the webhook's node.
-            node_path = await _node_path_from_id(root_ctx, node_id)
-            await get_entry(
-                path=node_path,
-                security_scopes=["write:webhooks"],
-                principal=principal,
-                authn_access_tags=authn_access_tags,
-                authn_scopes=authn_scopes,
-                root_tree=root_tree,
-                session_state=session_state,
-                metrics=request.state.metrics,
-                structure_families=None,
-                access_policy=getattr(request.app.state, "access_policy", None),
-            )
-
-            await db.delete(wh)
-            await db.commit()
+            if wh is not None:
+                await db.delete(wh)
+                await db.commit()
 
         return {"deleted": webhook_id}
 
@@ -327,19 +371,14 @@ def get_webhook_router(
         session_state: dict = Depends(get_session_state),
         _=Security(check_scopes, scopes=["read:webhooks"]),
     ):
-        root_ctx = _get_catalog_context(root_tree)
+        # Locate the catalog that owns this webhook (supports catalogs mounted
+        # at the root or under sub-paths).
+        prefix, ctx, wh = await _resolve_webhook_context(root_tree, webhook_id)
+        node_id = wh.node_id
 
-        # Load the webhook to find which node it belongs to.
-        async with root_ctx.session() as db:
-            wh = await db.get(orm.Webhook, webhook_id)
-            if wh is None:
-                raise HTTPException(
-                    status_code=HTTP_404_NOT_FOUND, detail="Webhook not found."
-                )
-            node_id = wh.node_id
-
-        # Verify the caller has read:metadata access to the webhook's node.
-        node_path = await _node_path_from_id(root_ctx, node_id)
+        # Verify the caller has read:webhooks access to the webhook's node.
+        local_path = await _node_path_from_id(ctx, node_id)
+        node_path = _global_node_path(prefix, local_path)
         await get_entry(
             path=node_path,
             security_scopes=["read:webhooks"],
@@ -353,7 +392,7 @@ def get_webhook_router(
             access_policy=getattr(request.app.state, "access_policy", None),
         )
 
-        async with root_ctx.session() as db:
+        async with ctx.session() as db:
             result = await db.execute(
                 select(orm.WebhookDelivery)
                 .where(orm.WebhookDelivery.webhook_id == webhook_id)

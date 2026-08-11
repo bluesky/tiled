@@ -26,7 +26,7 @@ from tiled.client import Context, from_context
 from tiled.client.container import Container
 from tiled.client.context import password_grant
 from tiled.config import Authentication, WebhooksConfig
-from tiled.server.app import build_app
+from tiled.server.app import build_app, build_app_from_config
 from tiled.server.schemas import (
     DeliveryResponse,
     EventType,
@@ -600,6 +600,46 @@ class TestWebhookIntegration:
         """Non-admin user must get 401 for all webhook endpoints."""
         resp = getattr(bob_http, method)(path, **kwargs)
         assert resp.status_code == 401
+
+
+def test_history_and_delete_on_sub_path_mounted_catalog(
+    sqlite_or_postgres_uri: str, tmpdir: Any
+) -> None:
+    "Webhook history and delete work when the catalog is mounted at a sub-path."
+    config = {
+        "trees": [
+            {
+                "path": "/sub",
+                "tree": "catalog",
+                "args": {
+                    "uri": sqlite_or_postgres_uri,
+                    "init_if_not_exists": True,
+                    "writable_storage": [tmpdir / "data"],
+                },
+            }
+        ],
+        "authentication": {"single_user_api_key": "secret"},
+        "webhooks": {"secret_keys": ["test-webhook-key"]},
+    }
+    with patch("tiled.server.webhook_router.check_url_ssrf_safety"):
+        with Context.from_app(build_app_from_config(config)) as context:
+            http = context.http_client
+            with respx.mock:
+                received = _capturing_mock()
+                webhook = _register_webhook(http, path="sub")
+                from_context(context)["sub"].create_container("x")
+                assert len(received) == 1
+
+                history = http.get(
+                    f"/api/v1/webhooks/history/{webhook.id}"
+                ).raise_for_status()
+                assert history.json()[0]["webhook_id"] == webhook.id
+
+                http.delete(f"/api/v1/webhooks/{webhook.id}").raise_for_status()
+                assert (
+                    http.get(f"/api/v1/webhooks/history/{webhook.id}").status_code
+                    == 404
+                )
 
 
 # ---------------------------------------------------------------------------

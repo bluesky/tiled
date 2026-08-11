@@ -75,13 +75,76 @@ properties:
             ```
   streaming_cache:
     description: |
-      Streaming cache database
+      Redis-backed cache for live data streaming.
+
+      Provide **either** a single-node `uri` **or**, for a highly-available
+      deployment fronted by Redis Sentinel, a list of `sentinels` together with
+      a `service_name`.
+
+      A single, standalone Redis node:
+
+      ```yaml
+      streaming_cache:
+        uri: "redis://:password@redis-host:6379"
+      ```
+
+      A highly-available cluster managed by Redis Sentinel. Tiled connects to
+      the Sentinels, discovers the current primary for `service_name`, and
+      automatically follows failover when the primary changes:
+
+      ```yaml
+      streaming_cache:
+        sentinels:
+          - "redis-sentinel-1:26379"
+          - "redis-sentinel-2:26379"
+          - "redis-sentinel-3:26379"
+        service_name: "tiled-streaming-cache"
+        password: "password"
+        ssl: true
+      ```
     type: object
     additionalProperties: false
     properties:
       uri:
         type: string
-        description: Connection string, e.g. `redis://:password@host:port`
+        description: |
+          Connection string for a single, standalone Redis node, e.g.
+          `redis://:password@host:port`. The username is optional: omit it
+          (`redis://:password@host:port`) to authenticate as the default user
+          with `requirepass`, or include it (`redis://user:password@host:port`)
+          for a Redis 6+ ACL user. Use the `rediss://` scheme for TLS. Mutually
+          exclusive with `sentinels`.
+      sentinels:
+        type: array
+        items:
+          type: string
+        description: |
+          For a highly-available deployment, a list of `"host:port"` Redis
+          Sentinel addresses used instead of `uri`. The client discovers the
+          current primary through the Sentinels and follows failover
+          automatically. Requires `service_name`.
+      service_name:
+        type: string
+        description: |
+          The name of the Sentinel-monitored replica set (Redis calls it the
+          "master name"): an arbitrary label for the primary-plus-replicas group,
+          which stays fixed across a failover and always resolves to the current
+          primary. Must match the name the Sentinels are configured with (e.g.
+          `tiled-streaming-cache`). Required when `sentinels` is set.
+      password:
+        type: string
+        description: |
+          Password for the Redis data nodes, used with `sentinels`. (For a
+          single-node deployment, include the password in `uri` instead.)
+      ssl:
+        type: boolean
+        description: |
+          Enable TLS for the `sentinels` path, securing both the Sentinel
+          discovery connections and the data-node (primary/replica) connections
+          the client follows failover across. Certificate verification uses the
+          same default as the standalone `rediss://` path. Defaults to `false`.
+          (For a single-node deployment, use the `rediss://` scheme in `uri`
+          instead.)
       data_ttl:
         type: number
         description: Max retention time for streaming data (seconds)
@@ -100,8 +163,15 @@ properties:
         description: |
           Configure Redis client. The default is 10 (seconds).
 
-    required:
-      - uri
+      health_check_interval:
+        type: number
+        description: |
+          Interval, in seconds, between health-check PINGs on idle Redis
+          connections. Applies to the Sentinel (HA) path only, where it lets the
+          client detect a stalled connection after a failover and reconnect
+          rather than blocking on the old primary. The default is 10 (seconds);
+          it bounds how quickly the client notices a silently-dead primary.
+
   media_types:
     type: object
     additionalProperties: true

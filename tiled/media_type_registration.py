@@ -368,5 +368,12 @@ if modules_available("blosc2"):
         def close(self):
             pass
 
+    # NB: BloscBuffer.write emits an independent blosc2 frame per call. Array
+    # responses are serialized as a single body, so they compress to a single
+    # frame; but streaming byte payloads (application/octet-stream via
+    # FileResponse) are written in 64 KiB chunks, so each chunk becomes its own
+    # frame and the wire body is `frame0 ++ frame1 ++ ...`. The client-side
+    # Blosc2Decoder walks all frames, so this concatenation round-trips
+    # correctly.
     for media_type in ["application/octet-stream", APACHE_ARROW_FILE_MIME_TYPE]:
         default_compression_registry.register(media_type, "blosc2", BloscBuffer)
