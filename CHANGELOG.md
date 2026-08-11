@@ -44,6 +44,12 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Fixed
 
+- Bound the bytes a single HDF5 read task pulls from disk. Coalescing tiny
+  native chunks previously used a 1 GiB budget, so reading one frame of a large
+  dataset fetched up to a gigabyte because a block is also the minimum a partial
+  read fetches. The budget is now a modest 16 MiB, keeping small reads cheap
+  while full reads still coalesce sensibly. Override with
+  `TILED_HDF5_READ_CHUNK_BYTES`. (#1465)
 - Fix the `raw_export` download progress bar, which showed a wrong total (e.g.
   `1,257,333,024/100 bytes`) and did not advance during the transfer. The bar
   now seeds each task's total from the known asset size, and raw-asset downloads

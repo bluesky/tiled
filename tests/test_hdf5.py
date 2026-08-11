@@ -670,9 +670,44 @@ def test_adapter_from_catalog(example_file, shape, error):
         assert adp.read().shape == shape
 
 
+# The fixture datasets are int64 (8 bytes) with per-file native chunks
+#   a/b: shape (4, 5, 6),  native chunk (1, 2, 3) -> one row is 5*6*8 = 240 bytes
+#   a/c: shape (10, 1),    native chunk (2, 1)    -> one row is 1*8   =   8 bytes
+#   a/d: shape (10,),      native chunk (3,)      -> one row is        =   8 bytes
+# The coalescing groups whole rows (full trailing dims) into blocks along the
+# leading axis up to READ_CHUNK_BYTES, never smaller than the native chunk along
+# that axis; if a single row already exceeds the limit it falls back to the
+# files' native tiling in every dimension. Each expected chunk pattern below is
+# per-file (repeated once per file, since all files are identical).
+@pytest.mark.parametrize(
+    "read_chunk_bytes, b_dim0, b_rest, c_dim0, c_rest, d_dim0",
+    [
+        # Large (1 GiB): everything coalesces to a single block per file.
+        (1 << 30, (4,), ((5,), (6,)), (10,), ((1,),), (10,)),
+        # 480 bytes = 2 rows of `b`: `b` coalesces to 2 blocks per file; `c`/`d`
+        # (tiny rows) still fit one block per file.
+        (480, (2, 2), ((5,), (6,)), (10,), ((1,),), (10,)),
+        # 40 bytes < one row of `b` (240 B) *and* < its native chunk (48 B): `b`
+        # falls back to native tiling in every dimension; `c`/`d` coalesce to
+        # 5-row blocks (2 blocks per file).
+        (40, (1, 1, 1, 1), ((2, 2, 1), (3, 3)), (5, 5), ((1,),), (5, 5)),
+    ],
+)
 @pytest.mark.parametrize("num_files", [1, 3])
-def test_chunked_arrays_from_uris(example_files_with_chunked_arrays, num_files):
-    # Test that chunked arrays can be read and reshaped correctly
+def test_chunked_arrays_from_uris(
+    example_files_with_chunked_arrays,
+    num_files,
+    read_chunk_bytes,
+    b_dim0,
+    b_rest,
+    c_dim0,
+    c_rest,
+    d_dim0,
+    monkeypatch,
+):
+    # Test that chunked arrays can be read and reshaped correctly, and that the
+    # native HDF5 chunks are coalesced according to READ_CHUNK_BYTES.
+    monkeypatch.setattr("tiled.adapters.hdf5.READ_CHUNK_BYTES", read_chunk_bytes)
     fpaths = example_files_with_chunked_arrays[:num_files]
     tree = HDF5Adapter.from_uris(*fpaths)
     with Context.from_app(build_app(tree)) as context:
@@ -680,7 +715,9 @@ def test_chunked_arrays_from_uris(example_files_with_chunked_arrays, num_files):
 
     arr_b = client["a"]["b"]
     assert arr_b.shape == (4 * num_files, 5, 6)
-    assert arr_b.chunks == ((1, 1, 1, 1) * num_files, (2, 2, 1), (3, 3))
+    # Native HDF5 chunks are coalesced into blocks (bounded by READ_CHUNK_BYTES)
+    # to avoid a task/open per tiny native chunk.
+    assert arr_b.chunks == (b_dim0 * num_files, *b_rest)
     assert arr_b.dtype == "int64"
     arr_true_b = numpy.concatenate(
         [
@@ -693,7 +730,7 @@ def test_chunked_arrays_from_uris(example_files_with_chunked_arrays, num_files):
 
     arr_c = client["a"]["c"]
     assert arr_c.shape == (10 * num_files, 1)
-    assert arr_c.chunks == ((2, 2, 2, 2, 2) * num_files, (1,))
+    assert arr_c.chunks == (c_dim0 * num_files, *c_rest)
     assert arr_c.dtype == "int64"
     arr_true_c = numpy.concatenate(
         [
@@ -706,7 +743,7 @@ def test_chunked_arrays_from_uris(example_files_with_chunked_arrays, num_files):
 
     arr_d = client["a"]["d"]
     assert arr_d.shape == (10 * num_files,)
-    assert arr_d.chunks == ((3, 3, 3, 1) * num_files,)
+    assert arr_d.chunks == (d_dim0 * num_files,)
     assert arr_d.dtype == "int64"
     arr_true_d = numpy.concatenate(
         [
@@ -782,7 +819,7 @@ def test_files_opened_and_closed(example_files_with_chunked_arrays, swmr):
     h5py = pytest.importorskip("h5py")
 
     # Use the example with two files chunked along a single dimension;
-    # total chunks across the two files: ((3, 3, 3, 1)*2, )
+    # native chunks are coalesced into one block per file: ((10,) * 2, )
     file_uris = example_files_with_chunked_arrays[:2]
     file_paths = [path_from_uri(uri) for uri in file_uris]
     with patch(
@@ -816,21 +853,22 @@ def test_files_opened_and_closed(example_files_with_chunked_arrays, swmr):
         mock_h5open.reset_mock()
         arr = client["a"]["d"]
         assert arr.structure().shape == (20,)
-        assert arr.structure().chunks == ((3, 3, 3, 1) * 2,)
+        assert arr.structure().chunks == ((10,) * 2,)
         assert arr.metadata is not None
         mock_h5open.assert_not_called()
 
-        # Read the entire array: files are opened once to get the specs and then again,
-        # four times each, to fetch each chunk separately. Additionally, the first file is opened once
-        # adain when initialized from catalog to get the metadata
+        # Read the entire array: files are opened once to get the specs and then
+        # once more each to fetch the single coalesced chunk. Additionally, the
+        # first file is opened once again when initialized from catalog to get
+        # the metadata
         assert arr.read() is not None
-        # 2 for specs, 4*2 for chunks, 1 for metadata
-        assert mock_h5open.call_count == 2 + 4 * 2 + 1
+        # 2 for specs, 1*2 for chunks (one block per file), 1 for metadata
+        assert mock_h5open.call_count == 2 + 1 * 2 + 1
         files_opened = [call.args[0].name for call in mock_h5open.call_args_list]
-        # First file: 1 for specs, 4 for chunks, 1 for metadata
-        assert files_opened.count(file_paths[0].name) == 4 + 1 + 1
-        # Second file: 1 for specs, 4 for chunks
-        assert files_opened.count(file_paths[1].name) == 4 + 1
+        # First file: 1 for specs, 1 for chunk, 1 for metadata
+        assert files_opened.count(file_paths[0].name) == 1 + 1 + 1
+        # Second file: 1 for specs, 1 for chunk
+        assert files_opened.count(file_paths[1].name) == 1 + 1
 
         # Read a slice that only touches one file: only the relevant file should be opened
         mock_h5open.reset_mock()
@@ -843,12 +881,12 @@ def test_files_opened_and_closed(example_files_with_chunked_arrays, swmr):
         # Read everything from the second file
         mock_h5open.reset_mock()
         assert arr[-10:] is not None
-        assert mock_h5open.call_count == 7
+        assert mock_h5open.call_count == 2 + 1 + 1  # 2 specs, 1 chunk, 1 metadata
         files_opened = [call.args[0].name for call in mock_h5open.call_args_list]
         # First file: 1 for specs, 1 for metadata
         assert files_opened.count(file_paths[0].name) == 1 + 1
-        # Second file: 4 for chunks, 1 for specs
-        assert files_opened.count(file_paths[1].name) == 4 + 1
+        # Second file: 1 for chunk, 1 for specs
+        assert files_opened.count(file_paths[1].name) == 1 + 1
 
         # Read a slice that has one value from each of the files
         mock_h5open.reset_mock()
@@ -865,3 +903,49 @@ def test_files_opened_and_closed(example_files_with_chunked_arrays, swmr):
 
     h5py.File(file_paths[0], "r", swmr=not swmr).close()
     h5py.File(file_paths[1], "r", swmr=not swmr).close()
+
+
+@pytest.mark.parametrize(
+    "read_chunk_bytes, expected_dim0",
+    [
+        # Modest budget: the per-frame file splits into bounded blocks along axis
+        # 0, so a single-frame read touches only its small block -- not the whole
+        # file. 8 frames x 400 B/frame = 3200 B/frame; 1600 B budget -> 4 frames
+        # per block -> blocks of 4.
+        (1600, (4, 4)),
+        # Huge budget (the pre-fix behavior): everything coalesces into one block,
+        # so a single-frame read would read the entire file.
+        (1 << 30, (8,)),
+    ],
+)
+def test_partial_read_does_not_coalesce_whole_file(
+    tmp_path, read_chunk_bytes, expected_dim0, monkeypatch
+):
+    """A single-frame read of a per-frame-chunked file must not read the whole
+    file. The read-chunk budget bounds the axis-0 block size, so a modest budget
+    splits a big file into several blocks and a one-frame read touches only one
+    block; an over-large budget coalesces the file into a single block (the
+    regression this guards against).
+    """
+    h5py = pytest.importorskip("h5py")
+    monkeypatch.setattr("tiled.adapters.hdf5.READ_CHUNK_BYTES", read_chunk_bytes)
+
+    # 8 frames of 10x20 int16 (400 bytes each), stored one frame per native chunk.
+    frames, rows, cols = 8, 10, 20
+    rng = numpy.random.default_rng(0)
+    raw = rng.integers(-1000, 1000, size=(frames, rows, cols), dtype="int16")
+    file_path = tmp_path / "frames.h5"
+    with h5py.File(file_path, "w") as f:
+        f.create_dataset("a/b", data=raw, chunks=(1, rows, cols))
+    file_uri = ensure_uri(str(file_path))
+
+    tree = HDF5Adapter.from_uris(file_uri)
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        arr = client["a"]["b"]
+        # Axis-0 blocks are bounded by the budget (or the whole file when huge).
+        assert arr.chunks[0] == expected_dim0
+        # A single-frame read is correct regardless of coalescing.
+        numpy.testing.assert_array_equal(arr[0], raw[0])
+        numpy.testing.assert_array_equal(arr[frames - 1], raw[frames - 1])
+        numpy.testing.assert_array_equal(arr.read(), raw)

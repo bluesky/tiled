@@ -2,6 +2,7 @@ import bisect
 import builtins
 import copy
 import itertools
+import math
 import os
 import sys
 import warnings
@@ -32,7 +33,7 @@ from ..type_aliases import JSON
 from ..utils import BrokenLink, Sentinel, node_repr, path_from_uri
 from .array import ArrayAdapter
 from .resource_cache import with_resource_cache
-from .sequence import IO_WORKERS, READ_BATCH_BYTES
+from .sequence import IO_WORKERS
 from .utils import grid_shape_for_files, split_chunks
 
 SWMR_DEFAULT = bool(int(os.getenv("TILED_HDF5_SWMR_DEFAULT", "0")))
@@ -41,6 +42,18 @@ INLINED_DEPTH = int(os.getenv("TILED_HDF5_INLINED_CONTENTS_MAX_DEPTH", "7"))
 HDF5_DATASET = Sentinel("HDF5_DATASET")
 HDF5_BROKEN_LINK = Sentinel("HDF5_BROKEN_LINK")
 MIN_CHUNK_SIZE = 1  # Minimum chunk size along the concatenation axis
+
+# Soft cap on the bytes a single Dask chunk reads from an HDF5 dataset. Native
+# HDF5 chunks are often tiny (e.g. one frame each), and one Dask task per native
+# chunk both explodes the task count and re-opens the file each time; coalescing
+# native chunks into blocks up to this many bytes keeps the task/open count low.
+# But the block size is also the MINIMUM a partial read fetches -- reading a
+# single frame still reads its whole block -- so an over-large cap makes small
+# reads pull far more than they need. This is deliberately modest (16 MiB) so a
+# one-element read stays cheap while a full read still coalesces sensibly; the
+# residual per-block open cost is negligible against the actual I/O. Override
+# with TILED_HDF5_READ_CHUNK_BYTES.
+READ_CHUNK_BYTES = int(os.environ.get("TILED_HDF5_READ_CHUNK_BYTES") or (16 << 20))
 
 
 def _lazy_placeholder_block(
@@ -464,18 +477,44 @@ class HDF5ArrayAdapter(ArrayAdapter):
 
         else:
             # Use delayed loading to read and conactenate arrays from multiple files
-            # First, find chunks along the left axis (split per file),
-            # and chunks in the rest of the dimensions (same for each file)
-            file_chunks = tuple(
-                split_chunks(shp[0], max(chk[0], MIN_CHUNK_SIZE))
-                for shp, chk, _ in shapes_chunks_dtypes
-            )
-            # Shape of the rest of dimensions
+            # Determine chunks along the leftmost (concatenation) axis, split
+            # per file, and chunks in the rest of the dimensions (shared by all
+            # files). The constituent files' native HDF5 chunks are often tiny
+            # (e.g. a single frame per chunk, with thousands of frames per
+            # file), which explodes the number of Dask tasks -- and every task
+            # re-opens the file. To avoid that, coalesce native chunks into
+            # blocks of whole rows (full rest dimensions) up to READ_CHUNK_BYTES,
+            # so each file is read in a reasonable number of tasks. The block is
+            # also the granularity of a partial read (a single-frame read still
+            # reads its whole block), so READ_CHUNK_BYTES stays modest rather than
+            # coalescing whole files -- keeping small reads cheap.
             rest_shape = shapes_chunks_dtypes[0][0][1:]
-            rest_chunks = tuple(
-                split_chunks(shp, min(chk[i + 1] for _, chk, _ in shapes_chunks_dtypes))
-                for i, shp in enumerate(rest_shape)
-            )
+            rest_row_bytes = math.prod(rest_shape) * dtype.itemsize
+            rest_chunks: Tuple[Tuple[int, ...], ...]
+            read_chunk_bytes = READ_CHUNK_BYTES
+            if not rest_shape or 0 < rest_row_bytes <= read_chunk_bytes:
+                # Read whole rows (full rest dimensions) in blocks along axis 0,
+                # sized up to the chunk-byte limit but never smaller than the
+                # native chunk along axis 0.
+                rows_per_block = max(1, read_chunk_bytes // (rest_row_bytes or 1))
+                file_chunks = tuple(
+                    split_chunks(shp[0], max(chk[0], rows_per_block))
+                    for shp, chk, _ in shapes_chunks_dtypes
+                )
+                rest_chunks = tuple((shp,) for shp in rest_shape)
+            else:
+                # A single row already exceeds the chunk-byte limit: fall back to
+                # the files' native tiling in every dimension.
+                file_chunks = tuple(
+                    split_chunks(shp[0], max(chk[0], MIN_CHUNK_SIZE))
+                    for shp, chk, _ in shapes_chunks_dtypes
+                )
+                rest_chunks = tuple(
+                    split_chunks(
+                        shp, min(chk[i + 1] for _, chk, _ in shapes_chunks_dtypes)
+                    )
+                    for i, shp in enumerate(rest_shape)
+                )
             dim0_chunks = tuple(size for fc in file_chunks for size in fc)
             chunks_final = (dim0_chunks, *[tuple(d) for d in rest_chunks])
 
