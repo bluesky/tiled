@@ -113,4 +113,7 @@ class NPYSequenceAdapter(FileSequenceAdapter):
                 selected = [self.filepaths[i] for i in slice]
             else:
                 selected = self.filepaths[slice]
-            return numpy.asarray([numpy.load(file) for file in selected])
+            return numpy.asarray(self._map_read(selected))
+
+    def _read_one(self, filepath: str) -> NDArray[Any]:
+        return numpy.load(filepath)

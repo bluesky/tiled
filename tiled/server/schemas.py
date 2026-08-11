@@ -181,12 +181,22 @@ class DataSource(pydantic.BaseModel, Generic[StructureT]):
     model_config = pydantic.ConfigDict(extra="forbid")
 
     @classmethod
-    def from_orm(cls, orm: tiled.catalog.orm.DataSource) -> DataSource:
+    def from_orm(
+        cls, orm: tiled.catalog.orm.DataSource, include_assets: bool = True
+    ) -> DataSource:
         if hasattr(orm.structure, "structure"):
             structure_cls = STRUCTURE_TYPES[orm.structure_family]
             structure = structure_cls.from_json(orm.structure.structure)
         else:
             structure = None
+        # `asset_associations` is not eagerly loaded (lazy="raise"); only touch it
+        # when the caller explicitly needs assets and has loaded them. This keeps
+        # the common metadata/structure/truthiness paths from materializing all
+        # assets of a large file-sequence data source.
+        if include_assets:
+            assets = [Asset.from_assoc_orm(assoc) for assoc in orm.asset_associations]
+        else:
+            assets = []
         return cls(
             id=orm.id,
             structure_family=orm.structure_family,
@@ -194,7 +204,7 @@ class DataSource(pydantic.BaseModel, Generic[StructureT]):
             mimetype=orm.mimetype,
             parameters=orm.parameters,
             properties=orm.properties,
-            assets=[Asset.from_assoc_orm(assoc) for assoc in orm.asset_associations],
+            assets=assets,
             management=orm.management,
         )
 

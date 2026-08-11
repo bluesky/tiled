@@ -63,7 +63,7 @@ def default_resource_cache() -> cachetools.TLRUCache[Any, Any]:
 
 
 def with_resource_cache(
-    cache_key: Tuple[Any, Path],
+    cache_key: Tuple[Any, ...],
     factory: Callable[..., Any],
     *args: Any,
     _resource_cache: Optional[AnyCache] = None,

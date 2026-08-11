@@ -579,6 +579,31 @@ class NDSlice(tuple):
         "Calculate the shape after applying NDSlice to an array of the given shape"
         return ndindex(self).newshape(shape) if self else shape
 
+    def flat_indices(self, shape: tuple[int, ...]) -> tuple[int, ...]:
+        """Return the flat (C-order) positions selected by this slice.
+
+        Conceptually `numpy.arange(prod(shape)).reshape(shape)[self]` flattened
+        to 1-D: it labels each cell of an array of `shape` with its C-order
+        position and reports the positions this slice keeps. Integer entries drop
+        a dimension; slices (including strided and negative) and Ellipsis are
+        honored exactly as in NumPy indexing.
+
+        This is the inverse-mapping companion to :meth:`shape_after_slice` (which
+        gives the *shape* of a selection); here we get the flat *identities* of
+        the selected cells. It is useful for mapping an N-dimensional selection
+        back onto a flat, C-ordered collection -- e.g. finding which files of a
+        stacked file-sequence a given slice touches, where each file occupies one
+        cell of the stacking grid.
+
+        Returns a `tuple` of Python ints (empty if the slice selects nothing).
+        The selection order matches NumPy's, so the result also serves as the
+        read order for the underlying elements.
+        """
+        import numpy
+
+        grid = numpy.arange(math.prod(shape)).reshape(shape)
+        return tuple(grid[self.expand_for_shape(shape)].ravel().tolist())
+
     def unsqueeze(self) -> "NDSlice":
         "Convert all integer dims to slices of length 1 to preserve the dimensionality"
         return self.__class__(
