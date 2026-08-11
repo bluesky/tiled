@@ -241,13 +241,16 @@ class HDF5ArrayAdapter(ArrayAdapter):
 
         Returns `None` when the files can not be located -- so a slice may need
         every file -- to tell the catalog to skip the lazy path. This includes
-        the case of a `slice`/`squeeze` adapter parameter: those transforms
-        reshape each file when building the served array (see `from_catalog`), so
-        the served axis 0 is no longer a plain concatenation of whole files and
-        the requested slice (in served coordinates) can not be mapped back onto
-        the stored per-file boundaries. `_file_layout` alone can not detect this
-        -- `structure.chunks[0]` may still look one-per-file -- so it is caught
-        here from the data source `parameters`.
+        the case of a `slice`/`squeeze` adapter parameter: the lazy read builds
+        each block by reading a whole backing file and reshaping it to that
+        file's slab of the SERVED structure (see `_lazy_stack_from_structure`).
+        A `slice`/`squeeze` makes the served per-file shape differ from the raw
+        file contents (it drops or collapses elements along one or more axes), so
+        that reshape is invalid and the file-stacked build can not be formed from
+        whole files. The transform is applied only after a full (non-lazy) stack,
+        so it is caught here from the data source `parameters`; `_file_layout`
+        alone can not detect it (`structure.chunks[0]` may still look
+        one-per-file).
         """
         parameters = parameters or {}
         if parameters.get("slice") is not None or parameters.get("squeeze"):

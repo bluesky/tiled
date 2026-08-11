@@ -1000,11 +1000,13 @@ async def test_lazy_hdf5_nonuniform_requires_extents(tmpdir):
 
 @pytest.mark.parametrize("transform", [{"slice": ":,0,:"}, {"squeeze": True}])
 def test_file_indices_for_slice_declines_under_transform(transform):
-    """A `slice`/`squeeze` adapter parameter reshapes each file when the served
-    array is built, so the served axis 0 no longer maps to whole backing files.
-    `file_indices_for_slice` must decline (return None) so the catalog skips the
-    lazy path -- even when the structure alone (one leading chunk per file) would
-    otherwise let the files be located from `chunks[0]`.
+    """A `slice`/`squeeze` adapter parameter makes each file's served shape
+    differ from its raw contents, so the lazy read (which builds a block by
+    reading a whole file and reshaping it to that file's slab of the served
+    structure) can not form the stack. `file_indices_for_slice` must decline
+    (return None) so the catalog skips the lazy path -- even when the structure
+    alone (one leading chunk per file) would otherwise let the files be located
+    from `chunks[0]`.
     """
     from tiled.adapters.hdf5 import HDF5ArrayAdapter
 
@@ -1032,10 +1034,11 @@ def test_file_indices_for_slice_declines_under_transform(transform):
 @pytest.mark.asyncio
 async def test_lazy_hdf5_declines_under_slice_squeeze(tmpdir):
     """A data source carrying a `slice`/`squeeze` parameter must not take the lazy
-    path even when its structure would otherwise locate files: those transforms
-    reshape each file on read, breaking the served-axis-0 -> file mapping. The
-    catalog threads the data source `parameters` to the adapter, which declines,
-    and the eager build still reads correctly.
+    path even when its structure would otherwise locate files: the lazy read
+    reads each whole file and reshapes it to that file's slab of the served
+    structure, which fails once the transform makes the served per-file shape
+    differ from the raw file. The catalog threads the data source `parameters` to
+    the adapter, which declines, and the eager build still reads correctly.
     """
     from tiled.ndslice import NDSlice
 
