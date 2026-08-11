@@ -16,7 +16,6 @@ Both scopes are granted to admin users only.
 import asyncio
 import ipaddress
 import logging
-import socket
 from typing import Callable, Coroutine, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Security
@@ -82,13 +81,13 @@ def _build_url_validator(config: WebhooksConfig) -> UrlValidator:
     for hostname in config.allow_delivery_hosts:
         try:
             ipaddress.ip_address(hostname)
+        except ValueError:
+            pass  # hostname is not an IP literal — this is expected
+        else:
             raise HTTPException(
                 status_code=400,
                 detail=f"allow_delivery_hosts entry {hostname!r} must be a hostname, not an IP address.",
             )
-        except ValueError as exc:
-            if "must be a hostname" in str(exc):
-                raise
     for network in config.blocked_networks:
         try:
             ipaddress.ip_network(network)

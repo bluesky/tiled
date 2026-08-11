@@ -153,12 +153,12 @@ def check_url_ssrf_safety(
         for host in allow_delivery_hosts:
             try:
                 ipaddress.ip_address(host)
+            except ValueError:
+                pass  # hostname is not an IP literal — this is expected
+            else:
                 raise ValueError(
                     f"Allow delivery host {host} must be a valid hostname, not an IP address"
                 )
-            except ValueError as exc:
-                if "must be a valid hostname" in str(exc):
-                    raise
     if not hostname:
         raise ValueError(f"Cannot parse hostname from URL: {url!r}")
     try:
