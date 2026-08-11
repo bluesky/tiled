@@ -50,6 +50,9 @@ Write the date in place of the "Unreleased" in the case a new version is release
   read fetches. The budget is now a modest 16 MiB, keeping small reads cheap
   while full reads still coalesce sensibly. Override with
   `TILED_HDF5_READ_CHUNK_BYTES`. (#1465)
+- Route single-file HDF5 array datasets through the eager (non-lazy) adapter.
+  The lazy path culls no assets when there is only one file and would otherwise
+  turn the whole file into a single coalesced read block. (#1465)
 - Fix the `raw_export` download progress bar, which showed a wrong total (e.g.
   `1,257,333,024/100 bytes`) and did not advance during the transfer. The bar
   now seeds each task's total from the known asset size, and raw-asset downloads

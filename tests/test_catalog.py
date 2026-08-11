@@ -816,6 +816,73 @@ async def test_lazy_hdf5_falls_back_when_not_file_aligned(tmpdir):
         await adapter.shutdown()
 
 
+@pytest.mark.asyncio
+async def test_lazy_hdf5_declines_single_file(tmpdir):
+    """A dataset backed by a single file must not take the lazy path. With one
+    file there is nothing to cull, and the lazy build reads the whole file as one
+    block (`ds[...]`) rather than letting the normal adapter do a native chunked,
+    partial read -- so a large single-file dataset would read entirely just to
+    serve one element. `_get_lazy_adapter` declines (returns None) and the normal
+    adapter still reads correctly.
+    """
+    from tiled.ndslice import NDBlock, NDSlice
+
+    h5py = pytest.importorskip("h5py")
+    # One file of shape (R, N) reshaped to (P, M, N) with R == P * M -- the
+    # frame-per-point layout: a single file whose leading axis is split.
+    P, M, N = 4, 2, 3
+    R = P * M
+    rng = numpy.random.default_rng(7)
+    raw = rng.integers(0, 255, size=(R, N), dtype="uint8")
+    filepath = Path(tmpdir) / "single.h5"
+    with h5py.File(filepath, "w") as f:
+        f.create_dataset("a/b", data=raw)
+    data_uri = ensure_uri(str(filepath))
+
+    full = raw.reshape(P, M, N)
+    struct = ArrayStructure(
+        shape=(P, M, N),
+        chunks=((P,), (M,), (N,)),
+        data_type=BuiltinDtype.from_numpy_dtype(numpy.dtype("uint8")),
+    )
+
+    adapter = in_memory(readable_storage=[tmpdir])
+    await adapter.startup()
+    try:
+        await adapter.create_node(
+            key="ds",
+            structure_family="array",
+            metadata={},
+            data_sources=[
+                DataSource(
+                    structure_family="array",
+                    mimetype="application/x-hdf5",
+                    structure=asdict(struct),
+                    parameters={"dataset": "a/b"},
+                    properties={"chunks": [[R], [N]]},
+                    management="external",
+                    assets=[
+                        Asset(
+                            parameter="data_uris",
+                            num=0,
+                            data_uri=data_uri,
+                            is_directory=False,
+                        )
+                    ],
+                )
+            ],
+        )
+        x = await adapter.lookup_adapter(["ds"])
+
+        # Single file -> lazy path declines; normal adapter still reads correctly.
+        assert await x._get_lazy_adapter(slice=(0,)) is None
+        assert await x._get_lazy_adapter(block=NDBlock(0, 0, 0)) is None
+        result = await x.read(slice=NDSlice((0,)))
+        numpy.testing.assert_array_equal(result, full[0])
+    finally:
+        await adapter.shutdown()
+
+
 # Genuinely non-uniform files: K files hold DIFFERENT numbers of frames, stored
 # flat-concatenated along axis 0. The native tiling (one frame per chunk) can not
 # reveal the file boundaries -- only the optional per-asset `properties["extents"]`

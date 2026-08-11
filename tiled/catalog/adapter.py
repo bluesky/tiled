@@ -753,6 +753,14 @@ class CatalogNodeAdapter:
             n, min_num, max_num = (await db.execute(count_stmt)).one()
             if not n or max_num - min_num != n - 1:
                 return None
+            if n < 2:
+                # A single backing file: the lazy path can cull nothing (there
+                # are no other files to skip), yet it would read the whole file
+                # as one block instead of letting the normal adapter do a native
+                # chunked, partial read. It is therefore strictly slower here --
+                # a large single-file dataset would read entirely just to serve
+                # one element -- so fall back to the full adapter.
+                return None
             offset = min_num or 0  # `num`s run [offset, offset + n - 1]
 
             # Which stack indices does this read need? Pure geometry -- a
