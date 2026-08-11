@@ -141,7 +141,8 @@ def check_url_ssrf_safety(
     Raises
     ------
     ValueError
-        If the URL hostname resolves to any address in the union of ``_BLOCKED_NETWORKS` and blocked_networks`.
+        If the URL hostname resolves to any address in the union of
+        ``_STANDARD_BLOCKED_NETWORKS`` and *local_blocked_networks*.
     """
     parsed = urlparse(url)
     hostname = parsed.hostname
