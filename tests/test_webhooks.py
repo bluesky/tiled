@@ -1143,11 +1143,15 @@ class TestBuildUrlValidator:
 
     def test_check_not_available_hostname(self) -> None:
         """Invalid hostname must throw exception."""
-        with pytest.raises(HTTPException) as exc_info:
-            validator = _build_url_validator(  # noqa: F841
-                WebhooksConfig(
-                    allow_private_addresses=False,
-                    allow_delivery_hosts=["notmyrealhost"],
+        with patch(
+            "tiled.server.webhook_router.socket.gethostbyname",
+            side_effect=socket.gaierror(-2, "Name or service not known"),
+        ):
+            with pytest.raises(HTTPException) as exc_info:
+                _build_url_validator(
+                    WebhooksConfig(
+                        allow_private_addresses=False,
+                        allow_delivery_hosts=["notmyrealhost"],
+                    )
                 )
-            )
         assert exc_info.value.status_code == 400
