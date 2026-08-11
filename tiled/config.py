@@ -255,7 +255,7 @@ class WebhooksConfig(BaseSettings):
         for the exceptions that follow.
     allow_delivery_hosts: list of str
         List of host names to which webhooks must be delivered, regardless of
-        whether in the `blocked_network list` or not.
+        whether in the `blocked_networks list` or not.
     allow_http : bool
         When ``True``, webhook URLs are allowed to use plain HTTP instead of
         HTTPS.  Default ``False`` (HTTPS is required).
