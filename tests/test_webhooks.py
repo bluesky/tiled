@@ -684,11 +684,9 @@ def test_ssrf_check_passes_exception() -> None:
         return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 0))]
 
     def _fake2(hostname):
-        print(f"hostname: {hostname}")
         if hostname in ("example.com", "93.184.216.34"):
             return "example.com"
-        else:
-            return "example3.com"
+        return "example3.com"
 
     with patch("tiled.server.webhooks.socket.getaddrinfo", side_effect=_fake), patch(
         "tiled.server.webhooks.socket.getfqdn", side_effect=_fake2
