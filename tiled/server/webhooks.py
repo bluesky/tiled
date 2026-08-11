@@ -133,9 +133,10 @@ def check_url_ssrf_safety(
     url:
         The webhook target URL to validate.
     local_blocked_networks:
-        List of networks to combine with _BLOCKED_NETWORKS.
+        List of networks to combine with ``_STANDARD_BLOCKED_NETWORKS``.
     allow_delivery_hosts:
-        List of hosts to always allow, overriding any blocked_networks
+        List of hostnames to always allow, overriding any blocked
+    networks.
 
     Raises
     ------
