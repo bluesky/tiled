@@ -81,11 +81,20 @@ def _build_url_validator(config: WebhooksConfig) -> UrlValidator:
         )
     for hostname in config.allow_delivery_hosts:
         try:
-            host_ip = socket.gethostbyname(hostname)
-            ipaddress.ip_address(host_ip)
+            ipaddress.ip_address(hostname)
+        except ValueError:
+            pass
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Allow delivery host {hostname} must be a hostname, not an IP address"
+                ),
+            )
+        try:
+             socket.gethostbyname(hostname)
         except socket.gaierror as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
-    for network in config.blocked_networks:
         try:
             ipaddress.ip_network(network)
         except ValueError as exc:
