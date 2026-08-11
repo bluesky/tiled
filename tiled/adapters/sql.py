@@ -21,6 +21,8 @@ from typing import (
     cast,
 )
 
+from tiled.utils import UnsafeIdentifier
+
 if TYPE_CHECKING:
     from .ragged import RaggedAdapter
     from .awkward import AwkwardAdapter
@@ -1020,9 +1022,13 @@ def is_safe_identifier(
     pattern: re.Pattern[str],
     allow_reserved_words: bool = True,
 ) -> bool:
-    if len(identifier) > 63:
-        raise ValueError(
-            f'Invalid SQL identifier "{identifier}": max character number is 63'
+    # According to https://www.postgresql.org/docs/current/sql-syntax-lexical.html#SQL-SYNTAX-IDENTIFIERS,
+    # the maximum bytes for an identifier is 63 with PostgreSQL. This is the smallest limit across supported
+    # databases (PostgreSQL, SQLite, DuckDB).
+    bytes_length = len(identifier.encode("utf-8"))
+    if bytes_length > 63:
+        raise UnsafeIdentifier(
+            f'Invalid SQL identifier "{identifier}": max bytes is 63 but identifier has {bytes_length} bytes'
         )
 
     if not allow_reserved_words and identifier.lower() in RESERVED_WORDS:
