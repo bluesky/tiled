@@ -487,9 +487,9 @@ def well_known_response(base_url: str) -> dict[str, Any]:
     return {
         "id_token_signing_alg_values_supported": ["RS256"],
         "issuer": base_url,
-        "jwks_uri": f"{base_url}protocol/openid-connect/certs",
-        "authorization_endpoint": f"{base_url}protocol/openid-connect/auth",
-        "token_endpoint": f"{base_url}protocol/openid-connect/token",
-        "device_authorization_endpoint": f"{base_url}protocol/openid-connect/auth/device",
-        "end_session_endpoint": f"{base_url}protocol/openid-connect/logout",
+        "jwks_uri": f"{base_url}/protocol/openid-connect/certs",
+        "authorization_endpoint": f"{base_url}/protocol/openid-connect/auth",
+        "token_endpoint": f"{base_url}/protocol/openid-connect/token",
+        "device_authorization_endpoint": f"{base_url}/protocol/openid-connect/auth/device",
+        "end_session_endpoint": f"{base_url}/protocol/openid-connect/logout",
     }
