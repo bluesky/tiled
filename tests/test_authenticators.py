@@ -356,16 +356,21 @@ async def test_OIDCAuthenticator_token_exchange_failure(
     assert result is None
 
 
-async def test_ProxiedOIDCAuthenticator_requires_scopes(mock_oidc_server, well_known_url):
+@pytest.mark.parametrize("check_authn_scopes", [True, False])
+async def test_ProxiedOIDCAuthenticator_requires_scopes(mock_oidc_server, well_known_url, check_authn_scopes):
 
     authenticator = ProxiedOIDCAuthenticator("tiled", "tiled", well_known_url, device_flow_client_id="tiled-cli",
-                                             scopes=["read:data"])
+                                             scopes=["read:data"], check_authn_scopes=check_authn_scopes)
 
     test_request = Request(scope={"type": "http", "scheme": "http", "headers": [(b"host", b"testserver")]}, )
 
     settings = Settings(authenticator=authenticator)
     security_scopes = SecurityScopes(scopes=["create:apikeys"])
-    with pytest.raises(HTTPException) as exception:
+    if check_authn_scopes:
+        with pytest.raises(HTTPException) as exception:
+            await check_scopes(request=test_request, settings=settings, scopes=["read:data"],
+                               security_scopes=security_scopes)
+        assert exception.value.status_code == HTTP_401_UNAUTHORIZED
+    else:
         await check_scopes(request=test_request, settings=settings, scopes=["read:data"],
                            security_scopes=security_scopes)
-    assert exception.value.status_code == HTTP_401_UNAUTHORIZED

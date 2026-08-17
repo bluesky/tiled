@@ -22,6 +22,11 @@ Write the date in place of the "Unreleased" in the case a new version is release
   variables. (#1463)
 - Add a new feature that stores a graph of links into the catalog database. Adds strawberry
   as a dependency. Import/search/export of graph links is accomplished through graphql.
+- Add `check_authn_scopes` option to `ProxiedOIDCAuthenticator` (default
+  `True`). Set to `False` to skip Tiled's own scope-based authorization
+  checks, for deployments where authorization is enforced by an external
+  policy agent (e.g. ExternalPolicyDecisionPoint) or where the identity
+  provider does not include scopes in its access tokens.
 
 ### Changed
 

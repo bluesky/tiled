@@ -274,13 +274,19 @@ properties:
     items:
       type: string
     description: |
-      Optional list of OAuth2 scopes to request. If provided, authorization
-      should be enforced by an external policy agent (for example ExternalPolicyDecisionPoint)
-      rather than by this authenticator.
+      Optional list of OAuth2 scopes to request.
   device_flow_client_id:
     type: string
   confirmation_message:
     type: string
+  check_authn_scopes:
+    type: bool
+    description: |
+      If false, disable enforcement of scope-based authorization checks
+      during authentication. Useful when authorization is instead enforced
+      by an external policy agent (for example, ExternalPolicyDecisionPoint)
+      or when the identity provider does not include scopes in its access
+      tokens.
 """
 
     def __init__(
@@ -295,6 +301,7 @@ properties:
         redirect_on_success: Optional[str] = None,
         redirect_on_failure: Optional[str] = None,
         user_id_claim: str = "sub",
+        check_authn_scopes: bool = True,
     ):
         super().__init__(
             audience=audience,
@@ -312,6 +319,7 @@ properties:
             authorizationUrl=str(self.authorization_endpoint),
             tokenUrl=self.token_endpoint,
         )
+        self.check_authn_scopes = check_authn_scopes
 
     @property
     def oauth2_schema(self) -> OAuth2:
