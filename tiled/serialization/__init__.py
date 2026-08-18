@@ -22,6 +22,11 @@ def register_builtin_serializers():
         from ..serialization import table as _table  # noqa: F401
 
         del _table
+
+    if modules_available("pandas", "dask.dataframe"):
+        from ..serialization import xdi as _xdi  # noqa: F401
+
+        del _xdi
     if modules_available("ragged"):
         from ..serialization import ragged as _ragged  # noqa: F401
 
