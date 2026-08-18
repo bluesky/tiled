@@ -21,17 +21,18 @@ Write the date in place of the "Unreleased" in the case a new version is release
   `TILED_SEQUENCE_IO_WORKERS` and `TILED_SEQUENCE_READ_BATCH_BYTES` environment
   variables. (#1463)
 - Faster reads of HDF5 datasets spanning many files: the lazy Dask graph is
-  cached through the resource cache, per-file specs are read in parallel, and
-  tiny native chunks are coalesced into whole-file read tasks. (#1463)
+  cached through the resource cache and per-file specs are read in parallel.
+  (#1463)
 - Lazy asset resolution for multi-file HDF5 array datasets, extending the lazy
   path above to datasets that concatenate files along the leading axis. An
   optional per-asset `extents` property records each file's length along that
   axis, so a read opens only the files its slice touches; the adapter also
   infers the layout from the structure chunks or grid shape when the property
-  is absent. Datasets served through a `slice`/`squeeze` adapter transform fall
-  back to a full build, since the lazy read reshapes each whole file into its
-  slab of the served structure and that transform can make the served per-file
-  shape differ from the raw file. (#1465)
+  is absent. The lazy read is tiled by native HDF5 chunks (mirroring the eager
+  path), so a partial read fetches only the native chunks it overlaps -- the
+  minimum HDF5 can serve -- with no coalescing. Datasets served through a
+  `slice`/`squeeze` adapter transform fall back to a full build, since that
+  transform can make the served per-file shape differ from the raw file. (#1465)
 - Add a new feature that stores a graph of links into the catalog database. Adds strawberry
   as a dependency. Import/search/export of graph links is accomplished through graphql.
 
@@ -44,15 +45,10 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Fixed
 
-- Bound the bytes a single HDF5 read task pulls from disk. Coalescing tiny
-  native chunks previously used a 1 GiB budget, so reading one frame of a large
-  dataset fetched up to a gigabyte because a block is also the minimum a partial
-  read fetches. The budget is now a modest 16 MiB, keeping small reads cheap
-  while full reads still coalesce sensibly. Override with
-  `TILED_HDF5_READ_CHUNK_BYTES`. (#1465)
 - Route single-file HDF5 array datasets through the eager (non-lazy) adapter.
-  The lazy path culls no assets when there is only one file and would otherwise
-  turn the whole file into a single coalesced read block. (#1465)
+  The lazy path culls no assets when there is only one file and would read the
+  whole file as one task even for a small slice; the eager adapter honors the
+  file's native HDF5 chunking and reads only the touched chunks. (#1465)
 - Fix the `raw_export` download progress bar, which showed a wrong total (e.g.
   `1,257,333,024/100 bytes`) and did not advance during the transfer. The bar
   now seeds each task's total from the known asset size, and raw-asset downloads

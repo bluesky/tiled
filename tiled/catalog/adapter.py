@@ -670,10 +670,11 @@ class CatalogNodeAdapter:
         Returns `None` (so the caller falls back to :meth:`get_adapter`) unless
         every precondition for lazy per-frame resolution holds:
         a single file-scheme data source whose adapter class opts in via
-        `supports_lazy_assets`, whose asset `num`s form a contiguous run of
-        length n (any starting offset -- 0-based, 1-based, etc. -- so stacking
-        rank == num - offset), and whose adapter can determine, from the
-        structure and the data source `properties`, which files a slice touches.
+        `supports_lazy_assets`, whose `parameter == "data_uris"` asset `num`s
+        form a contiguous run of length n (any starting offset -- 0-based,
+        1-based, etc. -- so stacking rank == num - offset), and whose adapter
+        can determine, from the structure and the data source `properties`,
+        which files a slice touches.
 
         Instead of materializing all N asset rows, this reads only the data
         source's structure and properties (no assets), asks the adapter class
@@ -739,6 +740,11 @@ class CatalogNodeAdapter:
         # logic does not rely on this assumption.
         # TODO: It might be worth ensuring zero-based contiguous `num`s when writing
         # assets; then the contiguity check can be dropped.
+        # Filter on `parameter == "data_uris"` (the convention both opted-in
+        # adapters use in their eager paths) so a data source carrying a second
+        # numbered parameter alongside `data_uris` (e.g. a numbered per-frame
+        # mask series) does not inflate the count or leak URIs from the wrong
+        # parameter into the stacking-rank slot assignment below.
         count_stmt = (
             select(
                 func.count(orm.DataSourceAssetAssociation.num),
@@ -746,6 +752,7 @@ class CatalogNodeAdapter:
                 func.max(orm.DataSourceAssetAssociation.num),
             )
             .where(orm.DataSourceAssetAssociation.data_source_id == ds.id)
+            .where(orm.DataSourceAssetAssociation.parameter == "data_uris")
             .where(orm.DataSourceAssetAssociation.num.isnot(None))
         )
 
@@ -794,6 +801,7 @@ class CatalogNodeAdapter:
                     orm.Asset.id == orm.DataSourceAssetAssociation.asset_id,
                 )
                 .where(orm.DataSourceAssetAssociation.data_source_id == ds.id)
+                .where(orm.DataSourceAssetAssociation.parameter == "data_uris")
                 .where(
                     orm.DataSourceAssetAssociation.num.in_(
                         [offset + i for i in indices]

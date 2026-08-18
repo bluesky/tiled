@@ -646,16 +646,16 @@ async def test_lazy_reshaped_hdf5_read_block(tmpdir):
 
 
 @pytest.mark.parametrize(
-    "slice_input",
+    "slice_input,expected_opens",
     [
-        0,  # single event -> one file
-        2,  # single event -> one file
-        (1, slice(0, 2)),  # event 1, first two frames -> still one file
-        (slice(1, 3),),  # two events -> two files
+        (0, 4),  # event 0 -> file 0's 4 native frame-chunks
+        (2, 4),  # event 2 -> file 2's 4 native frame-chunks
+        ((1, slice(0, 2)), 2),  # event 1, first two frames -> 2 native chunks
+        ((slice(1, 3),), 8),  # events 1, 2 -> both files' 4 frame-chunks each
     ],
 )
 @pytest.mark.asyncio
-async def test_lazy_reshaped_hdf5_multichunk_files(tmpdir, slice_input):
+async def test_lazy_reshaped_hdf5_multichunk_files(tmpdir, slice_input, expected_opens):
     """A file that holds many native chunks along the concatenation axis still
     takes the lazy path.
 
@@ -663,8 +663,9 @@ async def test_lazy_reshaped_hdf5_multichunk_files(tmpdir, slice_input):
     native tiling is (1, H, W): `properties["chunks"][0]` has K*F ones, far more
     than the K files. The structure declares (K, F, H, W). The file count is the
     number of assets (K), NOT `len(chunks[0])` (== K*F), and the leading axis
-    maps onto the files -- so reading one event opens exactly one file. (This is
-    the shape of a per-frame-chunked detector stream.)
+    maps onto the files. The read fetches only the native frame-chunks it
+    overlaps -- so it opens one file once per touched frame, not the whole file.
+    (This is the shape of a per-frame-chunked detector stream.)
     """
     from unittest.mock import patch
 
@@ -743,7 +744,7 @@ async def test_lazy_reshaped_hdf5_multichunk_files(tmpdir, slice_input):
             opened = [Path(call.args[0]).name for call in mock_h5open.call_args_list]
 
         assert set(opened) == expected_names
-        assert len(opened) == len(expected_names)
+        assert len(opened) == expected_opens
         numpy.testing.assert_array_equal(result, reference)
     finally:
         await adapter.shutdown()
@@ -891,19 +892,19 @@ _NONUNIFORM_EXTENTS = [2, 5, 3]
 
 
 @pytest.mark.parametrize(
-    "slice_input,expected_indices",
+    "slice_input,expected_indices,expected_opens",
     [
-        (0, {0}),  # first row -> first file
-        (6, {1}),  # a row deep inside the second file
-        ((slice(0, 2),), {0}),  # exactly the first file's rows
-        ((slice(1, 4),), {0, 1}),  # straddles the first boundary
-        ((slice(6, 10),), {1, 2}),  # straddles the second boundary
-        (Ellipsis, {0, 1, 2}),  # full read -> every file
+        (0, {0}, 1),  # first row -> first file's first frame-chunk
+        (6, {1}, 1),  # a row deep inside the second file -> one frame-chunk
+        ((slice(0, 2),), {0}, 2),  # exactly the first file's rows -> 2 chunks
+        ((slice(1, 4),), {0, 1}, 3),  # straddles the first boundary -> 3 chunks
+        ((slice(6, 10),), {1, 2}, 4),  # straddles the second boundary -> 4 chunks
+        (Ellipsis, {0, 1, 2}, 10),  # full read -> every frame-chunk
     ],
 )
 @pytest.mark.asyncio
 async def test_lazy_hdf5_nonuniform_extents_property(
-    tmpdir, slice_input, expected_indices
+    tmpdir, slice_input, expected_indices, expected_opens
 ):
     """`properties["extents"]` enables the lazy path for non-uniform files stored
     flat, mapping an axis-0 slice to exactly the files it touches via a cumulative
@@ -992,7 +993,7 @@ async def test_lazy_hdf5_nonuniform_extents_property(
             opened = [Path(call.args[0]).name for call in mock_h5open.call_args_list]
 
         assert set(opened) == expected_names
-        assert len(opened) == len(expected_names)
+        assert len(opened) == expected_opens
         numpy.testing.assert_array_equal(result, reference)
     finally:
         await adapter.shutdown()
@@ -1170,6 +1171,101 @@ async def test_lazy_hdf5_declines_under_slice_squeeze(tmpdir):
         assert await x._get_lazy_adapter(slice=(slice(0, 2),)) is None
         result = await x.read(slice=NDSlice((slice(0, 2),)))
         numpy.testing.assert_array_equal(result, full[0:2])
+    finally:
+        await adapter.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_lazy_hdf5_ignores_secondary_numbered_parameter(tmpdir):
+    """A data source may carry a second numbered asset parameter alongside
+    `data_uris` (e.g. a per-frame mask series). Only the `data_uris` assets
+    describe the stacking axis, so the lazy path must filter on
+    `parameter == "data_uris"` when counting files and fetching URIs. Without
+    that filter the extra rows can pass the contiguity check (count and
+    max-min-num line up) and either inflate the file count or leak wrong URIs
+    into stacking-rank slots.
+    """
+    from tiled.ndslice import NDSlice
+
+    h5py = pytest.importorskip("h5py")
+    # Uniform files, one leading chunk each: structure alone locates files.
+    K, M, N = 3, 2, 3
+    rng = numpy.random.default_rng(13)
+    files = [rng.integers(0, 255, size=(1, M, N), dtype="uint8") for _ in range(K)]
+    data_uris = []
+    for i, file_data in enumerate(files):
+        filepath = Path(tmpdir) / f"file{i:05}.h5"
+        with h5py.File(filepath, "w") as f:
+            f.create_dataset("a/b", data=file_data, chunks=(1, M, N))
+        data_uris.append(ensure_uri(str(filepath)))
+
+    # A parallel numbered parameter (`masks`) whose `num`s continue the run
+    # from `data_uris` (0..K-1 then K..2K-1). Without a `parameter` filter the
+    # count is 2K and `max - min == 2K - 1 == count - 1`, so the contiguity
+    # precheck passes and the lazy build proceeds with wrong metadata.
+    mask_uris = []
+    for i in range(K):
+        filepath = Path(tmpdir) / f"mask{i:05}.h5"
+        with h5py.File(filepath, "w") as f:
+            f.create_dataset("mask", data=numpy.zeros((1,), dtype="uint8"))
+        mask_uris.append(ensure_uri(str(filepath)))
+
+    full = numpy.concatenate(files, axis=0)  # (K, M, N)
+    struct = ArrayStructure(
+        shape=(K, M, N),
+        chunks=((1,) * K, (M,), (N,)),
+        data_type=BuiltinDtype.from_numpy_dtype(numpy.dtype("uint8")),
+    )
+
+    adapter = in_memory(readable_storage=[tmpdir])
+    await adapter.startup()
+    try:
+        await adapter.create_node(
+            key="ds",
+            structure_family="array",
+            metadata={},
+            data_sources=[
+                DataSource(
+                    structure_family="array",
+                    mimetype="application/x-hdf5",
+                    structure=asdict(struct),
+                    parameters={"dataset": "a/b"},
+                    properties={"chunks": [[1] * K, [M], [N]]},
+                    management="external",
+                    assets=(
+                        [
+                            Asset(
+                                parameter="data_uris",
+                                num=i,
+                                data_uri=data_uri,
+                                is_directory=False,
+                            )
+                            for i, data_uri in enumerate(data_uris)
+                        ]
+                        + [
+                            Asset(
+                                parameter="masks",
+                                num=K + i,
+                                data_uri=mask_uri,
+                                is_directory=False,
+                            )
+                            for i, mask_uri in enumerate(mask_uris)
+                        ]
+                    ),
+                )
+            ],
+        )
+        x = await adapter.lookup_adapter(["ds"])
+
+        # The lazy path counts only `data_uris` (n == K), so the URI list has
+        # length K and holds only the touched files; a full read returns the
+        # correct stack without the extra `masks` URIs leaking in.
+        lazy = await x._get_lazy_adapter(slice=(slice(0, 2),))
+        assert lazy is not None
+        result = await x.read(slice=NDSlice((slice(0, 2),)))
+        numpy.testing.assert_array_equal(result, full[0:2])
+        full_result = await x.read()
+        numpy.testing.assert_array_equal(full_result, full)
     finally:
         await adapter.shutdown()
 
