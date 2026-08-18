@@ -183,6 +183,15 @@ class Authentication(BaseSettings):
             raise ValueError(
                 "ProxiedOIDCAuthenticator must not be configured together with other authentication providers."
             )
+        if len(proxied_auths) == 1 and self.single_user_api_key is not None:
+            raise ValueError(
+                "ProxiedOIDCAuthenticator must not be configured together with single_user_api_key."
+            )
+
+        if len(proxied_auths) == 1 and self.allow_anonymous_access is True:
+            raise ValueError(
+                "ProxiedOIDCAuthenticator must not be configured together with allow_anonymous_access."
+            )
 
         return self
 
