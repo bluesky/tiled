@@ -46,9 +46,9 @@ Write the date in place of the "Unreleased" in the case a new version is release
 ### Fixed
 
 - Route single-file HDF5 array datasets through the eager (non-lazy) adapter.
-  The lazy path culls no assets when there is only one file and would read the
-  whole file as one task even for a small slice; the eager adapter honors the
-  file's native HDF5 chunking and reads only the touched chunks. (#1465)
+  With only one file the lazy path can cull nothing, so it offers no benefit
+  over the eager adapter, which already honors the file's native HDF5 chunking
+  and reads only the touched chunks. (#1465)
 - Fix the `raw_export` download progress bar, which showed a wrong total (e.g.
   `1,257,333,024/100 bytes`) and did not advance during the transfer. The bar
   now seeds each task's total from the known asset size, and raw-asset downloads
