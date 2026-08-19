@@ -433,22 +433,13 @@ class FileSequenceAdapter(Adapter[ArrayStructure]):
     ) -> Optional[tuple[int, ...]]:
         """Return the global file (stack) indices needed to satisfy `slice`.
 
-        Pure classmethod of the structure and the file count -- performs no file
-        or database I/O and needs no adapter instance -- so the catalog can
-        prefetch exactly the assets that a read will touch before building any
-        adapter (a `read_block` is handled by first converting the block to the
-        equivalent slice). The leading `grid_shape_for_files` dimensions of the
-        structure map onto the `n_files` files (the catalog passes the asset
-        count), so the files touched are the flat positions that the slice
-        selects within them. Mirrors the file selection in `read()`.
-
-        A sequence stacks uniform files (each adds one frame on a new leading
-        axis), so the geometry follows from the structure alone; `properties`
-        and `parameters` are accepted for interface parity with adapters that
-        need them (e.g. HDF5) and ignored here.
+        The leading `grid_shape_for_files` dimensions map onto the `n_files` files,
+        so the touched files are the flat positions the slice selects within
+        them. `properties`/`parameters` are accepted for interface parity with
+        adapters that need them (e.g. HDF5) and ignored here.
 
         Returns `None` when the reshape is not file-boundary-aligned (every file
-        may need to be loaded), signalling the catalog to skip the lazy loading path.
+        may need to be loaded), signalling the catalog to skip the lazy path.
         """
         struct_shape = structure.shape
         grid_shape = grid_shape_for_files(struct_shape, n_files)

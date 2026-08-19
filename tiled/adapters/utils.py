@@ -118,8 +118,8 @@ def split_chunks(total: int, chunk: int) -> tuple[int, ...]:
 def grid_shape_for_files(
     struct_shape: Tuple[int, ...], n_files: int
 ) -> Optional[Tuple[int, ...]]:
-    """Return the leading axes of `struct_shape` that enumerate the files, one
-    grid cell per file, or `None` when no such clean split exists.
+    """For multi-asset datasets, return the leading axes of `struct_shape` that
+    enumerate the files, one grid cell per file, or `None` when no clean split exists.
 
     Context: `n_files` files were each read as one fixed-shape frame, stacked
     into a new leading axis of length `n_files`, and that axis was then reshaped
@@ -136,10 +136,6 @@ def grid_shape_for_files(
     with 12 files returns `None`: no prefix hits 12, so a single file's frame
     would straddle a dimension boundary and the leading indices no longer
     correspond one-to-one with files.
-
-    This is a pure function of the shape and the file count -- no array, no I/O --
-    so a running adapter's `read` and the catalog's `file_indices_for_slice`
-    (which runs before any adapter exists) share one file-selection geometry.
 
     The running product only grows (every dimension is `>= 1`), so once it passes
     `n_files` without landing on it, no aligned split can exist and this stops.

@@ -62,6 +62,51 @@ def _lazy_placeholder_block(
     )
 
 
+def _trailing_chunk_grid(
+    rest_chunks: Tuple[Tuple[int, ...], ...]
+) -> Tuple[
+    Tuple[Tuple[int, ...], ...],
+    Tuple[Tuple[builtins.slice, ...], ...],
+    Tuple[Tuple[int, ...], ...],
+]:
+    """Enumerate the trailing (non-concatenation) native-chunk grid.
+
+    The same grid applies to every leading (axis-0) block, so it is computed
+    once and reused. Returns three parallel tuples, one entry per grid cell.
+
+    Parameters
+    ----------
+    rest_chunks : tuple of tuple of int
+        Native chunk sizes for each trailing dimension.
+
+    Returns
+    -------
+    key_rest : tuple of tuple of int
+        Trailing chunk-index tuples.
+    slc_rest : tuple of tuple of slice
+        File-local slices selecting each cell.
+    size_rest : tuple of tuple of int
+        Shape of each cell.
+    """
+    if not rest_chunks or max((len(dim) for dim in rest_chunks), default=1) == 1:
+        # A single chunk in every trailing dimension: one cell, full slices.
+        return (
+            (tuple(0 for _ in rest_chunks),),
+            (tuple(builtins.slice(None) for _ in rest_chunks),),
+            (tuple(dim[0] for dim in rest_chunks),),
+        )
+    key_rest = tuple(itertools.product(*(range(len(dim)) for dim in rest_chunks)))
+    rest_bounds = tuple(numpy.cumsum((0,) + dim).tolist() for dim in rest_chunks)
+    rest_starts = itertools.product(*(bounds[:-1] for bounds in rest_bounds))
+    rest_stops = itertools.product(*(bounds[1:] for bounds in rest_bounds))
+    slc_rest = tuple(
+        tuple(builtins.slice(start, stop) for start, stop in zip(dim_starts, dim_stops))
+        for dim_starts, dim_stops in zip(rest_starts, rest_stops)
+    )
+    size_rest = tuple(itertools.product(*rest_chunks))
+    return key_rest, slc_rest, size_rest
+
+
 def parse_hdf5_tree(
     tree: Union[h5py.File, h5py.Group, h5py.Dataset]
 ) -> Union[dict[str, Union[Any, Sentinel]], Sentinel]:
@@ -157,14 +202,13 @@ class h5open(h5py.File):  # type: ignore
 class HDF5ArrayAdapter(ArrayAdapter):
     """Adapter for array-type data stored in HDF5 files
 
-    This adapter lazily loads array data from HDF5 files using Dask. Supports reading from datasets spanning
-    multiple files.
+    This adapter lazily loads array data from HDF5 files using Dask. Supports reading
+    from datasets spanning multiple files.
     """
 
     # When True, the catalog may build this adapter with a partially-populated
     # list of `data_uris`: it resolves only the files that a given read touches
-    # and leaves the rest as None, then resolves the untouched files' blocks
-    # lazily.
+    # and leaves the rest as None, then resolves the untouched files' blocks lazily.
     supports_lazy_assets = True
 
     @staticmethod
@@ -173,7 +217,7 @@ class HDF5ArrayAdapter(ArrayAdapter):
         n_files: int,
         properties: Optional[Dict[str, Any]] = None,
     ) -> Optional[Tuple[str, Tuple[int, ...]]]:
-        """Describe how the `n_files` backing files tile the array's leading axes.
+        """Describe how the `n_files` backing files/assets tile the array's leading axes.
 
         HDF5 files are CONCATENATED along the array's leading (axis-0) stored
         dimension, and each file may contribute a DIFFERENT number of elements
@@ -223,34 +267,38 @@ class HDF5ArrayAdapter(ArrayAdapter):
         properties: Optional[Dict[str, Any]] = None,
         parameters: Optional[Dict[str, Any]] = None,
     ) -> Optional[Tuple[int, ...]]:
-        """Return the global file indices needed to satisfy `slice`.
+        """Return the global file indices a `slice` touches, or `None`.
 
-        A pure classmethod of the structure, the file count and the data source
-        `properties`/`parameters` -- it touches no file or database and needs no
-        adapter instance -- so the catalog can prefetch exactly the assets that a
-        read will touch before building any adapter (for a `read_block`, the
-        catalog first converts the block to the equivalent slice). It mirrors the
-        file selection in the lazy `read()`.
+        A pure classmethod (no I/O, no adapter instance) so the catalog can
+        prefetch just the assets a read touches before building any adapter.
+        `_file_layout` locates the files in the structure and this maps the slice
+        onto them: for `("extents", extents)`, the axis-0 selection is mapped
+        through the cumulative file boundaries; for `("grid", grid_shape)`, the
+        leading grid dimensions index the files directly.
 
-        `n_files` is the number of backing files (the catalog passes the asset
-        count). `_file_layout` locates the files within the structure; this
-        maps the slice onto them: for `("extents", extents)`, the slice's axis-0
-        selection is mapped through the cumulative file boundaries; for
-        `("grid", grid_shape)`, the leading grid dimensions index the files
-        directly.
+        Returns `None` (so the catalog skips the lazy path and loads every file)
+        when the files can not be located, or under a `slice`/`squeeze` adapter
+        parameter -- that transform makes the served per-file shape differ from
+        the raw file, so the native-chunk reshape in `_assemble_partial`
+        would be invalid, and `_file_layout` alone can not detect it.
 
-        Returns `None` when the files can not be located -- so a slice may need
-        every file -- to tell the catalog to skip the lazy path. This includes
-        the case of a `slice`/`squeeze` adapter parameter: the lazy read builds
-        each block by reading a native chunk of a backing file and reshaping it
-        to that file's slab of the SERVED structure (see
-        `_lazy_stack_from_structure`). A `slice`/`squeeze` makes the served
-        per-file shape differ from the raw file contents (it drops or collapses
-        elements along one or more axes), so that reshape is invalid and the
-        file-stacked build can not be formed from the raw files. The transform is
-        applied only after a full (non-lazy) stack, so it is caught here from the
-        data source `parameters`; `_file_layout` alone can not detect it
-        (`structure.chunks[0]` may still look one-per-file).
+        Parameters
+        ----------
+        structure : ArrayStructure
+            The served array structure.
+        n_files : int
+            The number of backing files (the catalog passes the asset count).
+        slice : Any
+            The requested slice (or `read_block`'s equivalent leading slice).
+        properties : dict, optional
+            Data source properties (e.g. per-asset `extents`).
+        parameters : dict, optional
+            Data source parameters (e.g. `slice`/`squeeze`).
+
+        Returns
+        -------
+        tuple of int or None
+            The touched file indices, or `None` to skip the lazy path.
         """
         parameters = parameters or {}
         if parameters.get("slice") is not None or parameters.get("squeeze"):
@@ -285,15 +333,26 @@ class HDF5ArrayAdapter(ArrayAdapter):
         """Per-file element counts along the FLAT concatenation axis.
 
         The lazy build stacks the files into their flat (pre-reshape)
-        concatenation along axis 0; these extents give the file boundaries there
-        (their cumulative sums), so each native chunk can be mapped to its file.
+        concatenation along axis 0; the cumulative sums of these extents give the
+        file boundaries, so each native chunk maps to its file. Uses
+        `properties["extents"]` when present, else the `"extents"` layout's
+        per-file counts when they sum to `flat_leading`, else an even split.
 
-        `properties["extents"]` (the writer's authoritative per-asset row counts)
-        is used when present. Otherwise, when the structure IS the flat
-        concatenation (an "extents" layout whose per-file counts already sum to
-        the flat leading length), those counts are the flat extents. Failing
-        both, the stack is uniform (a grid or an evenly reshaped stack) and the
-        flat leading axis divides evenly among the files.
+        Parameters
+        ----------
+        layout : tuple
+            The `_file_layout` result, `(kind, data)`.
+        flat_leading : int
+            Length of the flat concatenation axis.
+        n_files : int
+            The number of backing files.
+        properties : dict, optional
+            Data source properties (e.g. per-asset `extents`).
+
+        Returns
+        -------
+        tuple of int
+            Per-file element counts along the flat axis.
         """
         raw_extents = (properties or {}).get("extents")
         if raw_extents is not None:
@@ -310,7 +369,7 @@ class HDF5ArrayAdapter(ArrayAdapter):
         return (quotient,) * n_files
 
     @staticmethod
-    def _lazy_stack_from_structure(
+    def _assemble_partial(
         data_uris: Tuple[Optional[str], ...],
         structure: ArrayStructure,
         dataset: Optional[str] = None,
@@ -319,38 +378,39 @@ class HDF5ArrayAdapter(ArrayAdapter):
         locking: Optional[Union[bool, str]] = None,
         properties: Optional[Dict[str, Any]] = None,
     ) -> dask.array.Array:
-        """Build the file-stacked Dask array from the known structure, opening no
-        file for specs.
+        """Build the file-stacked Dask array from the known structure.
 
-        The catalog knows the structure, so a read need not open any file to
-        discover shapes: `data_uris` carries one entry per backing file (its
-        length is the file count), populated only for the files that this read
-        touches and left `None` elsewhere. Each present URI is converted to a
-        local path (via `path_from_uri`) lazily, inside its read task, so an
-        untouched file is never resolved.
+        `data_uris` carries one entry per backing file, populated only for the
+        files this read touches and left `None` elsewhere; each present URI is
+        resolved to a local path lazily inside its read task, so untouched files
+        stay closed. Mirrors the eager `lazy_load_hdf5_array`: it builds the flat
+        (pre-reshape) concatenation along axis 0 tiled by native HDF5 chunks --
+        axis 0 by `chunks[0]` (also split at file boundaries so no block straddles
+        two files), the trailing axes by `chunks[1:]` -- with the native chunking
+        taken from `properties["chunks"]` or, absent that, from the structure. The
+        caller's `read` reshapes this flat array (preserving chunk granularity)
+        and slices it, so Dask culls every chunk outside the read (and every
+        untouched file's placeholder), fetching only the native chunks it
+        overlaps. A reshaped grid with no recorded native chunking instead serves
+        one whole file per grid cell (the file is then the minimal read unit).
 
-        This mirrors the eager `lazy_load_hdf5_array`: it builds the FLAT
-        concatenation of the files (stacked along axis 0) tiled by native HDF5
-        chunks -- axis 0 by `chunks[0]` (additionally split at the file
-        boundaries so no block straddles two files), the trailing axes by
-        `chunks[1:]` -- where the native chunking comes from
-        `properties["chunks"]` (the pre-reshape chunking recorded when the stored
-        files are reshaped to the structure) or, absent that, from the structure
-        itself (which is then the flat concatenation). Each block is one native
-        chunk (no coalescing). The caller's `read` reshapes this flat array to
-        the structure (via `force_reshape`) -- the reshape preserves the native
-        chunk granularity -- and slices it, so Dask culls every chunk outside the
-        read (and every untouched file's placeholder) before computing. A partial
-        read therefore fetches only the native chunks it overlaps, the minimum
-        HDF5 can serve.
+        Parameters
+        ----------
+        data_uris : tuple of (str or None)
+            One entry per backing file; only touched files are populated.
+        structure : ArrayStructure
+            The served array structure.
+        dataset : str, optional
+            The dataset path within each file.
+        swmr, libver, locking
+            HDF5 open options.
+        properties : dict, optional
+            Data source properties (e.g. pre-reshape `chunks`, `extents`).
 
-        When the structure is a reshaped grid but no native chunking is recorded,
-        the flat chunking is unknown, so each file is served as one whole block (a
-        grid cell): the file is then the minimal read unit.
-
-        A present entry reads its native chunk in one task (reshaping to the
-        block's shape); every block of an untouched file gets a placeholder that
-        raises if ever computed (it should always be culled).
+        Returns
+        -------
+        dask.array.Array
+            The flat file-stacked array (reshaped to the structure by `read`).
         """
         n_files = len(data_uris)
         dtype = structure.data_type.to_numpy_dtype()
@@ -401,7 +461,6 @@ class HDF5ArrayAdapter(ArrayAdapter):
         raw_chunks = pre_chunks if pre_chunks is not None else structure.chunks
         flat_chunks = tuple(tuple(int(c) for c in dim) for dim in raw_chunks)
         flat_shape = tuple(sum(dim) for dim in flat_chunks)
-        flat_rest = flat_shape[1:]
 
         # File boundaries along the flat leading axis, so each native chunk maps
         # to exactly one file.
@@ -419,32 +478,9 @@ class HDF5ArrayAdapter(ArrayAdapter):
         boundaries = sorted({0, flat_shape[0], *file_ends, *chunk_ends})
 
         # Trailing native-chunk grid; the same grid applies to every leading
-        # block. `key_rest` is the trailing chunk index tuple, `slc_rest` its
-        # (file-local) slice, and `size_rest` its shape.
+        # block.
         rest_chunks = flat_chunks[1:]
-        if not rest_chunks or max((len(dim) for dim in rest_chunks), default=1) == 1:
-            key_rest: Tuple[Tuple[int, ...], ...] = (tuple(0 for _ in rest_chunks),)
-            slc_rest: Tuple[Tuple[builtins.slice, ...], ...] = (
-                tuple(builtins.slice(None) for _ in rest_chunks),
-            )
-            size_rest: Tuple[Tuple[int, ...], ...] = (tuple(flat_rest),)
-        else:
-            key_rest = tuple(
-                itertools.product(*(range(len(dim)) for dim in rest_chunks))
-            )
-            rest_bounds = tuple(
-                numpy.cumsum((0,) + dim).tolist() for dim in rest_chunks
-            )
-            rest_starts = itertools.product(*(bounds[:-1] for bounds in rest_bounds))
-            rest_stops = itertools.product(*(bounds[1:] for bounds in rest_bounds))
-            slc_rest = tuple(
-                tuple(
-                    builtins.slice(start, stop)
-                    for start, stop in zip(dim_starts, dim_stops)
-                )
-                for dim_starts, dim_stops in zip(rest_starts, rest_stops)
-            )
-            size_rest = tuple(itertools.product(*rest_chunks))
+        key_rest, slc_rest, size_rest = _trailing_chunk_grid(rest_chunks)
 
         name = "hdf5-lazy-stack-" + str(
             hash((dataset, data_uris, flat_shape, str(dtype)))
@@ -489,12 +525,11 @@ class HDF5ArrayAdapter(ArrayAdapter):
 
         Every file is opened to read its specs (shapes/chunks/dtype). When the
         structure is already known (a catalog read), prefer
-        `_lazy_stack_from_structure`, which opens no file for specs and can leave
-        untouched files unresolved.
+        `_assemble_partial`, which opens no file for specs and can load only necessary files.
 
         Parameters
         ----------
-        file_paths : list
+        file_paths : list of str or Path
             A list of file paths pointing to the HDF5 files
         dataset : str
             The dataset to read from the files, for example, "/path/to/dataset" within the file
@@ -502,7 +537,7 @@ class HDF5ArrayAdapter(ArrayAdapter):
             Whether to open the files in single-writer multiple-reader mode
         libver : str
             The HDF5 library version to use
-        locking : bool
+        locking : bool or str, optional
             Whether to use file locking when accessing the files
         """
 
@@ -594,8 +629,7 @@ class HDF5ArrayAdapter(ArrayAdapter):
             # chunk, and the remaining dimensions are split by the smallest
             # native chunk across files (so every file's chunk boundaries land
             # on the Dask grid). A partial read then fetches only the native
-            # chunks it touches -- the minimum HDF5 can serve -- so small reads
-            # stay cheap without any coalescing heuristic.
+            # chunks it touches -- the minimum HDF5 can serve.
             file_chunks = tuple(
                 split_chunks(shp[0], max(chk[0], MIN_CHUNK_SIZE))
                 for shp, chk, _ in shapes_chunks_dtypes
@@ -609,33 +643,9 @@ class HDF5ArrayAdapter(ArrayAdapter):
             dim0_chunks = tuple(size for fc in file_chunks for size in fc)
             chunks_final = (dim0_chunks, *[tuple(d) for d in rest_chunks])
 
-            # Prepare slice tuples and indices for the rightmost dimensions (same for each file)
-            key_rest: Tuple[Tuple[int, ...], ...]
-            slc_rest: Tuple[Tuple[builtins.slice, ...], ...]
-            if not rest_chunks or (max(len(dim) for dim in rest_chunks) == 1):
-                # All dimensions have only one chunk per each: use full slices
-                key_rest = (tuple(0 for _ in rest_chunks),)
-                slc_rest = (tuple(builtins.slice(None) for _ in rest_chunks),)
-            else:
-                # Multiple chunks in at least one of the dimensions:
-                # build full product of indices and corresponding slices
-                key_rest = tuple(
-                    itertools.product(*(range(len(dim)) for dim in rest_chunks))
-                )
-                rest_bounds = tuple(
-                    numpy.cumsum((0,) + dim).tolist() for dim in rest_chunks
-                )
-                rest_starts = itertools.product(
-                    *(bounds[:-1] for bounds in rest_bounds)
-                )
-                rest_stops = itertools.product(*(bounds[1:] for bounds in rest_bounds))
-                slc_rest = tuple(
-                    tuple(
-                        builtins.slice(start, stop)
-                        for start, stop in zip(dim_starts, dim_stops)
-                    )
-                    for dim_starts, dim_stops in zip(rest_starts, rest_stops)
-                )
+            # Prepare slice tuples and indices for the rightmost dimensions
+            # (same for each file).
+            key_rest, slc_rest, _ = _trailing_chunk_grid(rest_chunks)
 
             # Define the Dask tasks for loading each chunk from the files
             name = "hdf5-stack-" + str(hash(tuple([dataset, *file_paths])))
@@ -688,7 +698,7 @@ class HDF5ArrayAdapter(ArrayAdapter):
             # native chunks it overlaps. Each URI is converted to a local path
             # lazily, inside its read task, so untouched files stay closed. Metadata
             # comes from the node alone (no attribute read).
-            array = cls._lazy_stack_from_structure(
+            array = cls._assemble_partial(
                 tuple(data_uris),
                 structure,
                 dataset=dataset,
