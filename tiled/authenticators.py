@@ -346,16 +346,16 @@ class EntraAuthenticator(ProxiedOIDCAuthenticator):
         if client_secret:
             self._client_secret = Secret(client_secret)
 
-        @property
-        def scopes(self):
-            mapped = set()
-            for tiled_scopes in self.scopes_map.values():
-                mapped.update(tiled_scopes)
-            return list(mapped)
+    @property
+    def scopes(self):
+        mapped = set()
+        for tiled_scopes in self.scopes_map.values():
+            mapped.update(tiled_scopes)
+        return list(mapped)
 
-        @scopes.setter
-        def scopes(self, value):
-            pass  # ignored; scopes are derived from scopes_map
+    @scopes.setter
+    def scopes(self, value):
+        pass  # ignored; scopes are derived from scopes_map
 
     def decode_token(
         self, id_token: str, access_token: Optional[str] = None
