@@ -5,6 +5,12 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## Unreleased
 
+### Fixed
+
+- Fix precedence of scope check for `ProxiedOIDCAuthenticator`.
+
+## v0.2.15 (2026-08-11)
+
 ### Added
 
 - Support clustered Redis for high availability.

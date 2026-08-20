@@ -391,11 +391,11 @@ def _extract_scopes(
     OIDC-provider tokens (device code flow) store them as a space-separated
     string under "scope".  Handle both.
     """
+    if "scope" in decoded_access_token:
+        return set(decoded_access_token["scope"].split(" "))
     if "scp" in decoded_access_token:
         scp = decoded_access_token["scp"]
         return set(scp) if isinstance(scp, list) else set(scp.split(" "))
-    if "scope" in decoded_access_token:
-        return set(decoded_access_token["scope"].split(" "))
     return set()
 
 
