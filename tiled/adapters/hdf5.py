@@ -344,21 +344,10 @@ class HDF5ArrayAdapter(ArrayAdapter):
                 f"{array.dtype} != {structure.data_type.to_numpy_dtype()}"
             )
 
-        # TODO: Possibly rechunk according to structure.chunks? Is it expensive/necessary?
-        # array = dask.array.rechunk(array, chunks=structure.chunks)
-
-        # Pull additional metadata from the file attributes
-        metadata = copy.deepcopy(node.metadata_)
-        metadata.update(
-            get_hdf5_attrs(
-                data_uris[0], dataset, swmr=swmr, libver=libver, locking=locking
-            )
-        )
-
         return cls(
             array,
             structure,
-            metadata=metadata,
+            metadata=node.metadata_,
             specs=node.specs,
         )
 
