@@ -16,7 +16,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 - `HDF5ArrayAdapter.from_catalog` now uses the catalog metadata verbatim and no
   longer re-reads the file's HDF5 attributes; file attributes are surfaced via
-  `from_uris` and copied into the catalog when the asset is registered.
+  `from_uris` and may be copied into the catalog when the asset is registered.
 
 ### Fixed
 
