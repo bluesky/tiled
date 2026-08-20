@@ -8,7 +8,6 @@ version = "0.2.2"
 [tasks]
 
 [dependencies]
-httpx = ">=0.20.0,!=0.23.1"
 json-merge-patch = "*"
 jsonpatch = "*"
 jsonschema = "*"
@@ -21,6 +20,8 @@ pyyaml = "*"
 typer = "*"
 
 [pypi-dependencies]
+# Not yet available on conda-forge; installed from PyPI.
+httpx2 = ">=2.0.0"
 tiled = { path = ".", editable = true }
 
 [feature.array.dependencies]

@@ -1,5 +1,7 @@
-# There is no public API in httpx to injecting additional decoders.
-from httpx._decoders import SUPPORTED_DECODERS
+from typing import Iterator
+
+# There is no public API in httpx2 to injecting additional decoders.
+from httpx2._decoders import SUPPORTED_DECODERS
 
 from ..utils import modules_available
 
@@ -12,11 +14,11 @@ if modules_available("blosc2"):
             # and concatenate and decode at the end.
             self._data = []
 
-        def decode(self, data: bytes) -> bytes:
+        def decode(self, data: bytes) -> Iterator[bytes]:
             self._data.append(data)
-            return b""
+            return ()
 
-        def flush(self) -> bytes:
+        def flush(self) -> Iterator[bytes]:
             # Hide this here to defer the numpy import that it triggers.
             import blosc2
 
@@ -27,18 +29,14 @@ if modules_available("blosc2"):
             # frame by frame -- each frame header reports its own compressed
             # length (cbytes) -- and concatenate the decompressed pieces.
             view = memoryview(data)
-            chunks = []
             offset = 0
             while offset < len(view):
                 _, cbytes, _ = blosc2.get_cbuffer_sizes(view[offset:])
                 if cbytes <= 0:
                     break
                 frame = view[offset : offset + cbytes]  # noqa: E203
-                chunks.append(blosc2.decompress(frame))
+                yield blosc2.decompress(frame)
                 offset += cbytes
-            if len(chunks) == 1:
-                return chunks[0]
-            return b"".join(chunks)
 
     SUPPORTED_DECODERS["blosc2"] = Blosc2Decoder
 
@@ -51,10 +49,10 @@ if modules_available("zstandard"):
             self._context = zstandard.ZstdDecompressor()
             self._obj = self._context.decompressobj()
 
-        def decode(self, data: bytes) -> bytes:
-            return self._obj.decompress(data)
+        def decode(self, data: bytes) -> Iterator[bytes]:
+            return (self._obj.decompress(data),)
 
-        def flush(self) -> bytes:
-            return b""
+        def flush(self) -> Iterator[bytes]:
+            return ()
 
     SUPPORTED_DECODERS["zstd"] = ZStandardDecoder

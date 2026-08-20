@@ -3,7 +3,7 @@ import os
 from abc import ABC, abstractmethod
 from typing import Generic, Optional, Tuple, TypeVar
 
-import httpx
+import httpx2 as httpx
 from pydantic import BaseModel, HttpUrl, TypeAdapter, ValidationError
 
 from ..adapters.protocols import BaseAdapter

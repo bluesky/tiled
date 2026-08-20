@@ -28,7 +28,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 from urllib.parse import urlparse
 
-import httpx
+import httpx2 as httpx
 import stamina
 from sqlalchemy import delete, select
 
