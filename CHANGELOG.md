@@ -16,7 +16,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - Support clustered Redis for high availability.
 - Add client_secret,redirect_on_success,redirect_on_failure to
   ProxiedOIDCAuthenticator. This is to allow login using Tiled-UI
-- Allow configuration of user_id_claim for OIDCAuthenticator
+- Allow configuration of user_id_claim for OIDCAuthenticator.
 - Lazy asset resolution for array datasets backed by many files: reading a
   slice or block now resolves only the assets (files) the read touches,
   computed purely from the structure geometry, instead of materializing every
@@ -26,6 +26,19 @@ Write the date in place of the "Unreleased" in the case a new version is release
   bounded regardless of how many files a slice spans. Tunable via the
   `TILED_SEQUENCE_IO_WORKERS` and `TILED_SEQUENCE_READ_BATCH_BYTES` environment
   variables. (#1463)
+- Faster reads of HDF5 datasets spanning many files: the lazy Dask graph is
+  cached through the resource cache and per-file specs are read in parallel.
+  (#1463)
+- Lazy asset resolution for multi-file HDF5 array datasets, extending the lazy
+  path above to datasets that concatenate files along the leading axis. An
+  optional per-asset `extents` property records each file's length along that
+  axis, so a read opens only the files its slice touches; the adapter also
+  infers the layout from the structure chunks or grid shape when the property
+  is absent. The lazy read is tiled by native HDF5 chunks (mirroring the eager
+  path), so a partial read fetches only the native chunks it overlaps -- the
+  minimum HDF5 can serve -- with no coalescing. Datasets served through a
+  `slice`/`squeeze` adapter transform fall back to a full build, since that
+  transform can make the served per-file shape differ from the raw file. (#1465)
 - Add a new feature that stores a graph of links into the catalog database. Adds strawberry
   as a dependency. Import/search/export of graph links is accomplished through graphql.
 
@@ -38,6 +51,10 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Fixed
 
+- Route single-file HDF5 array datasets through the eager (non-lazy) adapter.
+  With only one file the lazy path can cull nothing, so it offers no benefit
+  over the eager adapter, which already honors the file's native HDF5 chunking
+  and reads only the touched chunks. (#1465)
 - Fix the `raw_export` download progress bar, which showed a wrong total (e.g.
   `1,257,333,024/100 bytes`) and did not advance during the transfer. The bar
   now seeds each task's total from the known asset size, and raw-asset downloads

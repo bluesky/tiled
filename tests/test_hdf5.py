@@ -670,9 +670,17 @@ def test_adapter_from_catalog(example_file, shape, error):
         assert adp.read().shape == shape
 
 
+# The fixture datasets are int64 (8 bytes) with per-file native chunks
+#   a/b: shape (4, 5, 6),  native chunk (1, 2, 3)
+#   a/c: shape (10, 1),    native chunk (2, 1)
+#   a/d: shape (10,),      native chunk (3,)
+# The Dask graph honors each file's native HDF5 tiling: axis 0 uses each file's
+# own leading chunk size, and the remaining dimensions use the smallest native
+# chunk across files (so every file's chunk boundaries align with the Dask grid).
 @pytest.mark.parametrize("num_files", [1, 3])
 def test_chunked_arrays_from_uris(example_files_with_chunked_arrays, num_files):
-    # Test that chunked arrays can be read and reshaped correctly
+    # Test that chunked arrays can be read and reshaped correctly, and that the
+    # Dask chunk layout follows the native HDF5 chunking.
     fpaths = example_files_with_chunked_arrays[:num_files]
     tree = HDF5Adapter.from_uris(*fpaths)
     with Context.from_app(build_app(tree)) as context:
@@ -821,8 +829,8 @@ def test_files_opened_and_closed(example_files_with_chunked_arrays, swmr):
         mock_h5open.assert_not_called()
 
         # Read the entire array: files are opened once to get the specs and then again,
-        # four times each, to fetch each chunk separately. Additionally, the first file is opened once
-        # adain when initialized from catalog to get the metadata
+        # four times each, to fetch each native chunk separately. Additionally, the first
+        # file is opened once again when initialized from catalog to get the metadata
         assert arr.read() is not None
         # 2 for specs, 4*2 for chunks, 1 for metadata
         assert mock_h5open.call_count == 2 + 4 * 2 + 1

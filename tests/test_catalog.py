@@ -445,6 +445,828 @@ async def test_lazy_sequence_tolerates_num_offset(tmpdir, num_offset):
         await adapter.shutdown()
 
 
+@pytest.mark.parametrize(
+    "slice_input",
+    [
+        Ellipsis,  # full read -> every file
+        1,  # single leftmost index
+        (slice(0, 2), 1, slice(0, 4, 2)),  # strided along the R (stacking) axis
+        (slice(None), slice(1, 3), slice(0, 4, 2), Ellipsis, slice(0, 4)),
+        (Ellipsis, 0, 0, 0),
+        (0, Ellipsis, slice(0, 3)),
+        (slice(0, 2), slice(0, 3), slice(1, 4, 2)),
+        (slice(0, 1), slice(0, 2), slice(0, 2), slice(0, 2), slice(0, 3)),
+    ],
+)
+@pytest.mark.asyncio
+async def test_lazy_reshaped_hdf5_opens_only_touched_files(tmpdir, slice_input):
+    """The lazy per-frame path opens exactly the HDF5 files that a reshaped
+    slice needs -- no specs pass, no metadata open -- and reads back data
+    identical to the eager reference.
+
+    Each file stores one M x N dataset; the true concatenated shape is (K*M, N)
+    but the structure declares (P, Q, R, M, N). The file count is the number of
+    assets (K), and the leading (P, Q, R) structure dimensions map onto them.
+    """
+    from unittest.mock import patch
+
+    import tiled.adapters.hdf5
+    from tiled.ndslice import NDSlice
+
+    h5py = pytest.importorskip("h5py")
+    P, Q, R, M, N = _RESHAPE_P, _RESHAPE_Q, _RESHAPE_R, _RESHAPE_M, _RESHAPE_N
+    K = P * Q * R
+
+    # Distinct data per file so any mis-selection surfaces as a value mismatch.
+    rng = numpy.random.default_rng(2)
+    frames = [rng.integers(0, 255, size=(M, N), dtype="uint8") for _ in range(K)]
+    data_uris = []
+    filepaths = []
+    for i, frame in enumerate(frames):
+        filepath = Path(tmpdir) / f"frame{i:05}.h5"
+        with h5py.File(filepath, "w") as f:
+            f.create_dataset("a/b", data=frame)
+        filepaths.append(filepath)
+        data_uris.append(ensure_uri(str(filepath)))
+
+    # Eager references, computed independently of the adapter's own logic.
+    full = numpy.stack(frames).reshape(P, Q, R, M, N)
+    idx_cube = numpy.broadcast_to(
+        numpy.arange(K).reshape(P, Q, R, 1, 1), (P, Q, R, M, N)
+    )
+
+    struct = ArrayStructure(
+        shape=(P, Q, R, M, N),
+        chunks=((1,) * P, (1,) * Q, (1,) * R, (M,), (N,)),
+        data_type=BuiltinDtype.from_numpy_dtype(numpy.dtype("uint8")),
+    )
+    # `properties["chunks"]` carries the *pre-reshape* (stacked) chunk layout:
+    # one whole-file chunk of M rows per file along the concatenation axis, then
+    # the shared trailing N dim. len(chunks[0]) == K files; sum == K*M rows.
+    pre_reshape_chunks = [[M] * K, [N]]
+
+    adapter = in_memory(readable_storage=[tmpdir])
+    await adapter.startup()
+    try:
+        await adapter.create_node(
+            key="ds",
+            structure_family="array",
+            metadata={},
+            data_sources=[
+                DataSource(
+                    structure_family="array",
+                    mimetype="application/x-hdf5",
+                    structure=asdict(struct),
+                    parameters={"dataset": "a/b"},
+                    properties={"chunks": pre_reshape_chunks},
+                    management="external",
+                    assets=[
+                        Asset(
+                            parameter="data_uris",
+                            num=i,
+                            data_uri=data_uri,
+                            is_directory=False,
+                        )
+                        for i, data_uri in enumerate(data_uris)
+                    ],
+                )
+            ],
+        )
+        x = await adapter.lookup_adapter(["ds"])
+
+        reference = full[slice_input]
+        expected_indices = set(numpy.unique(idx_cube[slice_input]).tolist())
+        expected_names = {filepaths[i].name for i in expected_indices}
+
+        # The lazy adapter must be used (not a fallback).
+        lazy = await x._get_lazy_adapter(slice=slice_input)
+        assert lazy is not None
+
+        # Reading through the catalog opens exactly the files that this slice
+        # touches, each exactly once: no specs pass and no metadata open. (The
+        # server always presents a slice as an NDSlice.)
+        with patch(
+            "tiled.adapters.hdf5.h5open", wraps=tiled.adapters.hdf5.h5open
+        ) as mock_h5open:
+            result = await x.read(slice=NDSlice(slice_input))
+            opened = [Path(call.args[0]).name for call in mock_h5open.call_args_list]
+
+        assert set(opened) == expected_names
+        assert len(opened) == len(expected_names)
+        numpy.testing.assert_array_equal(result, reference)
+    finally:
+        await adapter.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_lazy_reshaped_hdf5_read_block(tmpdir):
+    """`read_block` takes the same lazy path. The catalog resolves the whole
+    leading-axis slab a block sits in, but a block addresses a single grid cell
+    (one file), and Dask culls the rest -- so exactly that one file is opened and
+    the data matches the eager reference.
+    """
+    from unittest.mock import patch
+
+    import tiled.adapters.hdf5
+    from tiled.ndslice import NDBlock
+
+    h5py = pytest.importorskip("h5py")
+    P, Q, R, M, N = _RESHAPE_P, _RESHAPE_Q, _RESHAPE_R, _RESHAPE_M, _RESHAPE_N
+    K = P * Q * R
+
+    rng = numpy.random.default_rng(3)
+    frames = [rng.integers(0, 255, size=(M, N), dtype="uint8") for _ in range(K)]
+    data_uris = []
+    filepaths = []
+    for i, frame in enumerate(frames):
+        filepath = Path(tmpdir) / f"frame{i:05}.h5"
+        with h5py.File(filepath, "w") as f:
+            f.create_dataset("a/b", data=frame)
+        filepaths.append(filepath)
+        data_uris.append(ensure_uri(str(filepath)))
+
+    full = numpy.stack(frames).reshape(P, Q, R, M, N)
+    struct = ArrayStructure(
+        shape=(P, Q, R, M, N),
+        chunks=((1,) * P, (1,) * Q, (1,) * R, (M,), (N,)),
+        data_type=BuiltinDtype.from_numpy_dtype(numpy.dtype("uint8")),
+    )
+    pre_reshape_chunks = [[M] * K, [N]]
+
+    adapter = in_memory(readable_storage=[tmpdir])
+    await adapter.startup()
+    try:
+        await adapter.create_node(
+            key="ds",
+            structure_family="array",
+            metadata={},
+            data_sources=[
+                DataSource(
+                    structure_family="array",
+                    mimetype="application/x-hdf5",
+                    structure=asdict(struct),
+                    parameters={"dataset": "a/b"},
+                    properties={"chunks": pre_reshape_chunks},
+                    management="external",
+                    assets=[
+                        Asset(
+                            parameter="data_uris",
+                            num=i,
+                            data_uri=data_uri,
+                            is_directory=False,
+                        )
+                        for i, data_uri in enumerate(data_uris)
+                    ],
+                )
+            ],
+        )
+        x = await adapter.lookup_adapter(["ds"])
+
+        # `read_block` only accepts blocks whose non-leading indices are 0; such a
+        # block addresses grid cell (p, 0, 0), i.e. file index p * Q * R.
+        for p in range(P):
+            block = NDBlock(p, 0, 0, 0, 0)
+            reference = full[p : p + 1, 0:1, 0:1]  # noqa: E203
+            expected_name = filepaths[p * Q * R].name
+
+            lazy = await x._get_lazy_adapter(block=block)
+            assert lazy is not None
+            with patch(
+                "tiled.adapters.hdf5.h5open", wraps=tiled.adapters.hdf5.h5open
+            ) as mock_h5open:
+                result = await x.read_block(block)
+                opened = [
+                    Path(call.args[0]).name for call in mock_h5open.call_args_list
+                ]
+            # Over-resolved to the leading slab, but Dask culls to the one cell.
+            assert opened == [expected_name]
+            numpy.testing.assert_array_equal(result, reference)
+    finally:
+        await adapter.shutdown()
+
+
+@pytest.mark.parametrize(
+    "slice_input,expected_opens",
+    [
+        (0, 4),  # event 0 -> file 0's 4 native frame-chunks
+        (2, 4),  # event 2 -> file 2's 4 native frame-chunks
+        ((1, slice(0, 2)), 2),  # event 1, first two frames -> 2 native chunks
+        ((slice(1, 3),), 8),  # events 1, 2 -> both files' 4 frame-chunks each
+    ],
+)
+@pytest.mark.asyncio
+async def test_lazy_reshaped_hdf5_multichunk_files(tmpdir, slice_input, expected_opens):
+    """A file that holds many native chunks along the concatenation axis still
+    takes the lazy path.
+
+    Each file stores an (F, H, W) dataset chunked one frame at a time, so its
+    native tiling is (1, H, W): `properties["chunks"][0]` has K*F ones, far more
+    than the K files. The structure declares (K, F, H, W). The file count is the
+    number of assets (K), NOT `len(chunks[0])` (== K*F), and the leading axis
+    maps onto the files. The read fetches only the native frame-chunks it
+    overlaps -- so it opens one file once per touched frame, not the whole file.
+    (This is the shape of a per-frame-chunked detector stream.)
+    """
+    from unittest.mock import patch
+
+    import tiled.adapters.hdf5
+    from tiled.ndslice import NDSlice
+
+    h5py = pytest.importorskip("h5py")
+    K, F, H, W = 3, 4, 2, 3
+
+    rng = numpy.random.default_rng(5)
+    files = [rng.integers(0, 255, size=(F, H, W), dtype="uint8") for _ in range(K)]
+    data_uris = []
+    filepaths = []
+    for i, file_data in enumerate(files):
+        filepath = Path(tmpdir) / f"file{i:05}.h5"
+        with h5py.File(filepath, "w") as f:
+            # One frame per native chunk: many native chunks per file.
+            f.create_dataset("a/b", data=file_data, chunks=(1, H, W))
+        filepaths.append(filepath)
+        data_uris.append(ensure_uri(str(filepath)))
+
+    # Eager reference and a cube labelling every element by its source file.
+    full = numpy.stack(files)  # (K, F, H, W)
+    idx_cube = numpy.broadcast_to(numpy.arange(K).reshape(K, 1, 1, 1), (K, F, H, W))
+
+    struct = ArrayStructure(
+        shape=(K, F, H, W),
+        chunks=((1,) * K, (F,), (H,), (W,)),
+        data_type=BuiltinDtype.from_numpy_dtype(numpy.dtype("uint8")),
+    )
+    # Pre-reshape (native) tiling: one frame per chunk over the K*F concatenated
+    # frames, then the shared trailing H, W dims. len(chunks[0]) == K*F != K.
+    pre_reshape_chunks = [[1] * (K * F), [H], [W]]
+
+    adapter = in_memory(readable_storage=[tmpdir])
+    await adapter.startup()
+    try:
+        await adapter.create_node(
+            key="ds",
+            structure_family="array",
+            metadata={},
+            data_sources=[
+                DataSource(
+                    structure_family="array",
+                    mimetype="application/x-hdf5",
+                    structure=asdict(struct),
+                    parameters={"dataset": "a/b"},
+                    properties={"chunks": pre_reshape_chunks},
+                    management="external",
+                    assets=[
+                        Asset(
+                            parameter="data_uris",
+                            num=i,
+                            data_uri=data_uri,
+                            is_directory=False,
+                        )
+                        for i, data_uri in enumerate(data_uris)
+                    ],
+                )
+            ],
+        )
+        x = await adapter.lookup_adapter(["ds"])
+
+        reference = full[slice_input]
+        expected_indices = set(numpy.unique(idx_cube[slice_input]).tolist())
+        expected_names = {filepaths[i].name for i in expected_indices}
+
+        # The lazy adapter must be used (not a fallback).
+        lazy = await x._get_lazy_adapter(slice=slice_input)
+        assert lazy is not None
+
+        with patch(
+            "tiled.adapters.hdf5.h5open", wraps=tiled.adapters.hdf5.h5open
+        ) as mock_h5open:
+            result = await x.read(slice=NDSlice(slice_input))
+            opened = [Path(call.args[0]).name for call in mock_h5open.call_args_list]
+
+        assert set(opened) == expected_names
+        assert len(opened) == expected_opens
+        numpy.testing.assert_array_equal(result, reference)
+    finally:
+        await adapter.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_lazy_hdf5_falls_back_when_not_file_aligned(tmpdir):
+    """When the reshape is not file-boundary-aligned the lazy path bows out
+    (`_get_lazy_adapter` returns None) and the eager build still reads correctly.
+    """
+    from tiled.ndslice import NDSlice
+
+    h5py = pytest.importorskip("h5py")
+    # K files of M rows each; a structure whose leading dims never multiply to
+    # the file count K, so no whole-file split exists.
+    K, M, N = 6, 5, 3
+    rng = numpy.random.default_rng(4)
+    frames = [rng.integers(0, 255, size=(M, N), dtype="uint8") for _ in range(K)]
+    data_uris = []
+    for i, frame in enumerate(frames):
+        filepath = Path(tmpdir) / f"frame{i:05}.h5"
+        with h5py.File(filepath, "w") as f:
+            f.create_dataset("a/b", data=frame)
+        data_uris.append(ensure_uri(str(filepath)))
+
+    # true concatenated shape (K*M, N) == (30, 3); reshape to (10, 3, 3) splits
+    # the file boundary (10 > K at the first axis), so it is not file-aligned.
+    full = numpy.concatenate(frames, axis=0).reshape(10, 3, N)
+    struct = ArrayStructure(
+        shape=(10, 3, N),
+        chunks=((1,) * 10, (3,), (N,)),
+        data_type=BuiltinDtype.from_numpy_dtype(numpy.dtype("uint8")),
+    )
+    pre_reshape_chunks = [[M] * K, [N]]
+
+    adapter = in_memory(readable_storage=[tmpdir])
+    await adapter.startup()
+    try:
+        await adapter.create_node(
+            key="ds",
+            structure_family="array",
+            metadata={},
+            data_sources=[
+                DataSource(
+                    structure_family="array",
+                    mimetype="application/x-hdf5",
+                    structure=asdict(struct),
+                    parameters={"dataset": "a/b"},
+                    properties={"chunks": pre_reshape_chunks},
+                    management="external",
+                    assets=[
+                        Asset(
+                            parameter="data_uris",
+                            num=i,
+                            data_uri=data_uri,
+                            is_directory=False,
+                        )
+                        for i, data_uri in enumerate(data_uris)
+                    ],
+                )
+            ],
+        )
+        x = await adapter.lookup_adapter(["ds"])
+
+        # Not file-aligned -> lazy path declines, eager path still correct.
+        assert await x._get_lazy_adapter(slice=(slice(0, 2),)) is None
+        result = await x.read(slice=NDSlice((slice(0, 2),)))
+        numpy.testing.assert_array_equal(result, full[0:2])
+    finally:
+        await adapter.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_lazy_hdf5_declines_single_file(tmpdir):
+    """A dataset backed by a single file must not take the lazy path. With one
+    file there is nothing to cull, so the lazy path has no upside; the standard
+    adapter already serves a native chunked, partial read. `_get_lazy_adapter`
+    declines (returns None) and the normal adapter still reads correctly.
+    """
+    from tiled.ndslice import NDBlock, NDSlice
+
+    h5py = pytest.importorskip("h5py")
+    # One file of shape (R, N) reshaped to (P, M, N) with R == P * M -- the
+    # frame-per-point layout: a single file whose leading axis is split.
+    P, M, N = 4, 2, 3
+    R = P * M
+    rng = numpy.random.default_rng(7)
+    raw = rng.integers(0, 255, size=(R, N), dtype="uint8")
+    filepath = Path(tmpdir) / "single.h5"
+    with h5py.File(filepath, "w") as f:
+        f.create_dataset("a/b", data=raw)
+    data_uri = ensure_uri(str(filepath))
+
+    full = raw.reshape(P, M, N)
+    struct = ArrayStructure(
+        shape=(P, M, N),
+        chunks=((P,), (M,), (N,)),
+        data_type=BuiltinDtype.from_numpy_dtype(numpy.dtype("uint8")),
+    )
+
+    adapter = in_memory(readable_storage=[tmpdir])
+    await adapter.startup()
+    try:
+        await adapter.create_node(
+            key="ds",
+            structure_family="array",
+            metadata={},
+            data_sources=[
+                DataSource(
+                    structure_family="array",
+                    mimetype="application/x-hdf5",
+                    structure=asdict(struct),
+                    parameters={"dataset": "a/b"},
+                    properties={"chunks": [[R], [N]]},
+                    management="external",
+                    assets=[
+                        Asset(
+                            parameter="data_uris",
+                            num=0,
+                            data_uri=data_uri,
+                            is_directory=False,
+                        )
+                    ],
+                )
+            ],
+        )
+        x = await adapter.lookup_adapter(["ds"])
+
+        # Single file -> lazy path declines; normal adapter still reads correctly.
+        assert await x._get_lazy_adapter(slice=(0,)) is None
+        assert await x._get_lazy_adapter(block=NDBlock(0, 0, 0)) is None
+        result = await x.read(slice=NDSlice((0,)))
+        numpy.testing.assert_array_equal(result, full[0])
+    finally:
+        await adapter.shutdown()
+
+
+# Genuinely non-uniform files: K files hold DIFFERENT numbers of frames, stored
+# flat-concatenated along axis 0. The native tiling (one frame per chunk) can not
+# reveal the file boundaries -- only the optional per-asset `properties["extents"]`
+# does. `extents[i]` is file i's extent along axis 0; `sum(extents) == shape[0]`.
+_NONUNIFORM_EXTENTS = [2, 5, 3]
+
+
+@pytest.mark.parametrize(
+    "slice_input,expected_indices,expected_opens",
+    [
+        (0, {0}, 1),  # first row -> first file's first frame-chunk
+        (6, {1}, 1),  # a row deep inside the second file -> one frame-chunk
+        ((slice(0, 2),), {0}, 2),  # exactly the first file's rows -> 2 chunks
+        ((slice(1, 4),), {0, 1}, 3),  # straddles the first boundary -> 3 chunks
+        ((slice(6, 10),), {1, 2}, 4),  # straddles the second boundary -> 4 chunks
+        (Ellipsis, {0, 1, 2}, 10),  # full read -> every frame-chunk
+    ],
+)
+@pytest.mark.asyncio
+async def test_lazy_hdf5_nonuniform_extents_property(
+    tmpdir, slice_input, expected_indices, expected_opens
+):
+    """`properties["extents"]` enables the lazy path for non-uniform files stored
+    flat, mapping an axis-0 slice to exactly the files it touches via a cumulative
+    sum of the per-file extents.
+
+    Each file holds a different frame count and is chunked one frame at a time, so
+    the native tiling (`len(chunks[0]) == sum(extents)`) can not delimit the files;
+    `extents` supplies the boundaries the catalog can not otherwise infer.
+    """
+    from unittest.mock import patch
+
+    import tiled.adapters.hdf5
+    from tiled.ndslice import NDSlice
+
+    h5py = pytest.importorskip("h5py")
+    extents = _NONUNIFORM_EXTENTS
+    K, H, W = len(extents), 2, 3
+    total = sum(extents)
+
+    rng = numpy.random.default_rng(6)
+    files = [rng.integers(0, 255, size=(f, H, W), dtype="uint8") for f in extents]
+    data_uris = []
+    filepaths = []
+    for i, file_data in enumerate(files):
+        filepath = Path(tmpdir) / f"file{i:05}.h5"
+        with h5py.File(filepath, "w") as f:
+            f.create_dataset("a/b", data=file_data, chunks=(1, H, W))
+        filepaths.append(filepath)
+        data_uris.append(ensure_uri(str(filepath)))
+
+    # Flat concatenation along axis 0; a cube labelling each row by its file.
+    full = numpy.concatenate(files, axis=0)  # (total, H, W)
+    idx_cube = numpy.broadcast_to(
+        numpy.repeat(numpy.arange(K), extents).reshape(total, 1, 1), (total, H, W)
+    )
+
+    struct = ArrayStructure(
+        shape=(total, H, W),
+        chunks=((1,) * total, (H,), (W,)),
+        data_type=BuiltinDtype.from_numpy_dtype(numpy.dtype("uint8")),
+    )
+    # Native (per-frame) tiling can not delimit files; `extents` supplies it.
+    pre_reshape_chunks = [[1] * total, [H], [W]]
+
+    adapter = in_memory(readable_storage=[tmpdir])
+    await adapter.startup()
+    try:
+        await adapter.create_node(
+            key="ds",
+            structure_family="array",
+            metadata={},
+            data_sources=[
+                DataSource(
+                    structure_family="array",
+                    mimetype="application/x-hdf5",
+                    structure=asdict(struct),
+                    parameters={"dataset": "a/b"},
+                    properties={"chunks": pre_reshape_chunks, "extents": extents},
+                    management="external",
+                    assets=[
+                        Asset(
+                            parameter="data_uris",
+                            num=i,
+                            data_uri=data_uri,
+                            is_directory=False,
+                        )
+                        for i, data_uri in enumerate(data_uris)
+                    ],
+                )
+            ],
+        )
+        x = await adapter.lookup_adapter(["ds"])
+
+        reference = full[slice_input]
+        assert set(numpy.unique(idx_cube[slice_input]).tolist()) == expected_indices
+        expected_names = {filepaths[i].name for i in expected_indices}
+
+        # The lazy adapter is used (not a fallback).
+        lazy = await x._get_lazy_adapter(slice=slice_input)
+        assert lazy is not None
+
+        with patch(
+            "tiled.adapters.hdf5.h5open", wraps=tiled.adapters.hdf5.h5open
+        ) as mock_h5open:
+            result = await x.read(slice=NDSlice(slice_input))
+            opened = [Path(call.args[0]).name for call in mock_h5open.call_args_list]
+
+        assert set(opened) == expected_names
+        assert len(opened) == expected_opens
+        numpy.testing.assert_array_equal(result, reference)
+    finally:
+        await adapter.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_lazy_hdf5_nonuniform_requires_extents(tmpdir):
+    """Without `properties["extents"]` the same non-uniform flat layout has no way
+    to locate file boundaries, so the lazy path bows out and the eager build
+    still reads correctly.
+    """
+    from tiled.ndslice import NDSlice
+
+    h5py = pytest.importorskip("h5py")
+    extents = _NONUNIFORM_EXTENTS
+    H, W = 2, 3
+    total = sum(extents)
+
+    rng = numpy.random.default_rng(7)
+    files = [rng.integers(0, 255, size=(f, H, W), dtype="uint8") for f in extents]
+    data_uris = []
+    for i, file_data in enumerate(files):
+        filepath = Path(tmpdir) / f"file{i:05}.h5"
+        with h5py.File(filepath, "w") as f:
+            f.create_dataset("a/b", data=file_data, chunks=(1, H, W))
+        data_uris.append(ensure_uri(str(filepath)))
+
+    full = numpy.concatenate(files, axis=0)
+    struct = ArrayStructure(
+        shape=(total, H, W),
+        chunks=((1,) * total, (H,), (W,)),
+        data_type=BuiltinDtype.from_numpy_dtype(numpy.dtype("uint8")),
+    )
+    # No `extents`, and the native tiling can not delimit the K files.
+    pre_reshape_chunks = [[1] * total, [H], [W]]
+
+    adapter = in_memory(readable_storage=[tmpdir])
+    await adapter.startup()
+    try:
+        await adapter.create_node(
+            key="ds",
+            structure_family="array",
+            metadata={},
+            data_sources=[
+                DataSource(
+                    structure_family="array",
+                    mimetype="application/x-hdf5",
+                    structure=asdict(struct),
+                    parameters={"dataset": "a/b"},
+                    properties={"chunks": pre_reshape_chunks},
+                    management="external",
+                    assets=[
+                        Asset(
+                            parameter="data_uris",
+                            num=i,
+                            data_uri=data_uri,
+                            is_directory=False,
+                        )
+                        for i, data_uri in enumerate(data_uris)
+                    ],
+                )
+            ],
+        )
+        x = await adapter.lookup_adapter(["ds"])
+
+        assert await x._get_lazy_adapter(slice=(slice(0, 2),)) is None
+        result = await x.read(slice=NDSlice((slice(0, 2),)))
+        numpy.testing.assert_array_equal(result, full[0:2])
+    finally:
+        await adapter.shutdown()
+
+
+@pytest.mark.parametrize("transform", [{"slice": ":,0,:"}, {"squeeze": True}])
+def test_file_indices_for_slice_declines_under_transform(transform):
+    """A `slice`/`squeeze` adapter parameter makes each file's served shape
+    differ from its raw contents, so the lazy read (which maps the served
+    structure's native chunks back onto the raw files) can not form the stack.
+    `file_indices_for_slice` must decline (return None) so the catalog skips the
+    lazy path -- even when the structure alone (one leading chunk per file) would
+    otherwise let the files be located from `chunks[0]`.
+    """
+    from tiled.adapters.hdf5 import HDF5ArrayAdapter
+
+    # One leading chunk per file: without a transform the files ARE locatable.
+    struct = ArrayStructure(
+        shape=(3, 2, 3),
+        chunks=((1, 1, 1), (2,), (3,)),
+        data_type=BuiltinDtype.from_numpy_dtype(numpy.dtype("uint8")),
+    )
+    sl = (slice(0, 2),)
+
+    # Baseline: no transform -> the lazy path can locate the touched files.
+    assert HDF5ArrayAdapter.file_indices_for_slice(struct, 3, sl) == (0, 1)
+    assert HDF5ArrayAdapter.file_indices_for_slice(struct, 3, sl, parameters={}) == (
+        0,
+        1,
+    )
+    # A slice/squeeze transform is present -> decline regardless of the layout.
+    assert (
+        HDF5ArrayAdapter.file_indices_for_slice(struct, 3, sl, parameters=transform)
+        is None
+    )
+
+
+@pytest.mark.asyncio
+async def test_lazy_hdf5_declines_under_slice_squeeze(tmpdir):
+    """A data source carrying a `slice`/`squeeze` parameter must not take the lazy
+    path even when its structure would otherwise locate files: the lazy read maps
+    the served structure's native chunks back onto the raw files, which breaks
+    once the transform makes the served per-file shape differ from the raw file.
+    The catalog threads the data source `parameters` to the adapter, which
+    declines, and the eager build still reads correctly.
+    """
+    from tiled.ndslice import NDSlice
+
+    h5py = pytest.importorskip("h5py")
+    # Uniform files, one leading chunk each: the structure alone locates files
+    # (len(chunks[0]) == n_files), so only the transform can hold back the lazy path.
+    K, M, N = 4, 2, 3
+    rng = numpy.random.default_rng(11)
+    files = [rng.integers(0, 255, size=(1, M, N), dtype="uint8") for _ in range(K)]
+    data_uris = []
+    for i, file_data in enumerate(files):
+        filepath = Path(tmpdir) / f"file{i:05}.h5"
+        with h5py.File(filepath, "w") as f:
+            f.create_dataset("a/b", data=file_data, chunks=(1, M, N))
+        data_uris.append(ensure_uri(str(filepath)))
+
+    full = numpy.concatenate(files, axis=0)  # (K, M, N)
+    struct = ArrayStructure(
+        shape=(K, M, N),
+        chunks=((1,) * K, (M,), (N,)),
+        data_type=BuiltinDtype.from_numpy_dtype(numpy.dtype("uint8")),
+    )
+
+    async def _make_node(adapter, key, parameters):
+        await adapter.create_node(
+            key=key,
+            structure_family="array",
+            metadata={},
+            data_sources=[
+                DataSource(
+                    structure_family="array",
+                    mimetype="application/x-hdf5",
+                    structure=asdict(struct),
+                    parameters=parameters,
+                    properties={"chunks": [[M] * K, [M], [N]]},
+                    management="external",
+                    assets=[
+                        Asset(
+                            parameter="data_uris",
+                            num=i,
+                            data_uri=data_uri,
+                            is_directory=False,
+                        )
+                        for i, data_uri in enumerate(data_uris)
+                    ],
+                )
+            ],
+        )
+
+    adapter = in_memory(readable_storage=[tmpdir])
+    await adapter.startup()
+    try:
+        # Control: no transform -> the structure lets the lazy path engage.
+        await _make_node(adapter, "plain", {"dataset": "a/b"})
+        ctrl = await adapter.lookup_adapter(["plain"])
+        assert await ctrl._get_lazy_adapter(slice=(slice(0, 2),)) is not None
+
+        # A squeeze parameter (a no-op on this non-singleton array) is enough to
+        # hold back the lazy path; the eager read still returns the whole array.
+        await _make_node(adapter, "squeezed", {"dataset": "a/b", "squeeze": True})
+        x = await adapter.lookup_adapter(["squeezed"])
+        assert await x._get_lazy_adapter(slice=(slice(0, 2),)) is None
+        result = await x.read(slice=NDSlice((slice(0, 2),)))
+        numpy.testing.assert_array_equal(result, full[0:2])
+    finally:
+        await adapter.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_lazy_hdf5_ignores_secondary_numbered_parameter(tmpdir):
+    """A data source may carry a second numbered asset parameter alongside
+    `data_uris` (e.g. a per-frame mask series). Only the `data_uris` assets
+    describe the stacking axis, so the lazy path must filter on
+    `parameter == "data_uris"` when counting files and fetching URIs. Without
+    that filter the extra rows can pass the contiguity check (count and
+    max-min-num line up) and either inflate the file count or leak wrong URIs
+    into stacking-rank slots.
+    """
+    from tiled.ndslice import NDSlice
+
+    h5py = pytest.importorskip("h5py")
+    # Uniform files, one leading chunk each: structure alone locates files.
+    K, M, N = 3, 2, 3
+    rng = numpy.random.default_rng(13)
+    files = [rng.integers(0, 255, size=(1, M, N), dtype="uint8") for _ in range(K)]
+    data_uris = []
+    for i, file_data in enumerate(files):
+        filepath = Path(tmpdir) / f"file{i:05}.h5"
+        with h5py.File(filepath, "w") as f:
+            f.create_dataset("a/b", data=file_data, chunks=(1, M, N))
+        data_uris.append(ensure_uri(str(filepath)))
+
+    # A parallel numbered parameter (`masks`) whose `num`s continue the run
+    # from `data_uris` (0..K-1 then K..2K-1). Without a `parameter` filter the
+    # count is 2K and `max - min == 2K - 1 == count - 1`, so the contiguity
+    # precheck passes and the lazy build proceeds with wrong metadata.
+    mask_uris = []
+    for i in range(K):
+        filepath = Path(tmpdir) / f"mask{i:05}.h5"
+        with h5py.File(filepath, "w") as f:
+            f.create_dataset("mask", data=numpy.zeros((1,), dtype="uint8"))
+        mask_uris.append(ensure_uri(str(filepath)))
+
+    full = numpy.concatenate(files, axis=0)  # (K, M, N)
+    struct = ArrayStructure(
+        shape=(K, M, N),
+        chunks=((1,) * K, (M,), (N,)),
+        data_type=BuiltinDtype.from_numpy_dtype(numpy.dtype("uint8")),
+    )
+
+    adapter = in_memory(readable_storage=[tmpdir])
+    await adapter.startup()
+    try:
+        await adapter.create_node(
+            key="ds",
+            structure_family="array",
+            metadata={},
+            data_sources=[
+                DataSource(
+                    structure_family="array",
+                    mimetype="application/x-hdf5",
+                    structure=asdict(struct),
+                    parameters={"dataset": "a/b"},
+                    properties={"chunks": [[1] * K, [M], [N]]},
+                    management="external",
+                    assets=(
+                        [
+                            Asset(
+                                parameter="data_uris",
+                                num=i,
+                                data_uri=data_uri,
+                                is_directory=False,
+                            )
+                            for i, data_uri in enumerate(data_uris)
+                        ]
+                        + [
+                            Asset(
+                                parameter="masks",
+                                num=K + i,
+                                data_uri=mask_uri,
+                                is_directory=False,
+                            )
+                            for i, mask_uri in enumerate(mask_uris)
+                        ]
+                    ),
+                )
+            ],
+        )
+        x = await adapter.lookup_adapter(["ds"])
+
+        # The lazy path counts only `data_uris` (n == K), so the URI list has
+        # length K and holds only the touched files; a full read returns the
+        # correct stack without the extra `masks` URIs leaking in.
+        lazy = await x._get_lazy_adapter(slice=(slice(0, 2),))
+        assert lazy is not None
+        result = await x.read(slice=NDSlice((slice(0, 2),)))
+        numpy.testing.assert_array_equal(result, full[0:2])
+        full_result = await x.read()
+        numpy.testing.assert_array_equal(full_result, full)
+    finally:
+        await adapter.shutdown()
+
+
 @pytest.mark.asyncio
 async def test_write_table_external_direct(a, tmpdir):
     df = pandas.DataFrame(numpy.ones((5, 3)), columns=list("abc"))
