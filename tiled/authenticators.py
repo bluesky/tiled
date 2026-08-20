@@ -281,8 +281,8 @@ properties:
     type: object
     description: |
       Optional mapping from identity-provider scopes to the list of Tiled
-      scopes they grant. When `scopes` is not provided, the effective scopes
-      are derived from the values of this mapping.
+      scopes they grant. The effective `scopes` are the union of any
+      explicitly-configured `scopes` and all Tiled scopes from this mapping.
   device_flow_client_id:
     type: string
   confirmation_message:
