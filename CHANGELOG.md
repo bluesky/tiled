@@ -5,6 +5,19 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## Unreleased
 
+### Added
+
+- The CSV adapters (`CSVAdapter` and `CSVArrayAdapter`) now surface a metadata
+  preamble read from the file when constructed via `from_uris`. Leading comment
+  (`comment`) or skipped (integer `skiprows`) lines are stored verbatim under a
+  `"header"` key, and any `key: value` lines are parsed into top-level metadata.
+
+### Changed
+
+- `HDF5ArrayAdapter.from_catalog` now uses the catalog metadata verbatim and no
+  longer re-reads the file's HDF5 attributes; file attributes are surfaced via
+  `from_uris` and copied into the catalog when the asset is registered.
+
 ### Fixed
 
 - Fix precedence of scope check for `ProxiedOIDCAuthenticator`.
