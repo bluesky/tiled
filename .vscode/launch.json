@@ -15,8 +15,7 @@
         ],
         "env": {
           // Point this at any of your YAML configs or a config directory
-          "TILED_CONFIG":
-"${workspaceFolder}/example_configs/single_catalog_single_user.yml",
+          "TILED_CONFIG": "${workspaceFolder}/example_configs/single_catalog_single_user.yml",
           "TILED_SINGLE_USER_API_KEY": "secret",
         },
         "console": "integratedTerminal",
@@ -34,7 +33,7 @@
           "config","${input:config_path}",
           "--host", "127.0.0.1",
           "--port", "8000",
-          "--scalable"
+
         ],
         "env": {
           "TILED_SINGLE_USER_API_KEY": "secret",

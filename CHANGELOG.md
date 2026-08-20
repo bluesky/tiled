@@ -155,6 +155,148 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Added
 
+- Support clustered Redis for high availability.
+- Add client_secret,redirect_on_success,redirect_on_failure to
+  ProxiedOIDCAuthenticator. This is to allow login using Tiled-UI
+- Allow configuration of user_id_claim for OIDCAuthenticator
+- Lazy asset resolution for array datasets backed by many files: reading a
+  slice or block now resolves only the assets (files) the read touches,
+  computed purely from the structure geometry, instead of materializing every
+  asset row to build the adapter. (#1463)
+- Parallel, memory-bounded reads for many-file sequence datasets: files are
+  read concurrently and reduced per file before stacking, so peak memory stays
+  bounded regardless of how many files a slice spans. Tunable via the
+  `TILED_SEQUENCE_IO_WORKERS` and `TILED_SEQUENCE_READ_BATCH_BYTES` environment
+  variables. (#1463)
+- Add a new feature that stores a graph of links into the catalog database. Adds strawberry
+  as a dependency. Import/search/export of graph links is accomplished through graphql.
+
+### Changed
+
+- Server-side `CatalogNodeAdapter.data_sources` is now an async method taking
+  `include_assets` (default `False`) so common metadata and structure paths no
+  longer load asset rows; callers that need assets must
+  `await data_sources(include_assets=True)`. (#1463)
+
+### Fixed
+
+- Fix the `raw_export` download progress bar, which showed a wrong total (e.g.
+  `1,257,333,024/100 bytes`) and did not advance during the transfer. The bar
+  now seeds each task's total from the known asset size, and raw-asset downloads
+  no longer negotiate `blosc2` (whose client decoder buffers the whole response
+  in memory and emits it only at the end, freezing the bar and spiking memory).
+  Downloads instead stream via `zstd`/`gzip`; pass `compression=False` to
+  `raw_export` to download uncompressed (`Accept-Encoding: identity`).
+- Fix truncation of `blosc2`-encoded downloads at exactly 65536 bytes. Streaming
+  responses (e.g. `raw_export` of a `bytes` node via `/asset/bytes`) are emitted
+  in 64 KiB chunks, and the server compresses each chunk into an independent
+  blosc2 frame. The client `Blosc2Decoder` decoded only the first frame; it now
+  walks every concatenated frame and reassembles the full payload.
+- Fix the webhook `history` and `delete` endpoints when a catalog is mounted under
+  a sub-path (the `trees:` config form).
+- Skip the `array-ref` streaming-cache update in `put_data_source` when the
+  data source is not an array.
+- Tolerate unknown fields on the client side when decoding server JSON into
+  `Asset`, `DataSource`, `Spec`, and structure dataclasses (`AwkwardStructure`,
+  `TableStructure`, `ContainerStructure`). Unknown keys are dropped and logged
+  at DEBUG so a client can talk to a newer server without crashing on
+  fields it does not recognize.
+- Widen `assets.size` from `INTEGER` (int32) to `BIGINT` (int64) so the
+  server can register single files larger than ~2.1 GB without an
+  `int32 out of range` error from PostgreSQL. Includes an alembic
+  migration; SQLite is unaffected (its `INTEGER` affinity already stores
+  64-bit values).
+- Ensure required scopes are present for actions when using ProxiedOIDCAuthenticator.
+- Restore layer-cache reuse when building the container image, which
+  previously rebuilt almost from scratch on every commit.
+- Fixed typo in the loggging from authenticators
+
+## v0.2.14 (2026-07-08)
+
+### Fixed
+
+- Including a check for authentication links when running whoami to allow for a
+  graceful message when authentication links are not present.
+- Strengthen the server-side backcompatibility. Strip the newly added `Asset.size` field
+  from metadata responses when the request comes from a `python-tiled` client older than
+  v0.2.13, whose `Asset` dataclass has no `size` field and would otherwise crash
+  in `DataSource.from_json` with an unexpected keyword argument.
+
+
+## v0.2.13 (2026-07-07)
+
+### Fixed
+
+- Expand the functionality of HDF5Adapter to handle `object`-dtyped data:
+  variable-length strings are coerced to fixed-length bytes, non-string object
+  dtypes (e.g. vlen arrays) fall back to an empty placeholder that preserves
+  the original shape.
+
+
+## v0.2.12 (2026-06-16)
+
+### Added
+
+- Rich progress bar shown during multi-chunk array, dataframe, and dataset
+  fetches. The bar is transient and only appears in interactive sessions
+  (REPL, IPython, Jupyter). It can be disabled per-context or globally.
+  Jupyter notebooks use Rich's HTML display path to avoid duplicate lines.
+- Animated retry spinner shown on stderr whenever a stamina retry is scheduled
+  for any tiled client request (connection failures, 5xx errors, 429 rate limits).
+  The spinner is animated in Jupyter notebooks as well as TTY terminals.
+- Respect the `Retry-After` header on HTTP 429 (Too Many Requests) responses.
+- Support for interacting with irregular-shaped numeric arrays via
+  [`ragged`](https://github.com/scikit-hep/ragged).
+- Surface `Asset.size` (the byte length of each underlying file) on the
+  `Asset` API model. `tiled register` populates it via `os.stat()` for
+  non-directory `file://` assets walked from the local filesystem. For
+  assets in object storage, callers can compute size via the new
+  `tiled.storage.size_from_uri` helper, which dispatches to `os.stat()` for
+  `file://` URIs and `obstore.head()` for `s3://`/`az://`/`gs://`. The
+  corresponding ORM column has existed since the catalog schema was
+  created but was previously never written or read.
+- New `bytes` structure family for cataloging opaque byte payloads that lack a
+  useful logical structure (PDFs, firmware blobs, proprietary binary formats, etc.).
+- `BaseClient.raw_export()` accepts a `MutableMapping` (e.g. a `dict`) as its
+  destination, streaming each asset into an in-memory `io.BytesIO` keyed by
+  the on-disk-equivalent layout (`<filename>` for a single asset;
+  `<asset_id>/<filename>` for multi-asset nodes). No filesystem I/O is performed in this mode.
+- Fail fast instead of retrying on deterministic client request errors that a
+  retry cannot fix: an unsupported URL scheme and an invalid request such as an
+  illegal header value.
+
+### Fixed
+
+- The metadata revisions endpoint now reports the total revision count, so
+  all revisions can be paged through via the API.
+- Fixed authentication check in from_context to prevent the user from being re-prompted to login.
+
+### Fixed
+
+- Ensuring that the metadata parameter value entered when calling update_metadata is of the proper type (will serialize as a JSON object) before altering the metadata.
+
+
+## v0.2.11 (2026-05-27)
+
+### Added
+
+- Utility methods for fetching chunked arrays for a given slice.
+- Added `max_connections` parameter to `Context` (and `Context.from_app`) to
+  cap the number of simultaneous outgoing HTTP connections and concurrent
+  data-fetch requests (array chunks, dataframe partitions) issued by dask
+  workers. The default is 16. This prevents spike loads on the server when
+  computing large dask arrays or dataframes. The limit is enforced by both an
+  `httpx.Limits` connection pool on the HTTP client and a `threading.Semaphore`
+  acquired inside `_get_slice`, `_get_block`, and `_get_partition`.
+- Deterministic row ordering in SQL-based adapters when `order_by_args` is
+  specified in the data source parameters; the `primary_key` parameter allows
+  to enforce the uniqueness of rows in the table.
+
+
+## v0.2.10 (2026-05-22)
+
+### Added
+
 - Cursor-based pagination for catalog containers on the default sort order.
   The server now uses the node `id` as an opaque cursor, eliminating the
   duplicate-and-skip problem that offset pagination suffers when items are
