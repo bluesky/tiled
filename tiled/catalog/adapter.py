@@ -748,10 +748,12 @@ class CatalogNodeAdapter:
             n, min_num, max_num = (await db.execute(count_stmt)).one()
             offset = min_num or 0  # `num`s run [offset, offset + n - 1]
 
-            if not n or max_num - min_num != n - 1:
-                return None
+            # A single backing file -- fall back to the full adapter.
             if n < 2:
-                # A single backing file -- fall back to the full adapter.
+                return None
+
+            # The asset nums are not a contiguous run -- fall back to the full adapter.
+            if not n or max_num - min_num != n - 1:
                 return None
 
             # Determine which files / assets this read needs purely from geometry.
@@ -797,7 +799,7 @@ class CatalogNodeAdapter:
         # One entry point for both eager and lazy: pass the partially-populated
         # URI list as the `data_uris` kwarg. `from_catalog` derives metadata/specs.
         return adapter_cls.from_catalog(
-            data_source, self.node, data_uris=data_uris, **data_source.parameters
+            data_source, self.node, **{**data_source.parameters, "data_uris": data_uris}
         )
 
     def new_variation(
