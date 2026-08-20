@@ -17,6 +17,8 @@ Write the date in place of the "Unreleased" in the case a new version is release
 ### Fixed
 
 - Fix precedence of scope check for `ProxiedOIDCAuthenticator`.
+- If refreshing access tokens yields `400 Bad Request`, clear the cached tokens
+  and prompt for login.
 
 ## v0.2.15 (2026-08-11)
 
