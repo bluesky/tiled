@@ -1195,3 +1195,26 @@ class TestBuildUrlValidator:
                     )
                 )
         assert exc_info.value.status_code == 400
+
+# -----------------------------------------------------------------------------
+# Unit tests: _build_url_validator with blocked_networks / allow_delivery_hosts
+# -----------------------------------------------------------------------------
+class TestBuildUrlValidator:
+
+    def test_check_blocked_network(self) -> None:
+        """A non-network must throw an exception."""
+        with pytest.raises(HTTPException) as exc_info:
+            _build_url_validator(
+                WebhooksConfig(
+                    blocked_networks=["10.256.0.0/24"],
+                )
+            )
+
+    def test_allow_delivery_hosts(self) -> None:
+        """Delivery host must be a hostname."""
+        with pytest.raises(HTTPException) as exc_info:
+            _build_url_validator(
+                WebhooksConfig(
+                    allow_delivery_hosts=["10.65.128.128"],
+                )
+            )
