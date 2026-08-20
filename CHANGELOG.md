@@ -5,6 +5,15 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## Unreleased
 
+### Changed
+
+- `ProxiedOIDCAuthenticator` now accepts a `scopes_map` parameter (previously
+  available only on `EntraAuthenticator`) and translates identity-provider
+  scopes into Tiled scopes when decoding tokens. Its effective `scopes` are the
+  union of any explicitly-configured `scopes` and the Tiled scopes granted via
+  `scopes_map`. When `scopes_map` is omitted, behavior is unchanged (the token's
+  native scopes are used).
+
 ### Fixed
 
 - Fix precedence of scope check for `ProxiedOIDCAuthenticator`.
