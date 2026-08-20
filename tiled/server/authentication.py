@@ -392,10 +392,10 @@ def _extract_scopes(
     string under "scope".  Handle both.
     """
     if "scope" in decoded_access_token:
-        return set(decoded_access_token["scope"].split(" "))
+        return set(decoded_access_token["scope"].split())
     if "scp" in decoded_access_token:
         scp = decoded_access_token["scp"]
-        return set(scp) if isinstance(scp, list) else set(scp.split(" "))
+        return set(scp) if isinstance(scp, list) else set(scp.split())
     return set()
 
 

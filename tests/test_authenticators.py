@@ -22,7 +22,7 @@ from tiled.authenticators import (
     OIDCAuthenticator,
     ProxiedOIDCAuthenticator,
 )
-from tiled.server.authentication import check_scopes
+from tiled.server.authentication import _extract_scopes, check_scopes
 from tiled.server.settings import Settings
 
 # Set this if there is an LDAP container running for testing.
@@ -381,14 +381,14 @@ def test_ProxiedOIDCAuthenticator_scopes_explicit(mock_oidc_server, well_known_u
 
 
 def test_ProxiedOIDCAuthenticator_scopes_union(mock_oidc_server, well_known_url):
-    # When both are provided, scopes is the union of explicit scopes and the
-    # Tiled scopes granted via scopes_map.
+    # When both are provided, scopes is the (sorted) union of explicit scopes
+    # and the Tiled scopes granted via scopes_map.
     authenticator = ProxiedOIDCAuthenticator(
         "tiled", "tiled", well_known_url, device_flow_client_id="tiled-cli",
         scopes=["read:data"],
         scopes_map={"provider.write": ["write:data"]},
     )
-    assert set(authenticator.scopes) == {"read:data", "write:data"}
+    assert authenticator.scopes == ["read:data", "write:data"]
 
 
 def test_ProxiedOIDCAuthenticator_scopes_derived_from_scopes_map(mock_oidc_server, well_known_url):
@@ -450,3 +450,31 @@ def test_ProxiedOIDCAuthenticator_decode_token_no_map_leaves_scopes():
         assert claims["scp"] == ["read:data"]
     finally:
         OIDCAuthenticator.decode_token = original
+
+
+def test_ProxiedOIDCAuthenticator_decode_token_all_unmapped_empty_scope():
+    # When scopes_map is configured but nothing maps, "scope" is set to an empty
+    # string (not left unset) so downstream extraction does not fall back to the
+    # raw, unmapped provider "scp" claim.
+    def mock_decode_token(self, id_token, access_token=None):
+        return {"sub": "abc", "scp": "provider.unknown"}
+
+    original = OIDCAuthenticator.decode_token
+    OIDCAuthenticator.decode_token = mock_decode_token
+    try:
+        authenticator = object.__new__(ProxiedOIDCAuthenticator)
+        authenticator._scopes_map = {"provider.read": ["read:metadata"]}
+        claims = authenticator.decode_token("id-token", "access-token")
+        assert claims["scope"] == ""
+    finally:
+        OIDCAuthenticator.decode_token = original
+
+
+def test_extract_scopes_empty_scope_is_empty_set():
+    # An empty "scope" string must yield an empty set, not {""}.
+    assert _extract_scopes({"scope": ""}, None) == set()
+    assert _extract_scopes(
+        {"scope": "read:data write:data"}, None
+    ) == {"read:data", "write:data"}
+    # "scope" (even empty) takes precedence over "scp" and is not overridden.
+    assert _extract_scopes({"scope": "", "scp": "read:data"}, None) == set()

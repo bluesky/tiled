@@ -332,7 +332,7 @@ properties:
         combined: set[str] = set(self._scopes or [])
         for tiled_scopes in self._scopes_map.values():
             combined.update(tiled_scopes)
-        return list(combined)
+        return sorted(combined)
 
     def decode_token(
         self, id_token: str, access_token: Optional[str] = None
@@ -349,9 +349,7 @@ properties:
         scp_raw = claims.get("scp", "")
         tiled_scope_set: set[str] = set()
         if scp_raw:
-            provider_scopes = (
-                scp_raw.split(" ") if isinstance(scp_raw, str) else scp_raw
-            )
+            provider_scopes = scp_raw.split() if isinstance(scp_raw, str) else scp_raw
             for scope in provider_scopes:
                 mapped_scopes = self._scopes_map.get(scope)
                 if mapped_scopes is None:
@@ -362,7 +360,9 @@ properties:
             # No scp claim — grant all Tiled scopes from the map.
             for mapped_scopes in self._scopes_map.values():
                 tiled_scope_set.update(mapped_scopes)
-        claims["scope"] = " ".join(tiled_scope_set)
+        # Always set "scope" (even if empty) so downstream scope extraction does
+        # not fall back to the raw, unmapped provider "scp" claim.
+        claims["scope"] = " ".join(sorted(tiled_scope_set))
         return claims
 
 
