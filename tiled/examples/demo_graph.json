@@ -64,7 +64,7 @@
       "name": "integrated",
       "properties": {
         "@type": "Dataset",
-        "schema:name": "Azimuthally integrated 1D profile",
+        "schema:name": "Frame-integrated detector image",
         "schema:encodingFormat": "application/x-zarr"
       }
     },
@@ -75,7 +75,7 @@
       "name": "summary",
       "properties": {
         "@type": "Dataset",
-        "schema:name": "Tabular summary of the integrated profile"
+        "schema:name": "Per-frame tabular summary"
       }
     },
     {
@@ -118,7 +118,7 @@
       "name": "analysis_workflow",
       "properties": {
         "@type": "ComputationalWorkflow",
-        "schema:name": "Reduce a measured detector image stack to a 1D profile"
+        "schema:name": "Reduce a measured detector image stack to an integrated image"
       }
     },
     {

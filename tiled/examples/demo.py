@@ -308,43 +308,45 @@ def _write_provenance_datasets(client) -> None:
         },
     )
 
-    # Average over frames and rows to get a 1D profile along the column axis.
-    integrated = normalized.mean(axis=(0, 1))
+    # Average over frames to get a per-pixel integrated image.
+    integrated = normalized.mean(axis=0)
     linked.write_array(
         integrated,
         key="integrated",
         metadata={
             "dataset_kind": "derived",
-            "operation": "azimuthal integration",
+            "operation": "frame integration",
             "derived_from": "normalized",
             "tiled_uid": "c54e4c14-7f3e-499d-84f6-a4f34fed67d6",
         },
     )
 
-    # A tabular summary of the profile, also derived from `normalized`.
-    region = numpy.where(
-        columns < n_cols // 3,
-        "low",
-        numpy.where(columns < 2 * n_cols // 3, "mid", "high"),
+    # A per-frame summary table, also derived from `normalized`.
+    frames = numpy.arange(n_frames)
+    frame_intensity = normalized.mean(axis=(1, 2))
+    phase = numpy.where(
+        frames < n_frames / 3,
+        "early",
+        numpy.where(frames < 2 * n_frames / 3, "middle", "late"),
     )
-    threshold = integrated.mean() + integrated.std()
+    threshold = frame_intensity.mean()
     summary = pandas.DataFrame(
         {
-            "intensity": integrated,
-            "cumulative_intensity": numpy.cumsum(integrated),
-            "sqrt_intensity": numpy.sqrt(integrated),
-            "log_intensity": numpy.log1p(integrated),
-            "is_peak": integrated > threshold,
-            "region": region,
+            "intensity": frame_intensity,
+            "cumulative_intensity": numpy.cumsum(frame_intensity),
+            "sqrt_intensity": numpy.sqrt(frame_intensity),
+            "log_intensity": numpy.log1p(frame_intensity),
+            "is_peak": frame_intensity > threshold,
+            "phase": phase,
         },
-        index=pandas.Index(columns, name="position"),
+        index=pandas.Index(frames, name="frame"),
     )
     linked.write_dataframe(
         summary,
         key="summary",
         metadata={
             "dataset_kind": "derived",
-            "operation": "profile summary table",
+            "operation": "per-frame summary table",
             "derived_from": "normalized",
             "columns": list(summary.columns),
             "tiled_uid": "9d4e2a17-6c3b-4f8e-a1d2-7b5c9e0f3a62",
