@@ -2678,6 +2678,11 @@ def get_router(
         authn_scopes: Scopes = Depends(get_current_scopes),
         _=Security(check_scopes, scopes=["read:data"]),
     ):
+        if not settings.expose_raw_assets:
+            raise HTTPException(
+                status_code=HTTP_403_FORBIDDEN,
+                detail="This Tiled server does not allow downloading raw assets.",
+            )
         entry = await get_entry(
             path,
             ["read:data"],
@@ -2690,14 +2695,6 @@ def get_router(
             None,
             getattr(request.app.state, "access_policy", None),
         )  # TODO: Separate scope for assets?
-        if not settings.expose_raw_assets:
-            raise HTTPException(
-                status_code=HTTP_403_FORBIDDEN,
-                detail=(
-                    "This Tiled server is configured not to allow "
-                    "downloading raw assets."
-                ),
-            )
         if not hasattr(entry, "asset_by_id"):
             raise HTTPException(
                 status_code=HTTP_405_METHOD_NOT_ALLOWED,
