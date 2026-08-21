@@ -47,16 +47,16 @@ The resulting object is a zarr.Group, which represents the root of the Tiled cat
 /
  ├── flat_array (100,) float64
  ├── high_entropy (100, 100) int64
- ├── linked
+  ├── linked
  │   ├── background (200, 300) float64
- │   ├── integrated (300,) float64
+ │   ├── integrated (200, 300) float64
  │   ├── measured (3, 200, 300) float64
  │   ├── normalized (3, 200, 300) float64
  │   ├── subtracted (3, 200, 300) float64
  │   └── summary
- │       ├── intensity (300,) float64
+ │       ├── intensity (3,) float64
  │       ...
- │       └── region (300,) |S4
+ │       └── phase (3,) |S6
  ├── low_entropy (100, 100) int32
  ├── nested
  │   ├── cubes
