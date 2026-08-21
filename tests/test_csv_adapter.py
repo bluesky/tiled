@@ -6,7 +6,7 @@ import numpy
 import pandas
 import pytest
 
-from tiled.adapters.csv import CSVAdapter, CSVArrayAdapter
+from tiled.adapters.csv import CSVAdapter, CSVArrayAdapter, get_csv_metadata
 from tiled.catalog import in_memory
 from tiled.client import Context, from_context
 from tiled.server.app import build_app
@@ -14,7 +14,7 @@ from tiled.structures.array import ArrayStructure, Kind, StructDtype
 from tiled.structures.core import StructureFamily
 from tiled.structures.data_source import Asset, DataSource, Management
 from tiled.structures.table import TableStructure
-from tiled.utils import ensure_uri
+from tiled.utils import ensure_uri, path_from_uri
 
 rng = numpy.random.default_rng(12345)
 
@@ -68,6 +68,31 @@ def context(tree):
 def csv_table_uri(tmpdir):
     fpath = Path(tmpdir, "table.csv")
     df1.to_csv(fpath, index=False)
+
+    yield ensure_uri(fpath)
+
+
+@pytest.fixture
+def csv_table_with_preamble_uri(tmpdir):
+    # A CSV whose data is preceded by a comment-marked metadata preamble.
+    fpath = Path(tmpdir, "table_with_preamble.csv")
+    with open(fpath, "w") as file:
+        file.write("# instrument: beamline-X\n")
+        file.write("# source: file\n")
+        file.write("# operator: bob\n")
+        df1.to_csv(file, index=False)
+
+    yield ensure_uri(fpath)
+
+
+@pytest.fixture
+def csv_array_with_preamble_uri(tmpdir):
+    # A headerless array CSV preceded by a comment-marked metadata preamble.
+    fpath = Path(tmpdir, "array_with_preamble.csv")
+    with open(fpath, "w") as file:
+        file.write("# detector: pilatus\n")
+        file.write("# exposure: 0.5\n")
+        df_arr1.to_csv(file, index=False, header=False)
 
     yield ensure_uri(fpath)
 
@@ -317,3 +342,103 @@ def test_csv_arrays_from_uris_selected_columns(
         numpy.testing.assert_allclose(read_arr, orig_arr)
     else:
         numpy.testing.assert_array_equal(read_arr, orig_arr)
+
+
+PREAMBLE_LINES = [
+    "# instrument: beamline-X",
+    "# source: file",
+    "# operator: bob",
+]
+
+
+@pytest.mark.parametrize(
+    "kwargs, expected",
+    [
+        # A comment char strips the marker before parsing key: value pairs.
+        (
+            {"comment": "#"},
+            {
+                "instrument": "beamline-X",
+                "source": "file",
+                "operator": "bob",
+                "header": PREAMBLE_LINES,
+            },
+        ),
+        # An integer skiprows also delimits the preamble; without a comment char
+        # the "# " marker is retained on the parsed keys.
+        (
+            {"skiprows": 3},
+            {
+                "# instrument": "beamline-X",
+                "# source": "file",
+                "# operator": "bob",
+                "header": PREAMBLE_LINES,
+            },
+        ),
+    ],
+)
+def test_get_csv_metadata_extracts_preamble(
+    csv_table_with_preamble_uri, kwargs, expected
+):
+    metadata = get_csv_metadata(path_from_uri(csv_table_with_preamble_uri), **kwargs)
+    assert metadata == expected
+
+
+@pytest.mark.parametrize(
+    "uri_fixture, kwargs",
+    [
+        ("csv_table_uri", {"comment": "#"}),  # no preamble to find
+        ("csv_table_with_preamble_uri", {}),  # nothing drives the extraction
+    ],
+)
+def test_get_csv_metadata_returns_empty(request, uri_fixture, kwargs):
+    uri = request.getfixturevalue(uri_fixture)
+    assert get_csv_metadata(path_from_uri(uri), **kwargs) == {}
+
+
+@pytest.mark.parametrize(
+    "adapter_cls, uri_fixture, expected_metadata, expected_data",
+    [
+        (
+            CSVAdapter,
+            "csv_table_with_preamble_uri",
+            {"instrument": "beamline-X", "source": "file", "operator": "bob"},
+            df1,
+        ),
+        (
+            CSVArrayAdapter,
+            "csv_array_with_preamble_uri",
+            {"detector": "pilatus", "exposure": "0.5"},
+            arr1,
+        ),
+    ],
+)
+def test_from_uris_surfaces_file_metadata(
+    request, adapter_cls, uri_fixture, expected_metadata, expected_data
+):
+    # Both CSV adapters surface the file preamble as metadata via from_uris, and
+    # still read the data with the preamble skipped.
+    uri = request.getfixturevalue(uri_fixture)
+    adapter = adapter_cls.from_uris(uri, comment="#")
+    metadata = adapter.metadata()
+    assert expected_metadata.items() <= metadata.items()
+    assert "header" in metadata
+    read = adapter.read()
+    if isinstance(read, pandas.DataFrame):
+        assert (read == expected_data).all().all()
+    else:
+        assert numpy.isclose(read, expected_data).all()
+
+
+@pytest.mark.parametrize(
+    "adapter_cls, uri_fixture",
+    [
+        (CSVAdapter, "csv_table_uri"),
+        (CSVArrayAdapter, "csv_array1_uri"),
+    ],
+)
+def test_from_uris_without_preamble_has_no_file_metadata(
+    request, adapter_cls, uri_fixture
+):
+    uri = request.getfixturevalue(uri_fixture)
+    assert adapter_cls.from_uris(uri).metadata() == {}
