@@ -3,14 +3,9 @@ Built-in serializer for the XAS Data Interchange (XDI) format.
 
 Spec: https://github.com/XraySpectroscopy/XAS-Data-Interchange/blob/master/specification/spec.md
 
-This serializer is registered under the spec name "xdi" (resolved at dispatch time to
-StructureFamily.container) so it only activates for datasets explicitly tagged with
-Spec("xdi", ...).
-
-Because the XDI spec applies at the scan/container level (the spec tag lives on the
-container node, not on a child table), the serializer receives a container node and
-filter_for_access callable, walks the node to find the first table child, reads it,
-and writes the XDI file using the container's own metadata.
+This serializer is registered under StructureFamily.table so it is available to any
+table node. It is intended to be used with tables tagged with Spec("xdi", ...), which
+carry XDI-structured metadata, but will produce valid (if sparse) output for any table.
 
 The expected metadata structure mirrors that produced by tiled.examples.xdi.XDIAdapter:
 
@@ -33,13 +28,12 @@ import mimetypes
 
 from ..media_type_registration import default_serialization_registry
 from ..structures.core import StructureFamily
-from ..utils import ensure_awaitable
 
 # Register ".xdi" extension -> "application/x-xdi"
 mimetypes.types_map.setdefault(".xdi", "application/x-xdi")
 
 # XDI-defined namespaces (from the specification dictionary).
-# Used as a lookup table to validate / prioritise known fields when writing.
+# Used as a lookup table to prioritise known fields when writing.
 XDI_DEFINED_NAMESPACES = {
     "Facility": {"name", "energy", "current", "xray_source"},
     "Beamline": {"name", "collimation", "focusing", "harmonic_rejection"},
@@ -65,16 +59,24 @@ XDI_REQUIRED_FIELDS = {
 }
 
 
-def _write_xdi(df, metadata):
-    """Format a DataFrame and XDI metadata dict into XDI file bytes.
+@default_serialization_registry.register(StructureFamily.table, "application/x-xdi")
+def serialize_xdi(mimetype, df, metadata, preserve_index=False):
+    """Serialize a pandas DataFrame and its XDI metadata to XDI format.
 
     Parameters
     ----------
+    mimetype : str
+        The requested MIME type (accepted but not used).
     df : pandas.DataFrame
         The data table. The first column should be the energy/abscissa array.
     metadata : dict
-        Must contain "fields": dict of {namespace: {tag: value}}.
-        May optionally contain "xdi_version", "extra_version", "comments".
+        May contain:
+          - "fields": dict of {namespace: {tag: value}} XDI header fields
+          - "xdi_version": str  (defaults to "1.0")
+          - "extra_version": str  (e.g. "GSE/1.0")
+          - "comments": str  (free-form user comment text)
+    preserve_index : bool
+        Whether to include the DataFrame index in the output (default False).
 
     Returns
     -------
@@ -134,60 +136,6 @@ def _write_xdi(df, metadata):
     output.write("# " + " ".join(str(c) for c in columns) + "\n")
 
     # --- Data section (whitespace-delimited, no index, no header row) ---
-    df.to_csv(output, header=False, index=False, sep=" ")
+    df.to_csv(output, header=False, index=preserve_index, sep=" ")
 
     return output.getvalue().encode()
-
-
-@default_serialization_registry.register("xdi", "application/x-xdi")
-async def serialize_xdi(mimetype, node, metadata, filter_for_access):
-    """Serialize an XDI-tagged container node to XDI format.
-
-    The container node is walked to find the first table child, which is read
-    as a pandas DataFrame. The XDI header is built from the container's metadata.
-
-    Parameters
-    ----------
-    mimetype : str
-        The requested MIME type (accepted but not used).
-    node : container node
-        The scan container tagged with Spec("xdi", ...).
-    metadata : dict
-        The container's metadata dict (must contain XDI fields).
-    filter_for_access : callable
-        Async callable used to apply access-control filtering when walking the node.
-
-    Returns
-    -------
-    bytes
-        UTF-8 encoded XDI file content.
-    """
-    # Walk the container to find child nodes after access filtering.
-    filtered = await filter_for_access(node)
-
-    # Collect items — support both async items_range and sync items.
-    if hasattr(filtered, "items_range"):
-        items = await filtered.items_range()
-    else:
-        items = list(filtered.items())
-
-    if not items:
-        raise ValueError(
-            "Cannot serialize as XDI: the container node has no child nodes."
-        )
-
-    # Find the first table-structured child and read it as a DataFrame.
-    df = None
-    for _key, child in items:
-        if child.structure_family == StructureFamily.table:
-            df = await ensure_awaitable(child.read)
-            break
-
-    if df is None:
-        raise ValueError(
-            "Cannot serialize as XDI: no table-structured child found in this container. "
-            f"Available child structure families: "
-            f"{[child.structure_family for _, child in items]}"
-        )
-
-    return _write_xdi(df, metadata)
