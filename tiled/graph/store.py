@@ -486,8 +486,8 @@ class GraphSQLAlchemyStore:
     async def resolve_node_id(self, path: list[str]) -> Optional[int]:
         """
         Look up the internal catalog node id for a path of key segments,
-        e.g. ``["raw_dataset"]`` for a top-level entry or ``["a", "b"]``
-        for a nested one. Returns None if no such node exists.
+        e.g. ``["linked", "measured"]`` for a nested entry or ``["a", "b"]``
+        for another nested one. Returns None if no such node exists.
 
         The catalog's root node always has id 0 (see
         tiled.catalog.adapter.node_from_segments, which this mirrors).

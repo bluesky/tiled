@@ -614,15 +614,36 @@ def serve_demo(
         ),
     ),
     port: int = typer.Option(8000, help="Bind to a socket with this port."),
+    api_key: Optional[str] = typer.Option(
+        None,
+        "--api-key",
+        help=(
+            "Set the single-user API key used for writing data and mutating the "
+            "graph. The demo is public (anonymous read access), so this key is "
+            "only needed for writing. Defaults to a well-known demo key."
+        ),
+    ),
 ):
-    "Start a public server with example data."
+    "Start a public server with example data and an entity/link graph."
     from ..config import Authentication
+    from ..examples.demo import DEMO_API_KEY, build_demo_tree
     from ..server.app import build_app, print_server_info
-    from ..utils import import_object
 
-    EXAMPLE = "tiled.examples.generated:tree"
-    tree = import_object(EXAMPLE)
-    web_app = build_app(tree, Authentication(allow_anonymous_access=True), {})
+    api_key = api_key or DEMO_API_KEY
+    # Normalize wildcard bind addresses to a routable address for the URLs
+    # embedded in the demo (e.g. graph entity `uri` fields, printed links).
+    display_host = "127.0.0.1" if host in ("0.0.0.0", "::") else host
+    base_url = f"http://{display_host}:{port}"
+
+    tree = build_demo_tree(base_url=base_url, api_key=api_key)
+    web_app = build_app(
+        tree,
+        Authentication(
+            allow_anonymous_access=True,
+            single_user_api_key=api_key,
+        ),
+        {},
+    )
     print_server_info(web_app, host=host, port=port, include_api_key=True)
 
     import uvicorn

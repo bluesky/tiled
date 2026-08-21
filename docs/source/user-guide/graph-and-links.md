@@ -12,25 +12,27 @@ exploring it interactively in the browser.
 
 ## Enable the graph feature
 
-The graph is available automatically whenever a server is serving a
-catalog-backed tree (see {doc}`example-server-config`)---there is no separate
-configuration flag. A ready-to-run demo can be found in
-`example_configs/graphs/` in the Tiled source repository:
+The graph is available automatically whenever a server is backed by a SQL-based
+catalog tree (see {doc}`example-server-config`) -- there is no separate
+configuration flag. The built-in demo server is the easiest way to try it:
 
 ```
-bash example_configs/graphs/run_demo.sh
+tiled serve demo
 ```
 
-This starts a server, seeds a small catalog of datasets, creates a handful of
-graph entities and links between them (using [PROV](https://www.w3.org/TR/prov-o/)
-and [RO](https://w3id.org/ro/terms/) predicates), then leaves the server
-running.
+This starts a public server, populates a catalog of datasets (a `linked`
+container holding a `measured` image stack and a `background` frame, reduced
+into `subtracted`, `normalized`, and `integrated` datasets plus a tabular
+`summary`, alongside a broader showcase of data structures), and seeds a small
+provenance graph connecting them---using
+[PROV](https://www.w3.org/TR/prov-o/) and [RO](https://w3id.org/ro/terms/)
+predicates, and linking out to data on another Tiled server and to an
+encyclopedic reference for the sample---then leaves the server running.
 
 ```{note}
-The demo config (`example_configs/graphs/graph_example_config.yml`) disables
-anonymous access and uses the single-user API key `secret`. Every request,
-including from the GraphiQL editor below, needs an
-`Authorization: Apikey secret` header.
+The demo is public: anonymous access is read-only, so you can browse the graph
+without credentials. *Writing* data or mutating the graph requires the
+single-user API key (default `secret`), which is printed at startup.
 ```
 
 ## Open the GraphQL editor
@@ -47,10 +49,11 @@ in-browser editor for GraphQL. The same URL also accepts `POST` requests
 programmatically, from `curl` or any HTTP client (see "From the command
 line" below).
 
-Before running any query, add the API key. In GraphiQL there is a small tab
-row at the bottom of the query-editing pane, usually labeled **Variables** /
-**Headers** (sometimes collapsed behind a settings icon). Click **Headers**
-and enter:
+The read-only queries below run without credentials. To *create* or *modify*
+entities and links, send the API key as an `Authorization` header. In GraphiQL
+there is a small tab row at the bottom of the query-editing pane, usually
+labeled **Variables** / **Headers** (sometimes collapsed behind a settings
+icon). Click **Headers** and enter:
 
 ```json
 {
@@ -58,8 +61,9 @@ and enter:
 }
 ```
 
-Without this header, queries will not raise an error---they will simply return
-empty results, because Tiled's access checks fail closed.
+On a server that is *not* public, read queries also require this header;
+without it they will not raise an error---they will simply return empty
+results, because Tiled's access checks fail closed.
 
 ## Query entities and links
 
@@ -226,18 +230,18 @@ An entity can reference the data it describes in two independent ways:
 
 - **`nodePathParts`** --- the path of key segments to a node in *this* server's
   own catalog tree, for an entity that represents (or is closely tied to) a
-  dataset hosted right here. Pass it directly to `createEntity` (`["raw_dataset"]`
-  for a top-level entry, `["a", "b"]` for a nested one); the server resolves it to
-  the node's internal id, which is never exposed to clients. The read-only
-  `isNodeBound` field on an entity reports whether it is tied to a node, and the
-  query and mutation both raise an error if `nodePathParts` names no existing
-  node.
+  dataset hosted right here. Pass it directly to `createEntity`
+  (`["linked", "measured"]` for the measured dataset in the demo, `["a", "b"]`
+  for any nested entry); the server resolves it to the node's internal id, which
+  is never exposed to clients. The read-only `isNodeBound` field on an entity
+  reports whether it is tied to a node, and the query and mutation both raise an
+  error if `nodePathParts` names no existing node.
 
 - **`uri`** --- a free-form locator, stored and returned verbatim with no
   lookup or validation. Follow this convention when setting it:
   - If the entity points at data hosted by *this* server, set `uri` to the
     full Tiled URL alongside `nodePathParts` (e.g.
-    `http://host:port/api/v1/metadata/raw_dataset`), so the entity is
+    `http://host:port/api/v1/metadata/linked/measured`), so the entity is
     resolvable both internally (via the bound node) and as a plain link (via
     `uri`).
   - If it points at data hosted elsewhere (a dataset on a different Tiled
@@ -264,9 +268,9 @@ An entity can reference the data it describes in two independent ways:
   {
     "input": {
       "kind": "dataset",
-      "name": "raw_dataset",
-      "nodePathParts": ["raw_dataset"],
-      "uri": "http://127.0.0.1:8000/api/v1/metadata/raw_dataset",
+      "name": "measured",
+      "nodePathParts": ["linked", "measured"],
+      "uri": "http://127.0.0.1:8000/api/v1/metadata/linked/measured",
       "properties": { "schema:encodingFormat": "application/x-zarr" }
     }
   }
@@ -297,12 +301,23 @@ An entity can reference the data it describes in two independent ways:
 
   This entity is not node-bound (`isNodeBound` is false)---it isn't in this
   server's catalog---but it can still be linked into the graph like any other
-  entity, for example as the object of a `prov:wasDerivedFrom` link from a local
-  dataset, to record that the local data was derived from an experiment run
-  somewhere else.
+  entity. In the demo it is the object of a `prov:wasInformedBy` link from the
+  local `measured` dataset, recording that the measurement was calibrated
+  against an image that lives on a *different* Tiled deployment. This is how a
+  graph can span multiple Tiled servers: the entity is a lightweight,
+  `uri`-addressed stand-in for remote data, so provenance crosses deployment
+  boundaries without copying anything.
 
-  See the `dif_beam_hdf5_image` entity in `example_configs/graphs/input.json`
-  for a worked example.
+  The same pattern works for any stable external identifier, not just Tiled
+  URLs. The demo also includes a `lanthanum_hexaboride` entity whose `uri` is
+  a [Wikidata](https://www.wikidata.org/wiki/Q410318) IRI, linked from
+  `measured` with `schema:about` to tie the measurement to an open,
+  encyclopedic record of the sample material. Other good choices for such
+  references include a DOI, a [DBpedia](https://www.dbpedia.org/) resource, or
+  a domain database entry (e.g. a PDB or Crystallography Open Database id).
+
+  See the `dif_beam_hdf5_image` and `lanthanum_hexaboride` entities in
+  `tiled/examples/demo_graph.json` for worked examples.
 
 ## From the command line
 
@@ -315,7 +330,9 @@ curl -s http://127.0.0.1:8000/api/graphql \
   -d '{"query": "query { links { id predicate } entities { id name } }"}'
 ```
 
-See `example_configs/graphs/input.json` and
-`example_configs/graphs/create_links.py` for a complete, runnable example of
-creating entities and links through GraphQL, including registering
-namespaces and resolving human-readable entity names to their generated ids.
+The graph the demo builds is defined in `tiled/examples/demo_graph.json`, a
+single JSON-LD-style document listing the entities and links. The code that
+reads it and creates them through GraphQL---registering namespaces, resolving
+catalog node ids, and resolving human-readable entity names to their generated
+ids---lives in `tiled/examples/demo.py` (`seed_graph`). Edit `demo_graph.json`
+to add your own entities and links to the demo.
