@@ -14,6 +14,10 @@ Write the date in place of the "Unreleased" in the case a new version is release
   `scopes_map`. When `scopes_map` is omitted, behavior is unchanged (the token's
   native scopes are used).
 
+### Added
+
+- A script to remove the 'streams' node as part of the updating BlueskyRun catalogs.
+
 ### Fixed
 
 - Fix precedence of scope check for `ProxiedOIDCAuthenticator`.
