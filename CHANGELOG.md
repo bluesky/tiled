@@ -49,6 +49,9 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Fixed
 
+- Improve webhook handling to enable adding additional blocked networks and
+  allow specification of hostnames that are allowed to receive webhooks despite being
+  on a blocked network.
 - Fix the `raw_export` download progress bar, which showed a wrong total (e.g.
   `1,257,333,024/100 bytes`) and did not advance during the transfer. The bar
   now seeds each task's total from the known asset size, and raw-asset downloads

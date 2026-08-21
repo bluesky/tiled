@@ -14,6 +14,7 @@ Both scopes are granted to admin users only.
 """
 
 import asyncio
+import ipaddress
 import logging
 from typing import Callable, Coroutine, Optional
 
@@ -77,6 +78,21 @@ def _build_url_validator(config: WebhooksConfig) -> UrlValidator:
         logger.warning(
             "Webhook SSRF protection is disabled (allow_private_addresses=True)."
         )
+    for hostname in config.allow_delivery_hosts:
+        try:
+            ipaddress.ip_address(hostname)
+        except ValueError:
+            pass  # hostname is not an IP literal — this is expected
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail=f"allow_delivery_hosts entry {hostname!r} must be a hostname, not an IP address.",
+            )
+    for network in config.blocked_networks:
+        try:
+            ipaddress.ip_network(network)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     async def _url_validator(
         body: WebhookRegistrationRequest,
@@ -88,7 +104,12 @@ def _build_url_validator(config: WebhooksConfig) -> UrlValidator:
                 raise HTTPException(status_code=422, detail=str(exc)) from exc
         if not config.allow_private_addresses:
             try:
-                await asyncio.to_thread(check_url_ssrf_safety, str(body.url))
+                await asyncio.to_thread(
+                    check_url_ssrf_safety,
+                    str(body.url),
+                    config.blocked_networks,
+                    config.allow_delivery_hosts,
+                )
             except ValueError as exc:
                 logger.info("Webhook registration blocked by SSRF check: %s", exc)
                 raise HTTPException(
