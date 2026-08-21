@@ -14,6 +14,11 @@ Write the date in place of the "Unreleased" in the case a new version is release
   `scopes_map`. When `scopes_map` is omitted, behavior is unchanged (the token's
   native scopes are used).
 
+### Added
+
+- Configured recycle and added explicit pre-ping option (disabled by default) for
+  storage databases.
+
 ### Fixed
 
 - Fix precedence of scope check for `ProxiedOIDCAuthenticator`.
