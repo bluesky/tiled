@@ -854,6 +854,35 @@ async def test_delete_sql_assets(sql_storage_uri):
     storage.dispose()
 
 
+@pytest.mark.asyncio
+async def test_delete_internal_sql_asset(sql_storage_uri):
+    "Deleting an internally-managed SQL-backed asset drops its dataset/table."
+    tree = in_memory(writable_storage={"sql": sql_storage_uri})
+    storage = cast(SQLStorage, get_storage(parse_storage(sql_storage_uri).uri))
+    table = pyarrow.Table.from_pydict({"a": [1, 2, 3], "b": [4.0, 5.0, 6.0]})
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        t = client.create_appendable_table(schema=table.schema, key="t")
+        t.append_partition(0, table)
+        table_name = t.data_sources()[0].parameters["table_name"]
+        asset_id = t.include_data_sources().data_sources()[0].assets[0].id
+
+        node = await tree.lookup_adapter(["t"])
+        # SQL storage is internally managed; external_only=True refuses.
+        with pytest.raises(WouldDeleteData):
+            await node.delete_asset(asset_id, external_only=True)
+
+        # Opting in: this is the only dataset in the storage DB, so the Asset
+        # record is removed and the dataset rows / table are dropped.
+        result = await node.delete_asset(asset_id, external_only=False)
+        assert result == {"asset_deleted": True, "data_deleted": True}
+        assets_after = (await tree.context.execute("SELECT * from assets")).all()
+        assert len(assets_after) == 0
+        with closing(storage.connect()) as conn:
+            assert not sql_table_exists(conn, storage.dialect, table_name)
+    storage.dispose()
+
+
 # ---------------------------------------------------------------------------
 # Hypothesis: pagination completeness
 # ---------------------------------------------------------------------------
@@ -1041,6 +1070,55 @@ async def test_delete_external_asset_registered_twice(tmpdir):
             await tree.context.execute("SELECT * from assets")
         ).all()
         assert len(assets_after_second_delete) == 0
+
+
+@pytest.mark.asyncio
+async def test_delete_shared_external_asset(tmpdir):
+    """Deleting a shared external asset from one node dissociates it there but
+    retains the Asset record (and file) while other nodes still reference it."""
+    tree = in_memory(readable_storage=[str(tmpdir)])
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+
+        with open(tmpdir / "shared.csv", "w") as file:
+            file.write("a,b,c\n1,2,3\n4,5,6\n")
+
+        a = client.create_container("a")
+        b1 = a.create_container("b1")
+        b2 = a.create_container("b2")
+        await register(b1, tmpdir / "shared.csv")
+        await register(b2, tmpdir / "shared.csv")
+
+        assets_before = (await tree.context.execute("SELECT * from assets")).all()
+        assert len(assets_before) == 1  # single shared asset
+
+        # Find the asset id as seen from b1's leaf node.
+        b1_node = await tree.lookup_adapter(["a", "b1", "shared"])
+        (b1_ds,) = await b1_node.data_sources(include_assets=True)
+        asset_id = b1_ds.assets[0].id
+
+        # External assets are not internally managed, so external_only=True is
+        # permitted. Because the asset is still referenced by b2, only the
+        # association is removed.
+        result = await b1_node.delete_asset(asset_id, external_only=True)
+        assert result == {"asset_deleted": False, "data_deleted": False}
+
+        # The Asset record and the file remain; b2 can still read it.
+        assets_after_first = (await tree.context.execute("SELECT * from assets")).all()
+        assert len(assets_after_first) == 1
+        assert (tmpdir / "shared.csv").exists()
+        client["a"]["b2"]["shared"].read()
+        # b1 no longer has the asset.
+        assert await b1_node.asset_by_id(asset_id) is None
+
+        # Deleting from the last referencing node removes the Asset record, but
+        # (being external) leaves the file on disk.
+        b2_node = await tree.lookup_adapter(["a", "b2", "shared"])
+        result = await b2_node.delete_asset(asset_id, external_only=True)
+        assert result == {"asset_deleted": True, "data_deleted": False}
+        assets_after_second = (await tree.context.execute("SELECT * from assets")).all()
+        assert len(assets_after_second) == 0
+        assert (tmpdir / "shared.csv").exists()
 
 
 @pytest.mark.parametrize(

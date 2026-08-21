@@ -2678,6 +2678,11 @@ def get_router(
         authn_scopes: Scopes = Depends(get_current_scopes),
         _=Security(check_scopes, scopes=["read:data"]),
     ):
+        if not settings.expose_raw_assets:
+            raise HTTPException(
+                status_code=HTTP_403_FORBIDDEN,
+                detail="This Tiled server does not allow downloading raw assets.",
+            )
         entry = await get_entry(
             path,
             ["read:data"],
@@ -2690,14 +2695,6 @@ def get_router(
             None,
             getattr(request.app.state, "access_policy", None),
         )  # TODO: Separate scope for assets?
-        if not settings.expose_raw_assets:
-            raise HTTPException(
-                status_code=HTTP_403_FORBIDDEN,
-                detail=(
-                    "This Tiled server is configured not to allow "
-                    "downloading raw assets."
-                ),
-            )
         if not hasattr(entry, "asset_by_id"):
             raise HTTPException(
                 status_code=HTTP_405_METHOD_NOT_ALLOWED,
@@ -2727,6 +2724,59 @@ def get_router(
         for root, _directories, files in os.walk(path):
             manifest.extend(Path(root, file) for file in files)
         return json_or_msgpack(request, {"manifest": manifest})
+
+    @router.delete(
+        "/asset/{path:path}",
+        summary="Dissociate an asset from a node and, if unreferenced, delete it",
+    )
+    async def delete_asset(
+        request: Request,
+        path: str,
+        id: int,
+        external_only: bool = Query(
+            True,
+            description=(
+                "Dissociate the asset, but refuse to delete the underlying data "
+                "if it is internally managed. Externally-managed assets are never deleted."
+            ),
+        ),
+        settings: Settings = Depends(get_settings),
+        principal: Optional[Principal] = Depends(get_current_principal),
+        root_tree=Depends(get_root_tree),
+        session_state: dict = Depends(get_session_state),
+        authn_access_tags: Optional[AccessTags] = Depends(get_current_access_tags),
+        authn_scopes: Scopes = Depends(get_current_scopes),
+        _=Security(check_scopes, scopes=["delete:node"]),
+    ):
+        if not settings.expose_raw_assets:
+            raise HTTPException(
+                status_code=HTTP_403_FORBIDDEN,
+                detail="This Tiled server does not allow deleting raw assets.",
+            )
+        entry = await get_entry(
+            path,
+            ["delete:node"],
+            principal,
+            authn_access_tags,
+            authn_scopes,
+            root_tree,
+            session_state,
+            request.state.metrics,
+            None,
+            getattr(request.app.state, "access_policy", None),
+        )
+        if not hasattr(entry, "delete_asset"):
+            raise HTTPException(
+                status_code=HTTP_405_METHOD_NOT_ALLOWED,
+                detail="This node does not support deleting assets.",
+            )
+        result = await entry.delete_asset(id, external_only=external_only)
+        if result is None:
+            raise HTTPException(
+                status_code=HTTP_404_NOT_FOUND,
+                detail=f"This node exists but it does not have an Asset with id {id}",
+            )
+        return json_or_msgpack(request, result)
 
     async def validate_specs(
         specs: List[Spec],
