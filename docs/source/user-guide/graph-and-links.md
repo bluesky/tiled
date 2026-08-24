@@ -110,6 +110,86 @@ query {
 }
 ```
 
+## Trace provenance across the graph
+
+So far, each query has returned a flat list of entities or links. But entities
+and links form a connected graph, and GraphQL lets you walk it. From an entity,
+`outgoingLinks` follows the edges leaving it (and `incomingLinks` the edges
+arriving); each link's `object` is another entity, with its own links. The following
+example demonstrates how to nest these fields and a single query to hop from entity
+to entity, tracing a chain across the graph.
+
+The demo connects its datasets into a reduction pipeline with
+`prov:wasDerivedFrom` edges (`integrated` was derived from `normalized`, which
+was derived from `subtracted`, which was derived from `measured` and
+`background`). Starting from the `integrated` result, one query can reconstruct
+the whole lineage---and, at the raw `measured` dataset, reach out to its
+external context (a calibration image on *another* Tiled server and the
+sample's encyclopedic record).
+
+First get the id of the `integrated` entity (from the `entities` query above,
+or filter by name in your client), then run:
+
+```graphql
+query Lineage($id: ID!) {
+  entity(id: $id) {
+    name
+    outgoingLinks(predicate: "prov:wasDerivedFrom") {
+      object {
+        name
+        outgoingLinks(predicate: "prov:wasDerivedFrom") {
+          object {
+            name
+            outgoingLinks(predicate: "prov:wasDerivedFrom") {
+              object {
+                name
+                entityType
+                outgoingLinks {
+                  predicate
+                  object { name entityType uri }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+with the id supplied in the **Variables** pane:
+
+```json
+{
+  "id": "<id of integrated>"
+}
+```
+
+The response reconstructs the entire provenance in one round trip:
+
+```
+integrated
+ └─ normalized
+     └─ subtracted
+         ├─ measured   (prov:wasInformedBy → dif_beam_hdf5_image, on another Tiled server)
+         │             (schema:about       → lanthanum_hexaboride, on Wikidata)
+         └─ background
+```
+
+The `predicate:` argument filters each hop to just the lineage edges; drop it
+(as the innermost `outgoingLinks` does) to see *all* edges leaving a node. To
+ask the mirror-image question---"what was derived *from* `measured`?"---start
+from `measured` and follow `incomingLinks(predicate: "prov:wasDerivedFrom")`
+instead.
+
+```{note}
+The graph is recursively traversable, so a query could nest
+`outgoingLinks` arbitrarily deep and become expensive to resolve. Tiled caps
+nesting at a fixed depth (10 levels); a query deeper than that is rejected.
+Introspection queries (the GraphiQL **Docs** panel) are exempt.
+```
+
 ## Query namespaces
 
 Namespaces are the CURIE prefix -> URI mappings used to expand and compact
