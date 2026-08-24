@@ -1,11 +1,14 @@
 import abc
 import concurrent.futures
 import inspect
+import json
 import logging
 import sys
 import threading
 import weakref
 from typing import Any, Callable, Generic, List, Optional, TypeVar
+
+from tiled.client.auth import TiledAuth
 
 if sys.version_info >= (3, 11):
     from typing import Self
@@ -123,6 +126,11 @@ class _RegularWebsocketWrapper:
         """Connect to the websocket."""
         params = self._uri.params
         headers = {}
+        access_token = None
+        if self._http_client and isinstance(self._http_client.auth, TiledAuth):
+            access_token = self._http_client.auth.sync_get_token(
+                "access_token", reload_from_disk=True
+            )
         if api_key:
             headers["Authorization"] = f"Apikey {api_key}"
         if start is not None:
@@ -132,6 +140,10 @@ class _RegularWebsocketWrapper:
             additional_headers=headers,
             max_size=max_size,
         )
+        if access_token:
+            self._websocket.send(
+                json.dumps({"type": "auth", "access_token": access_token})
+            )
 
     def recv(self, timeout=None):
         """Receive data from websocket with consistent interface."""
@@ -374,15 +386,22 @@ class Subscription(abc.ABC):
 
         # Reset schema so first message on new connection is parsed as schema
         self._schema = None
-
-        needs_api_key = self.context.server_info.authentication.providers
-        if needs_api_key:
+        access_token = None
+        if self.context.http_client and isinstance(
+            self.context.http_client.auth, TiledAuth
+        ):
+            access_token = self.context.http_client.auth.sync_get_token(
+                "access_token", reload_from_disk=True
+            )
+        authenticated = self.context.server_info.authentication.providers
+        api_key = None
+        if authenticated and access_token is None:
             # Request a short-lived API key to use for authenticating the WS connection.
             key_info = self.context.create_api_key(
                 expires_in=API_KEY_LIFETIME, note="websocket"
             )
             api_key = key_info["secret"]
-        else:
+        elif authenticated is None and access_token is None:
             # Use single-user API key or None (if unauthenticated).
             api_key = self.context.api_key
 
@@ -390,7 +409,7 @@ class Subscription(abc.ABC):
         self._websocket.connect(api_key, start, max_size=max_size)
         self._connected_event.set()
 
-        if needs_api_key:
+        if authenticated and access_token is None:
             # The connection is made, so we no longer need the API key.
             # TODO: Implement single-use API keys so that revoking is not
             # necessary.
