@@ -126,6 +126,7 @@
       "@type": "Entity",
       "kind": "software",
       "name": "processing_script.py",
+      "uri": "https://github.com/bluesky/tiled/blob/main/docs/demo/processing_script.py",
       "properties": {
         "@type": "SoftwareSourceCode"
       }

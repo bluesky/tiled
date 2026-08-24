@@ -5,6 +5,11 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## Unreleased
 
+### Added
+
+- Experimental "graph of links" web UI at `/ui/graph`, an interactive
+  explorer for the provenance graph served by `tiled serve demo`.
+
 ### Changed
 
 - `tiled serve demo` now serves a single, catalog-backed demo that combines the

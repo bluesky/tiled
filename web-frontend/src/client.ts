@@ -44,6 +44,12 @@ axiosInstance.interceptors.response.use(
     if (rt === "blob" || rt === "arraybuffer") {
       return response;
     }
+    // Skip the GraphQL endpoint: its payloads legitimately contain a top-level
+    // `links` array (the graph edges), which transformLinks would mangle into
+    // an object by treating `links` as a HATEOAS link map.
+    if ((response.config.url ?? "").includes("/api/graphql")) {
+      return response;
+    }
     response.data = transformLinks(response.data);
     return response;
   },
