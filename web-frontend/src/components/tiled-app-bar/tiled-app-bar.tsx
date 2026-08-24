@@ -59,6 +59,24 @@ const TiledAppBar = () => {
               TILED
             </Typography>
           </Box>
+          <Button
+            component={Link}
+            to="/browse/"
+            color="inherit"
+            size="small"
+            sx={{ textTransform: "none" }}
+          >
+            Browse
+          </Button>
+          <Button
+            component={Link}
+            to="/graph"
+            color="inherit"
+            size="small"
+            sx={{ textTransform: "none" }}
+          >
+            Graph
+          </Button>
           <Box sx={{ flexGrow: 1 }} />
           {isAuthenticated && identity && (
             <>
@@ -80,12 +98,7 @@ const TiledAppBar = () => {
             </>
           )}
           {!isAuthenticated && authRequired && (
-            <Button
-              component={Link}
-              color="inherit"
-              to="/login"
-              size="small"
-            >
+            <Button component={Link} color="inherit" to="/login" size="small">
               Log in
             </Button>
           )}

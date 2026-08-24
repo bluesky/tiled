@@ -126,6 +126,7 @@
       "@type": "Entity",
       "entityType": "software",
       "name": "processing_script.py",
+      "uri": "https://github.com/genematx/tiled/blob/graph-web-ui/docs/demo/processing_script.py",
       "properties": {
         "@type": "SoftwareSourceCode"
       }
