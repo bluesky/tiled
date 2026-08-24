@@ -225,7 +225,7 @@ async def get_decoded_access_token(
         payload = decode_token(
             access_token, settings.secret_keys, settings.authenticator
         )
-    except ExpiredSignatureError:
+    except JWTError:
         raise HTTPException(
             status_code=HTTP_401_UNAUTHORIZED,
             detail="Access token has expired. Refresh token.",
@@ -304,7 +304,7 @@ def get_decoded_access_token_websocket(
         return None
     try:
         return decode_token(access_token, settings.secret_keys, settings.authenticator)
-    except ExpiredSignatureError:
+    except JWTError:
         raise HTTPException(
             status_code=HTTP_401_UNAUTHORIZED,
             detail="Access token has expired. Refresh token.",
@@ -545,19 +545,6 @@ async def check_scopes(
     scopes: set[str] = Depends(get_current_scopes),
     settings: Settings = Depends(get_settings),
 ) -> None:
-    if isinstance(settings.authenticator, ProxiedOIDCAuthenticator):
-        if settings.authenticator.scopes and not set(
-            settings.authenticator.scopes
-        ).issubset(scopes):
-            raise HTTPException(
-                status_code=HTTP_401_UNAUTHORIZED,
-                detail=(
-                    "Authenticator has scopes that the request does not have. "
-                    f"Authenticator has scopes {settings.authenticator.scopes}. "
-                    f"Request had scopes {list(scopes)}"
-                ),
-                headers=headers_for_401(request, security_scopes),
-            )
     if not set(security_scopes.scopes).issubset(scopes):
         raise HTTPException(
             status_code=HTTP_401_UNAUTHORIZED,
@@ -1489,7 +1476,7 @@ def authentication_router() -> APIRouter:
     async def slide_session(refresh_token, settings, db):
         try:
             payload = decode_token(refresh_token, settings.secret_keys)
-        except ExpiredSignatureError:
+        except JWTError:
             raise HTTPException(
                 status_code=HTTP_401_UNAUTHORIZED,
                 detail="Session has expired. Please re-authenticate.",
