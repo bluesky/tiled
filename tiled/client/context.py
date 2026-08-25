@@ -182,6 +182,7 @@ class Context:
         raise_server_exceptions=True,
         max_connections=MAX_CONCURRENT_CONNECTIONS,
         show_progress=None,
+        trust_env=True,
     ):
         # The uri is expected to reach the root API route.
         uri = httpx.URL(uri)
@@ -239,7 +240,9 @@ class Context:
         )
         if app is None:
             client = httpx.Client(
-                transport=Transport(cache=cache, limits=limits),
+                transport=Transport(
+                    cache=cache, limits=limits, verify=verify, trust_env=trust_env
+                ),
                 verify=verify,
                 timeout=timeout,
                 follow_redirects=True,
@@ -287,6 +290,7 @@ class Context:
 
         self.http_client = client
         self._verify = verify
+        self._trust_env = trust_env
         self._cache = cache
         self._token_cache = Path(TILED_CACHE_DIR / "tokens")
         # Semaphore that caps the number of concurrent data-fetch requests
@@ -401,6 +405,7 @@ class Context:
             self.server_info,
             self.cache,
             self._concurrent_request_semaphore._value,
+            self._trust_env,
         )
 
     def __setstate__(self, state):
@@ -416,6 +421,7 @@ class Context:
             server_info,
             cache,
             max_connections,
+            trust_env,
         ) = state
         if state_tiled_version != tiled_version:
             raise TypeError(
@@ -435,7 +441,9 @@ class Context:
         )
         self.http_client = httpx.Client(
             verify=verify,
-            transport=Transport(cache=cache, limits=limits),
+            transport=Transport(
+                cache=cache, limits=limits, verify=verify, trust_env=trust_env
+            ),
             cookies=cookies,
             timeout=timeout,
             headers=headers,
@@ -445,6 +453,7 @@ class Context:
         self._token_cache = token_cache
         self._cache = cache
         self._verify = verify
+        self._trust_env = trust_env
         self.server_info = server_info
         self._max_connections = max_connections
         self._concurrent_request_semaphore = threading.Semaphore(max_connections)
@@ -691,6 +700,7 @@ class Context:
         app=None,
         max_connections=MAX_CONCURRENT_CONNECTIONS,
         show_progress=None,
+        trust_env=True,
     ):
         """
         Accept a URI to a specific node.
@@ -746,6 +756,7 @@ class Context:
             app=app,
             max_connections=max_connections,
             show_progress=show_progress,
+            trust_env=trust_env,
         )
         return context, node_path_parts
 

@@ -7,6 +7,16 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Fixed
 
+- Fix the client ignoring the `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY`
+  environment variables. Because Tiled supplies a custom `httpx` transport (to
+  enable client-side response caching), httpx's built-in proxy resolution was
+  bypassed, so proxied requests (e.g. to an external OIDC provider) never went
+  through the configured proxy. The transport now honors these environment
+  variables. This can be disabled via the new `trust_env=False` parameter on
+  `from_uri`. As part of this fix, the client's `verify` setting is now applied
+  to the underlying transport (previously it was silently ignored when the
+  custom transport was in use).
+
 - Fix `check_scopes` incorrectly requiring every request under a
   `ProxiedOIDCAuthenticator` (e.g. `EntraAuthenticator`) to carry the full set
   of scopes known to the authenticator (the union of all scopes in
