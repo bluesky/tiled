@@ -3,6 +3,17 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Fix `check_scopes` incorrectly requiring every request under a
+  `ProxiedOIDCAuthenticator` (e.g. `EntraAuthenticator`) to carry the full set
+  of scopes known to the authenticator (the union of all scopes in
+  `scopes_map`). This broke scope-restricted API keys, which legitimately hold
+  only a subset of scopes. Authorization is now enforced solely against the
+  scopes each endpoint requires.
+
 ## v0.2.16 (2026-08-21)
 
 ### Changed
