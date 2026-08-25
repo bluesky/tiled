@@ -240,6 +240,7 @@ class Context:
         if app is None:
             client = httpx.Client(
                 transport=Transport(cache=cache, limits=limits),
+                mounts=_environment_proxy_mounts(verify, limits, cache),
                 verify=verify,
                 timeout=timeout,
                 follow_redirects=True,
@@ -436,6 +437,7 @@ class Context:
         self.http_client = httpx.Client(
             verify=verify,
             transport=Transport(cache=cache, limits=limits),
+            mounts=_environment_proxy_mounts(verify, limits, cache),
             cookies=cookies,
             timeout=timeout,
             headers=headers,
@@ -1477,3 +1479,30 @@ and enter the code:
         continue
     tokens = access_response.json()
     return tokens
+
+
+def _environment_proxy_mounts(verify, limits, cache):
+    """Build httpx mounts for proxies defined in the environment.
+
+    httpx only auto-reads {HTTP,HTTPS,NO}_PROXY when a Client is constructed
+    *without* an explicit ``transport=``. Because Tiled always passes its own
+    Transport (for caching/logging), env proxies are silently dropped. Resolve
+    them here so external hosts route through the proxy while NO_PROXY hosts keep
+    using the direct, cache-wrapped transport.
+    """
+    # This relies on private API in httpx, but this seems a less evil that using
+    # a separate implementation that could diverge.
+    from httpx._utils import get_environment_proxies
+
+    mounts = {}
+    for pattern, proxy_url in get_environment_proxies().items():
+        if proxy_url is None:
+            mounts[pattern] = None  # NO_PROXY: fall back to the default transport
+        else:
+            mounts[pattern] = Transport(
+                transport=httpx.HTTPTransport(
+                    proxy=proxy_url, verify=verify, limits=limits
+                ),
+                cache=cache,
+            )
+    return mounts
