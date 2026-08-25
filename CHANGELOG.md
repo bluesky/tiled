@@ -7,6 +7,14 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Fixed
 
+- Fix the client showing a spurious "Retrying…" indicator (and a misleading
+  "Retry scheduled" debug log) when a request failed with a *non-retryable*
+  error, such as a 4xx response or `CannotRefreshAuthentication` during a normal
+  first-time login. The underlying retry context manager captures every
+  exception before deciding whether to retry, so the indicator was being driven
+  off exception capture rather than an actual retry. The indicator now appears
+  only when a retry genuinely occurs.
+
 - Fix the client ignoring the `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY`
   environment variables. Because Tiled supplies a custom `httpx` transport (to
   enable client-side response caching), httpx's built-in proxy resolution was

@@ -181,19 +181,19 @@ class _LoggingAttempt:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         result = self._attempt.__exit__(exc_type, exc_val, exc_tb)
-        # stamina returns True from __exit__ when it suppresses the exception
-        # and schedules a retry.  That is the moment we want to log.
+        # stamina returns True from __exit__ when it captures the exception.
+        # Note that this happens for *every* captured exception, including
+        # non-retryable ones that will be re-raised on the next iteration; it
+        # does not by itself mean a retry has been scheduled.  We therefore only
+        # log the failure here (for debugging) and leave the decision of whether
+        # to show a retry indicator to retry_context, which knows -- by reaching
+        # a later attempt -- that a retry genuinely occurred.
         if exc_val is not None and result:
             _retry_logger.debug(
-                "Retry %d scheduled in %.2fs due to %r",
+                "Attempt %d failed with %r",
                 self._attempt.num,
-                self._attempt.next_wait,
                 exc_val,
             )
-            if self._context is not None:
-                self._context.signal_retry()
-            elif self._standalone is not None:
-                self._standalone.show()
         return result
 
 
@@ -219,6 +219,19 @@ def retry_context(context=None):
                 # would normally be swallowed by tenacity.  Re-raise it here so
                 # that Ctrl-C cancels all remaining retries immediately.
                 raise
+            if attempt.num > 1:
+                # We only reach a second (or later) attempt when the previous
+                # attempt failed with a *retryable* error and stamina scheduled
+                # this retry.  Show the indicator here so it appears only when a
+                # retry genuinely happens -- not for terminal, non-retryable
+                # exceptions (e.g. a 404 or CannotRefreshAuthentication on first
+                # login), which the attempt context manager also "captures"
+                # before re-raising.
+                _retry_logger.debug("Retrying (attempt %d)…", attempt.num)
+                if context is not None:
+                    context.signal_retry()
+                elif standalone is not None:
+                    standalone.show()
             yield _LoggingAttempt(attempt, context=context, standalone=standalone)
     finally:
         # Always clean up the retry indicator, whether the loop completed
