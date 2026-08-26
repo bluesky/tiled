@@ -420,6 +420,24 @@ def size_from_uri(data_uri: str) -> int:
     )
 
 
+def stat_uri(data_uri: str) -> tuple[bool, Optional[int]]:
+    """Best-effort `(is_directory, size_in_bytes)` for the asset at `data_uri`.
+
+    Populates the advisory `is_directory` and `size` fields of an
+    :class:`~tiled.structures.data_source.Asset`. A `file://` directory reports
+    `(True, None)`; anything else reports `(False, <size>)` using
+    :func:`size_from_uri`. Because these fields are advisory -- and the caller
+    may not even have local access to the asset -- any failure to inspect the
+    asset yields `(False, None)` rather than raising.
+    """
+    try:
+        if urlparse(data_uri).scheme == "file" and path_from_uri(data_uri).is_dir():
+            return True, None
+        return False, size_from_uri(data_uri)
+    except Exception:
+        return False, None
+
+
 class DirectoryContainer(Mapping[str, bytes]):
     """A storage container for byte-arrays representing Awkward Array buffers
 
