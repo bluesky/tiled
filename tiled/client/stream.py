@@ -404,6 +404,10 @@ class Subscription(abc.ABC):
         elif authenticated is None and access_token is None:
             # Use single-user API key or None (if unauthenticated).
             api_key = self.context.api_key
+        elif access_token is None:
+            raise RuntimeError(
+                "Cannot authenticate WebSocket connection: no access token or API key available."
+            )
 
         # Connect using the websocket wrapper
         self._websocket.connect(api_key, start, max_size=max_size)
