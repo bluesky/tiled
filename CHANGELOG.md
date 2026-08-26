@@ -7,6 +7,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Fixed
 
+- Reading of individual partitions of multi-partitioned tables.
 - Fix `check_scopes` incorrectly requiring every request under a
   `ProxiedOIDCAuthenticator` (e.g. `EntraAuthenticator`) to carry the full set
   of scopes known to the authenticator (the union of all scopes in
