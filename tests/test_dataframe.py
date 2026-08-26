@@ -112,6 +112,22 @@ def test_dataframe_single_partition(context):
     pandas.testing.assert_frame_equal(actual, expected)
 
 
+def test_read_partition_multipartition(context):
+    # Reading one partition of a multi-partition frame must build a
+    # single-partition dask dataframe (divisions of length 2), independent of
+    # the total partition count.
+    client = from_context(context)["basic"]
+    npartitions = client.structure().npartitions
+    assert npartitions == 3
+    expected = tree["basic"].read()
+    for partition in range(npartitions):
+        actual = client.read_partition(partition)
+        assert list(actual.columns) == list(expected.columns)
+        # A single-column subset must work too.
+        one_col = client.read_partition(partition, columns=[expected.columns[0]])
+        assert list(one_col.columns) == [expected.columns[0]]
+
+
 def test_reading_diverse_dtypes(context):
     client = from_context(context)
     expected = tree["diverse"].read()
