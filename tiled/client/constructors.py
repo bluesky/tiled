@@ -31,6 +31,7 @@ def from_uri(
     auth: Optional[httpx.Auth] = None,
     max_connections: int = MAX_CONCURRENT_CONNECTIONS,
     show_progress=None,
+    trust_env=True,
 ):
     """
     Connect to a Node on a local or remote server.
@@ -70,6 +71,10 @@ def from_uri(
     max_connections : int, optional
         If provided, use this value for the maximum number of concurrent
         connections in the HTTP client.
+    trust_env : bool, optional
+        Whether to honor environment variables such as HTTP_PROXY, HTTPS_PROXY,
+        and NO_PROXY. True by default. Set False to ignore proxy configuration
+        in the environment.
     """
     EXPLAIN_LOGIN = """
 
@@ -98,6 +103,7 @@ For non-interactive authentication, use an API key or add custom auth
         verify=verify,
         max_connections=max_connections,
         show_progress=show_progress,
+        trust_env=trust_env,
     )
     if auth is not None:
         if isinstance(auth, httpx.Auth):
