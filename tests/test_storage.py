@@ -33,7 +33,11 @@ def test_stat_uri_file(tmp_path):
     p = tmp_path / "blob.bin"
     payload = b"the quick brown fox"
     p.write_bytes(payload)
-    assert stat_uri(p.as_uri()) == (False, len(payload))
+    result = stat_uri(p.as_uri())
+    assert result == (False, len(payload))
+    # Fields are also accessible by name.
+    assert result.is_directory is False
+    assert result.size == len(payload)
 
 
 def test_stat_uri_directory(tmp_path):
