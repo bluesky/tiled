@@ -8,22 +8,8 @@ Write the date in place of the "Unreleased" in the case a new version is release
 ### Added
 
 - Add `Container.register`, a synchronous client method to register external,
-  server-accessible files as a single dataset (array, table, etc.). Unlike
-  `tiled.client.register.register`, it does not walk directories: it registers
-  exactly the URIs provided. Multiple URIs are combined into one stacked
-  dataset (e.g. a stack of TIFFs), and a single directory URI (e.g. a Zarr
-  store) is registered as one dataset. The mimetype is inferred from the file
-  extension (overridable), and a `structure` may be supplied to reshape the
-  data when served (validated against the file(s) for a compatible dtype and
-  element/column count). A `parameters` dict may be supplied to control how the
-  file(s) are opened (for example `parameters={"sep": ";"}` for a
-  semicolon-delimited CSV); it is applied both when inferring the structure
-  client-side and when the server re-opens the file(s).
-- Add registration support for Parquet files. `ParquetDatasetAdapter` can now
-  infer its own structure and describe its `DataSource`, the `.parquet`
-  extension maps to the Parquet mimetype, so Parquet files can be registered
-  (individually or as a partitioned table) and are picked up when walking
-  directories.
+  server-accessible files as a single dataset (array, table, etc.).
+- Add registration support for Parquet files.
 
 ## v0.2.16 (2026-08-21)
 
