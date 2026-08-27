@@ -81,6 +81,7 @@ function App() {
 
     return () => controller.abort();
   }, []);
+  const redirectToLogin = import.meta.env.VITE_LOGIN_REDIRECT === "true";
 
   return (
     <SettingsContext.Provider value={settings}>
@@ -90,23 +91,34 @@ function App() {
             <Suspense fallback={<Skeleton variant="rectangular" />}>
               <Routes>
                 <Route path="/" element={<MainContainer />}>
-                  <Route index element={<Navigate to="/browse/" replace />} />
                   <Route
-                    path="/browse/*"
-                    element={
-                      <RequireAuth>
-                        <Browse />
-                      </RequireAuth>
-                    }
+                    index
+                    element={<Navigate to="/browse/" replace />}
                   />
-                  <Route
-                    path="/graph"
-                    element={
-                      <RequireAuth>
-                        <GraphPage />
-                      </RequireAuth>
-                    }
-                  />
+                  {redirectToLogin ? (
+                    <Route
+                      path="/browse/*"
+                      element={
+                        <RequireAuth>
+                          <Browse />
+                        </RequireAuth>
+                      }
+                    />
+                  ) : (
+                    <Route path="/browse/*" element={<Browse />} />
+                  )}
+                  {redirectToLogin ? (
+                    <Route
+                      path="/graph"
+                      element={
+                        <RequireAuth>
+                          <GraphPage />
+                        </RequireAuth>
+                      }
+                    />
+                  ) : (
+                    <Route path="/graph" element={<GraphPage />} />
+                  )}
                 </Route>
                 <Route path="/login" element={<LoginPage />} />
                 <Route path="/auth-callback" element={<AuthCallback />} />
