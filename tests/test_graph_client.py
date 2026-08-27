@@ -251,19 +251,12 @@ def test_update_entity_by_id(client):
     assert updated.name == "LaB6 (NIST 660c)"
     assert updated.kind == "sample"
     # Absent entity yields None.
-    assert (
-        graph.update_entity(
-            "00000000-0000-0000-0000-000000000000", name="x"
-        )
-        is None
-    )
+    assert graph.update_entity("00000000-0000-0000-0000-000000000000", name="x") is None
 
 
 def test_update_entity_clears_uri(client):
     "Passing uri=None clears the URI, distinct from omitting it."
-    sample = make_entity(
-        client, name="LaB6", kind="sample", uri="http://example.org/q"
-    )
+    sample = make_entity(client, name="LaB6", kind="sample", uri="http://example.org/q")
     graph = GraphClient(client.context)
 
     # Omitting uri leaves it in place.
@@ -301,10 +294,7 @@ def test_update_link_by_id(client, linked_pair):
     assert updated is not None
     assert updated.predicate == "prov:wasRevisionOf"
     assert (
-        graph.update_link(
-            "00000000-0000-0000-0000-000000000000", predicate="x"
-        )
-        is None
+        graph.update_link("00000000-0000-0000-0000-000000000000", predicate="x") is None
     )
 
 

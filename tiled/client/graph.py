@@ -145,7 +145,9 @@ class GraphClient:
             # than a generic GraphError.
             for error in errors:
                 if (error.get("extensions") or {}).get("code") == "ENTITY_EXISTS":
-                    raise EntityExistsError(error.get("message", "Entity already exists."))
+                    raise EntityExistsError(
+                        error.get("message", "Entity already exists.")
+                    )
             raise GraphError(errors)
         return payload["data"]
 
@@ -315,7 +317,7 @@ class GraphClient:
 
 class EntityHandle:
     """A client-side handle to an entity in the graph.
-    
+
     Carries the connection it was created through, so it can be passed
     straight to :func:`make_link`.
     """
@@ -491,7 +493,7 @@ def make_link(
     properties: Optional[dict[str, Any]] = None,
 ) -> LinkHandle:
     """Create a directed link between two entityhandles
-    
+
     The link takes the form of `subject -predicate-> object`, where `subject`
     and `object` are keyword-only so the direction is unambiguous
     (e.g. `subtracted` was derived from `measured`:
@@ -508,7 +510,7 @@ def make_link(
 
 def register_namespace(client, prefix: str, uri: str) -> None:
     """Register (or update) a CURIE prefix -> URI mapping
-    
+
     This borrows `client`'s connection. The changes are global and idempotent;
     see :meth:`GraphClient.register_namespace`.
     """
