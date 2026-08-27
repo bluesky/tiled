@@ -12,6 +12,32 @@ from .logger import collect_request, collect_response, log_request, log_response
 from .utils import TiledResponse
 
 
+def _proxy_mounts_from_env(
+    transport_kwargs: tp.Dict[str, tp.Any],
+) -> tp.Dict[tp.Any, tp.Optional[httpx.BaseTransport]]:
+    """Build proxy transports from the standard proxy environment variables.
+
+    Reads HTTP_PROXY / HTTPS_PROXY / ALL_PROXY / NO_PROXY (via httpx's own
+    resolution helper) and returns a mapping of URLPattern -> transport,
+    sorted by pattern priority so the most specific match wins. A value of
+    None indicates a NO_PROXY entry (connect directly).
+
+    This reproduces the behavior httpx.Client applies to the transport it
+    builds itself, which is otherwise skipped when a custom transport is
+    supplied.
+    """
+    from httpx._utils import URLPattern, get_environment_proxies
+
+    mounts: tp.Dict[tp.Any, tp.Optional[httpx.BaseTransport]] = {}
+    for key, value in get_environment_proxies().items():
+        mounts[URLPattern(key)] = (
+            None
+            if value is None
+            else httpx.HTTPTransport(proxy=value, **transport_kwargs)
+        )
+    return dict(sorted(mounts.items(), key=lambda item: item[0].priority))
+
+
 class Transport(httpx.BaseTransport):
     """Custom transport, implementing caching and custom compression encodings.
 
@@ -31,6 +57,8 @@ class Transport(httpx.BaseTransport):
         transport: tp.Optional[httpx.BaseTransport] = None,
         cache: tp.Optional[Cache] = None,
         limits: tp.Optional[httpx.Limits] = None,
+        verify: tp.Union[bool, str] = True,
+        trust_env: bool = True,
         cacheable_methods: tp.Tuple[str, ...] = ("GET",),
         cacheable_status_codes: tp.Tuple[int, ...] = (
             httpx.codes.OK,
@@ -46,16 +74,44 @@ class Transport(httpx.BaseTransport):
             cacheable_status_codes=cacheable_status_codes,
             always_cache=always_cache,
         )
+        # Mapping of URLPattern -> transport for requests that must be routed
+        # through a proxy (or, when the value is None, connected to directly).
+        self._mounts: tp.Dict[tp.Any, tp.Optional[httpx.BaseTransport]] = {}
         if transport is not None:
+            # An explicit transport was provided (e.g. the in-process ASGI
+            # transport used for TestClient). Use it as-is; proxy/verify
+            # handling does not apply.
             self.transport = transport
-        elif limits is not None:
-            self.transport = httpx.HTTPTransport(limits=limits)
         else:
-            self.transport = httpx.HTTPTransport()
+            transport_kwargs: tp.Dict[str, tp.Any] = {"verify": verify}
+            if limits is not None:
+                transport_kwargs["limits"] = limits
+            self.transport = httpx.HTTPTransport(**transport_kwargs)
+            if trust_env:
+                # httpx.Client honors HTTP_PROXY/HTTPS_PROXY/NO_PROXY env vars,
+                # but only for the transport it builds itself. Because Tiled
+                # supplies a custom transport (to enable response caching),
+                # that logic is bypassed. Replicate it here so proxy env vars
+                # are respected.
+                self._mounts = _proxy_mounts_from_env(transport_kwargs)
         self.cache = cache
+
+    def _transport_for_url(self, url: httpx.URL) -> httpx.BaseTransport:
+        """Select the transport for a URL, honoring proxy mounts.
+
+        Mirrors httpx.Client._transport_for_url: the most specific matching
+        pattern wins; a value of None means "connect directly" (e.g. NO_PROXY).
+        """
+        for pattern, transport in self._mounts.items():
+            if pattern.matches(url):
+                return transport or self.transport
+        return self.transport
 
     def close(self) -> None:
         self.transport.close()
+        for transport in self._mounts.values():
+            if transport is not None:
+                transport.close()
         if self.cache is not None:
             self.cache.close()
 
@@ -94,7 +150,7 @@ class Transport(httpx.BaseTransport):
         if __debug__:
             log_request(request)
             collect_request(request)
-        response = self.transport.handle_request(request)
+        response = self._transport_for_url(request.url).handle_request(request)
         response.__class__ = TiledResponse
         response.request = request
         if __debug__:

@@ -371,6 +371,42 @@ async def test_ProxiedOIDCAuthenticator_requires_scopes(mock_oidc_server, well_k
     assert exception.value.status_code == HTTP_401_UNAUTHORIZED
 
 
+async def test_ProxiedOIDCAuthenticator_scoped_api_key_passes(mock_oidc_server, well_known_url):
+    # Regression test: a request (e.g. from a scope-restricted API key) that
+    # carries only a *subset* of the authenticator's full scope universe must
+    # succeed as long as it holds the scopes the endpoint actually requires.
+    # Previously check_scopes required the request to carry *all* of the
+    # authenticator's scopes (the union of every scope in scopes_map), which
+    # broke scoped API keys under a ProxiedOIDC/Entra authenticator.
+    authenticator = ProxiedOIDCAuthenticator(
+        "tiled", "tiled", well_known_url, device_flow_client_id="tiled-cli",
+        scopes_map={"access_as_user": [
+            "read:metadata", "read:data", "create:node", "write:metadata",
+            "write:data", "delete:revision", "delete:node", "create:apikeys",
+            "revoke:apikeys",
+        ]},
+    )
+
+    test_request = Request(scope={"type": "http", "scheme": "http", "headers": [(b"host", b"testserver")]}, )
+    settings = Settings(authenticator=authenticator)
+
+    # The /metadata/ write endpoint requires these scopes; the restricted key
+    # has exactly these (and not the full universe, e.g. no read:data).
+    request_scopes = ["write:data", "create:node", "read:metadata", "write:metadata"]
+    security_scopes = SecurityScopes(scopes=["write:metadata", "create:node"])
+
+    # Should NOT raise.
+    await check_scopes(request=test_request, settings=settings, scopes=request_scopes,
+                       security_scopes=security_scopes)
+
+    # Sanity check: missing a required endpoint scope still fails.
+    security_scopes = SecurityScopes(scopes=["read:data"])
+    with pytest.raises(HTTPException) as exception:
+        await check_scopes(request=test_request, settings=settings, scopes=request_scopes,
+                           security_scopes=security_scopes)
+    assert exception.value.status_code == HTTP_401_UNAUTHORIZED
+
+
 def test_ProxiedOIDCAuthenticator_scopes_explicit(mock_oidc_server, well_known_url):
     # With no scopes_map, explicit scopes are returned as-is.
     authenticator = ProxiedOIDCAuthenticator(

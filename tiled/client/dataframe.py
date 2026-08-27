@@ -162,10 +162,13 @@ class _DaskDataFrameClient(BaseClient):
         meta = structure.meta
         if columns is not None:
             meta = meta[columns]
+        # This builds a single-partition dask dataframe from one delayed object,
+        # so `divisions` must have length len(dfs) + 1 == 2 regardless of how many
+        # partitions the full dataset has.
         return dask.dataframe.from_delayed(
             [dask.delayed(self._get_partition)(partition, columns)],
             meta=meta,
-            divisions=(None,) * (1 + npartitions),
+            divisions=(None, None),
         )
 
     def read(self, columns=None):

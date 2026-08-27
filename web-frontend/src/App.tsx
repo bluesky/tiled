@@ -73,6 +73,7 @@ function App() {
 
     return () => controller.abort();
   }, []);
+  const redirectToLogin = import.meta.env.VITE_LOGIN_REDIRECT === "true";
 
   return (
     <SettingsContext.Provider value={settings}>
@@ -86,14 +87,18 @@ function App() {
                     index
                     element={<Navigate to="/browse/" replace />}
                   />
-                  <Route
-                    path="/browse/*"
-                    element={
-                      <RequireAuth>
-                        <Browse />
-                      </RequireAuth>
-                    }
-                  />
+                  {redirectToLogin ? (
+                    <Route
+                      path="/browse/*"
+                      element={
+                        <RequireAuth>
+                          <Browse />
+                        </RequireAuth>
+                      }
+                    />
+                  ) : (
+                    <Route path="/browse/*" element={<Browse />} />
+                  )}
                 </Route>
                 <Route path="/login" element={<LoginPage />} />
                 <Route path="/auth-callback" element={<AuthCallback />} />

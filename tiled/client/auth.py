@@ -130,7 +130,10 @@ class TiledAuth(httpx.Auth):
                 self.scopes,
             )
             token_response = yield token_request
-            if token_response.status_code == httpx.codes.UNAUTHORIZED:
+            if token_response.status_code in {
+                httpx.codes.UNAUTHORIZED,
+                httpx.codes.BAD_REQUEST,
+            }:
                 # Refreshing the token failed.
                 # Discard the expired (or otherwise invalid) refresh_token.
                 self.sync_clear_token("refresh_token")
