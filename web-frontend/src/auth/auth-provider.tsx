@@ -29,6 +29,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
   const [identity, setIdentity] = useState<UserIdentity | null>(() =>
     tokenManager.getIdentity(),
   );
+  // Whether the startup check for an existing server-side session (e.g. an
+  // HttpOnly API-key cookie set by the server via ?api_key=...) has completed.
+  // Until this is true, we must not let RequireAuth redirect to /login, or a
+  // cookie-authenticated user would be bounced to the login page on load.
+  const [cookieChecked, setCookieChecked] = useState(false);
   const refreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const refreshPromiseRef = useRef<Promise<boolean> | null>(null);
 
@@ -146,6 +151,45 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
     };
   }, [refreshOnce, scheduleProactiveRefresh]);
 
+  // On startup, detect a server-side session established via an HttpOnly
+  // API-key cookie (set by the server when a URL with ?api_key=... is opened).
+  // JavaScript cannot read that cookie directly, so we ask the server via
+  // /auth/whoami. The endpoint returns HTTP 200 with a Principal body when the
+  // request is authenticated (by cookie, header, or token) or `null` when not.
+  useEffect(() => {
+    // Wait until the server's auth config is known.
+    if (authentication === null) return;
+    let mounted = true;
+    // If we already have local tokens, or the server does not require auth,
+    // there is nothing to detect — skip the probe.
+    if (tokenManager.hasTokens() || !authentication.required) {
+      setCookieChecked(true);
+      return;
+    }
+    axiosInstance
+      .get("/api/v1/auth/whoami")
+      .then((response) => {
+        if (!mounted) return;
+        const principal = response.data;
+        if (principal) {
+          const ident = principal.identities?.[0];
+          if (ident) {
+            setIdentity({ id: ident.id, provider: ident.provider });
+          }
+          setIsAuthenticated(true);
+        }
+      })
+      .catch(() => {
+        // Not authenticated via cookie (or request failed) — leave state as-is.
+      })
+      .finally(() => {
+        if (mounted) setCookieChecked(true);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [authentication]);
+
   const onLogin = useCallback(
     (accessToken: string, refreshToken: string, ident?: UserIdentity) => {
       tokenManager.saveTokens(
@@ -175,7 +219,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
         authRequired: authentication?.required ?? false,
         providers: authentication?.providers ?? [],
         isAuthenticated,
-        initialized: authentication !== null,
+        initialized: authentication !== null && cookieChecked,
         identity,
         onLogin,
         onLogout,
