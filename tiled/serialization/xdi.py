@@ -27,7 +27,6 @@ import io
 import mimetypes
 
 from ..media_type_registration import default_serialization_registry
-from ..structures.core import StructureFamily
 
 # Register ".xdi" extension -> "application/x-xdi"
 mimetypes.types_map.setdefault(".xdi", "application/x-xdi")
@@ -59,8 +58,8 @@ XDI_REQUIRED_FIELDS = {
 }
 
 
-@default_serialization_registry.register(StructureFamily.table, "application/x-xdi")
-def serialize_xdi(mimetype, df, metadata, preserve_index=False):
+@default_serialization_registry.register("xdi", "application/x-xdi")
+def serialize_xdi(mimetype, df, metadata):
     """Serialize a pandas DataFrame and its XDI metadata to XDI format.
 
     Parameters
@@ -75,8 +74,6 @@ def serialize_xdi(mimetype, df, metadata, preserve_index=False):
           - "xdi_version": str  (defaults to "1.0")
           - "extra_version": str  (e.g. "GSE/1.0")
           - "comments": str  (free-form user comment text)
-    preserve_index : bool
-        Whether to include the DataFrame index in the output (default False).
 
     Returns
     -------
@@ -138,6 +135,6 @@ def serialize_xdi(mimetype, df, metadata, preserve_index=False):
     output.write("# " + " ".join(str(c) for c in columns) + "\n")
 
     # --- Data section (whitespace-delimited, no index, no header row) ---
-    df.to_csv(output, header=False, index=preserve_index, sep=" ")
+    df.to_csv(output, header=False, index=False, sep=" ")
 
     return output.getvalue().encode()
