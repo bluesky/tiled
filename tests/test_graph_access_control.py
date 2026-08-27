@@ -7,7 +7,7 @@ from tiled.catalog import in_memory
 from tiled.catalog.core import initialize_database
 from tiled.config import Database
 from tiled.graph.schema import schema
-from tiled.graph.store import GraphSQLAlchemyStore, _nodes
+from tiled.graph.store import EntityConflictError, GraphSQLAlchemyStore, _nodes
 from tiled.queries import AccessBlobFilter
 from tiled.server.app import build_app
 from tiled.server.authentication import (
@@ -511,6 +511,55 @@ async def test_entity_node_access_blob_trigger_rejects_both_set(store):
     )
     with pytest.raises(IntegrityError):
         await store.update_entity(entity.id, access_blob={"tags": ["team"]})
+
+
+@pytest.mark.asyncio
+async def test_duplicate_node_kind_name_conflicts(store):
+    """
+    The unique index deduplicates node-bound entities on (node_id, kind, name):
+    the store raises EntityConflictError on a duplicate, while free-standing
+    entities (node_id NULL) are left unconstrained.
+    """
+    await _insert_node(store, 1, {"tags": ["team"]})
+
+    await store.create_entity(kind="sample", name="dup", node_id=1, access_blob=None)
+    with pytest.raises(EntityConflictError):
+        await store.create_entity(
+            kind="sample", name="dup", node_id=1, access_blob=None
+        )
+
+    # A different kind, name, or node is allowed.
+    await store.create_entity(kind="other", name="dup", node_id=1, access_blob=None)
+
+    # Free-standing entities (node_id NULL) are not deduplicated.
+    await store.create_entity(
+        kind="sample", name="ext", node_id=None, access_blob={"tags": ["team"]}
+    )
+    await store.create_entity(
+        kind="sample", name="ext", node_id=None, access_blob={"tags": ["team"]}
+    )
+
+
+@pytest.mark.asyncio
+async def test_create_entity_duplicate_returns_entity_exists(store, policy):
+    """The GraphQL mutation surfaces a duplicate as an ENTITY_EXISTS error."""
+    await _insert_node(store, 1, {"tags": ["team"]})
+    alice_ctx = _context(store, policy, "alice", {"read:metadata", "write:metadata"})
+
+    first = await _execute(
+        CREATE_ENTITY_MUTATION,
+        alice_ctx,
+        {"input": {"kind": "sample", "name": "dup", "nodePathParts": ["node"]}},
+    )
+    assert first.errors is None
+
+    second = await _execute(
+        CREATE_ENTITY_MUTATION,
+        alice_ctx,
+        {"input": {"kind": "sample", "name": "dup", "nodePathParts": ["node"]}},
+    )
+    assert second.errors
+    assert second.errors[0].extensions["code"] == "ENTITY_EXISTS"
 
 
 @pytest.mark.asyncio

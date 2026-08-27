@@ -14,6 +14,10 @@ Write the date in place of the "Unreleased" in the case a new version is release
   node's id, the `catalogNodeId` query is removed, and an entity now reports a
   read-only boolean `isNodeBound` in place of `nodeId`. Passing a
   `nodePathParts` that names no existing node raises an error.
+- Enforce uniqueness of graph entities per catalog node: at most one entity may
+  exist for a given `(node_id, kind, name)`. A duplicate `createEntity`/
+  `updateEntity` now fails with an `ENTITY_EXISTS` error. Free-standing
+  (external) entities, which have no node, are left unconstrained.
 - Rename the experimental graph entity's `entity_type` field to `kind`, in both
   the database column and the GraphQL API (`entityType` becomes `kind`). A
   migration renames the existing column.
