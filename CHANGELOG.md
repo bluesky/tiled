@@ -19,8 +19,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
   `updateEntity` now fails with an `ENTITY_EXISTS` error. Free-standing
   (external) entities, which have no node, are left unconstrained.
 - Rename the experimental graph entity's `entity_type` field to `kind`, in both
-  the database column and the GraphQL API (`entityType` becomes `kind`). A
-  migration renames the existing column.
+  the database column and the GraphQL API (`entityType` becomes `kind`).
 
 ### Fixed
 
