@@ -407,7 +407,14 @@ def _make_ws_handler_common(
         finally:
             live_task.cancel()
             disconnect_task.cancel()
-            await asyncio.gather(live_task, disconnect_task, return_exceptions=True)
+            try:
+                await asyncio.gather(live_task, disconnect_task, return_exceptions=True)
+            except asyncio.CancelledError:
+                # In case a second cancel arrives while cleaning up, ignore it.
+                # The tasks are already cancelled and we don't want to raise an exception here.
+                # This was observed in tests using Starlette's TestClient, which cancels
+                # all tasks on exit.
+                pass
 
     return handler
 
