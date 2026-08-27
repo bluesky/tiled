@@ -360,8 +360,6 @@ def _make_ws_handler_common(
                     if message["type"] == "websocket.disconnect":
                         disconnect_code = message.get("code")
                         break
-            except WebSocketDisconnect as exc:
-                disconnect_code = exc.code
             except RuntimeError:
                 # Raised if the socket was already closed by the send path.
                 pass
