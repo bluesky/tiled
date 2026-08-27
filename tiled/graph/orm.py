@@ -61,6 +61,17 @@ entities = Table(
     Index("entities_node_id_idx", "node_id"),
     Index("entities_kind_created_idx", "kind", "created_at"),
     Index("entities_uri_idx", "uri"),
+    # Enforce at most one entity per (node, kind, name). node_id is nullable,
+    # and both SQLite and PostgreSQL treat NULLs as distinct in a unique
+    # index, so free-standing (external) entities -- which have node_id NULL --
+    # are left unconstrained; only node-bound entities are deduplicated.
+    Index(
+        "entities_node_kind_name_uq",
+        "node_id",
+        "kind",
+        "name",
+        unique=True,
+    ),
 )
 
 ENTITY_NODE_ACCESS_BLOB_ERROR = (

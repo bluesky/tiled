@@ -41,7 +41,7 @@ from tiled.queries import AccessBlobFilter
 from .curie import compact_term, compact_value, expand_term, expand_value
 from .orm import ENTITY_NODE_ACCESS_BLOB_ERROR
 from .store import UNSET as STORE_UNSET
-from .store import EntityRecord, GraphSQLAlchemyStore, LinkRecord
+from .store import EntityConflictError, EntityRecord, GraphSQLAlchemyStore, LinkRecord
 
 logger = logging.getLogger(__name__)
 
@@ -453,14 +453,17 @@ class Mutation:
             access_blob = None
         else:
             access_blob = await _init_access_blob(info, input.access_blob)
-        record = await _store(info).create_entity(
-            kind=input.kind,
-            name=input.name,
-            node_id=input.node_id,
-            uri=input.uri,
-            properties=expand_value(input.properties or {}, namespaces),
-            access_blob=access_blob,
-        )
+        try:
+            record = await _store(info).create_entity(
+                kind=input.kind,
+                name=input.name,
+                node_id=input.node_id,
+                uri=input.uri,
+                properties=expand_value(input.properties or {}, namespaces),
+                access_blob=access_blob,
+            )
+        except EntityConflictError as exc:
+            raise GraphQLError(str(exc), extensions={"code": "ENTITY_EXISTS"})
         logger.info(
             "Created entity kind=%r name=%r id=%s",
             record.kind,
@@ -545,14 +548,17 @@ class Mutation:
             access_blob = await _init_access_blob(info, None)
         node_id = STORE_UNSET if input.node_id is UNSET else input.node_id
         uri = STORE_UNSET if input.uri is UNSET else input.uri
-        record = await _store(info).update_entity(
-            str(id),
-            name=input.name,
-            node_id=node_id,
-            uri=uri,
-            kind=input.kind,
-            access_blob=access_blob,
-        )
+        try:
+            record = await _store(info).update_entity(
+                str(id),
+                name=input.name,
+                node_id=node_id,
+                uri=uri,
+                kind=input.kind,
+                access_blob=access_blob,
+            )
+        except EntityConflictError as exc:
+            raise GraphQLError(str(exc), extensions={"code": "ENTITY_EXISTS"})
         if record:
             logger.info("Updated entity id=%s", id)
         return _entity_from_record(record, await _namespaces(info)) if record else None

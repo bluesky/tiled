@@ -52,6 +52,22 @@ UNSET = object()
 # The catalog ``nodes`` table, used to resolve entities.node_id by catalog path.
 _nodes = Node.__table__
 
+
+class EntityConflictError(Exception):
+    "An entity with the same (node_id, kind, name) already exists."
+
+
+def _is_unique_violation(exc: IntegrityError) -> bool:
+    """
+    True if an IntegrityError is a unique-constraint violation (as opposed to,
+    e.g., the entities access_blob trigger firing). SQLite reports "UNIQUE
+    constraint failed: ..."; PostgreSQL reports "duplicate key value violates
+    unique constraint ...".
+    """
+    message = str(getattr(exc, "orig", exc)).lower()
+    return "unique constraint failed" in message or "duplicate key value" in message
+
+
 # ---------------------------------------------------------------------------
 # Data records
 # ---------------------------------------------------------------------------
@@ -195,24 +211,35 @@ class GraphSQLAlchemyStore:
     ) -> EntityRecord:
         id_ = str(uuid.uuid4())
         now = datetime.now(timezone.utc)
-        async with self._engine.begin() as conn:
-            await conn.execute(
-                insert(_entities).values(
-                    id=id_,
-                    node_id=node_id,
-                    kind=kind,
-                    name=name,
-                    uri=uri,
-                    properties=properties or {},
-                    # Not coerced to {}: passing None here (as the caller
-                    # must when node_id is set) stores SQL NULL.
-                    access_blob=access_blob,
-                    created_at=now,
+        try:
+            async with self._engine.begin() as conn:
+                await conn.execute(
+                    insert(_entities).values(
+                        id=id_,
+                        node_id=node_id,
+                        kind=kind,
+                        name=name,
+                        uri=uri,
+                        properties=properties or {},
+                        # Not coerced to {}: passing None here (as the caller
+                        # must when node_id is set) stores SQL NULL.
+                        access_blob=access_blob,
+                        created_at=now,
+                    )
                 )
-            )
-            row = (
-                await conn.execute(select(_entities).where(_entities.c.id == id_))
-            ).one()
+                row = (
+                    await conn.execute(select(_entities).where(_entities.c.id == id_))
+                ).one()
+        except IntegrityError as exc:
+            # The only user-triggerable unique constraint here is
+            # entities_node_kind_name_uq (the primary key is a fresh UUID).
+            # Other IntegrityErrors (e.g. the access_blob trigger) propagate.
+            if not _is_unique_violation(exc):
+                raise
+            raise EntityConflictError(
+                f"An entity with kind={kind!r} name={name!r} "
+                "already exists for this node."
+            ) from exc
         return self._to_entity(row)
 
     async def get_entity(self, id: str) -> Optional[EntityRecord]:
@@ -293,9 +320,17 @@ class GraphSQLAlchemyStore:
             values["access_blob"] = access_blob
         async with self._engine.begin() as conn:
             if values:
-                await conn.execute(
-                    update(_entities).where(_entities.c.id == id).values(**values)
-                )
+                try:
+                    await conn.execute(
+                        update(_entities).where(_entities.c.id == id).values(**values)
+                    )
+                except IntegrityError as exc:
+                    if not _is_unique_violation(exc):
+                        raise
+                    raise EntityConflictError(
+                        "An entity with the same kind and name already exists "
+                        "for this node."
+                    ) from exc
             row = (
                 await conn.execute(select(_entities).where(_entities.c.id == id))
             ).one_or_none()
