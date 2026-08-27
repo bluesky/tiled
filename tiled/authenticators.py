@@ -277,6 +277,12 @@ properties:
       Optional list of OAuth2 scopes to request. If provided, authorization
       should be enforced by an external policy agent (for example ExternalPolicyDecisionPoint)
       rather than by this authenticator.
+  scopes_map:
+    type: object
+    description: |
+      Optional mapping from identity-provider scopes to the list of Tiled
+      scopes they grant. The effective `scopes` are the union of any
+      explicitly-configured `scopes` and all Tiled scopes from this mapping.
   device_flow_client_id:
     type: string
   confirmation_message:
@@ -291,6 +297,7 @@ properties:
         device_flow_client_id: str,
         client_secret: str = "",
         scopes: Optional[List[str]] = None,
+        scopes_map: Optional[Dict[str, List[str]]] = None,
         confirmation_message: str = "",
         redirect_on_success: Optional[str] = None,
         redirect_on_failure: Optional[str] = None,
@@ -306,7 +313,8 @@ properties:
             redirect_on_failure=redirect_on_failure,
             user_id_claim=user_id_claim,
         )
-        self.scopes = scopes
+        self._scopes_map = scopes_map if scopes_map is not None else {}
+        self._scopes = scopes
         self.device_flow_client_id = device_flow_client_id
         self._oidc_bearer = OAuth2AuthorizationCodeBearer(
             authorizationUrl=str(self.authorization_endpoint),
@@ -317,6 +325,46 @@ properties:
     def oauth2_schema(self) -> OAuth2:
         return self._oidc_bearer
 
+    @property
+    def scopes(self) -> List[str]:
+        # Combine explicitly-configured scopes with those granted via
+        # scopes_map (the union of its values, i.e. all Tiled scopes it grants).
+        combined: set[str] = set(self._scopes or [])
+        for tiled_scopes in self._scopes_map.values():
+            combined.update(tiled_scopes)
+        return sorted(combined)
+
+    def decode_token(
+        self, id_token: str, access_token: Optional[str] = None
+    ) -> dict[str, Any]:
+        claims = super().decode_token(id_token, access_token)
+        # Translate identity-provider scopes to Tiled scopes via scopes_map.
+        # The provider "scp" claim is present in access tokens but may be absent
+        # from id_tokens (e.g. during the authorization-code flow).  When absent,
+        # assume all mapped scopes were granted (the provider would not have
+        # issued the tokens if the user lacked the requested scopes).  When no
+        # scopes_map is configured, the token's native scopes are left untouched.
+        if not self._scopes_map:
+            return claims
+        scp_raw = claims.get("scp", "")
+        tiled_scope_set: set[str] = set()
+        if scp_raw:
+            provider_scopes = scp_raw.split() if isinstance(scp_raw, str) else scp_raw
+            for scope in provider_scopes:
+                mapped_scopes = self._scopes_map.get(scope)
+                if mapped_scopes is None:
+                    logger.warning("Unmapped scope in 'scp': %s", scope)
+                    continue
+                tiled_scope_set.update(mapped_scopes)
+        else:
+            # No scp claim — grant all Tiled scopes from the map.
+            for mapped_scopes in self._scopes_map.values():
+                tiled_scope_set.update(mapped_scopes)
+        # Always set "scope" (even if empty) so downstream scope extraction does
+        # not fall back to the raw, unmapped provider "scp" claim.
+        claims["scope"] = " ".join(sorted(tiled_scope_set))
+        return claims
+
 
 class EntraAuthenticator(ProxiedOIDCAuthenticator):
     def __init__(
@@ -326,12 +374,11 @@ class EntraAuthenticator(ProxiedOIDCAuthenticator):
         well_known_uri: str,
         device_flow_client_id: str,
         extra_scopes: Optional[List[str]] = None,
+        scopes_map: Optional[Dict[str, List[str]]] = None,
         confirmation_message: str = "",
-        scopes_map: Optional[Dict[str, list[str]]] = None,
         client_secret: str = "",
         redirect_on_success: Optional[str] = None,
     ):
-        self.scopes_map = scopes_map if scopes_map is not None else {}
         self.extra_scopes = extra_scopes or []
         super().__init__(
             audience,
@@ -339,6 +386,7 @@ class EntraAuthenticator(ProxiedOIDCAuthenticator):
             well_known_uri,
             device_flow_client_id,
             scopes=None,  # not used by Entra; enforcement is via scopes_map
+            scopes_map=scopes_map,
             confirmation_message=confirmation_message,
             redirect_on_success=redirect_on_success,
         )
@@ -346,20 +394,10 @@ class EntraAuthenticator(ProxiedOIDCAuthenticator):
         if client_secret:
             self._client_secret = Secret(client_secret)
 
-        @property
-        def scopes(self):
-            mapped = set()
-            for tiled_scopes in self.scopes_map.values():
-                mapped.update(tiled_scopes)
-            return list(mapped)
-
-        @scopes.setter
-        def scopes(self, value):
-            pass  # ignored; scopes are derived from scopes_map
-
     def decode_token(
         self, id_token: str, access_token: Optional[str] = None
     ) -> dict[str, Any]:
+        # Handle scope translation (scp -> Tiled scopes via scopes_map) in super()
         claims = super().decode_token(id_token, access_token)
 
         # sub generated by Entra is an opaque string; generate a stable UUID
@@ -409,26 +447,6 @@ class EntraAuthenticator(ProxiedOIDCAuthenticator):
                 original_sub,
             )
         claims["user"] = user
-
-        # Translate Entra scopes to tiled scopes.
-        # The "scp" claim is present in access tokens but may be absent from
-        # id_tokens (e.g. during the authorization code flow).  When absent,
-        # assume all mapped scopes were granted (Entra would not have issued
-        # the tokens if the user lacked the requested scopes).
-        scp_raw = claims.get("scp", "")
-        tiled_scope_set = set()
-        if scp_raw:
-            for scope in scp_raw.split(" "):
-                mapped_scopes = self.scopes_map.get(scope)
-                if mapped_scopes is None:
-                    logger.warning("Unmapped Entra scope in 'scp': %s", scope)
-                    continue
-                tiled_scope_set.update(mapped_scopes)
-        else:
-            # No scp claim — grant all tiled scopes from the map.
-            for mapped_scopes in self.scopes_map.values():
-                tiled_scope_set.update(mapped_scopes)
-        claims["scope"] = " ".join(tiled_scope_set)
 
         return claims
 

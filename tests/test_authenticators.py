@@ -22,7 +22,7 @@ from tiled.authenticators import (
     OIDCAuthenticator,
     ProxiedOIDCAuthenticator,
 )
-from tiled.server.authentication import check_scopes
+from tiled.server.authentication import _extract_scopes, check_scopes
 from tiled.server.settings import Settings
 
 # Set this if there is an LDAP container running for testing.
@@ -170,7 +170,7 @@ def test_entra_decoding_ignores_unmapped_scopes(caplog):
         caplog.set_level(logging.WARNING)
 
         authenticator = object.__new__(EntraAuthenticator)
-        authenticator.scopes_map = {"known.scope": ["read:metadata"]}
+        authenticator._scopes_map = {"known.scope": ["read:metadata"]}
         claims = authenticator.decode_token("id-token", "access-token")
 
         assert claims["entra_sub"] == "opaque-sub"
@@ -178,7 +178,7 @@ def test_entra_decoding_ignores_unmapped_scopes(caplog):
         assert claims["user"] == "alice"
         assert claims["scope"] == "read:metadata"
         assert any(
-            "Unmapped Entra scope in 'scp': unknown.scope" in record.message
+            "Unmapped scope in 'scp': unknown.scope" in record.message
             for record in caplog.records
         )
     finally:
@@ -369,3 +369,148 @@ async def test_ProxiedOIDCAuthenticator_requires_scopes(mock_oidc_server, well_k
         await check_scopes(request=test_request, settings=settings, scopes=["read:data"],
                            security_scopes=security_scopes)
     assert exception.value.status_code == HTTP_401_UNAUTHORIZED
+
+
+async def test_ProxiedOIDCAuthenticator_scoped_api_key_passes(mock_oidc_server, well_known_url):
+    # Regression test: a request (e.g. from a scope-restricted API key) that
+    # carries only a *subset* of the authenticator's full scope universe must
+    # succeed as long as it holds the scopes the endpoint actually requires.
+    # Previously check_scopes required the request to carry *all* of the
+    # authenticator's scopes (the union of every scope in scopes_map), which
+    # broke scoped API keys under a ProxiedOIDC/Entra authenticator.
+    authenticator = ProxiedOIDCAuthenticator(
+        "tiled", "tiled", well_known_url, device_flow_client_id="tiled-cli",
+        scopes_map={"access_as_user": [
+            "read:metadata", "read:data", "create:node", "write:metadata",
+            "write:data", "delete:revision", "delete:node", "create:apikeys",
+            "revoke:apikeys",
+        ]},
+    )
+
+    test_request = Request(scope={"type": "http", "scheme": "http", "headers": [(b"host", b"testserver")]}, )
+    settings = Settings(authenticator=authenticator)
+
+    # The /metadata/ write endpoint requires these scopes; the restricted key
+    # has exactly these (and not the full universe, e.g. no read:data).
+    request_scopes = ["write:data", "create:node", "read:metadata", "write:metadata"]
+    security_scopes = SecurityScopes(scopes=["write:metadata", "create:node"])
+
+    # Should NOT raise.
+    await check_scopes(request=test_request, settings=settings, scopes=request_scopes,
+                       security_scopes=security_scopes)
+
+    # Sanity check: missing a required endpoint scope still fails.
+    security_scopes = SecurityScopes(scopes=["read:data"])
+    with pytest.raises(HTTPException) as exception:
+        await check_scopes(request=test_request, settings=settings, scopes=request_scopes,
+                           security_scopes=security_scopes)
+    assert exception.value.status_code == HTTP_401_UNAUTHORIZED
+
+
+def test_ProxiedOIDCAuthenticator_scopes_explicit(mock_oidc_server, well_known_url):
+    # With no scopes_map, explicit scopes are returned as-is.
+    authenticator = ProxiedOIDCAuthenticator(
+        "tiled", "tiled", well_known_url, device_flow_client_id="tiled-cli",
+        scopes=["read:data"],
+    )
+    assert authenticator.scopes == ["read:data"]
+
+
+def test_ProxiedOIDCAuthenticator_scopes_union(mock_oidc_server, well_known_url):
+    # When both are provided, scopes is the (sorted) union of explicit scopes
+    # and the Tiled scopes granted via scopes_map.
+    authenticator = ProxiedOIDCAuthenticator(
+        "tiled", "tiled", well_known_url, device_flow_client_id="tiled-cli",
+        scopes=["read:data"],
+        scopes_map={"provider.write": ["write:data"]},
+    )
+    assert authenticator.scopes == ["read:data", "write:data"]
+
+
+def test_ProxiedOIDCAuthenticator_scopes_derived_from_scopes_map(mock_oidc_server, well_known_url):
+    # With no explicit scopes, they are derived from the values of scopes_map.
+    authenticator = ProxiedOIDCAuthenticator(
+        "tiled", "tiled", well_known_url, device_flow_client_id="tiled-cli",
+        scopes_map={"provider.read": ["read:metadata", "read:data"]},
+    )
+    assert set(authenticator.scopes) == {"read:metadata", "read:data"}
+
+
+def test_ProxiedOIDCAuthenticator_scopes_default_empty(mock_oidc_server, well_known_url):
+    # With neither scopes nor scopes_map, scopes is an empty list.
+    authenticator = ProxiedOIDCAuthenticator(
+        "tiled", "tiled", well_known_url, device_flow_client_id="tiled-cli",
+    )
+    assert authenticator.scopes == []
+
+
+def test_EntraAuthenticator_scopes_derived_from_scopes_map(mock_oidc_server, well_known_url):
+    # EntraAuthenticator no longer defines its own scopes property; it inherits
+    # the scopes_map-derived behavior from ProxiedOIDCAuthenticator.
+    authenticator = EntraAuthenticator(
+        "tiled", "tiled", well_known_url, device_flow_client_id="tiled-cli",
+        scopes_map={"provider.read": ["read:metadata"], "provider.write": ["write:data"]},
+    )
+    assert set(authenticator.scopes) == {"read:metadata", "write:data"}
+
+
+def test_ProxiedOIDCAuthenticator_decode_token_maps_scopes():
+    # scopes_map translates provider scopes ("scp") into Tiled scopes ("scope").
+    def mock_decode_token(self, id_token, access_token=None):
+        return {"sub": "abc", "scp": "provider.read provider.unknown"}
+
+    original = OIDCAuthenticator.decode_token
+    OIDCAuthenticator.decode_token = mock_decode_token
+    try:
+        authenticator = object.__new__(ProxiedOIDCAuthenticator)
+        authenticator._scopes_map = {"provider.read": ["read:metadata"]}
+        claims = authenticator.decode_token("id-token", "access-token")
+        # Mapped scope is translated; unmapped provider scope is dropped.
+        assert claims["scope"] == "read:metadata"
+    finally:
+        OIDCAuthenticator.decode_token = original
+
+
+def test_ProxiedOIDCAuthenticator_decode_token_no_map_leaves_scopes():
+    # Without scopes_map, the token's native scopes are left untouched.
+    def mock_decode_token(self, id_token, access_token=None):
+        return {"sub": "abc", "scp": ["read:data"]}
+
+    original = OIDCAuthenticator.decode_token
+    OIDCAuthenticator.decode_token = mock_decode_token
+    try:
+        authenticator = object.__new__(ProxiedOIDCAuthenticator)
+        authenticator._scopes_map = {}
+        claims = authenticator.decode_token("id-token", "access-token")
+        assert "scope" not in claims
+        assert claims["scp"] == ["read:data"]
+    finally:
+        OIDCAuthenticator.decode_token = original
+
+
+def test_ProxiedOIDCAuthenticator_decode_token_all_unmapped_empty_scope():
+    # When scopes_map is configured but nothing maps, "scope" is set to an empty
+    # string (not left unset) so downstream extraction does not fall back to the
+    # raw, unmapped provider "scp" claim.
+    def mock_decode_token(self, id_token, access_token=None):
+        return {"sub": "abc", "scp": "provider.unknown"}
+
+    original = OIDCAuthenticator.decode_token
+    OIDCAuthenticator.decode_token = mock_decode_token
+    try:
+        authenticator = object.__new__(ProxiedOIDCAuthenticator)
+        authenticator._scopes_map = {"provider.read": ["read:metadata"]}
+        claims = authenticator.decode_token("id-token", "access-token")
+        assert claims["scope"] == ""
+    finally:
+        OIDCAuthenticator.decode_token = original
+
+
+def test_extract_scopes_empty_scope_is_empty_set():
+    # An empty "scope" string must yield an empty set, not {""}.
+    assert _extract_scopes({"scope": ""}, None) == set()
+    assert _extract_scopes(
+        {"scope": "read:data write:data"}, None
+    ) == {"read:data", "write:data"}
+    # "scope" (even empty) takes precedence over "scp" and is not overridden.
+    assert _extract_scopes({"scope": "", "scp": "read:data"}, None) == set()

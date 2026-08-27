@@ -5,6 +5,52 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## Unreleased
 
+### Fixed
+
+- Reading of individual partitions of multi-partitioned tables.
+- Fix the client showing a spurious "Retrying…" indicator (and a misleading
+  "Retry scheduled" debug log) when a request failed with a *non-retryable*
+  error, such as a 4xx response or `CannotRefreshAuthentication` during a normal
+  first-time login. The underlying retry context manager captures every
+  exception before deciding whether to retry, so the indicator was being driven
+  off exception capture rather than an actual retry. The indicator now appears
+  only when a retry genuinely occurs.
+- Fix the client ignoring the `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY`
+  environment variables. Because Tiled supplies a custom `httpx` transport (to
+  enable client-side response caching), httpx's built-in proxy resolution was
+  bypassed, so proxied requests (e.g. to an external OIDC provider) never went
+  through the configured proxy. The transport now honors these environment
+  variables. This can be disabled via the new `trust_env=False` parameter on
+  `from_uri`. As part of this fix, the client's `verify` setting is now applied
+  to the underlying transport (previously it was silently ignored when the
+  custom transport was in use).
+- Fix `check_scopes` incorrectly requiring every request under a
+  `ProxiedOIDCAuthenticator` (e.g. `EntraAuthenticator`) to carry the full set
+  of scopes known to the authenticator (the union of all scopes in
+  `scopes_map`). This broke scope-restricted API keys, which legitimately hold
+  only a subset of scopes. Authorization is now enforced solely against the
+  scopes each endpoint requires.
+- Render `NaN` as transparent pixels.
+
+## v0.2.16 (2026-08-21)
+
+### Changed
+
+- `ProxiedOIDCAuthenticator` now accepts a `scopes_map` parameter (previously
+  available only on `EntraAuthenticator`) and translates identity-provider
+  scopes into Tiled scopes when decoding tokens. Its effective `scopes` are the
+  union of any explicitly-configured `scopes` and the Tiled scopes granted via
+  `scopes_map`. When `scopes_map` is omitted, behavior is unchanged (the token's
+  native scopes are used).
+
+### Fixed
+
+- Fix precedence of scope check for `ProxiedOIDCAuthenticator`.
+- If refreshing access tokens yields `400 Bad Request`, clear the cached tokens
+  and prompt for login.
+
+## v0.2.15 (2026-08-11)
+
 ### Added
 
 - Support clustered Redis for high availability.
