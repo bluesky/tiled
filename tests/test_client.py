@@ -586,6 +586,44 @@ def test_retry_context_signals_retry_indicator():
                 stamina.set_active(False)
 
 
+def test_retry_context_no_indicator_on_non_retryable_error():
+    """A non-retryable error must not trigger the retry indicator.
+
+    Regression test: the attempt context manager "captures" every exception
+    (including non-retryable ones that are about to be re-raised), so the
+    indicator must not be driven off that. It should fire only when a retry
+    genuinely occurs.
+    """
+    from unittest.mock import patch
+
+    import stamina
+
+    from tiled.client.auth import CannotRefreshAuthentication
+    from tiled.client.utils import retry_context
+
+    tree = MapAdapter({"data": ArrayAdapter.from_array(numpy.zeros((10,)))})
+    app = build_app(tree)
+
+    with Context.from_app(app, show_progress=True) as context:
+        with patch.object(context, "signal_retry") as mock_signal:
+            stamina.set_active(True)
+            try:
+                call_count = 0
+                with pytest.raises(CannotRefreshAuthentication):
+                    for attempt in retry_context(context):
+                        with attempt:
+                            call_count += 1
+                            # Non-retryable: mimics first-login with no cached
+                            # refresh token.
+                            raise CannotRefreshAuthentication("no token")
+                # The body ran exactly once (no retry) and the indicator was
+                # never signaled.
+                assert call_count == 1
+                assert mock_signal.call_count == 0
+            finally:
+                stamina.set_active(False)
+
+
 # --- 429 Too Many Requests tests ---
 
 
@@ -731,7 +769,7 @@ def test_retry_context_logs_429_retry(caplog):
 
         tiled_messages = [r for r in caplog.records if r.name == "tiled.client"]
         assert len(tiled_messages) >= 1
-        assert "Retry" in tiled_messages[0].message
+        assert any("Retrying" in r.message for r in tiled_messages)
     finally:
         stamina.set_active(False)
         hide_logs()

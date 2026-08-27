@@ -58,7 +58,6 @@ subtrees:
             - file: explanations/metadata
             - file: explanations/security
             - file: explanations/compression
-            - file: explanations/specialized-formats
             - file: explanations/caching
             - file: explanations/access-control
             - file: explanations/catalog
