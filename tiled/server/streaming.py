@@ -369,14 +369,15 @@ def _make_ws_handler_common(
         disconnect_task = asyncio.create_task(watch_for_disconnect())
 
         last_sent = 0
-        if sequence is not None:
-            # If a sequence number is passed, replay old data
-            current_seq = last_sent = int(await current_sequence_getter())
-            logger.debug("Replaying old data...")
-            for s in range(sequence, current_seq + 1):
-                await stream_data(s)
         # Finally stream all buffered data into the websocket
         try:
+            if sequence is not None:
+                # If a sequence number is passed, replay old data
+                current_seq = last_sent = int(await current_sequence_getter())
+                logger.debug("Replaying old data...")
+                for s in range(sequence, current_seq + 1):
+                    await stream_data(s)
+
             while not end_stream.is_set():
                 live_seq = await stream_buffer.get()
 
