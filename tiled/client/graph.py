@@ -56,9 +56,19 @@ mutation($input: CreateEntityInput!) {{
   createEntity(input: $input) {{ {_ENTITY_FIELDS} }}
 }}
 """
+_UPDATE_ENTITY = f"""
+mutation($id: ID!, $input: UpdateEntityInput!) {{
+  updateEntity(id: $id, input: $input) {{ {_ENTITY_FIELDS} }}
+}}
+"""
 _CREATE_LINK = f"""
 mutation($input: CreateLinkInput!) {{
   createLink(input: $input) {{ {_LINK_FIELDS} }}
+}}
+"""
+_UPDATE_LINK = f"""
+mutation($id: ID!, $input: UpdateLinkInput!) {{
+  updateLink(id: $id, input: $input) {{ {_LINK_FIELDS} }}
 }}
 """
 _ENTITIES = f"""
@@ -69,6 +79,14 @@ query($kind: String, $nodePathParts: [String!], $name: String,
 }}
 """
 _ENTITY = f"query($id: ID!) {{ entity(id: $id) {{ {_ENTITY_FIELDS} }} }}"
+_LINKS = f"""
+query($subjectId: ID, $predicate: String, $objectId: ID,
+      $limit: Int!, $offset: Int!) {{
+  links(subjectId: $subjectId, predicate: $predicate, objectId: $objectId,
+        limit: $limit, offset: $offset) {{ {_LINK_FIELDS} }}
+}}
+"""
+_LINK = f"query($id: ID!) {{ link(id: $id) {{ {_LINK_FIELDS} }} }}"
 _DELETE_ENTITY = "mutation($id: ID!) { deleteEntity(id: $id) }"
 _DELETE_LINK = "mutation($id: ID!) { deleteLink(id: $id) }"
 _NAMESPACES = "{ namespaces { prefix uri } }"
@@ -77,6 +95,10 @@ mutation($prefix: String!, $uri: String!) {
   upsertNamespace(prefix: $prefix, uri: $uri) { prefix }
 }
 """
+
+# Sentinel for update arguments that are left unchanged, distinct from an
+# explicit None (which clears a value or detaches a node binding).
+_UNSET = object()
 
 
 class GraphError(RuntimeError):
@@ -194,6 +216,36 @@ class GraphClient:
         "Delete an entity by id, along with all links attached to it."
         return bool(self._execute(_DELETE_ENTITY, {"id": id})["deleteEntity"])
 
+    def update_entity(
+        self,
+        id: str,
+        *,
+        kind: Optional[str] = None,
+        name: Optional[str] = None,
+        node_path_parts: Any = _UNSET,
+        uri: Any = _UNSET,
+    ) -> Optional["EntityHandle"]:
+        """Update an entity by id; returns the updated handle, or None if absent.
+
+        Only the arguments you pass are changed. `kind` and `name` are left
+        alone when omitted (or None). `node_path_parts` and `uri` are left alone
+        when omitted; pass `node_path_parts=None` to detach the entity from its
+        catalog node, or `uri=None` to clear the URI.
+        """
+        input: dict[str, Any] = {}
+        if kind is not None:
+            input["kind"] = kind
+        if name is not None:
+            input["name"] = name
+        if node_path_parts is not _UNSET:
+            input["nodePathParts"] = node_path_parts
+        if uri is not _UNSET:
+            input["uri"] = uri
+        record = self._execute(_UPDATE_ENTITY, {"id": id, "input": input})[
+            "updateEntity"
+        ]
+        return EntityHandle._from_json(self, record) if record else None
+
     def create_link(
         self,
         *,
@@ -219,6 +271,46 @@ class GraphClient:
     def delete_link(self, id: str) -> bool:
         "Delete a link by id."
         return bool(self._execute(_DELETE_LINK, {"id": id})["deleteLink"])
+
+    def get_link(self, id: str) -> Optional["LinkHandle"]:
+        "Fetch a single link by id; returns None if it does not exist / is hidden."
+        record = self._execute(_LINK, {"id": id})["link"]
+        return LinkHandle._from_json(self, record) if record else None
+
+    def find_links(
+        self,
+        *,
+        subject_id: Optional[str] = None,
+        predicate: Optional[str] = None,
+        object_id: Optional[str] = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list["LinkHandle"]:
+        "Find links, optionally filtered by subject, predicate, and/or object."
+        records = self._execute(
+            _LINKS,
+            {
+                "subjectId": subject_id,
+                "predicate": predicate,
+                "objectId": object_id,
+                "limit": limit,
+                "offset": offset,
+            },
+        )["links"]
+        return [LinkHandle._from_json(self, r) for r in records]
+
+    def update_link(
+        self, id: str, *, predicate: Optional[str] = None
+    ) -> Optional["LinkHandle"]:
+        """Update a link's predicate by id; returns the updated handle, or None.
+
+        The predicate is left unchanged when omitted (or None).
+        """
+        input: dict[str, Any] = {}
+        if predicate is not None:
+            input["predicate"] = predicate
+        record = self._execute(_UPDATE_LINK, {"id": id, "input": input})["updateLink"]
+        return LinkHandle._from_json(self, record) if record else None
 
 
 class EntityHandle:
@@ -268,6 +360,43 @@ class EntityHandle:
         "Delete this entity and all links attached to it."
         return self._graph.delete_entity(self.id)
 
+    def outgoing_links(
+        self, *, predicate: Optional[str] = None, limit: int = 100, offset: int = 0
+    ) -> list["LinkHandle"]:
+        "Links where this entity is the subject."
+        return self._graph.find_links(
+            subject_id=self.id, predicate=predicate, limit=limit, offset=offset
+        )
+
+    def incoming_links(
+        self, *, predicate: Optional[str] = None, limit: int = 100, offset: int = 0
+    ) -> list["LinkHandle"]:
+        "Links where this entity is the object."
+        return self._graph.find_links(
+            object_id=self.id, predicate=predicate, limit=limit, offset=offset
+        )
+
+    def update(
+        self,
+        *,
+        kind: Optional[str] = None,
+        name: Optional[str] = None,
+        node_path_parts: Any = _UNSET,
+        uri: Any = _UNSET,
+    ) -> "EntityHandle":
+        "Update this entity in place; see :meth:`GraphClient.update_entity`."
+        updated = self._graph.update_entity(
+            self.id, kind=kind, name=name, node_path_parts=node_path_parts, uri=uri
+        )
+        if updated is None:
+            raise ValueError(f"Entity {self.id!r} no longer exists")
+        self.kind = updated.kind
+        self.name = updated.name
+        self.is_node_bound = updated.is_node_bound
+        self.uri = updated.uri
+        self.properties = updated.properties
+        return self
+
 
 class LinkHandle:
     "A handle to a directed link between two entities."
@@ -309,6 +438,23 @@ class LinkHandle:
     def delete(self) -> bool:
         "Delete this link."
         return self._graph.delete_link(self.id)
+
+    def subject(self) -> Optional["EntityHandle"]:
+        "The entity at the subject (tail) end of this link."
+        return self._graph.get_entity(self.subject_id)
+
+    def object(self) -> Optional["EntityHandle"]:
+        "The entity at the object (head) end of this link."
+        return self._graph.get_entity(self.object_id)
+
+    def update(self, *, predicate: Optional[str] = None) -> "LinkHandle":
+        "Update this link's predicate in place; see :meth:`GraphClient.update_link`."
+        updated = self._graph.update_link(self.id, predicate=predicate)
+        if updated is None:
+            raise ValueError(f"Link {self.id!r} no longer exists")
+        self.predicate = updated.predicate
+        self.properties = updated.properties
+        return self
 
 
 def _graph_for(obj) -> GraphClient:

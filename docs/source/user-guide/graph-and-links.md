@@ -105,12 +105,60 @@ make_link(subject=subtracted, object=measured, predicate="prov:wasDerivedFrom")
 make_link(subject=measured, object=sample, predicate="prov:used")
 ```
 
-These helpers all wrap the same GraphQL API covered next.
+### Explore and update the graph
+
+Once entities and links exist, you can look them up, walk the connections
+between them, and revise or remove them---all through the same handles. Every
+lookup returns an `EntityHandle` or `LinkHandle` (or `None` when nothing
+matches), so results can be chained straight into further calls.
+
+The `GraphClient` is the entry point for id lookups and filtered searches:
+
+```python
+from tiled.client.graph import GraphClient
+
+graph = GraphClient(client.context)
+
+graph.get_entity(measured.id)               # one entity by id, or None
+graph.find_entities(kind="derived")         # filter by kind, name, and/or node
+graph.find_links(subject_id=subtracted.id)  # filter by subject, predicate, object
+```
+
+From an entity handle you can traverse its links in either direction, and from
+a link handle you can resolve the entities at each end:
+
+```python
+outgoing = subtracted.outgoing_links()   # links where this entity is the subject
+incoming = measured.incoming_links()     # links where this entity is the object
+
+link = outgoing[0]
+link.subject()   # the EntityHandle at the tail (== subtracted)
+link.object()    # the EntityHandle at the head (== measured)
+```
+
+Handles can be edited in place. `update()` sends only the fields you pass and
+mutates the handle to match the server's response:
+
+```python
+sample.update(name="LaB6 (NIST SRM 660c)")   # rename an entity
+sample.update(uri=None)                       # clear a field by passing None
+link.update(predicate="prov:wasRevisionOf")   # relabel a link
+
+sample.delete()   # remove an entity (and every link attached to it)
+link.delete()     # remove a single link
+```
+
+When editing an entity bound to a catalog node on this Tiled server, pass
+`node_path_parts=None` to detach it from its catalog node, or a new path to re-bind
+it; omit the argument to leave the binding untouched.
+
+All Python helpers described above wrap the same GraphQL API covered in the next
+section.
 
 ## Using GraphQL directly
 
 The Python helpers above are a thin convenience layer over the GraphQL API,
-which you can also drive by hand -- from the in-browser editor, from `curl`, or
+which you can also drive by hand---from the in-browser editor, from `curl`, or
 from any HTTP client. The sections below walk through querying and mutating the
 graph directly.
 

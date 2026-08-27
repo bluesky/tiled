@@ -568,7 +568,7 @@ class Mutation:
             node_id = await _resolve_node_binding(info, input.node_path_parts)
         node_binding_changed = node_id is not STORE_UNSET
         effective_node_id = current.node_id if node_id is STORE_UNSET else node_id
-        access_blob = UNSET
+        access_blob = STORE_UNSET
         if effective_node_id is not None:
             if input.access_blob is not UNSET and (input.access_blob or {}):
                 raise GraphQLError(ENTITY_NODE_ACCESS_BLOB_ERROR)
@@ -619,7 +619,7 @@ class Mutation:
             return None
         await _assert_allowed(info, current.access_blob, "write:metadata")
         namespaces = await _namespaces(info)
-        access_blob = UNSET
+        access_blob = STORE_UNSET
         if input.access_blob is not UNSET:
             requested_access_blob = input.access_blob or {}
             access_blob = await _modify_access_blob(

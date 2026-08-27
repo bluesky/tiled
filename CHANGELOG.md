@@ -11,6 +11,11 @@ Write the date in place of the "Unreleased" in the case a new version is release
   node clients gain `bind_entity(...)` and `entities()` methods, and
   `tiled.client.graph` provides `make_entity`, `make_link`, and
   `register_namespace` helpers plus a `GraphClient` wrapper over the GraphQL API.
+  The `GraphClient` and its `EntityHandle`/`LinkHandle` handles support the full
+  lifecycle: look entities and links up by id or filter (`get_entity`,
+  `find_entities`, `get_link`, `find_links`), traverse between them
+  (`outgoing_links`, `incoming_links`, and a link's `subject`/`object`), and
+  update or delete them in place (`update`/`delete`).
 
 ### Changed
 
@@ -37,6 +42,9 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Fixed
 
+- Fix the experimental graph's `updateEntity` and `updateLink` mutations, which
+  wrote a placeholder `UnsetType` into `access_blob` when the field was omitted
+  instead of leaving it unchanged.
 - Reading of individual partitions of multi-partitioned tables.
 - Fix the client showing a spurious "Retrying…" indicator (and a misleading
   "Retry scheduled" debug log) when a request failed with a *non-retryable*

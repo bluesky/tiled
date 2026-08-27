@@ -183,3 +183,135 @@ def test_delete_link_by_id(client):
     assert graph.delete_link(link.id) is True
     # Deleting again reports that nothing was removed.
     assert graph.delete_link(link.id) is False
+
+
+@pytest.fixture
+def linked_pair(client):
+    "A `subtracted -wasDerivedFrom-> measured` pair of node-bound entities."
+    client.write_array([1, 2, 3], key="measured")
+    client.write_array([0, 1, 2], key="subtracted")
+    measured = client["measured"].bind_entity()
+    subtracted = client["subtracted"].bind_entity()
+    link = make_link(
+        subject=subtracted, object=measured, predicate="prov:wasDerivedFrom"
+    )
+    return subtracted, measured, link
+
+
+def test_get_link_by_id(client, linked_pair):
+    "GraphClient.get_link fetches a single link by id."
+    _, _, link = linked_pair
+    graph = GraphClient(client.context)
+
+    fetched = graph.get_link(link.id)
+    assert fetched is not None
+    assert fetched.id == link.id
+    assert fetched.predicate == "prov:wasDerivedFrom"
+    assert graph.get_link("00000000-0000-0000-0000-000000000000") is None
+
+
+def test_find_links_filters(client, linked_pair):
+    "GraphClient.find_links filters by subject, predicate, and object."
+    subtracted, measured, link = linked_pair
+    graph = GraphClient(client.context)
+
+    assert [x.id for x in graph.find_links(subject_id=subtracted.id)] == [link.id]
+    assert [x.id for x in graph.find_links(object_id=measured.id)] == [link.id]
+    assert [x.id for x in graph.find_links(predicate="prov:wasDerivedFrom")] == [
+        link.id
+    ]
+    assert graph.find_links(subject_id=measured.id) == []
+
+
+def test_outgoing_and_incoming_links(client, linked_pair):
+    "EntityHandle traversal returns links in each direction."
+    subtracted, measured, link = linked_pair
+
+    assert [x.id for x in subtracted.outgoing_links()] == [link.id]
+    assert subtracted.incoming_links() == []
+    assert [x.id for x in measured.incoming_links()] == [link.id]
+    assert measured.outgoing_links() == []
+
+
+def test_link_handle_subject_and_object(client, linked_pair):
+    "LinkHandle.subject and LinkHandle.object resolve the endpoint entities."
+    subtracted, measured, link = linked_pair
+
+    assert link.subject().id == subtracted.id
+    assert link.object().id == measured.id
+
+
+def test_update_entity_by_id(client):
+    "GraphClient.update_entity changes fields and returns the updated handle."
+    sample = make_entity(client, name="LaB6", kind="sample")
+    graph = GraphClient(client.context)
+
+    updated = graph.update_entity(sample.id, name="LaB6 (NIST 660c)")
+    assert updated is not None
+    assert updated.name == "LaB6 (NIST 660c)"
+    assert updated.kind == "sample"
+    # Absent entity yields None.
+    assert (
+        graph.update_entity(
+            "00000000-0000-0000-0000-000000000000", name="x"
+        )
+        is None
+    )
+
+
+def test_update_entity_clears_uri(client):
+    "Passing uri=None clears the URI, distinct from omitting it."
+    sample = make_entity(
+        client, name="LaB6", kind="sample", uri="http://example.org/q"
+    )
+    graph = GraphClient(client.context)
+
+    # Omitting uri leaves it in place.
+    assert graph.update_entity(sample.id, name="renamed").uri == (
+        "http://example.org/q"
+    )
+    # Explicit None clears it.
+    assert graph.update_entity(sample.id, uri=None).uri is None
+
+
+def test_entity_handle_update_in_place(client):
+    "EntityHandle.update mutates the handle and returns self."
+    sample = make_entity(client, name="LaB6", kind="sample")
+
+    result = sample.update(name="LaB6 (NIST 660c)")
+    assert result is sample
+    assert sample.name == "LaB6 (NIST 660c)"
+
+
+def test_entity_handle_update_missing_raises(client):
+    "EntityHandle.update raises if the entity no longer exists."
+    sample = make_entity(client, name="LaB6", kind="sample")
+    sample.delete()
+
+    with pytest.raises(ValueError):
+        sample.update(name="gone")
+
+
+def test_update_link_by_id(client, linked_pair):
+    "GraphClient.update_link changes the predicate and returns the handle."
+    _, _, link = linked_pair
+    graph = GraphClient(client.context)
+
+    updated = graph.update_link(link.id, predicate="prov:wasRevisionOf")
+    assert updated is not None
+    assert updated.predicate == "prov:wasRevisionOf"
+    assert (
+        graph.update_link(
+            "00000000-0000-0000-0000-000000000000", predicate="x"
+        )
+        is None
+    )
+
+
+def test_link_handle_update_in_place(client, linked_pair):
+    "LinkHandle.update mutates the handle and returns self."
+    _, _, link = linked_pair
+
+    result = link.update(predicate="prov:wasRevisionOf")
+    assert result is link
+    assert link.predicate == "prov:wasRevisionOf"
