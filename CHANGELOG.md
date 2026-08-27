@@ -47,6 +47,11 @@ Write the date in place of the "Unreleased" in the case a new version is release
   multiple requests.
 - Fixed regression in configuration parser, which had mistyped the catalog
   configuration `adapter_by_mimetype` resulting in a spurious error.
+- Resolve issue where creating a streaming subscription would cause the server
+  to hang indefinitely on close. Added an additional asyncio task that watches
+  for disconnects and breaks out of the `buffer_live_events` loop when the
+  connection is closed. Also added a test to verify that `server.close()` does
+  not hang with an open streaming subscription.
 
 ## v0.2.16 (2026-08-21)
 
