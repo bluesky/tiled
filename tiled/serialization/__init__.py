@@ -23,7 +23,7 @@ def register_builtin_serializers():
 
         del _table
 
-    if modules_available("pandas", "dask.dataframe"):
+    if modules_available("pandas"):
         from ..serialization import xdi as _xdi  # noqa: F401
 
         del _xdi
