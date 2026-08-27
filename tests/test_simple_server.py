@@ -10,12 +10,11 @@ from pathlib import Path
 import httpx
 import pyarrow
 import pytest
+from websockets.frames import CloseCode
 
 from tiled.client import SERVERS, from_uri, simple
 from tiled.client.register import register
 from tiled.server import SimpleTiledServer
-
-from websockets.frames import CloseCode
 
 
 def test_default():
