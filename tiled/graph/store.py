@@ -265,6 +265,7 @@ class GraphSQLAlchemyStore:
     async def list_entities(
         self,
         kind: Optional[str] = None,
+        name: Optional[str] = None,
         node_id: Optional[int] = None,
         limit: int = 100,
         offset: int = 0,
@@ -275,6 +276,8 @@ class GraphSQLAlchemyStore:
             stmt = stmt.where(_entities.c.kind == kind)
         if node_id is not None:
             stmt = stmt.where(_entities.c.node_id == node_id)
+        if name is not None:
+            stmt = stmt.where(_entities.c.name == name)
         if access_filters:
             dialect_name = self._engine.url.get_dialect().name
             # An entity's effective access_blob is its node's access_blob
@@ -304,10 +307,10 @@ class GraphSQLAlchemyStore:
     async def update_entity(
         self,
         id: str,
+        kind: Optional[str] = None,
         name: Optional[str] = None,
         node_id: object = UNSET,
         uri: object = UNSET,
-        kind: Optional[str] = None,
         access_blob: object = UNSET,
     ) -> Optional[EntityRecord]:
         values: dict = {}

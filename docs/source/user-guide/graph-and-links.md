@@ -35,7 +35,86 @@ without credentials. *Writing* data or mutating the graph requires the
 single-user API key (default `secret`), which is printed at startup.
 ```
 
-## Open the GraphQL editor
+## Using the Python client
+
+If you are working from a Tiled Python client, you can build the graph entirely
+in Python, without writing any GraphQL code.
+
+The usual node clients---what you get from `from_uri(...)` or `client["key"]`---
+point at datasets and containers in the catalog tree and are your primary
+interface to the data. The graph adds two lightweight companions: an
+`EntityHandle` represents a subject or an object in a directed relationship, and
+that relationship itself is represented by a `LinkHandle`. Both are only
+references to graph records---they hold no array or table data, encoding instead
+the relationships between Tiled nodes. An entity is usually bound to a catalog
+node, but it can also point to an external resource.
+
+You rarely need to construct these handles yourself. Every node client exposes
+`bind_entity()` and `entities()` methods that return them, and a few extra
+helpers in `tiled.client.graph` link entities and create ones that point outside
+the catalog.
+
+The simplest place to start is to bind an entity to a dataset you already have a
+client for. By default the entity takes its `kind` (the entity type) from the
+node's structure family---`"array"`, `"table"`, `"container"`, and so on---and
+its `name` from the node's key, but you can override either one:
+
+```python
+from tiled.client import from_uri
+from tiled.client.graph import make_entity, make_link, register_namespace
+
+client = from_uri("http://127.0.0.1:8000", api_key="secret")
+
+client.write_array([1, 2, 3], key="measured")
+client.write_array([0, 1, 2], key="subtracted")
+
+# Register a CURIE prefix so predicates like "prov:wasDerivedFrom" resolve.
+register_namespace(client, "prov", "http://www.w3.org/ns/prov#")
+
+measured = client["measured"].bind_entity()                 # kind="array", name="measured"
+subtracted = client["subtracted"].bind_entity(kind="derived")
+```
+
+Because each `(node, kind, name)` combination must be unique, `bind_entity()`
+raises `EntityExistsError` when a matching entity already exists. In that case,
+use the node's `entities()` method to fetch what is already there:
+
+```python
+existing = client["measured"].entities()  # list of EntityHandle
+```
+
+Not every entity corresponds to a node in the catalog. To describe something
+that lives elsewhere---a physical sample, an instrument, or a dataset on another
+server---create a free-standing entity with `make_entity()`:
+
+```python
+sample = make_entity(
+    client,
+    kind="sample",
+    name="LaB6",
+    uri="http://www.wikidata.org/entity/Q0",
+)
+```
+
+Finally, connect any two entities with a link. Links are directed,
+reading as `subject -predicate-> object`, and `subject` and `object` are
+keyword-only so that direction is always unambiguous:
+
+```python
+make_link(subject=subtracted, object=measured, predicate="prov:wasDerivedFrom")
+make_link(subject=measured, object=sample, predicate="prov:used")
+```
+
+These helpers all wrap the same GraphQL API covered next.
+
+## Using GraphQL directly
+
+The Python helpers above are a thin convenience layer over the GraphQL API,
+which you can also drive by hand -- from the in-browser editor, from `curl`, or
+from any HTTP client. The sections below walk through querying and mutating the
+graph directly.
+
+### Open the GraphiQL editor
 
 With the server running (default `http://127.0.0.1:8000`), open this URL in a
 browser:
@@ -65,7 +144,7 @@ On a server that is *not* public, read queries also require this header;
 without it they will not raise an error---they will simply return empty
 results, because Tiled's access checks fail closed.
 
-## Query entities and links
+### Query entities and links
 
 List all links, including the entities at each end:
 
@@ -110,7 +189,7 @@ query {
 }
 ```
 
-## Trace provenance across the graph
+### Trace provenance across the graph
 
 So far, each query has returned a flat list of entities or links. But entities
 and links form a connected graph, and GraphQL lets you walk it. From an entity,
@@ -190,7 +269,7 @@ nesting at a fixed depth (10 levels); a query deeper than that is rejected.
 Introspection queries (the GraphiQL **Docs** panel) are exempt.
 ```
 
-## Query namespaces
+### Query namespaces
 
 Namespaces are the CURIE prefix -> URI mappings used to expand and compact
 property keys and link predicates (for example, `prov` ->
@@ -220,7 +299,7 @@ mutation {
 `deleteNamespace(prefix: "schema")` removes one. Both mutations require
 `write:metadata` scope.
 
-### See namespaces together with the data
+#### See namespaces together with the data
 
 GraphQL lets you ask for multiple top-level fields in one query, so you can
 see everything resolved consistently in a single round trip:
@@ -252,7 +331,7 @@ against the `namespaces` list---a property stored internally as the full IRI
 `http://www.w3.org/ns/prov#wasDerivedFrom` displays here as
 `prov:wasDerivedFrom` if the `prov` prefix is registered.
 
-## Create entities and links
+### Create entities and links
 
 Mutations require `write:metadata` scope (the demo's single-user API key has
 it). Create an entity. Because `properties` is a free-form JSON scalar, pass
@@ -304,7 +383,7 @@ than being stored as a literal string.
 `updateEntity`, `deleteEntity`, `updateLink`, and `deleteLink` are also
 available; deleting an entity cascades to any links attached to it.
 
-## Tie entities to data: `nodePathParts` vs `uri`
+### Tie entities to data: `nodePathParts` vs `uri`
 
 An entity can reference the data it describes in two independent ways:
 
@@ -399,7 +478,7 @@ An entity can reference the data it describes in two independent ways:
   See the `dif_beam_hdf5_image` and `lanthanum_hexaboride` entities in
   `tiled/examples/demo_graph.json` for worked examples.
 
-## From the command line
+### From the command line
 
 The same endpoint works with any HTTP client:
 

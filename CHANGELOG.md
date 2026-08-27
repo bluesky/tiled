@@ -5,6 +5,13 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## Unreleased
 
+### Added
+
+- Add a client-side interface for the experimental "graph of links". Catalog
+  node clients gain `bind_entity(...)` and `entities()` methods, and
+  `tiled.client.graph` provides `make_entity`, `make_link`, and
+  `register_namespace` helpers plus a `GraphClient` wrapper over the GraphQL API.
+
 ### Changed
 
 - Refactor the experimental graph API to tie entities to catalog nodes by

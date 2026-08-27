@@ -336,12 +336,12 @@ def _link_from_record(r: LinkRecord, namespaces: dict[str, str]) -> Link:
 
 @strawberry.input
 class UpdateEntityInput:
+    kind: Optional[str] = None
     name: Optional[str] = None
     # Re-bind to a catalog node by path (list of key segments), detach with an
     # explicit null, or leave the current binding unchanged by omitting it.
     node_path_parts: Optional[list[str]] | UnsetType = UNSET
     uri: Optional[str] | UnsetType = UNSET
-    kind: Optional[str] = None
     access_blob: Optional[JSON] | UnsetType = UNSET  # type: ignore[valid-type]
 
 
@@ -396,6 +396,7 @@ class Query:
         self,
         info: Info,
         kind: Optional[str] = None,
+        name: Optional[str] = None,
         node_path_parts: Optional[list[str]] = None,
         limit: int = 100,
         offset: int = 0,
@@ -411,6 +412,7 @@ class Query:
                 return []
         records = await _store(info).list_entities(
             kind=kind,
+            name=name,
             node_id=node_id,
             limit=limit,
             offset=offset,
@@ -585,10 +587,10 @@ class Mutation:
         try:
             record = await _store(info).update_entity(
                 str(id),
+                kind=input.kind,
                 name=input.name,
                 node_id=node_id,
                 uri=uri,
-                kind=input.kind,
                 access_blob=access_blob,
             )
         except EntityConflictError as exc:
