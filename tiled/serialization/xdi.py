@@ -3,8 +3,7 @@ Built-in serializer for the XAS Data Interchange (XDI) format.
 
 Spec: https://github.com/XraySpectroscopy/XAS-Data-Interchange/blob/master/specification/spec.md
 
-This serializer is registered under StructureFamily.table so it is available to any
-table node. It is intended to be used with tables tagged with Spec("xdi", ...), which
+This serializer is intended to be used with tables tagged with Spec("xdi", ...), which
 carry XDI-structured metadata, but will produce valid (if sparse) output for any table.
 
 The expected metadata structure mirrors that produced by tiled.examples.xdi.XDIAdapter:

@@ -57,6 +57,18 @@ XDI_DF = pandas.DataFrame(
     }
 )
 
+# Metadata with raw (non-prefixed) comment lines — tests the '#' auto-prepend path
+XDI_METADATA_RAW_COMMENTS = {
+    "xdi_version": "1.0",
+    "extra_version": "",
+    "fields": {
+        "Element": {"symbol": "Cu", "edge": "K"},
+        "Mono": {"d_spacing": "3.13553"},
+    },
+    # Mix: one line without '#' (should get one prepended), one with '#' (preserved as-is)
+    "comments": "Cu foil at room temperature\n# measured at 13-ID\n",
+}
+
 # Metadata without a "comments" key — tests the no-comment path
 XDI_METADATA_NO_COMMENTS = {
     "xdi_version": "1.0",
@@ -82,6 +94,12 @@ def _build_tree():
                 XDI_DF[["energy"]].copy(),
                 npartitions=1,
                 metadata=XDI_METADATA_NO_COMMENTS,
+                specs=[Spec("xdi", version="1.0")],
+            ),
+            "xdi_raw_comments": DataFrameAdapter.from_pandas(
+                XDI_DF[["energy"]].copy(),
+                npartitions=1,
+                metadata=XDI_METADATA_RAW_COMMENTS,
                 specs=[Spec("xdi", version="1.0")],
             ),
             # A plain table with no Spec("xdi") and no XDI metadata —
@@ -202,6 +220,18 @@ def test_xdi_output_user_comments_preserved(client):
     content = _export_to_string(client["xdi_table"], format="application/x-xdi")
     assert "# Cu foil Room Temperature" in content
     assert "# measured at beamline 13-ID" in content
+
+
+def test_xdi_output_raw_comment_lines_get_hash_prefix(client):
+    """Comment lines in metadata that don't start with '#' must have one prepended.
+
+    Covers the two branches inside the comments loop in serialize_xdi:
+      - a line without a leading '#' -> '# ' is prepended
+      - a line already starting with '#' -> written as-is
+    """
+    content = _export_to_string(client["xdi_raw_comments"], format="application/x-xdi")
+    assert "# Cu foil at room temperature" in content  # '#' was prepended
+    assert "# measured at 13-ID" in content  # existing '#' preserved
 
 
 def test_xdi_output_separators_always_present_without_comments(client):
