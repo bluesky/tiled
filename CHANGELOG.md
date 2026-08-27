@@ -5,6 +5,16 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## Unreleased
 
+### Changed
+
+- Refactor the experimental graph API to tie entities to catalog nodes by
+  `nodePathParts` (a list of key segments) instead of by the internal `nodeId`.
+  Internal catalog node ids are no longer exposed to clients: `createEntity`
+  and `updateEntity` take a `nodePathParts` and the server resolves it to the
+  node's id, the `catalogNodeId` query is removed, and an entity now reports a
+  read-only boolean `isNodeBound` in place of `nodeId`. Passing a
+  `nodePathParts` that names no existing node raises an error.
+
 ### Fixed
 
 - Reading of individual partitions of multi-partitioned tables.
