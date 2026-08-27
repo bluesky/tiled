@@ -35,6 +35,58 @@ without credentials. *Writing* data or mutating the graph requires the
 single-user API key (default `secret`), which is printed at startup.
 ```
 
+The seeded graph is shown below. The six `linked` datasets (bound to catalog
+nodes) form a reduction pipeline joined by `prov:wasDerivedFrom`; the raw
+`measured` stack also reaches outward to a calibration image on another Tiled
+server and to the sample's encyclopedic record. An `analysis_workflow` (run by
+`processing_script.py`) and an RO-Crate manifest tie the same datasets together
+from two other perspectives.
+
+```{mermaid}
+flowchart TD
+    subgraph linked["linked container (catalog nodes)"]
+        measured["measured<br/>(dataset)"]
+        background["background<br/>(dataset)"]
+        subtracted["subtracted<br/>(dataset)"]
+        normalized["normalized<br/>(dataset)"]
+        integrated["integrated<br/>(dataset)"]
+        summary["summary<br/>(dataset)"]
+    end
+
+    subgraph ext["external entities"]
+        beam["dif_beam_hdf5_image<br/>(dataset, another Tiled server)"]
+        sample["lanthanum_hexaboride<br/>(reference, Wikidata)"]
+    end
+
+    workflow["analysis_workflow<br/>(workflow)"]
+    script["processing_script.py<br/>(software)"]
+    crate["ro-crate-metadata.json<br/>(rocrate)"]
+
+    subtracted -->|prov:wasDerivedFrom| measured
+    subtracted -->|prov:wasDerivedFrom| background
+    normalized -->|prov:wasDerivedFrom| subtracted
+    integrated -->|prov:wasDerivedFrom| normalized
+    summary -->|prov:wasDerivedFrom| normalized
+
+    measured -->|prov:wasInformedBy| beam
+    measured -->|schema:about| sample
+
+    workflow -->|instrument| script
+    workflow -->|prov:used| measured
+    workflow -->|prov:used| background
+    workflow -->|result| subtracted
+    workflow -->|result| normalized
+    workflow -->|result| integrated
+    workflow -->|result| summary
+
+    crate -->|ro:hasPart| measured
+    crate -->|ro:hasPart| background
+    crate -->|ro:hasPart| subtracted
+    crate -->|ro:hasPart| normalized
+    crate -->|ro:hasPart| integrated
+    crate -->|ro:hasPart| summary
+```
+
 ## Using the Python client
 
 If you are working from a Tiled Python client, you can build the graph entirely
