@@ -137,7 +137,7 @@ def main() -> None:
                 uri = item.get("uri")
 
             entity_input = {
-                "entityType": item.get("entityType", "entity"),
+                "kind": item.get("kind", "entity"),
                 "name": name,
                 "uri": uri,
                 "nodeId": item.get("nodeId"),

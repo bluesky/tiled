@@ -194,7 +194,7 @@ async def test_entity_create_defaults_to_user_access_blob_and_read_visibility(
     result = await _execute(
         CREATE_ENTITY_MUTATION,
         alice_ctx,
-        {"input": {"entityType": "sample", "name": "E1", "properties": {}}},
+        {"input": {"kind": "sample", "name": "E1", "properties": {}}},
     )
     assert result.errors is None
     entity_id = result.data["createEntity"]["id"]
@@ -222,7 +222,7 @@ async def test_entity_can_be_tagged_and_shared_for_reads(store, policy):
         alice_ctx,
         {
             "input": {
-                "entityType": "sample",
+                "kind": "sample",
                 "name": "Etag",
                 "properties": {},
                 "accessBlob": {"tags": ["team"]},
@@ -246,7 +246,7 @@ async def test_entity_update_and_delete_enforce_access_control(store, policy):
     created = await _execute(
         CREATE_ENTITY_MUTATION,
         alice_ctx,
-        {"input": {"entityType": "sample", "name": "E2", "properties": {}}},
+        {"input": {"kind": "sample", "name": "E2", "properties": {}}},
     )
     assert created.errors is None
     entity_id = created.data["createEntity"]["id"]
@@ -299,7 +299,7 @@ async def test_link_crud_and_access_control(store, policy):
         alice_ctx,
         {
             "input": {
-                "entityType": "sample",
+                "kind": "sample",
                 "name": "S",
                 "properties": {},
                 "accessBlob": {"tags": ["team"]},
@@ -311,7 +311,7 @@ async def test_link_crud_and_access_control(store, policy):
         alice_ctx,
         {
             "input": {
-                "entityType": "sample",
+                "kind": "sample",
                 "name": "O",
                 "properties": {},
                 "accessBlob": {"tags": ["team"]},
@@ -400,7 +400,7 @@ async def test_query_paths_use_access_policy_filters(store, filter_policy):
         alice_ctx,
         {
             "input": {
-                "entityType": "sample",
+                "kind": "sample",
                 "name": "team-visible",
                 "properties": {},
                 "accessBlob": {"tags": ["team"]},
@@ -412,7 +412,7 @@ async def test_query_paths_use_access_policy_filters(store, filter_policy):
         alice_ctx,
         {
             "input": {
-                "entityType": "sample",
+                "kind": "sample",
                 "name": "private-visible-to-alice",
                 "properties": {},
             }
@@ -448,7 +448,7 @@ async def test_pagination_applies_after_access_filtering(store, filter_policy):
             alice_ctx,
             {
                 "input": {
-                    "entityType": "sample",
+                    "kind": "sample",
                     "name": f"private-{i}",
                     "properties": {},
                 }
@@ -460,7 +460,7 @@ async def test_pagination_applies_after_access_filtering(store, filter_policy):
             alice_ctx,
             {
                 "input": {
-                    "entityType": "sample",
+                    "kind": "sample",
                     "name": f"team-{i}",
                     "properties": {},
                     "accessBlob": {"tags": ["team"]},
@@ -495,14 +495,14 @@ async def test_entity_node_access_blob_trigger_rejects_both_set(store):
 
     with pytest.raises(IntegrityError):
         await store.create_entity(
-            entity_type="sample",
+            kind="sample",
             name="bad",
             node_id=1,
             access_blob={"tags": ["team"]},
         )
 
     entity = await store.create_entity(
-        entity_type="sample", name="ok", node_id=1, access_blob=None
+        kind="sample", name="ok", node_id=1, access_blob=None
     )
     with pytest.raises(IntegrityError):
         await store.update_entity(entity.id, access_blob={"tags": ["team"]})
@@ -519,7 +519,7 @@ async def test_create_entity_rejects_node_id_with_access_blob(store, policy):
         alice_ctx,
         {
             "input": {
-                "entityType": "sample",
+                "kind": "sample",
                 "name": "bad",
                 "nodeId": 1,
                 "accessBlob": {"tags": ["team"]},
@@ -540,7 +540,7 @@ async def test_update_entity_rejects_setting_access_blob_on_node_linked_entity(
     created = await _execute(
         CREATE_ENTITY_MUTATION,
         alice_ctx,
-        {"input": {"entityType": "sample", "name": "linked", "nodeId": 1}},
+        {"input": {"kind": "sample", "name": "linked", "nodeId": 1}},
     )
     assert created.errors is None
     entity_id = created.data["createEntity"]["id"]
@@ -572,7 +572,7 @@ async def test_update_entity_detaching_node_reinitializes_access_blob(store, pol
     created = await _execute(
         CREATE_ENTITY_MUTATION,
         alice_ctx,
-        {"input": {"entityType": "sample", "name": "linked", "nodeId": 1}},
+        {"input": {"kind": "sample", "name": "linked", "nodeId": 1}},
     )
     assert created.errors is None
     entity_id = created.data["createEntity"]["id"]
@@ -602,7 +602,7 @@ async def test_entity_read_access_delegates_to_node_access_blob(store):
     node_policy = FakeTagPolicy({"alice": {"node_team"}, "bob": {"team"}})
     await _insert_node(store, 1, {"tags": ["node_team"]})
     entity = await store.create_entity(
-        entity_type="sample", name="linked", node_id=1, access_blob=None
+        kind="sample", name="linked", node_id=1, access_blob=None
     )
 
     alice_ctx = _context(store, node_policy, "alice", {"read:metadata"})
@@ -624,10 +624,10 @@ async def test_entities_listing_filters_by_node_access_blob(store, filter_policy
     await _insert_node(store, 1, {"tags": ["team"]}, key="visible-node")
     await _insert_node(store, 2, {"tags": ["other"]}, key="hidden-node")
     await store.create_entity(
-        entity_type="sample", name="node-linked-visible", node_id=1, access_blob=None
+        kind="sample", name="node-linked-visible", node_id=1, access_blob=None
     )
     await store.create_entity(
-        entity_type="sample", name="node-linked-hidden", node_id=2, access_blob=None
+        kind="sample", name="node-linked-hidden", node_id=2, access_blob=None
     )
 
     bob_ctx = _context(store, filter_policy, "bob", {"read:metadata"})
@@ -711,7 +711,7 @@ async def test_graphql_expands_and_compacts_curies(store, policy):
         alice_ctx,
         {
             "input": {
-                "entityType": "sample",
+                "kind": "sample",
                 "name": "E",
                 "properties": {"schema:name": "hello"},
             }
@@ -739,7 +739,7 @@ async def test_graphql_expands_and_compacts_curies(store, policy):
     other = await _execute(
         create_entity_with_properties,
         alice_ctx,
-        {"input": {"entityType": "sample", "name": "O", "properties": {}}},
+        {"input": {"kind": "sample", "name": "O", "properties": {}}},
     )
     other_id = other.data["createEntity"]["id"]
     link_created = await _execute(
@@ -795,7 +795,7 @@ def test_graphql_http_route_access_control_integration(tmp_path, policy):
                 "query": CREATE_ENTITY_MUTATION,
                 "variables": {
                     "input": {
-                        "entityType": "sample",
+                        "kind": "sample",
                         "name": "S",
                         "properties": {},
                         "accessBlob": {"tags": ["team"]},
@@ -809,7 +809,7 @@ def test_graphql_http_route_access_control_integration(tmp_path, policy):
                 "query": CREATE_ENTITY_MUTATION,
                 "variables": {
                     "input": {
-                        "entityType": "sample",
+                        "kind": "sample",
                         "name": "O",
                         "properties": {},
                         "accessBlob": {"tags": ["team"]},
