@@ -5,8 +5,46 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## Unreleased
 
+### Added
+
+- Add a client-side interface for the experimental "graph of links". Catalog
+  node clients gain `bind_entity(...)` and `entities()` methods, and
+  `tiled.client.graph` provides `make_entity`, `make_link`, and
+  `register_namespace` helpers plus a `GraphClient` wrapper over the GraphQL API.
+  The `GraphClient` and its `EntityHandle`/`LinkHandle` handles support the full
+  lifecycle: look entities and links up by id or filter (`get_entity`,
+  `find_entities`, `get_link`, `find_links`), traverse between them
+  (`outgoing_links`, `incoming_links`, and a link's `subject`/`object`), and
+  update or delete them in place (`update`/`delete`).
+
+### Changed
+
+- Refactor the experimental graph API to tie entities to catalog nodes by
+  `nodePathParts` (a list of key segments) instead of by the internal `nodeId`.
+  Internal catalog node ids are no longer exposed to clients: `createEntity`
+  and `updateEntity` take a `nodePathParts` and the server resolves it to the
+  node's id, the `catalogNodeId` query is removed, and an entity now reports a
+  read-only boolean `isNodeBound` in place of `nodeId`. Passing a
+  `nodePathParts` that names no existing node raises an error.
+- Enforce uniqueness of graph entities per catalog node: at most one entity may
+  exist for a given `(node_id, kind, name)`. A duplicate `createEntity`/
+  `updateEntity` now fails with an `ENTITY_EXISTS` error. Free-standing
+  (external) entities, which have no node, are left unconstrained.
+- Rename the experimental graph entity's `entity_type` field to `kind`, in both
+  the database column and the GraphQL API (`entityType` becomes `kind`).
+- `tiled serve demo` now serves a single, catalog-backed demo that combines the
+  data-structure showcase with the experimental "graph of links" provenance
+  feature. The server is public (anonymous read access) and prints a
+  single-user API key (default `secret`) for trying out writes and graph
+  mutations. The graph is defined in `tiled/examples/demo_graph.json`. The
+  standalone `example_configs/graphs/` scripts have been removed in favor of
+  this demo.
+
 ### Fixed
 
+- Fix the experimental graph's `updateEntity` and `updateLink` mutations, which
+  wrote a placeholder `UnsetType` into `access_blob` when the field was omitted
+  instead of leaving it unchanged.
 - Reading of individual partitions of multi-partitioned tables.
 - Fix the client showing a spurious "Retrying…" indicator (and a misleading
   "Retry scheduled" debug log) when a request failed with a *non-retryable*
@@ -31,6 +69,9 @@ Write the date in place of the "Unreleased" in the case a new version is release
   only a subset of scopes. Authorization is now enforced solely against the
   scopes each endpoint requires.
 - Render `NaN` as transparent pixels.
+- Fix `TypeError: Type is not JSON serializable: bytes` when serializing a
+  table with a bytes-dtype (numpy `S`) column to `application/json` or
+  `application/json-seq`. Such values are now decoded to strings.
 
 ## v0.2.16 (2026-08-21)
 

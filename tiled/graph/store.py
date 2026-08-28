@@ -52,6 +52,22 @@ UNSET = object()
 # The catalog ``nodes`` table, used to resolve entities.node_id by catalog path.
 _nodes = Node.__table__
 
+
+class EntityConflictError(Exception):
+    "An entity with the same (node_id, kind, name) already exists."
+
+
+def _is_unique_violation(exc: IntegrityError) -> bool:
+    """
+    True if an IntegrityError is a unique-constraint violation (as opposed to,
+    e.g., the entities access_blob trigger firing). SQLite reports "UNIQUE
+    constraint failed: ..."; PostgreSQL reports "duplicate key value violates
+    unique constraint ...".
+    """
+    message = str(getattr(exc, "orig", exc)).lower()
+    return "unique constraint failed" in message or "duplicate key value" in message
+
+
 # ---------------------------------------------------------------------------
 # Data records
 # ---------------------------------------------------------------------------
@@ -62,7 +78,7 @@ class EntityRecord(BaseModel):
 
     id: str
     node_id: Optional[int] = None
-    entity_type: str
+    kind: str
     name: str
     uri: Optional[str]
     properties: dict
@@ -162,7 +178,7 @@ class GraphSQLAlchemyStore:
         return EntityRecord(
             id=row.id,
             node_id=row.node_id,
-            entity_type=row.entity_type,
+            kind=row.kind,
             name=row.name,
             uri=row.uri,
             properties=row.properties or {},
@@ -186,7 +202,7 @@ class GraphSQLAlchemyStore:
 
     async def create_entity(
         self,
-        entity_type: str,
+        kind: str,
         name: str,
         node_id: Optional[int] = None,
         uri: Optional[str] = None,
@@ -195,24 +211,35 @@ class GraphSQLAlchemyStore:
     ) -> EntityRecord:
         id_ = str(uuid.uuid4())
         now = datetime.now(timezone.utc)
-        async with self._engine.begin() as conn:
-            await conn.execute(
-                insert(_entities).values(
-                    id=id_,
-                    node_id=node_id,
-                    entity_type=entity_type,
-                    name=name,
-                    uri=uri,
-                    properties=properties or {},
-                    # Not coerced to {}: passing None here (as the caller
-                    # must when node_id is set) stores SQL NULL.
-                    access_blob=access_blob,
-                    created_at=now,
+        try:
+            async with self._engine.begin() as conn:
+                await conn.execute(
+                    insert(_entities).values(
+                        id=id_,
+                        node_id=node_id,
+                        kind=kind,
+                        name=name,
+                        uri=uri,
+                        properties=properties or {},
+                        # Not coerced to {}: passing None here (as the caller
+                        # must when node_id is set) stores SQL NULL.
+                        access_blob=access_blob,
+                        created_at=now,
+                    )
                 )
-            )
-            row = (
-                await conn.execute(select(_entities).where(_entities.c.id == id_))
-            ).one()
+                row = (
+                    await conn.execute(select(_entities).where(_entities.c.id == id_))
+                ).one()
+        except IntegrityError as exc:
+            # The only user-triggerable unique constraint here is
+            # entities_node_kind_name_uq (the primary key is a fresh UUID).
+            # Other IntegrityErrors (e.g. the access_blob trigger) propagate.
+            if not _is_unique_violation(exc):
+                raise
+            raise EntityConflictError(
+                f"An entity with kind={kind!r} name={name!r} "
+                "already exists for this node."
+            ) from exc
         return self._to_entity(row)
 
     async def get_entity(self, id: str) -> Optional[EntityRecord]:
@@ -237,14 +264,20 @@ class GraphSQLAlchemyStore:
 
     async def list_entities(
         self,
-        entity_type: Optional[str] = None,
+        kind: Optional[str] = None,
+        name: Optional[str] = None,
+        node_id: Optional[int] = None,
         limit: int = 100,
         offset: int = 0,
         access_filters: Optional[list[AccessBlobFilter]] = None,
     ) -> list[EntityRecord]:
         stmt = select(_entities).order_by(_entities.c.created_at)
-        if entity_type is not None:
-            stmt = stmt.where(_entities.c.entity_type == entity_type)
+        if kind is not None:
+            stmt = stmt.where(_entities.c.kind == kind)
+        if node_id is not None:
+            stmt = stmt.where(_entities.c.node_id == node_id)
+        if name is not None:
+            stmt = stmt.where(_entities.c.name == name)
         if access_filters:
             dialect_name = self._engine.url.get_dialect().name
             # An entity's effective access_blob is its node's access_blob
@@ -274,10 +307,10 @@ class GraphSQLAlchemyStore:
     async def update_entity(
         self,
         id: str,
+        kind: Optional[str] = None,
         name: Optional[str] = None,
         node_id: object = UNSET,
         uri: object = UNSET,
-        entity_type: Optional[str] = None,
         access_blob: object = UNSET,
     ) -> Optional[EntityRecord]:
         values: dict = {}
@@ -287,15 +320,23 @@ class GraphSQLAlchemyStore:
             values["node_id"] = node_id
         if uri is not UNSET:
             values["uri"] = uri
-        if entity_type is not None:
-            values["entity_type"] = entity_type
+        if kind is not None:
+            values["kind"] = kind
         if access_blob is not UNSET:
             values["access_blob"] = access_blob
         async with self._engine.begin() as conn:
             if values:
-                await conn.execute(
-                    update(_entities).where(_entities.c.id == id).values(**values)
-                )
+                try:
+                    await conn.execute(
+                        update(_entities).where(_entities.c.id == id).values(**values)
+                    )
+                except IntegrityError as exc:
+                    if not _is_unique_violation(exc):
+                        raise
+                    raise EntityConflictError(
+                        "An entity with the same kind and name already exists "
+                        "for this node."
+                    ) from exc
             row = (
                 await conn.execute(select(_entities).where(_entities.c.id == id))
             ).one_or_none()
@@ -448,8 +489,8 @@ class GraphSQLAlchemyStore:
     async def resolve_node_id(self, path: list[str]) -> Optional[int]:
         """
         Look up the internal catalog node id for a path of key segments,
-        e.g. ``["raw_dataset"]`` for a top-level entry or ``["a", "b"]``
-        for a nested one. Returns None if no such node exists.
+        e.g. ``["linked", "measured"]`` for a nested entry or ``["a", "b"]``
+        for another nested one. Returns None if no such node exists.
 
         The catalog's root node always has id 0 (see
         tiled.catalog.adapter.node_from_segments, which this mirrors).
