@@ -7,8 +7,8 @@ catalog-backed tree, queryable through a GraphQL API. See
 {doc}`../explanations/graphs` for background on what this feature is and why
 it exists.
 
-This guide walks you through the process of starting a demo server with the graph enabled and
-exploring it interactively in the browser.
+This guide starts a demo server with the graph enabled and explores it---from
+the Python client and directly over GraphQL.
 
 ## Enable the graph feature
 
@@ -39,8 +39,8 @@ The seeded graph is shown below. The six `linked` datasets (bound to catalog
 nodes) form a reduction pipeline joined by `prov:wasDerivedFrom`; the raw
 `measured` stack also reaches outward to a calibration image on another Tiled
 server and to the sample's encyclopedic record. An `analysis_workflow` (run by
-`processing_script.py`) and an RO-Crate manifest tie the same datasets together
-from two other perspectives.
+`processing_script.py`) ties the same datasets together from the perspective of
+the computation that produced them.[^rocrate]
 
 ```{mermaid}
 flowchart TD
@@ -60,7 +60,6 @@ flowchart TD
 
     workflow["analysis_workflow<br/>(workflow)"]
     script["processing_script.py<br/>(software)"]
-    crate["ro-crate-metadata.json<br/>(rocrate)"]
 
     subtracted -->|prov:wasDerivedFrom| measured
     subtracted -->|prov:wasDerivedFrom| background
@@ -78,14 +77,11 @@ flowchart TD
     workflow -->|result| normalized
     workflow -->|result| integrated
     workflow -->|result| summary
-
-    crate -->|ro:hasPart| measured
-    crate -->|ro:hasPart| background
-    crate -->|ro:hasPart| subtracted
-    crate -->|ro:hasPart| normalized
-    crate -->|ro:hasPart| integrated
-    crate -->|ro:hasPart| summary
 ```
+
+[^rocrate]: For clarity, the diagram omits the demo's `ro-crate-metadata.json`
+    entity (kind `rocrate`), which uses `ro:hasPart` links to bundle all six
+    `linked` datasets as an [RO-Crate](https://www.researchobject.org/ro-crate/).
 
 ## Using the Python client
 
@@ -204,9 +200,6 @@ When editing an entity bound to a catalog node on this Tiled server, pass
 `node_path_parts=None` to detach it from its catalog node, or a new path to re-bind
 it; omit the argument to leave the binding untouched.
 
-All Python helpers described above wrap the same GraphQL API covered in the next
-section.
-
 ## Using GraphQL directly
 
 The Python helpers above are a thin convenience layer over the GraphQL API,
@@ -294,9 +287,9 @@ query {
 So far, each query has returned a flat list of entities or links. But entities
 and links form a connected graph, and GraphQL lets you walk it. From an entity,
 `outgoingLinks` follows the edges leaving it (and `incomingLinks` the edges
-arriving); each link's `object` is another entity, with its own links. The following
-example demonstrates how to nest these fields and a single query to hop from entity
-to entity, tracing a chain across the graph.
+arriving); each link's `object` is another entity, with its own links. The
+following example nests these fields in a single query to hop from entity to
+entity, tracing a chain across the graph.
 
 The demo connects its datasets into a reduction pipeline with
 `prov:wasDerivedFrom` edges (`integrated` was derived from `normalized`, which
