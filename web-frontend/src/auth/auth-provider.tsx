@@ -134,41 +134,31 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
     };
   }, [refreshOnce]);
 
-  // On mount: refresh expired tokens; schedule proactive refresh for valid ones.
-  useEffect(() => {
-    if (!tokenManager.hasTokens()) return;
-    if (tokenManager.isAccessTokenExpired()) {
-      refreshOnce().then((ok) => {
-        if (ok) scheduleProactiveRefresh();
-      });
-    } else {
-      scheduleProactiveRefresh();
-    }
-    return () => {
-      if (refreshTimeoutRef.current) {
-        clearTimeout(refreshTimeoutRef.current);
-      }
-    };
-  }, [refreshOnce, scheduleProactiveRefresh]);
-
-  // On startup, detect a server-side session established via an HttpOnly
-  // API-key cookie (set by the server when a URL with ?api_key=... is opened).
-  // JavaScript cannot read that cookie directly, so we ask the server via
-  // /auth/whoami. The endpoint returns HTTP 200 with a Principal body when the
-  // request is authenticated (by cookie, header, or token) or `null` when not.
+  // On startup, establish the initial authentication state. This considers
+  // three sources, in priority order:
+  //   1. A valid (unexpired) local access token — already authenticated.
+  //   2. An expired local access token — try to refresh it; if the refresh
+  //      fails, fall through to (3) in case a cookie session exists.
+  //   3. An HttpOnly API-key cookie set by the server when a URL with
+  //      ?api_key=... is opened. JavaScript cannot read that cookie directly,
+  //      so we ask the server via /auth/whoami, which returns HTTP 200 with a
+  //      Principal body when the request is authenticated (by cookie, header,
+  //      or token) or `null` when it is not.
+  //
+  // `initialized` is gated on this completing (via cookieChecked) so that
+  // RequireAuth does not redirect a cookie-authenticated user to /login while
+  // the check is still in flight.
   useEffect(() => {
     // Wait until the server's auth config is known.
     if (authentication === null) return;
     let mounted = true;
-    // If we already have local tokens, or the server does not require auth,
-    // there is nothing to detect — skip the probe.
-    if (tokenManager.hasTokens() || !authentication.required) {
-      setCookieChecked(true);
-      return;
-    }
-    axiosInstance
-      .get("/api/v1/auth/whoami")
-      .then((response) => {
+
+    // Detect a cookie-based session. Only called when there is no usable local
+    // access token, so the request interceptor does not attach a stale Bearer
+    // header that could mask the cookie on the server.
+    const probeCookieSession = async () => {
+      try {
+        const response = await axiosInstance.get("/api/v1/auth/whoami");
         if (!mounted) return;
         const principal = response.data;
         if (principal) {
@@ -178,17 +168,43 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
           }
           setIsAuthenticated(true);
         }
-      })
-      .catch(() => {
+      } catch {
         // Not authenticated via cookie (or request failed) — leave state as-is.
-      })
-      .finally(() => {
-        if (mounted) setCookieChecked(true);
-      });
+      }
+    };
+
+    const startup = async () => {
+      // If the server does not require auth, there is nothing to detect.
+      if (!authentication.required) return;
+      if (tokenManager.hasTokens()) {
+        if (tokenManager.isAccessTokenExpired()) {
+          const refreshed = await refreshOnce();
+          if (refreshed) {
+            scheduleProactiveRefresh();
+          } else {
+            // Refresh failed and tokens were cleared; a cookie session may
+            // still authenticate us (e.g. a freshly opened ?api_key=... link).
+            await probeCookieSession();
+          }
+        } else {
+          scheduleProactiveRefresh();
+        }
+      } else {
+        await probeCookieSession();
+      }
+    };
+
+    startup().finally(() => {
+      if (mounted) setCookieChecked(true);
+    });
+
     return () => {
       mounted = false;
+      if (refreshTimeoutRef.current) {
+        clearTimeout(refreshTimeoutRef.current);
+      }
     };
-  }, [authentication]);
+  }, [authentication, refreshOnce, scheduleProactiveRefresh]);
 
   const onLogin = useCallback(
     (accessToken: string, refreshToken: string, ident?: UserIdentity) => {
