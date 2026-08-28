@@ -46,8 +46,17 @@ const validToken = () =>
 const expiredToken = () =>
   makeToken({ exp: Math.floor(Date.now() / 1000) - 3600 });
 
-// Minimal server auth config that requires authentication.
+// Minimal multi-user server auth config: auth is required and at least one
+// provider is configured, so the server exposes /auth routes (including
+// /auth/whoami).
 const authRequired = {
+  required: true,
+  providers: [{ provider: "toy", mode: "internal", links: {} }],
+} as any;
+
+// Single-user (API-key) server config: auth is required but there are no
+// providers, so the server has no /auth routes and whoami is absent.
+const singleUser = {
   required: true,
   providers: [],
 } as any;
@@ -175,6 +184,35 @@ describe("AuthProvider cookie detection", () => {
       expect(screen.getByTestId("initialized")).toHaveTextContent("true");
     });
     expect(get).not.toHaveBeenCalled();
+    expect(screen.getByTestId("authenticated")).toHaveTextContent("false");
+  });
+
+  it("detects a single-user cookie session by probing a protected endpoint", async () => {
+    // Single-user servers have no /auth routes, so whoami is never called. A
+    // 200 from a protected endpoint means the API-key cookie authenticated us.
+    get.mockResolvedValue({ data: {} } as any);
+
+    renderProvider(singleUser);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("initialized")).toHaveTextContent("true");
+    });
+    expect(get).toHaveBeenCalledWith("/api/v1/metadata/");
+    expect(get).not.toHaveBeenCalledWith("/api/v1/auth/whoami");
+    expect(screen.getByTestId("authenticated")).toHaveTextContent("true");
+    // A single-user principal has no identity to display.
+    expect(screen.getByTestId("identity")).toHaveTextContent("none");
+  });
+
+  it("stays unauthenticated in single-user mode when the probe returns 401", async () => {
+    get.mockRejectedValue(new Error("401"));
+
+    renderProvider(singleUser);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("initialized")).toHaveTextContent("true");
+    });
+    expect(get).toHaveBeenCalledWith("/api/v1/metadata/");
     expect(screen.getByTestId("authenticated")).toHaveTextContent("false");
   });
 });

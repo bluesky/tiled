@@ -141,9 +141,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
   //      fails, fall through to (3) in case a cookie session exists.
   //   3. An HttpOnly API-key cookie set by the server when a URL with
   //      ?api_key=... is opened. JavaScript cannot read that cookie directly,
-  //      so we ask the server via /auth/whoami, which returns HTTP 200 with a
-  //      Principal body when the request is authenticated (by cookie, header,
-  //      or token) or `null` when it is not.
+  //      so we ask the server: on multi-user servers via /auth/whoami (HTTP 200
+  //      with a Principal body when authenticated, `null` when not); on
+  //      single-user servers, which have no /auth routes, by probing a
+  //      protected endpoint. See probeCookieSession.
   //
   // `initialized` is gated on this completing (via cookieChecked) so that
   // RequireAuth does not redirect a cookie-authenticated user to /login while
@@ -156,20 +157,40 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
     // Detect a cookie-based session. Only called when there is no usable local
     // access token, so the request interceptor does not attach a stale Bearer
     // header that could mask the cookie on the server.
+    //
+    // Multi-user servers expose /auth/whoami, which returns the Principal
+    // (including its identity) for a cookie-authenticated request, or `null`
+    // when the request is not authenticated. Single-user (API-key) servers have
+    // no authentication providers and therefore no /auth routes at all, so
+    // whoami is absent (404). There we detect a cookie session by probing a
+    // protected endpoint; a single-user principal has no identity to display.
+    const hasProviders = (authentication.providers ?? []).length > 0;
     const probeCookieSession = async () => {
-      try {
-        const response = await axiosInstance.get("/api/v1/auth/whoami");
-        if (!mounted) return;
-        const principal = response.data;
-        if (principal) {
-          const ident = principal.identities?.[0];
-          if (ident) {
-            setIdentity({ id: ident.id, provider: ident.provider });
+      if (hasProviders) {
+        try {
+          const response = await axiosInstance.get("/api/v1/auth/whoami");
+          if (!mounted) return;
+          const principal = response.data;
+          if (principal) {
+            const ident = principal.identities?.[0];
+            if (ident) {
+              setIdentity({ id: ident.id, provider: ident.provider });
+            }
+            setIsAuthenticated(true);
           }
-          setIsAuthenticated(true);
+        } catch {
+          // Not authenticated via cookie (or request failed) — leave as-is.
         }
+        return;
+      }
+      // Single-user mode: no /auth routes. A 200 from a protected endpoint
+      // means the API-key cookie authenticated us; a 401 means it did not.
+      try {
+        await axiosInstance.get("/api/v1/metadata/");
+        if (!mounted) return;
+        setIsAuthenticated(true);
       } catch {
-        // Not authenticated via cookie (or request failed) — leave state as-is.
+        // Not authenticated via cookie (or request failed) — leave as-is.
       }
     };
 
