@@ -109,7 +109,7 @@ jobs:
         CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
   web_frontend_checks:
-    name: WebUI Type Check and Tests
+    name: WebUI Type Check, Tests, and Build
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -133,6 +133,9 @@ jobs:
 
     - name: Test
       run: npm run test:run
+
+    - name: Build
+      run: npm run build
 
   windows_checks:
     name: Test on Windows
