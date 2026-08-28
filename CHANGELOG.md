@@ -7,6 +7,9 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Fixed
 
+- Fix `TypeError: Type is not JSON serializable: bytes` when serializing a
+  table with a bytes-dtype (numpy `S`) column to `application/json` or
+  `application/json-seq`. Such values are now decoded to strings.
 - Reading of individual partitions of multi-partitioned tables.
 - Fix the client showing a spurious "Retrying…" indicator (and a misleading
   "Retry scheduled" debug log) when a request failed with a *non-retryable*
