@@ -1,0 +1,23 @@
+[workspace]
+authors = ["Daniel Allan & Eugene M <ymatviych@bnl.gov>"]
+channels = ["conda-forge"]
+name = "remove-streams"
+platforms = ["osx-64", "linux-64"]
+version = "0.1.0"
+
+[tasks]
+# Clean up the storage location; proceed if no files are found
+clean = {cmd = "/bin/rm -rf storage/* || true"}
+# Start tiled server from a config file
+serve = {cmd = "tiled serve config config.yml", depends-on=["clean"]}
+
+[dependencies]
+python = ">=3.12,<3.13"
+ipython = ">=9.4.0,<10"
+ophyd = ">=1.10.7,<2"
+
+[pypi-dependencies]
+sparse = ">=0.17.0, <0.18"
+tiled = { version = ">=0.1.0, <0.2", extras = ["all"] }
+bluesky-tiled-plugins = ">=2.0.0b68, <3"
+bluesky = "==1.14.5,<2"

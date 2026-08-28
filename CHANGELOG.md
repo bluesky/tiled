@@ -5,6 +5,10 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## Unreleased
 
+### Added
+
+- A script to remove the 'streams' node as part of the updating BlueskyRun catalogs.
+
 ### Fixed
 
 - Reading of individual partitions of multi-partitioned tables.
