@@ -7,6 +7,13 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Fixed
 
+- Fix a regression where opening a URL with an `?api_key=...` query parameter
+  in the web UI redirected to the login page instead of authenticating. The
+  server moves the API key into an `HttpOnly` cookie, which JavaScript cannot
+  read, so the UI treated the session as unauthenticated. The UI now probes
+  `/auth/whoami` on startup to detect a cookie-based session (including as a
+  fallback when refreshing an expired token fails) and clears the cookie on
+  logout.
 - Reading of individual partitions of multi-partitioned tables.
 - Fix the client showing a spurious "Retrying…" indicator (and a misleading
   "Retry scheduled" debug log) when a request failed with a *non-retryable*
