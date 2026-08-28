@@ -38,6 +38,7 @@ from sqlalchemy import (
     not_,
     or_,
     select,
+    String,
     text,
     true,
     type_coerce,
@@ -1539,11 +1540,19 @@ class CatalogNodeAdapter:
                 )
             if access_blob is not None:
                 await db.execute(
-                    delete(orm.AccessBlob).where(orm.AccessBlob.node_id == self.node.id)
+                    delete(orm.NodeAccessBlob).where(
+                        orm.NodeAccessBlob.node_id == self.node.id
+                    )
                 )
                 access_blob_orm = _access_blob_to_orm(access_blob)
-                access_blob_orm.node_id = self.node.id
                 db.add(access_blob_orm)
+                await db.flush()
+                db.add(
+                    orm.NodeAccessBlob(
+                        node_id=self.node.id,
+                        access_blob_id=access_blob_orm.id,
+                    )
+                )
             await db.commit()
             # Upon successful update, inform websocket subscribers through redis
             if self.context.streaming_cache:
@@ -2405,7 +2414,7 @@ def access_blob_filter(query, tree):
                 access_tags_json = func.json_each(orm.AccessBlob.tags).table_valued(
                     "value"
                 )
-                tags_match = select(orm.AccessBlob.node_id).where(
+                tags_match = select(orm.NodeAccessBlob.node_id).join(orm.AccessBlob).where(
                     orm.AccessBlob.kind == "tags",
                     select(1)
                     .select_from(access_tags_json)
@@ -2413,15 +2422,17 @@ def access_blob_filter(query, tree):
                     .exists(),
                 )
             elif dialect_name == "postgresql":
-                tags_match = select(orm.AccessBlob.node_id).where(
+                tags_match = select(orm.NodeAccessBlob.node_id).join(orm.AccessBlob).where(
                     orm.AccessBlob.kind == "tags",
-                    orm.AccessBlob.tags.has_any(sql_cast(query.tags, ARRAY(TEXT))),
+                    type_coerce(orm.AccessBlob.tags, ARRAY(String())).overlap(
+                        sql_cast(query.tags, ARRAY(String()))
+                    ),
                 )
             else:
                 raise UnsupportedQueryType("access_blob_filter")
             filters.append(orm.Node.id.in_(tags_match))
         if query.user_id is not None:
-            user_match = select(orm.AccessBlob.node_id).where(
+            user_match = select(orm.NodeAccessBlob.node_id).join(orm.AccessBlob).where(
                 orm.AccessBlob.kind == "user", orm.AccessBlob.username == query.user_id
             )
             filters.append(orm.Node.id.in_(user_match))
@@ -2598,12 +2609,17 @@ async def _create_mount_node_segments(engine, mount_path, specs=None, access_blo
                     access_blob if (is_leaf and access_blob) else AccessBlob(tags=[])
                 )
                 access_blob_orm = _access_blob_to_orm(node_access_blob)
-                await conn.execute(
+                access_blob_result = await conn.execute(
                     insert(orm.AccessBlob).values(
-                        node_id=node_id,
                         kind=access_blob_orm.kind,
                         username=access_blob_orm.username,
                         tags=access_blob_orm.tags,
+                    )
+                )
+                await conn.execute(
+                    insert(orm.NodeAccessBlob).values(
+                        node_id=node_id,
+                        access_blob_id=access_blob_result.inserted_primary_key[0],
                     )
                 )
                 logger.info(

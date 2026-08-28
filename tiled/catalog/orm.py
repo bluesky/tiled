@@ -30,7 +30,7 @@ from .base import Base
 
 # Use JSON with SQLite and JSONB with PostgreSQL.
 JSONVariant = JSON().with_variant(JSONB(), "postgresql")
-AccessTagsVariant = JSON().with_variant(ARRAY(String()), "postgresql")
+AccessTagsVariant = JSON(none_as_null=True).with_variant(ARRAY(String()), "postgresql")
 
 
 class Timestamped:
@@ -94,11 +94,10 @@ class Node(Timestamped, Base):
     )
     access_blob = relationship(
         "AccessBlob",
+        secondary="node_access_blobs",
         uselist=False,
         lazy="selectin",
         passive_deletes=True,
-        cascade="all, delete-orphan",
-        single_parent=True,
     )
 
     # This is a self-referencing relationship between parent and children
@@ -151,17 +150,13 @@ class AccessBlob(Base):
     An access blob contains a set of tags that are used to control access to nodes.
     May otherwise contain information indicating that a node is "user-owned".
 
-    Relationship is one-to-one with the nodes table.
+    Associated with catalog nodes and graph links through separate association
+    tables.
     """
 
     __tablename__ = "access_blobs"
 
-    node_id = Column(
-        ForeignKey("nodes.id", ondelete="CASCADE"),
-        primary_key=True,
-        unique=True,
-        nullable=False,
-    )
+    id = Column(Integer, primary_key=True, autoincrement=True)
     kind = Column(Enum("user", "tags", name="access_kind"), nullable=False)
     username = Column(String, nullable=True)
     tags = Column(AccessTagsVariant, nullable=True)
@@ -181,7 +176,7 @@ class AccessBlob(Base):
         ),
         # Helps narrow to the relevant subset for tags/user branches quickly,
         # including SQLite where tags membership itself is not index-friendly.
-        Index("ix_access_blobs_kind_node_id", "kind", "node_id"),
+        Index("ix_access_blobs_kind_id", "kind", "id"),
         # PostgreSQL can index array overlap checks directly.
         Index(
             "ix_access_blobs_tags_gin",
@@ -189,6 +184,20 @@ class AccessBlob(Base):
             postgresql_using="gin",
             postgresql_where=text("kind = 'tags' AND tags IS NOT NULL"),
         ),
+    )
+
+
+class NodeAccessBlob(Base):
+    __tablename__ = "node_access_blobs"
+
+    node_id = Column(
+        ForeignKey("nodes.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    access_blob_id = Column(
+        ForeignKey("access_blobs.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
     )
 
 

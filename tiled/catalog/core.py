@@ -1,4 +1,4 @@
-from sqlalchemy import text
+from sqlalchemy import insert, select, text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from ..alembic_utils import DatabaseUpgradeNeeded, UninitializedDatabase, check_database
@@ -49,6 +49,21 @@ async def initialize_database(engine: AsyncEngine):
             await connection.execute(text("create extension btree_gin;"))
         # Create all tables.
         await connection.run_sync(Base.metadata.create_all)
+        root_access_blob_id = await connection.scalar(
+            select(orm.NodeAccessBlob.access_blob_id).where(
+                orm.NodeAccessBlob.node_id == 0
+            )
+        )
+        if root_access_blob_id is None:
+            result = await connection.execute(
+                insert(orm.AccessBlob).values(kind="tags", tags=["public"])
+            )
+            await connection.execute(
+                insert(orm.NodeAccessBlob).values(
+                    node_id=0,
+                    access_blob_id=result.inserted_primary_key[0],
+                )
+            )
         if engine.dialect.name == "sqlite":
             # Use write-ahead log mode. This persists across all future connections
             # until/unless manually switched.
