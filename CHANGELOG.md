@@ -31,6 +31,11 @@ Write the date in place of the "Unreleased" in the case a new version is release
   only a subset of scopes. Authorization is now enforced solely against the
   scopes each endpoint requires.
 - Render `NaN` as transparent pixels.
+- Fix client-side reading of reversed array slices that reach the start of an
+  axis (e.g. `arr[::-1]`) when the selection is large enough to be fetched in
+  multiple requests. Such slices are expanded to a negative canonical `stop`,
+  which the request-splitting logic mishandled, raising "Chunks do not add up
+  to shape."
 
 ## v0.2.16 (2026-08-21)
 
