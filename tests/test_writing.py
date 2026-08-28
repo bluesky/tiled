@@ -6,6 +6,7 @@ Persistent stores are being developed externally to the tiled package.
 
 import base64
 import collections
+import json
 import math
 import os
 import pathlib
@@ -832,6 +833,30 @@ async def test_container_export(tree, buffer):
         a = client.create_container("a")
         a.write_array([1, 2, 3], key="b")
         client.export(buffer, format="application/json")
+
+
+@pytest.mark.parametrize("media_type", ["application/json", "application/json-seq"])
+def test_table_bytes_column_json_export(tree, buffer, media_type):
+    "Binary columns are decoded to text so they can be JSON-serialized."
+    # b"\xff\xfe" is not valid UTF-8; it exercises the latin-1 fallback.
+    df = pandas.DataFrame(
+        {
+            "label": [b"abc", "café".encode(), b"\xff\xfe"],
+            "n": [1, 2, 3],
+        }
+    )
+    expected = ["abc", "café", b"\xff\xfe".decode("latin-1")]
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        client.write_table(df, key="t")
+        client["t"].export(buffer, format=media_type)
+        payload = buffer.getvalue().decode("utf-8")
+
+    if media_type == "application/json":
+        assert json.loads(payload)["label"] == expected
+    else:
+        rows = [json.loads(line) for line in payload.splitlines()]
+        assert [row["label"] for row in rows] == expected
 
 
 def test_write_with_specified_mimetype(tree):
