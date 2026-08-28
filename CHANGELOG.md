@@ -33,9 +33,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - Render `NaN` as transparent pixels.
 - Fix client-side reading of reversed array slices that reach the start of an
   axis (e.g. `arr[::-1]`) when the selection is large enough to be fetched in
-  multiple requests. Such slices are expanded to a negative canonical `stop`,
-  which the request-splitting logic mishandled, raising "Chunks do not add up
-  to shape."
+  multiple requests.
 
 ## v0.2.16 (2026-08-21)
 
