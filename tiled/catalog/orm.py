@@ -201,6 +201,44 @@ class NodeAccessBlob(Base):
     )
 
 
+@event.listens_for(NodeAccessBlob.__table__, "after_create")
+def create_node_access_blob_cleanup_trigger(target, connection, **kw):
+    if connection.engine.dialect.name == "sqlite":
+        connection.execute(
+            text(
+                """
+CREATE TRIGGER node_access_blobs_delete_cleanup
+AFTER DELETE ON node_access_blobs
+BEGIN
+    DELETE FROM access_blobs WHERE id = OLD.access_blob_id;
+END"""
+            )
+        )
+    elif connection.engine.dialect.name == "postgresql":
+        connection.execute(
+            text(
+                """
+CREATE OR REPLACE FUNCTION delete_node_access_blob()
+RETURNS TRIGGER AS $$
+BEGIN
+    DELETE FROM access_blobs WHERE id = OLD.access_blob_id;
+    RETURN OLD;
+END;
+$$ LANGUAGE plpgsql;
+"""
+            )
+        )
+        connection.execute(
+            text(
+                """
+CREATE TRIGGER node_access_blobs_delete_cleanup
+AFTER DELETE ON node_access_blobs
+FOR EACH ROW EXECUTE FUNCTION delete_node_access_blob();
+"""
+            )
+        )
+
+
 class DataSourceAssetAssociation(Base):
     """
     This describes which Assets are used by which DataSources, and how.
