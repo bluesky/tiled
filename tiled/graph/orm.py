@@ -19,12 +19,12 @@ is declared as a Core table on ``Base.metadata`` in ``tiled.catalog.orm``.
 from __future__ import annotations
 
 from sqlalchemy import (
-    JSON,
     Column,
     DateTime,
     ForeignKey,
     Index,
     Integer,
+    JSON,
     String,
     Table,
     event,
@@ -146,12 +146,115 @@ links = Table(
         nullable=False,
     ),
     Column("properties", JSON, nullable=False),
-    Column("access_blob", JSON, nullable=False),
     Column("created_at", DateTime(timezone=True), nullable=False),
     Index("links_subject_predicate_idx", "subject_id", "predicate"),
     Index("links_predicate_object_idx", "predicate", "object_id"),
     Index("links_triple_idx", "subject_id", "predicate", "object_id"),
 )
+
+link_access_blobs = Table(
+    "link_access_blobs",
+    metadata,
+    Column(
+        "link_id",
+        String,
+        ForeignKey("links.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    Column(
+        "access_blob_id",
+        Integer,
+        ForeignKey("access_blobs.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+    ),
+)
+
+
+@event.listens_for(link_access_blobs, "after_create")
+def _create_access_blob_cleanup_triggers(target, connection, **kw):
+    if connection.engine.dialect.name == "sqlite":
+        connection.execute(
+            text(
+                """
+CREATE TRIGGER link_access_blobs_delete_cleanup
+AFTER DELETE ON link_access_blobs
+BEGIN
+    DELETE FROM access_blobs WHERE id = OLD.access_blob_id;
+END"""
+            )
+        )
+        for table, other_table in (
+            ("node_access_blobs", "link_access_blobs"),
+            ("link_access_blobs", "node_access_blobs"),
+        ):
+            for operation in ("INSERT", "UPDATE OF access_blob_id"):
+                trigger_operation = operation.split()[0].lower()
+                connection.execute(
+                    text(
+                        f"""
+CREATE TRIGGER {table}_{trigger_operation}_reject_shared_access_blob
+BEFORE {operation} ON {table}
+WHEN EXISTS (SELECT 1 FROM {other_table} WHERE access_blob_id = NEW.access_blob_id)
+BEGIN
+    SELECT RAISE(ABORT, 'An access blob may belong to only one node or link');
+END"""
+                    )
+                )
+    elif connection.engine.dialect.name == "postgresql":
+        connection.execute(
+            text(
+                """
+CREATE OR REPLACE FUNCTION delete_link_access_blob()
+RETURNS TRIGGER AS $$
+BEGIN
+    DELETE FROM access_blobs WHERE id = OLD.access_blob_id;
+    RETURN OLD;
+END;
+$$ LANGUAGE plpgsql;
+"""
+            )
+        )
+        connection.execute(
+            text(
+                """
+CREATE TRIGGER link_access_blobs_delete_cleanup
+AFTER DELETE ON link_access_blobs
+FOR EACH ROW EXECUTE FUNCTION delete_link_access_blob();
+"""
+            )
+        )
+        connection.execute(
+            text(
+                """
+CREATE OR REPLACE FUNCTION reject_shared_access_blob()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF TG_TABLE_NAME = 'node_access_blobs' AND EXISTS (
+        SELECT 1 FROM link_access_blobs WHERE access_blob_id = NEW.access_blob_id
+    ) THEN
+        RAISE EXCEPTION 'An access blob may belong to only one node or link';
+    ELSIF TG_TABLE_NAME = 'link_access_blobs' AND EXISTS (
+        SELECT 1 FROM node_access_blobs WHERE access_blob_id = NEW.access_blob_id
+    ) THEN
+        RAISE EXCEPTION 'An access blob may belong to only one node or link';
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+"""
+            )
+        )
+        for table in ("node_access_blobs", "link_access_blobs"):
+            connection.execute(
+                text(
+                    f"""
+CREATE TRIGGER {table}_reject_shared_access_blob
+BEFORE INSERT OR UPDATE OF access_blob_id ON {table}
+FOR EACH ROW EXECUTE FUNCTION reject_shared_access_blob();
+"""
+                )
+            )
 
 namespaces = Table(
     "namespaces",

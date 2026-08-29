@@ -22,8 +22,8 @@ from typing import Optional
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import (
     JSON,
+    String,
     and_,
-    case,
     delete,
     false,
     func,
@@ -38,12 +38,13 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncEngine
 from sqlalchemy.sql.expression import cast as sql_cast
 
-from ..catalog.orm import Node
+from ..catalog.orm import AccessBlob, Node, NodeAccessBlob
 from ..queries import AccessBlobFilter
 from ..server.connection_pool import get_database_engine
 from ..server.settings import DatabaseSettings
 from ..utils import UnsupportedQueryType
 from .orm import entities as _entities
+from .orm import link_access_blobs as _link_access_blobs
 from .orm import links as _links
 from .orm import namespaces as _namespaces
 
@@ -51,6 +52,8 @@ UNSET = object()
 
 # The catalog ``nodes`` table, used to resolve entities.node_id by catalog path.
 _nodes = Node.__table__
+_access_blobs = AccessBlob.__table__
+_node_access_blobs = NodeAccessBlob.__table__
 
 # ---------------------------------------------------------------------------
 # Data records
@@ -83,7 +86,7 @@ class LinkRecord(BaseModel):
     created_at: datetime
 
 
-def _access_blob_condition(
+def _json_access_blob_condition(
     dialect_name: str, access_blob_column, query: AccessBlobFilter
 ):
     """
@@ -124,15 +127,65 @@ def _access_blob_condition(
     return condition
 
 
-def _access_filters_condition(
+def _json_access_filters_condition(
     dialect_name: str, access_blob_column, queries: list[AccessBlobFilter]
 ):
-    condition = _access_blob_condition(dialect_name, access_blob_column, queries[0])
+    condition = _json_access_blob_condition(dialect_name, access_blob_column, queries[0])
     for query in queries[1:]:
         condition = and_(
-            condition, _access_blob_condition(dialect_name, access_blob_column, query)
+            condition, _json_access_blob_condition(dialect_name, access_blob_column, query)
         )
     return condition
+
+
+def _access_blob_association_condition(dialect_name: str, table, query: AccessBlobFilter):
+    if not (query.user_id or query.tags):
+        return false()
+    tags_match = false()
+    if query.tags:
+        if dialect_name == "sqlite":
+            tags = func.json_each(table.c.tags).table_valued("value")
+            tags_match = and_(
+                table.c.kind == "tags",
+                select(1).select_from(tags).where(tags.c.value.in_(query.tags)).exists(),
+            )
+        elif dialect_name == "postgresql":
+            tags_match = and_(
+                table.c.kind == "tags",
+                type_coerce(table.c.tags, ARRAY(String())).overlap(
+                    sql_cast(query.tags, ARRAY(String()))
+                ),
+            )
+        else:
+            raise UnsupportedQueryType("access_blob_filter")
+    user_match = false()
+    if query.user_id is not None:
+        user_match = and_(table.c.kind == "user", table.c.username == query.user_id)
+    return or_(tags_match, user_match)
+
+
+def _access_blob_association_filters_condition(
+    dialect_name: str, table, queries: list[AccessBlobFilter]
+):
+    condition = _access_blob_association_condition(dialect_name, table, queries[0])
+    for query in queries[1:]:
+        condition = and_(
+            condition, _access_blob_association_condition(dialect_name, table, query)
+        )
+    return condition
+
+
+def _access_blob_from_association(row) -> dict:
+    if row.kind == "user":
+        return {"user": row.username}
+    return {"tags": row.tags or []}
+
+
+def _access_blob_values(access_blob: Optional[dict]) -> dict:
+    access_blob = access_blob or {}
+    if "user" in access_blob:
+        return {"kind": "user", "username": access_blob["user"], "tags": None}
+    return {"kind": "tags", "username": None, "tags": access_blob.get("tags", [])}
 
 
 class GraphSQLAlchemyStore:
@@ -180,7 +233,7 @@ class GraphSQLAlchemyStore:
             predicate=row.predicate,
             object_id=row.object_id,
             properties=row.properties or {},
-            access_blob=row.access_blob or {},
+            access_blob=_access_blob_from_association(row),
             created_at=row.created_at,
         )
 
@@ -230,10 +283,16 @@ class GraphSQLAlchemyStore:
         async with self._engine.connect() as conn:
             row = (
                 await conn.execute(
-                    select(_nodes.c.access_blob).where(_nodes.c.id == node_id)
+                    select(_access_blobs)
+                    .join(
+                        _node_access_blobs,
+                        _access_blobs.c.id == _node_access_blobs.c.access_blob_id,
+                    )
+                    .join(_nodes, _node_access_blobs.c.node_id == _nodes.c.id)
+                    .where(_nodes.c.id == node_id)
                 )
             ).one_or_none()
-        return row.access_blob if row else None
+        return _access_blob_from_association(row) if row else None
 
     async def list_entities(
         self,
@@ -247,18 +306,25 @@ class GraphSQLAlchemyStore:
             stmt = stmt.where(_entities.c.entity_type == entity_type)
         if access_filters:
             dialect_name = self._engine.url.get_dialect().name
-            # An entity's effective access_blob is its node's access_blob
-            # when node_id is set, else its own access_blob.
-            effective_access_blob = type_coerce(
-                case(
-                    (_entities.c.node_id.isnot(None), _nodes.c.access_blob),
-                    else_=_entities.c.access_blob,
-                ),
-                JSON,
-            )
-            stmt = stmt.outerjoin(_nodes, _entities.c.node_id == _nodes.c.id).where(
-                _access_filters_condition(
-                    dialect_name, effective_access_blob, access_filters
+            stmt = stmt.outerjoin(
+                _node_access_blobs, _entities.c.node_id == _node_access_blobs.c.node_id
+            ).outerjoin(
+                _access_blobs,
+                _node_access_blobs.c.access_blob_id == _access_blobs.c.id,
+            ).where(
+                or_(
+                    and_(
+                        _entities.c.node_id.is_(None),
+                        _json_access_filters_condition(
+                            dialect_name, _entities.c.access_blob, access_filters
+                        ),
+                    ),
+                    and_(
+                        _entities.c.node_id.isnot(None),
+                        _access_blob_association_filters_condition(
+                            dialect_name, _access_blobs, access_filters
+                        ),
+                    ),
                 )
             )
         stmt = stmt.limit(limit).offset(offset)
@@ -325,12 +391,31 @@ class GraphSQLAlchemyStore:
                         predicate=predicate,
                         object_id=object_id,
                         properties=properties or {},
-                        access_blob=access_blob or {},
                         created_at=now,
                     )
                 )
+                access_blob_result = await conn.execute(
+                    insert(_access_blobs).values(**_access_blob_values(access_blob))
+                )
+                await conn.execute(
+                    insert(_link_access_blobs).values(
+                        link_id=id_,
+                        access_blob_id=access_blob_result.inserted_primary_key[0],
+                    )
+                )
                 row = (
-                    await conn.execute(select(_links).where(_links.c.id == id_))
+                    await conn.execute(
+                        select(_links, _access_blobs)
+                        .join(
+                            _link_access_blobs,
+                            _links.c.id == _link_access_blobs.c.link_id,
+                        )
+                        .join(
+                            _access_blobs,
+                            _link_access_blobs.c.access_blob_id == _access_blobs.c.id,
+                        )
+                        .where(_links.c.id == id_)
+                    )
                 ).one()
         except IntegrityError as exc:
             # A foreign-key violation means one of the endpoints is missing.
@@ -346,7 +431,18 @@ class GraphSQLAlchemyStore:
     async def get_link(self, id: str) -> Optional[LinkRecord]:
         async with self._engine.connect() as conn:
             row = (
-                await conn.execute(select(_links).where(_links.c.id == id))
+                await conn.execute(
+                    select(_links, _access_blobs)
+                    .join(
+                        _link_access_blobs,
+                        _links.c.id == _link_access_blobs.c.link_id,
+                    )
+                    .join(
+                        _access_blobs,
+                        _link_access_blobs.c.access_blob_id == _access_blobs.c.id,
+                    )
+                    .where(_links.c.id == id)
+                )
             ).one_or_none()
         return self._to_link(row) if row else None
 
@@ -359,7 +455,15 @@ class GraphSQLAlchemyStore:
         offset: int = 0,
         access_filters: Optional[list[AccessBlobFilter]] = None,
     ) -> list[LinkRecord]:
-        stmt = select(_links).order_by(_links.c.created_at)
+        stmt = (
+            select(_links, _access_blobs)
+            .join(_link_access_blobs, _links.c.id == _link_access_blobs.c.link_id)
+            .join(
+                _access_blobs,
+                _link_access_blobs.c.access_blob_id == _access_blobs.c.id,
+            )
+            .order_by(_links.c.created_at)
+        )
         if subject_id is not None:
             stmt = stmt.where(_links.c.subject_id == subject_id)
         if predicate is not None:
@@ -369,8 +473,8 @@ class GraphSQLAlchemyStore:
         if access_filters:
             dialect_name = self._engine.url.get_dialect().name
             stmt = stmt.where(
-                _access_filters_condition(
-                    dialect_name, _links.c.access_blob, access_filters
+                _access_blob_association_filters_condition(
+                    dialect_name, _access_blobs, access_filters
                 )
             )
         stmt = stmt.limit(limit).offset(offset)
@@ -392,15 +496,35 @@ class GraphSQLAlchemyStore:
         values: dict = {}
         if predicate is not UNSET:
             values["predicate"] = predicate
-        if access_blob is not UNSET:
-            values["access_blob"] = access_blob
         async with self._engine.begin() as conn:
             if values:
                 await conn.execute(
                     update(_links).where(_links.c.id == id).values(**values)
                 )
+            if access_blob is not UNSET:
+                await conn.execute(
+                    update(_access_blobs)
+                    .where(
+                        _access_blobs.c.id
+                        == select(_link_access_blobs.c.access_blob_id)
+                        .where(_link_access_blobs.c.link_id == id)
+                        .scalar_subquery()
+                    )
+                    .values(**_access_blob_values(access_blob))
+                )
             row = (
-                await conn.execute(select(_links).where(_links.c.id == id))
+                await conn.execute(
+                    select(_links, _access_blobs)
+                    .join(
+                        _link_access_blobs,
+                        _links.c.id == _link_access_blobs.c.link_id,
+                    )
+                    .join(
+                        _access_blobs,
+                        _link_access_blobs.c.access_blob_id == _access_blobs.c.id,
+                    )
+                    .where(_links.c.id == id)
+                )
             ).one_or_none()
         return self._to_link(row) if row else None
 
