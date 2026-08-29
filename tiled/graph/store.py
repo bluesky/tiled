@@ -21,7 +21,6 @@ from typing import Optional
 
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import (
-    JSON,
     String,
     and_,
     delete,
@@ -130,15 +129,20 @@ def _json_access_blob_condition(
 def _json_access_filters_condition(
     dialect_name: str, access_blob_column, queries: list[AccessBlobFilter]
 ):
-    condition = _json_access_blob_condition(dialect_name, access_blob_column, queries[0])
+    condition = _json_access_blob_condition(
+        dialect_name, access_blob_column, queries[0]
+    )
     for query in queries[1:]:
         condition = and_(
-            condition, _json_access_blob_condition(dialect_name, access_blob_column, query)
+            condition,
+            _json_access_blob_condition(dialect_name, access_blob_column, query),
         )
     return condition
 
 
-def _access_blob_association_condition(dialect_name: str, table, query: AccessBlobFilter):
+def _access_blob_association_condition(
+    dialect_name: str, table, query: AccessBlobFilter
+):
     if not (query.user_id or query.tags):
         return false()
     tags_match = false()
@@ -147,7 +151,10 @@ def _access_blob_association_condition(dialect_name: str, table, query: AccessBl
             tags = func.json_each(table.c.tags).table_valued("value")
             tags_match = and_(
                 table.c.kind == "tags",
-                select(1).select_from(tags).where(tags.c.value.in_(query.tags)).exists(),
+                select(1)
+                .select_from(tags)
+                .where(tags.c.value.in_(query.tags))
+                .exists(),
             )
         elif dialect_name == "postgresql":
             tags_match = and_(
@@ -306,25 +313,30 @@ class GraphSQLAlchemyStore:
             stmt = stmt.where(_entities.c.entity_type == entity_type)
         if access_filters:
             dialect_name = self._engine.url.get_dialect().name
-            stmt = stmt.outerjoin(
-                _node_access_blobs, _entities.c.node_id == _node_access_blobs.c.node_id
-            ).outerjoin(
-                _access_blobs,
-                _node_access_blobs.c.access_blob_id == _access_blobs.c.id,
-            ).where(
-                or_(
-                    and_(
-                        _entities.c.node_id.is_(None),
-                        _json_access_filters_condition(
-                            dialect_name, _entities.c.access_blob, access_filters
+            stmt = (
+                stmt.outerjoin(
+                    _node_access_blobs,
+                    _entities.c.node_id == _node_access_blobs.c.node_id,
+                )
+                .outerjoin(
+                    _access_blobs,
+                    _node_access_blobs.c.access_blob_id == _access_blobs.c.id,
+                )
+                .where(
+                    or_(
+                        and_(
+                            _entities.c.node_id.is_(None),
+                            _json_access_filters_condition(
+                                dialect_name, _entities.c.access_blob, access_filters
+                            ),
                         ),
-                    ),
-                    and_(
-                        _entities.c.node_id.isnot(None),
-                        _access_blob_association_filters_condition(
-                            dialect_name, _access_blobs, access_filters
+                        and_(
+                            _entities.c.node_id.isnot(None),
+                            _access_blob_association_filters_condition(
+                                dialect_name, _access_blobs, access_filters
+                            ),
                         ),
-                    ),
+                    )
                 )
             )
         stmt = stmt.limit(limit).offset(offset)

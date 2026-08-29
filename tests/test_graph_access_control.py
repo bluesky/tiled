@@ -1,5 +1,7 @@
 import pytest
-from sqlalchemy import delete as sa_delete, insert as sa_insert, select as sa_select
+from sqlalchemy import delete as sa_delete
+from sqlalchemy import insert as sa_insert
+from sqlalchemy import select as sa_select
 from sqlalchemy.exc import IntegrityError
 from starlette.testclient import TestClient
 

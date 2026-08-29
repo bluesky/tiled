@@ -311,21 +311,33 @@ def downgrade():
     dialect_name = connection.engine.dialect.name
 
     if dialect_name == "sqlite":
-        connection.execute(sa.text("DROP TRIGGER IF EXISTS node_access_blobs_delete_cleanup"))
-        connection.execute(sa.text("DROP TRIGGER IF EXISTS link_access_blobs_delete_cleanup"))
+        connection.execute(
+            sa.text("DROP TRIGGER IF EXISTS node_access_blobs_delete_cleanup")
+        )
+        connection.execute(
+            sa.text("DROP TRIGGER IF EXISTS link_access_blobs_delete_cleanup")
+        )
         for table in ("node_access_blobs", "link_access_blobs"):
             connection.execute(
-                sa.text(f"DROP TRIGGER IF EXISTS {table}_insert_reject_shared_access_blob")
+                sa.text(
+                    f"DROP TRIGGER IF EXISTS {table}_insert_reject_shared_access_blob"
+                )
             )
             connection.execute(
-                sa.text(f"DROP TRIGGER IF EXISTS {table}_update_reject_shared_access_blob")
+                sa.text(
+                    f"DROP TRIGGER IF EXISTS {table}_update_reject_shared_access_blob"
+                )
             )
     elif dialect_name == "postgresql":
         connection.execute(
-            sa.text("DROP TRIGGER IF EXISTS node_access_blobs_delete_cleanup ON node_access_blobs")
+            sa.text(
+                "DROP TRIGGER IF EXISTS node_access_blobs_delete_cleanup ON node_access_blobs"
+            )
         )
         connection.execute(
-            sa.text("DROP TRIGGER IF EXISTS link_access_blobs_delete_cleanup ON link_access_blobs")
+            sa.text(
+                "DROP TRIGGER IF EXISTS link_access_blobs_delete_cleanup ON link_access_blobs"
+            )
         )
         for table in ("node_access_blobs", "link_access_blobs"):
             connection.execute(
@@ -333,7 +345,9 @@ def downgrade():
                     f"DROP TRIGGER IF EXISTS {table}_reject_shared_access_blob ON {table}"
                 )
             )
-        connection.execute(sa.text("DROP FUNCTION IF EXISTS delete_orphaned_access_blob"))
+        connection.execute(
+            sa.text("DROP FUNCTION IF EXISTS delete_orphaned_access_blob")
+        )
         connection.execute(sa.text("DROP FUNCTION IF EXISTS delete_node_access_blob"))
         connection.execute(sa.text("DROP FUNCTION IF EXISTS delete_link_access_blob"))
         connection.execute(sa.text("DROP FUNCTION IF EXISTS reject_shared_access_blob"))

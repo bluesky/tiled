@@ -30,6 +30,7 @@ from urllib.parse import urlparse
 import anyio
 from fastapi import HTTPException
 from sqlalchemy import (
+    String,
     delete,
     exists,
     false,
@@ -38,7 +39,6 @@ from sqlalchemy import (
     not_,
     or_,
     select,
-    String,
     text,
     true,
     type_coerce,
@@ -2414,26 +2414,39 @@ def access_blob_filter(query, tree):
                 access_tags_json = func.json_each(orm.AccessBlob.tags).table_valued(
                     "value"
                 )
-                tags_match = select(orm.NodeAccessBlob.node_id).join(orm.AccessBlob).where(
-                    orm.AccessBlob.kind == "tags",
-                    select(1)
-                    .select_from(access_tags_json)
-                    .where(access_tags_json.c.value.in_(query.tags))
-                    .exists(),
+                tags_match = (
+                    select(orm.NodeAccessBlob.node_id)
+                    .join(orm.AccessBlob)
+                    .where(
+                        orm.AccessBlob.kind == "tags",
+                        select(1)
+                        .select_from(access_tags_json)
+                        .where(access_tags_json.c.value.in_(query.tags))
+                        .exists(),
+                    )
                 )
             elif dialect_name == "postgresql":
-                tags_match = select(orm.NodeAccessBlob.node_id).join(orm.AccessBlob).where(
-                    orm.AccessBlob.kind == "tags",
-                    type_coerce(orm.AccessBlob.tags, ARRAY(String())).overlap(
-                        sql_cast(query.tags, ARRAY(String()))
-                    ),
+                tags_match = (
+                    select(orm.NodeAccessBlob.node_id)
+                    .join(orm.AccessBlob)
+                    .where(
+                        orm.AccessBlob.kind == "tags",
+                        type_coerce(orm.AccessBlob.tags, ARRAY(String())).overlap(
+                            sql_cast(query.tags, ARRAY(String()))
+                        ),
+                    )
                 )
             else:
                 raise UnsupportedQueryType("access_blob_filter")
             filters.append(orm.Node.id.in_(tags_match))
         if query.user_id is not None:
-            user_match = select(orm.NodeAccessBlob.node_id).join(orm.AccessBlob).where(
-                orm.AccessBlob.kind == "user", orm.AccessBlob.username == query.user_id
+            user_match = (
+                select(orm.NodeAccessBlob.node_id)
+                .join(orm.AccessBlob)
+                .where(
+                    orm.AccessBlob.kind == "user",
+                    orm.AccessBlob.username == query.user_id,
+                )
             )
             filters.append(orm.Node.id.in_(user_match))
         condition = or_(*filters) if filters else false()

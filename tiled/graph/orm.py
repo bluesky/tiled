@@ -19,12 +19,12 @@ is declared as a Core table on ``Base.metadata`` in ``tiled.catalog.orm``.
 from __future__ import annotations
 
 from sqlalchemy import (
+    JSON,
     Column,
     DateTime,
     ForeignKey,
     Index,
     Integer,
-    JSON,
     String,
     Table,
     event,
@@ -255,6 +255,7 @@ FOR EACH ROW EXECUTE FUNCTION reject_shared_access_blob();
 """
                 )
             )
+
 
 namespaces = Table(
     "namespaces",
