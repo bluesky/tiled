@@ -1539,18 +1539,19 @@ class CatalogNodeAdapter:
                     update(orm.Node).where(orm.Node.id == self.node.id).values(**values)
                 )
             if access_blob is not None:
-                await db.execute(
-                    delete(orm.NodeAccessBlob).where(
-                        orm.NodeAccessBlob.node_id == self.node.id
-                    )
-                )
                 access_blob_orm = _access_blob_to_orm(access_blob)
-                db.add(access_blob_orm)
-                await db.flush()
-                db.add(
-                    orm.NodeAccessBlob(
-                        node_id=self.node.id,
-                        access_blob_id=access_blob_orm.id,
+                await db.execute(
+                    update(orm.AccessBlob)
+                    .where(
+                        orm.AccessBlob.id
+                        == select(orm.NodeAccessBlob.access_blob_id)
+                        .where(orm.NodeAccessBlob.node_id == self.node.id)
+                        .scalar_subquery()
+                    )
+                    .values(
+                        kind=access_blob_orm.kind,
+                        username=access_blob_orm.username,
+                        tags=access_blob_orm.tags,
                     )
                 )
             await db.commit()
