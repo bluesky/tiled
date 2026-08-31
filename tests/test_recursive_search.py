@@ -135,6 +135,40 @@ async def client(request, tmpdir_module):
         assert False
 
 
+@pytest_asyncio.fixture(loop_scope="module", scope="module")
+async def mixed_client(tmpdir_module):
+    """A MapAdapter root with a native child and a CatalogNodeAdapter mounted at a sub-path.
+
+    This mirrors what `tiled.config.Config.merged_trees` produces when a
+    'trees' config mounts a catalog at a path other than '/' (see issue
+    https://github.com/bluesky/tiled/issues/1368). `search_recursive` from
+    the root must descend into the mounted catalog, not just the map-native
+    part of the tree.
+    """
+    catalog = in_memory(writable_storage=str(tmpdir_module / "mixed"))
+    tree = MapAdapter(
+        {
+            "map_top": ArrayAdapter.from_array(
+                numpy.ones(3), metadata={"sample_id": "abc123"}
+            ),
+            "mounted": catalog,
+        }
+    )
+    # config.py's Config.tree_tasks() collects these off each mounted tree
+    # before merging; replicate that wiring here since we build the merged
+    # MapAdapter by hand.
+    tasks = {
+        "startup": list(catalog.startup_tasks),
+        "shutdown": list(catalog.shutdown_tasks),
+        "background": list(getattr(catalog, "background_tasks", [])),
+    }
+    app = build_app(tree, tasks=tasks)
+    with Context.from_app(app) as context:
+        client = from_context(context)
+        _populate_catalog_tree(client["mounted"])
+        yield client
+
+
 def test_search_recursive_finds_matches_at_all_depths(client):
     "Matches at depth 1, 2, and 3 are all found from the root."
     results = client.search_recursive(Key("sample_id") == "abc123")
@@ -228,3 +262,50 @@ async def test_search_recursive_http_response_shape(client):
         assert "ancestors" in item["attributes"]
     assert "links" in content
     assert "next" in content["links"]
+
+
+def test_search_recursive_descends_into_mounted_subtree(mixed_client):
+    "A catalog mounted under a MapAdapter root is still searched recursively."
+    results = mixed_client.search_recursive(Key("sample_id") == "abc123")
+    found_keys = set(results.keys())
+    assert ("map_top",) in found_keys
+    assert ("mounted", "top_level_match") in found_keys
+    assert ("mounted", "nested", "images", "sample_042") in found_keys
+    assert ("mounted", "other_branch", "sample_099") in found_keys
+    assert len(results) == 4
+
+
+def test_search_recursive_mounted_subtree_no_matches(mixed_client):
+    "An unmatched query against a mixed tree returns an empty Mapping."
+    results = mixed_client.search_recursive(Key("sample_id") == "does-not-exist")
+    assert len(results) == 0
+    assert list(results) == []
+
+
+def test_search_recursive_mounted_subtree_max_depth(mixed_client):
+    "max_depth is honored across the MapAdapter/catalog mount boundary."
+    # depth=1 reaches only the map-native top-level child and the mount
+    # point itself ("mounted" is a container, not a match); depth=2 reaches
+    # one level into the mounted catalog.
+    results = mixed_client.search_recursive(Key("sample_id") == "abc123", max_depth=2)
+    assert set(results.keys()) == {("map_top",), ("mounted", "top_level_match")}
+
+
+@pytest.mark.asyncio(loop_scope="module")
+async def test_search_recursive_mounted_subtree_http_response_shape(mixed_client):
+    "Ancestors for matches inside the mounted subtree include the mount prefix."
+    link = mixed_client.item["links"]["search_recursive"]
+    response = mixed_client.context.http_client.get(
+        link,
+        params={
+            "filter[eq][condition][key]": "sample_id",
+            "filter[eq][condition][value]": '"abc123"',
+        },
+    )
+    content = response.json()
+    assert response.status_code == 200
+    assert content["meta"]["count"] == 4
+    ancestors_by_id = {
+        item["id"]: item["attributes"]["ancestors"] for item in content["data"]
+    }
+    assert ["mounted", "nested", "images"] in ancestors_by_id.values()
