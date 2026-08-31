@@ -35,6 +35,9 @@ _df = pandas.DataFrame(
             ],
             dtype=object,
         ),
+        # Fixed-width bytes column (numpy 'S' dtype). orjson cannot serialize
+        # bytes, so these must be decoded to str.
+        "bytes_col": numpy.array([b"abc", b"def", b"ghi"], dtype="S3"),
     }
 )
 
@@ -145,3 +148,14 @@ def test_timestamp_object(client, reader):
     assert isinstance(col[0], str)
     assert col[1] is None  # NaT → None
     assert isinstance(col[2], str)
+
+
+@pytest.mark.parametrize("reader", [_read_json, _read_jsonseq])
+def test_bytes_column(client, reader):
+    """bytes values (numpy 'S' dtype) must be decoded to str in JSON."""
+    result = reader(client)
+    if isinstance(result, dict):
+        col = result["bytes_col"]
+    else:
+        col = [row["bytes_col"] for row in result]
+    assert col == ["abc", "def", "ghi"]

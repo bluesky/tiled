@@ -5,6 +5,11 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## Unreleased
 
+### Added
+
+- Experimental "graph of links" web UI at `/ui/graph`, an interactive
+  explorer for the provenance graph served by `tiled serve demo`.
+
 ### Fixed
 
 - Fix a regression where opening a URL with an `?api_key=...` query parameter
@@ -41,6 +46,13 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Changed
 
+- `tiled serve demo` now serves a single, catalog-backed demo that combines the
+  data-structure showcase with the experimental "graph of links" provenance
+  feature. The server is public (anonymous read access) and prints a
+  single-user API key (default `secret`) for trying out writes and graph
+  mutations. The graph is defined in `tiled/examples/demo_graph.json`. The
+  standalone `example_configs/graphs/` scripts have been removed in favor of
+  this demo.
 - `ProxiedOIDCAuthenticator` now accepts a `scopes_map` parameter (previously
   available only on `EntraAuthenticator`) and translates identity-provider
   scopes into Tiled scopes when decoding tokens. Its effective `scopes` are the
@@ -51,6 +63,9 @@ Write the date in place of the "Unreleased" in the case a new version is release
 ### Fixed
 
 - Fix precedence of scope check for `ProxiedOIDCAuthenticator`.
+- Fix `TypeError: Type is not JSON serializable: bytes` when serializing a
+  table with a bytes-dtype (numpy `S`) column to `application/json` or
+  `application/json-seq`. Such values are now decoded to strings.
 - If refreshing access tokens yields `400 Bad Request`, clear the cached tokens
   and prompt for login.
 

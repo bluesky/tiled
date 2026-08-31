@@ -387,8 +387,9 @@ class Query:
     @strawberry.field(
         description=(
             "Resolve the internal catalog node id for a path of key "
-            "segments (e.g. ['raw_dataset']), for use as CreateEntityInput's "
-            "nodeId. Returns null if no such catalog node exists."
+            "segments (e.g. ['linked', 'measured']), for use as "
+            "CreateEntityInput's nodeId. Returns null if no such catalog "
+            "node exists."
         )
     )
     async def catalog_node_id(self, info: Info, path: list[str]) -> Optional[int]:

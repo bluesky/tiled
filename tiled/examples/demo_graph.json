@@ -1,0 +1,309 @@
+{
+  "@context": {
+    "@vocab": "https://blueskyproject.io/tiled/graph#",
+    "tiled": "https://blueskyproject.io/tiled/terms/",
+    "ro": "https://w3id.org/ro/terms/",
+    "schema": "https://schema.org/",
+    "prov": "http://www.w3.org/ns/prov#",
+    "subject": {
+      "@type": "@id"
+    },
+    "object": {
+      "@type": "@id"
+    }
+  },
+  "@graph": [
+    {
+      "@id": "urn:entity:measured",
+      "@type": "Entity",
+      "entityType": "dataset",
+      "name": "measured",
+      "properties": {
+        "@type": "Dataset",
+        "schema:name": "Measured detector image stack (3 frames)",
+        "schema:encodingFormat": "application/x-zarr"
+      }
+    },
+    {
+      "@id": "urn:entity:background",
+      "@type": "Entity",
+      "entityType": "dataset",
+      "name": "background",
+      "properties": {
+        "@type": "Dataset",
+        "schema:name": "Background frame",
+        "schema:encodingFormat": "application/x-zarr"
+      }
+    },
+    {
+      "@id": "urn:entity:subtracted",
+      "@type": "Entity",
+      "entityType": "dataset",
+      "name": "subtracted",
+      "properties": {
+        "@type": "Dataset",
+        "schema:name": "Background-subtracted image stack",
+        "schema:encodingFormat": "application/x-zarr"
+      }
+    },
+    {
+      "@id": "urn:entity:normalized",
+      "@type": "Entity",
+      "entityType": "dataset",
+      "name": "normalized",
+      "properties": {
+        "@type": "Dataset",
+        "schema:name": "Normalized image stack",
+        "schema:encodingFormat": "application/x-zarr"
+      }
+    },
+    {
+      "@id": "urn:entity:integrated",
+      "@type": "Entity",
+      "entityType": "dataset",
+      "name": "integrated",
+      "properties": {
+        "@type": "Dataset",
+        "schema:name": "Frame-integrated detector image",
+        "schema:encodingFormat": "application/x-zarr"
+      }
+    },
+    {
+      "@id": "urn:entity:summary",
+      "@type": "Entity",
+      "entityType": "dataset",
+      "name": "summary",
+      "properties": {
+        "@type": "Dataset",
+        "schema:name": "Per-frame tabular summary"
+      }
+    },
+    {
+      "@id": "urn:entity:external_dif_beam_hdf5_image",
+      "@type": "Entity",
+      "entityType": "dataset",
+      "name": "dif_beam_hdf5_image",
+      "uri": "https://tiled-demo.nsls2.bnl.gov/api/v1/metadata/csx/6cb250e3-3a4a-46e1-8fcb-a1caa0445f41/primary/dif_beam_hdf5_image",
+      "properties": {
+        "@type": "Dataset",
+        "schema:name": "Calibration image hosted on another Tiled server"
+      }
+    },
+    {
+      "@id": "urn:entity:sample_material",
+      "@type": "Entity",
+      "entityType": "reference",
+      "name": "lanthanum_hexaboride",
+      "uri": "http://www.wikidata.org/entity/Q410318",
+      "properties": {
+        "@type": "DefinedTerm",
+        "schema:name": "Lanthanum hexaboride (LaB6)",
+        "schema:description": "Reference material / calibrant, described in Wikidata (open, encyclopedic linked data)."
+      }
+    },
+    {
+      "@id": "urn:entity:ro-crate-metadata",
+      "@type": "Entity",
+      "entityType": "rocrate",
+      "name": "ro-crate-metadata.json",
+      "properties": {
+        "@type": "CreativeWork",
+        "conformsTo": "https://w3id.org/ro/crate/1.1"
+      }
+    },
+    {
+      "@id": "urn:entity:analysis_workflow",
+      "@type": "Entity",
+      "entityType": "workflow",
+      "name": "analysis_workflow",
+      "properties": {
+        "@type": "ComputationalWorkflow",
+        "schema:name": "Reduce a measured detector image stack to an integrated image"
+      }
+    },
+    {
+      "@id": "urn:entity:processing_script",
+      "@type": "Entity",
+      "entityType": "software",
+      "name": "processing_script.py",
+      "uri": "https://github.com/genematx/tiled/blob/graph-web-ui/docs/demo/processing_script.py",
+      "properties": {
+        "@type": "SoftwareSourceCode"
+      }
+    },
+    {
+      "@id": "urn:link:subtracted_from_measured",
+      "@type": "Link",
+      "subject": "urn:entity:subtracted",
+      "predicate": "prov:wasDerivedFrom",
+      "object": "urn:entity:measured",
+      "properties": {
+        "schema:description": "lineage"
+      }
+    },
+    {
+      "@id": "urn:link:subtracted_from_background",
+      "@type": "Link",
+      "subject": "urn:entity:subtracted",
+      "predicate": "prov:wasDerivedFrom",
+      "object": "urn:entity:background",
+      "properties": {
+        "schema:description": "background subtracted from the measured stack"
+      }
+    },
+    {
+      "@id": "urn:link:normalized_from_subtracted",
+      "@type": "Link",
+      "subject": "urn:entity:normalized",
+      "predicate": "prov:wasDerivedFrom",
+      "object": "urn:entity:subtracted",
+      "properties": {
+        "schema:description": "lineage"
+      }
+    },
+    {
+      "@id": "urn:link:integrated_from_normalized",
+      "@type": "Link",
+      "subject": "urn:entity:integrated",
+      "predicate": "prov:wasDerivedFrom",
+      "object": "urn:entity:normalized",
+      "properties": {
+        "schema:description": "lineage"
+      }
+    },
+    {
+      "@id": "urn:link:summary_from_normalized",
+      "@type": "Link",
+      "subject": "urn:entity:summary",
+      "predicate": "prov:wasDerivedFrom",
+      "object": "urn:entity:normalized",
+      "properties": {
+        "schema:description": "tabular summary of the normalized data"
+      }
+    },
+    {
+      "@id": "urn:link:measured_informed_by_external",
+      "@type": "Link",
+      "subject": "urn:entity:measured",
+      "predicate": "prov:wasInformedBy",
+      "object": "urn:entity:external_dif_beam_hdf5_image",
+      "properties": {
+        "schema:description": "calibrated against an image hosted on another Tiled server"
+      }
+    },
+    {
+      "@id": "urn:link:measured_about_sample",
+      "@type": "Link",
+      "subject": "urn:entity:measured",
+      "predicate": "schema:about",
+      "object": "urn:entity:sample_material",
+      "properties": {
+        "schema:description": "the measured sample, linked to its encyclopedic record"
+      }
+    },
+    {
+      "@id": "urn:link:crate_measured",
+      "@type": "Link",
+      "subject": "urn:entity:ro-crate-metadata",
+      "predicate": "ro:hasPart",
+      "object": "urn:entity:measured",
+      "properties": {}
+    },
+    {
+      "@id": "urn:link:crate_background",
+      "@type": "Link",
+      "subject": "urn:entity:ro-crate-metadata",
+      "predicate": "ro:hasPart",
+      "object": "urn:entity:background",
+      "properties": {}
+    },
+    {
+      "@id": "urn:link:crate_subtracted",
+      "@type": "Link",
+      "subject": "urn:entity:ro-crate-metadata",
+      "predicate": "ro:hasPart",
+      "object": "urn:entity:subtracted",
+      "properties": {}
+    },
+    {
+      "@id": "urn:link:crate_normalized",
+      "@type": "Link",
+      "subject": "urn:entity:ro-crate-metadata",
+      "predicate": "ro:hasPart",
+      "object": "urn:entity:normalized",
+      "properties": {}
+    },
+    {
+      "@id": "urn:link:crate_integrated",
+      "@type": "Link",
+      "subject": "urn:entity:ro-crate-metadata",
+      "predicate": "ro:hasPart",
+      "object": "urn:entity:integrated",
+      "properties": {}
+    },
+    {
+      "@id": "urn:link:crate_summary",
+      "@type": "Link",
+      "subject": "urn:entity:ro-crate-metadata",
+      "predicate": "ro:hasPart",
+      "object": "urn:entity:summary",
+      "properties": {}
+    },
+    {
+      "@id": "urn:link:wf_script",
+      "@type": "Link",
+      "subject": "urn:entity:analysis_workflow",
+      "predicate": "instrument",
+      "object": "urn:entity:processing_script",
+      "properties": {}
+    },
+    {
+      "@id": "urn:link:wf_used_measured",
+      "@type": "Link",
+      "subject": "urn:entity:analysis_workflow",
+      "predicate": "prov:used",
+      "object": "urn:entity:measured",
+      "properties": {}
+    },
+    {
+      "@id": "urn:link:wf_used_background",
+      "@type": "Link",
+      "subject": "urn:entity:analysis_workflow",
+      "predicate": "prov:used",
+      "object": "urn:entity:background",
+      "properties": {}
+    },
+    {
+      "@id": "urn:link:wf_result_subtracted",
+      "@type": "Link",
+      "subject": "urn:entity:analysis_workflow",
+      "predicate": "result",
+      "object": "urn:entity:subtracted",
+      "properties": {}
+    },
+    {
+      "@id": "urn:link:wf_result_normalized",
+      "@type": "Link",
+      "subject": "urn:entity:analysis_workflow",
+      "predicate": "result",
+      "object": "urn:entity:normalized",
+      "properties": {}
+    },
+    {
+      "@id": "urn:link:wf_result_integrated",
+      "@type": "Link",
+      "subject": "urn:entity:analysis_workflow",
+      "predicate": "result",
+      "object": "urn:entity:integrated",
+      "properties": {}
+    },
+    {
+      "@id": "urn:link:wf_result_summary",
+      "@type": "Link",
+      "subject": "urn:entity:analysis_workflow",
+      "predicate": "result",
+      "object": "urn:entity:summary",
+      "properties": {}
+    }
+  ]
+}
