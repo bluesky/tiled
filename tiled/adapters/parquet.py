@@ -1,7 +1,7 @@
 import copy
 from collections.abc import Set
 from pathlib import Path
-from typing import Any, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 from urllib.parse import quote_plus
 
 import dask.dataframe
@@ -11,17 +11,19 @@ from tiled.adapters.core import Adapter
 
 from ..catalog.orm import Node
 from ..storage import FileStorage, Storage
-from ..structures.core import Spec
-from ..structures.data_source import Asset, DataSource
+from ..structures.core import Spec, StructureFamily
+from ..structures.data_source import Asset, DataSource, Management
 from ..structures.table import TableStructure
 from ..type_aliases import JSON
-from ..utils import path_from_uri
+from ..utils import ensure_uri, path_from_uri
 from .array import ArrayAdapter
 from .dataframe import DataFrameAdapter
 from .utils import init_adapter_from_catalog
 
 
 class ParquetDatasetAdapter(Adapter[TableStructure]):
+    structure_family = StructureFamily.table
+
     def __init__(
         self,
         data_uris: List[str],
@@ -49,6 +51,46 @@ class ParquetDatasetAdapter(Adapter[TableStructure]):
         **kwargs: Optional[Any],
     ) -> "ParquetDatasetAdapter":
         return init_adapter_from_catalog(cls, data_source, node, **kwargs)
+
+    @classmethod
+    def from_uris(
+        cls,
+        *data_uris: str,
+        **kwargs: Optional[Any],
+    ) -> "ParquetDatasetAdapter":
+        # Each URI is one partition of a single table; infer the structure from
+        # all of them together.
+        paths = [path_from_uri(uri) for uri in data_uris]
+        ddf = dask.dataframe.read_parquet(paths, **kwargs)
+        structure = TableStructure.from_dask_dataframe(ddf)
+        return cls(list(data_uris), structure)
+
+    def generate_data_sources(
+        self,
+        mimetype: str,
+        item: Union[str, Path],
+        is_directory: bool,
+        size: Optional[int] = None,
+        parameters: Optional[Dict[str, Any]] = None,
+    ) -> List[DataSource[TableStructure]]:
+        return [
+            DataSource(
+                structure_family=self.structure_family,
+                mimetype=mimetype,
+                structure=self.structure(),
+                parameters=parameters or {},
+                management=Management.external,
+                assets=[
+                    Asset(
+                        data_uri=ensure_uri(item),
+                        is_directory=is_directory,
+                        parameter="data_uris",  # PLURAL: adapter expects a list
+                        size=size,
+                        num=0,  # this is the first (and here only) partition
+                    )
+                ],
+            )
+        ]
 
     @property
     def dataframe_adapter(self) -> DataFrameAdapter:

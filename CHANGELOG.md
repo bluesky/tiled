@@ -5,6 +5,12 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## Unreleased
 
+### Added
+
+- Add `Container.register`, a synchronous client method to register external,
+  server-accessible files as a single dataset (array, table, etc.).
+- Add registration support for Parquet files.
+
 ### Fixed
 
 - Fix a regression where opening a URL with an `?api_key=...` query parameter
