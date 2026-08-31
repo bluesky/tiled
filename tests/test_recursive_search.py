@@ -8,7 +8,6 @@ https://github.com/bluesky/tiled/issues/1368#issuecomment-5284649768
 They are expected to FAIL until the feature is implemented.
 """
 
-import asyncio
 import subprocess
 import sys
 
@@ -91,15 +90,9 @@ def _populate_catalog_tree(client):
     )
 
 
-@pytest.fixture(scope="module")
-def event_loop():
-    # https://stackoverflow.com/a/56238383/1221924
-    loop = asyncio.new_event_loop()
-    yield loop
-    loop.close()
-
-
-@pytest_asyncio.fixture(scope="module", params=["map", "sqlite", "postgresql"])
+@pytest_asyncio.fixture(
+    loop_scope="module", scope="module", params=["map", "sqlite", "postgresql"]
+)
 async def client(request, tmpdir_module):
     if request.param == "map":
         tree = _nested_map_tree()
@@ -216,7 +209,7 @@ def test_search_recursive_laziness(client):
     assert history.requests[0].url.params["page[limit]"] == "2"
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="module")
 async def test_search_recursive_http_response_shape(client):
     "The raw HTTP response mirrors /search/{path} conventions."
     link = client.item["links"]["search_recursive"]
