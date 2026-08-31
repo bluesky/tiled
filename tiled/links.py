@@ -41,6 +41,7 @@ def links_for_container(structure_family, structure, base_url, path_str):
     links = {}
     links["full"] = f"{base_url}/container/full/{path_str}"
     links["search"] = f"{base_url}/search/{path_str}"
+    links["search_recursive"] = f"{base_url}/search-recursive/{path_str}"
     return links
 
 

@@ -308,6 +308,30 @@ class MapAdapter(Generic[A], ContainerAdapter[A], IndexersMixin):
         """
         return self.query_registry(query, self)
 
+    def search_recursive(self, max_depth: Optional[int] = None) -> "MapAdapter[A]":
+        """Return an adapter over ALL descendants of this node (any depth).
+
+        The returned adapter's keys are "/"-joined paths relative to this
+        node, since descendants at different depths may share a local key.
+        A subsequent `.search(query)` call filters this flattened adapter
+        exactly as it would filter direct children.
+        """
+        flat: Dict[str, A] = {}
+
+        def _walk(
+            mapping: Mapping[str, A], prefix: Tuple[str, ...], depth: int
+        ) -> None:
+            for key, value in mapping.items():
+                path = prefix + (key,)
+                flat["/".join(path)] = value
+                if max_depth is not None and depth + 1 >= max_depth:
+                    continue
+                if isinstance(value, MapAdapter):
+                    _walk(value._mapping, path, depth + 1)
+
+        _walk(self._mapping, (), 0)
+        return self.new_variation(mapping=flat)
+
     def get_distinct(
         self,
         metadata: JSON,

@@ -226,8 +226,15 @@ async def construct_entries_response(
     media_type,
     max_depth,
     exact_count_limit,
+    recursive: bool = False,
 ):
-    "Construct a response for the `/search` endpoint"
+    """Construct a response for the `/search` (or `/search-recursive`) endpoint.
+
+    When `recursive` is True, `tree` is expected to be in "recursive mode"
+    (see `CatalogNodeAdapter.search_recursive` / `MapAdapter.search_recursive`):
+    keys yielded by `tree` are "/"-joined paths relative to `tree`, not bare
+    child keys, since matches at different depths may share a local key.
+    """
 
     path_parts = [segment for segment in path.split("/") if segment]
     tree = await apply_search(tree, filters, query_registry)
@@ -288,9 +295,15 @@ async def construct_entries_response(
     must_revalidate = getattr(tree, "must_revalidate", True)
     data = []
     for key, entry in items:
+        # In recursive mode, `key` is a "/"-joined path relative to `tree`
+        # (e.g. "nested/images/sample_042"), not a single child key, since
+        # matches at different depths may share a local key. Split it so
+        # that links are built from the correct (server-absolute) path.
+        relative_segments = key.split("/") if recursive else [key]
+        entry_path_parts = path_parts + relative_segments
         resource = await construct_resource(
             base_url,
-            path_parts + [key],
+            entry_path_parts,
             entry,
             fields,
             select_metadata,
@@ -300,6 +313,10 @@ async def construct_entries_response(
             max_depth=max_depth,
             exact_count_limit=exact_count_limit,
         )
+        if recursive:
+            # `ancestors` should be relative to the search root `path`, not
+            # the server-absolute path used above to build links.
+            resource.attributes.ancestors = relative_segments[:-1]
         data.append(resource)
         # If any entry has entry.metadata_stale_at = None, then there will
         # be no 'Expires' header. We will pessimistically assume the values

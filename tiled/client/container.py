@@ -575,6 +575,38 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         """
         return self.new_variation(queries=self._queries + [query])
 
+    def search_recursive(self, query, max_depth=None):
+        """
+        Search all descendants of this Node (at any depth), not just direct children.
+
+        Returns a `RecursiveSearchResults` mapping, not a `Node`: it is not
+        chainable via further `.search()`/`.search_recursive()` calls,
+        because matches at different depths do not share a single parent.
+
+        Parameters
+        ----------
+        query : query object, e.g. from tiled.queries
+        max_depth : int, optional
+            Only descend this many levels below this Node.
+
+        Examples
+        --------
+
+        >>> from tiled.queries import Key
+        >>> results = tree.search_recursive(Key("sample_id") == "abc123")
+        >>> results[("nested", "images", "sample_042")]
+        """
+        if "search_recursive" not in self.item["links"]:
+            raise NotImplementedError("This server does not support recursive search.")
+        return RecursiveSearchResults(
+            context=self.context,
+            link=self.item["links"]["search_recursive"],
+            structure_clients=self.structure_clients,
+            queries=[query],
+            max_depth=max_depth,
+            include_data_sources=self._include_data_sources,
+        )
+
     def distinct(
         self, *metadata_keys, structure_families=False, specs=False, counts=False
     ):
@@ -1492,6 +1524,133 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             specs=specs,
             access_tags=access_tags,
         )
+
+
+class RecursiveSearchResults(collections.abc.Mapping):
+    """
+    Lazy, paginated results of `Container.search_recursive(...)`.
+
+    Keys are tuples of path segments relative to the Node that the search
+    was performed on. Values are ordinary live client nodes, the same as
+    manual descent would produce.
+
+    See https://github.com/bluesky/tiled/issues/1368
+    """
+
+    def __init__(
+        self,
+        *,
+        context,
+        link,
+        structure_clients,
+        queries,
+        max_depth=None,
+        include_data_sources=False,
+    ):
+        self.context = context
+        self._link = link
+        self.structure_clients = structure_clients
+        self._queries = list(queries)
+        self._queries_as_params = _queries_to_params(*self._queries)
+        self._max_depth = max_depth
+        self._include_data_sources = include_data_sources
+        self._cached_len = None
+
+    def __repr__(self):
+        return f"<{type(self).__name__} ({len(self)} results)>"
+
+    def _params(self, extra=None):
+        params = {**self._queries_as_params}
+        if self._max_depth is not None:
+            params["max_depth"] = self._max_depth
+        if self._include_data_sources:
+            params["include_data_sources"] = True
+        if extra:
+            params.update(extra)
+        return params
+
+    def __len__(self):
+        now = time.monotonic()
+        if self._cached_len is not None:
+            length, deadline = self._cached_len
+            if now < deadline:
+                return length
+        for attempt in retry_context():
+            with attempt:
+                content = handle_error(
+                    self.context.http_client.get(
+                        self._link,
+                        headers={"Accept": MSGPACK_MIME_TYPE},
+                        params=self._params({"fields": "count"}),
+                    )
+                ).json()
+        length = content["meta"]["count"]
+        self._cached_len = (length, now + LENGTH_CACHE_TTL)
+        return length
+
+    def _keys_slice(self, start, stop, direction, page_size=None):
+        for key, _value in self._items_slice(start, stop, direction, page_size):
+            yield key
+
+    def _items_slice(self, start, stop, direction, page_size=None):
+        if direction < 0:
+            raise NotImplementedError(
+                "Recursive search results do not yet support reverse iteration."
+            )
+        assert start >= 0
+        assert (stop is None) or (stop >= 0)
+        next_page_url = f"{self._link}?page[offset]={start}"
+        if page_size is not None:
+            next_page_url += f"&page[limit]={page_size}"
+        item_counter = itertools.count(start)
+        while next_page_url is not None:
+            for attempt in retry_context():
+                with attempt:
+                    content = handle_error(
+                        self.context.http_client.get(
+                            next_page_url,
+                            headers={"Accept": MSGPACK_MIME_TYPE},
+                            params={
+                                **parse_qs(urlparse(next_page_url).query),
+                                **self._params(),
+                            },
+                        )
+                    ).json()
+            self._cached_len = (
+                content["meta"]["count"],
+                time.monotonic() + LENGTH_CACHE_TTL,
+            )
+            for item in content["data"]:
+                key = tuple(item["attributes"]["ancestors"]) + (item["id"],)
+                yield key, client_for_item(
+                    self.context,
+                    self.structure_clients,
+                    item,
+                    include_data_sources=self._include_data_sources,
+                )
+                if stop is not None and next(item_counter) == stop - 1:
+                    return
+            next_page_url = content["links"]["next"]
+
+    def keys(self):
+        return KeysView(lambda: len(self), self._keys_slice)
+
+    def values(self):
+        return ValuesView(lambda: len(self), self._items_slice)
+
+    def items(self):
+        return ItemsView(lambda: len(self), self._items_slice)
+
+    def __iter__(self):
+        yield from self._keys_slice(0, None, 1)
+
+    def __getitem__(self, key):
+        if isinstance(key, str):
+            key = tuple(key.strip("/").split("/"))
+        for existing_key, value in self._items_slice(0, None, 1):
+            if existing_key == key:
+                return value
+        raise KeyError(key)
 
 
 def _queries_to_params(*queries):
