@@ -270,20 +270,31 @@ END"""
                     )
                 )
     elif connection.engine.dialect.name == "postgresql":
+        # asyncpg cannot run multiple statements in one prepared execute, so
+        # each CREATE FUNCTION / CREATE TRIGGER is issued individually.
         connection.execute(
             text(
-                f"""
+                """
 CREATE OR REPLACE FUNCTION delete_entity_access_blob()
 RETURNS TRIGGER AS $$
 BEGIN
     DELETE FROM access_blobs WHERE id = OLD.access_blob_id;
     RETURN OLD;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql;"""
+            )
+        )
+        connection.execute(
+            text(
+                """
 CREATE TRIGGER entity_access_blobs_delete_cleanup
 AFTER DELETE ON entity_access_blobs
-FOR EACH ROW EXECUTE FUNCTION delete_entity_access_blob();
-
+FOR EACH ROW EXECUTE FUNCTION delete_entity_access_blob();"""
+            )
+        )
+        connection.execute(
+            text(
+                f"""
 CREATE OR REPLACE FUNCTION entity_access_blob_reject_node_backed_entity()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -292,11 +303,20 @@ BEGIN
     END IF;
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql;"""
+            )
+        )
+        connection.execute(
+            text(
+                """
 CREATE TRIGGER entity_access_blobs_reject_node_backed_entity
 BEFORE INSERT OR UPDATE OF entity_id ON entity_access_blobs
-FOR EACH ROW EXECUTE FUNCTION entity_access_blob_reject_node_backed_entity();
-
+FOR EACH ROW EXECUTE FUNCTION entity_access_blob_reject_node_backed_entity();"""
+            )
+        )
+        connection.execute(
+            text(
+                """
 CREATE OR REPLACE FUNCTION reject_shared_access_blob()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -314,8 +334,7 @@ BEGIN
     END IF;
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
-"""
+$$ LANGUAGE plpgsql;"""
             )
         )
         for table in tables:

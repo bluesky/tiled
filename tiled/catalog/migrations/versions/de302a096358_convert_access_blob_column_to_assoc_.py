@@ -91,7 +91,7 @@ def _restore_access_blobs(
             """
         )
     elif dialect_name == "sqlite":
-        fallback = "json('{{}}')" if default_empty else "NULL"
+        fallback = "json('{}')" if default_empty else "NULL"
         op.execute(
             f"""
             UPDATE {destination_table}
@@ -176,16 +176,23 @@ END"""
                 )
             )
     elif dialect_name == "postgresql":
+        # asyncpg cannot run multiple statements in one prepared execute, so
+        # each CREATE FUNCTION / CREATE TRIGGER is issued individually.
         connection.execute(
             sa.text(
-                f"""
+                """
 CREATE OR REPLACE FUNCTION delete_orphaned_access_blob()
 RETURNS TRIGGER AS $$
 BEGIN
     DELETE FROM access_blobs WHERE id = OLD.access_blob_id;
     RETURN OLD;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql;"""
+            )
+        )
+        connection.execute(
+            sa.text(
+                """
 CREATE OR REPLACE FUNCTION reject_shared_access_blob()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -203,13 +210,23 @@ BEGIN
     END IF;
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql;"""
+            )
+        )
+        connection.execute(
+            sa.text(
+                f"""
 CREATE OR REPLACE FUNCTION entities_reject_node_access_blob()
 RETURNS TRIGGER AS $$
 BEGIN
     RAISE EXCEPTION '{error_message}';
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql;"""
+            )
+        )
+        connection.execute(
+            sa.text(
+                f"""
 CREATE OR REPLACE FUNCTION entity_access_blob_reject_node_backed_entity()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -227,7 +244,12 @@ $$ LANGUAGE plpgsql;"""
                     f"""
 CREATE TRIGGER {table}_delete_cleanup
 AFTER DELETE ON {table}
-FOR EACH ROW EXECUTE FUNCTION delete_orphaned_access_blob();
+FOR EACH ROW EXECUTE FUNCTION delete_orphaned_access_blob();"""
+                )
+            )
+            connection.execute(
+                sa.text(
+                    f"""
 CREATE TRIGGER {table}_reject_shared_access_blob
 BEFORE INSERT OR UPDATE OF access_blob_id ON {table}
 FOR EACH ROW EXECUTE FUNCTION reject_shared_access_blob();"""
@@ -238,7 +260,12 @@ FOR EACH ROW EXECUTE FUNCTION reject_shared_access_blob();"""
                 """
 CREATE TRIGGER entity_access_blobs_reject_node_backed_entity
 BEFORE INSERT OR UPDATE OF entity_id ON entity_access_blobs
-FOR EACH ROW EXECUTE FUNCTION entity_access_blob_reject_node_backed_entity();
+FOR EACH ROW EXECUTE FUNCTION entity_access_blob_reject_node_backed_entity();"""
+            )
+        )
+        connection.execute(
+            sa.text(
+                """
 CREATE TRIGGER entities_node_access_blob_check
 BEFORE UPDATE OF node_id ON entities
 FOR EACH ROW WHEN (NEW.node_id IS NOT NULL AND EXISTS (
@@ -471,6 +498,7 @@ END"""
                 )
             )
     elif dialect_name == "postgresql":
+        # asyncpg cannot run multiple statements in one prepared execute.
         connection.execute(
             sa.text(
                 f"""
@@ -479,7 +507,12 @@ RETURNS TRIGGER AS $$
 BEGIN
     RAISE EXCEPTION '{error_message}';
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql;"""
+            )
+        )
+        connection.execute(
+            sa.text(
+                """
 CREATE TRIGGER entities_node_access_blob_check
 BEFORE INSERT OR UPDATE ON entities
 FOR EACH ROW WHEN (NEW.node_id IS NOT NULL AND NEW.access_blob IS NOT NULL)
