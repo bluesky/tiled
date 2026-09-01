@@ -240,7 +240,7 @@ async def test_empty_access_blob_public(
         authn_access_tags=set(),
         authn_scopes=set([]),
         access_blob=None,
-    ) == (allow if allow is not None else remote_allow, None)
+    ) == (allow if allow is not None else remote_allow, AccessBlob(tags=[]))
 
     if route:
         assert route.call_count == 1

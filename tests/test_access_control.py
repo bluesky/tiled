@@ -867,9 +867,12 @@ def test_update_node_access_control(access_control_test_context_factory):
         cursor = db.cursor()
         cursor.execute(
             """
-            UPDATE access_blobs
-            SET kind = 'tags', username = NULL, tags = json(?)
-            WHERE node_id = (SELECT id FROM nodes WHERE key = ?)
+                UPDATE access_blobs
+                SET kind = 'tags', username = NULL, tags = json(?)
+                WHERE id = (
+                    SELECT access_blob_id FROM node_access_blobs
+                    WHERE node_id = (SELECT id FROM nodes WHERE key = ?)
+                )
             """,
             ('["undefined_tag", "biologists_tag"]', data),
         )
@@ -917,8 +920,8 @@ def test_empty_access_blob_access_control(access_control_test_context_factory):
         cursor = db.cursor()
         cursor.execute(
             """
-            DELETE FROM access_blobs
-            WHERE node_id = (SELECT id FROM nodes WHERE key == 'data_M')
+                DELETE FROM node_access_blobs
+                WHERE node_id = (SELECT id FROM nodes WHERE key == 'data_M')
             """
         )
         db.commit()

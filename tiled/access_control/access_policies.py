@@ -39,7 +39,7 @@ class DummyAccessPolicy(AccessPolicy):
         access_blob: Optional[AccessBlob] = None,
     ) -> Tuple[bool, AccessBlob]:
         "Do nothing; there is no persistent state to initialize."
-        return (False, access_blob)
+        return (False, access_blob or AccessBlob(tags=[]))
 
     async def allowed_scopes(
         self,
@@ -503,16 +503,16 @@ class ExternalPolicyDecisionPoint(AccessPolicy, ABC):
         authn_access_tags: Optional[AccessTags],
         authn_scopes: Scopes,
         access_blob: Optional[AccessBlob] = None,
-    ) -> Tuple[bool, Optional[AccessBlob]]:
+    ) -> Tuple[bool, AccessBlob]:
         if access_blob is None and self._empty_access_blob_public is not None:
-            return self._empty_access_blob_public, access_blob
+            return self._empty_access_blob_public, AccessBlob(tags=[])
         decision = await self._get_external_decision(
             self._create_node,
             self.build_input(principal, authn_access_tags, authn_scopes, access_blob),
             ResultHolder[bool],
         )
         if decision:
-            return (decision.result, access_blob)
+            return (decision.result, access_blob or AccessBlob(tags=[]))
         raise ValueError("Permission denied not able to add the node")
 
     async def modify_node(
@@ -522,7 +522,7 @@ class ExternalPolicyDecisionPoint(AccessPolicy, ABC):
         authn_access_tags: Optional[AccessTags],
         authn_scopes: Scopes,
         access_blob: Optional[AccessBlob],
-    ) -> Tuple[bool, Optional[AccessBlob]]:
+    ) -> Tuple[bool, AccessBlob]:
         if access_blob_matches(access_blob, node.access_blob):
             logger.info(
                 f"Node access_blob not modified; access_blob is identical: {access_blob}"
@@ -534,7 +534,7 @@ class ExternalPolicyDecisionPoint(AccessPolicy, ABC):
             ResultHolder[bool],
         )
         if decision:
-            return (decision.result, access_blob)
+            return (decision.result, access_blob or AccessBlob(tags=[]))
         raise ValueError("Permission denied not able to add the node")
 
     async def filters(
