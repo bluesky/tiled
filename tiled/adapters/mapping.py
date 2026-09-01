@@ -308,15 +308,21 @@ class MapAdapter(Generic[A], ContainerAdapter[A], IndexersMixin):
         """
         return self.query_registry(query, self)
 
-    def search_recursive(self, max_depth: Optional[int] = None) -> "MapAdapter[A]":
+    def search_recursive(self, max_depth: Optional[int] = None) -> Any:
         """Return an adapter over ALL descendants of this node (any depth).
 
         The returned adapter's keys are "/"-joined paths relative to this
         node, since descendants at different depths may share a local key.
         A subsequent `.search(query)` call filters this flattened adapter
         exactly as it would filter direct children.
+
+        Container children that are not themselves `MapAdapter`s (e.g. a
+        `CatalogNodeAdapter` mounted at a sub-path) but do support
+        `search_recursive` are delegated to and their results merged in,
+        via `MergedRecursiveAdapter`, so mounted subtrees are still searched.
         """
         flat: Dict[str, A] = {}
+        mounts: List[Tuple[str, Any]] = []
 
         def _walk(
             mapping: Mapping[str, A], prefix: Tuple[str, ...], depth: int
@@ -328,9 +334,28 @@ class MapAdapter(Generic[A], ContainerAdapter[A], IndexersMixin):
                     continue
                 if isinstance(value, MapAdapter):
                     _walk(value._mapping, path, depth + 1)
+                elif hasattr(value, "search_recursive") and (
+                    getattr(value, "structure_family", None)
+                    == StructureFamily.container
+                ):
+                    remaining_depth = (
+                        None if max_depth is None else max_depth - (depth + 1)
+                    )
+                    mounts.append(
+                        (
+                            "/".join(path),
+                            value.search_recursive(max_depth=remaining_depth),
+                        )
+                    )
 
         _walk(self._mapping, (), 0)
-        return self.new_variation(mapping=flat)
+        if not mounts:
+            return self.new_variation(mapping=flat)
+        from .merged import MergedRecursiveAdapter
+
+        return MergedRecursiveAdapter(
+            flat, mounts, metadata=self._metadata, specs=self.specs
+        )
 
     def get_distinct(
         self,
