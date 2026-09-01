@@ -7,15 +7,25 @@ import dask.array
 import httpx
 import numpy
 import pytest
-from starlette.status import HTTP_406_NOT_ACCEPTABLE, HTTP_422_UNPROCESSABLE_CONTENT
+from starlette.status import (
+    HTTP_406_NOT_ACCEPTABLE,
+    HTTP_422_UNPROCESSABLE_CONTENT,
+    HTTP_503_SERVICE_UNAVAILABLE,
+)
 
 from tiled.adapters.array import ArrayAdapter
 from tiled.adapters.mapping import MapAdapter
+from tiled.adapters.utils import (
+    DataNotReadyError,
+    IncompatibleShapeError,
+    force_reshape,
+)
 from tiled.client import Context, from_context, record_history
 from tiled.client.array import ArrayClient
 from tiled.ndslice import NDSlice
 from tiled.serialization.array import as_buffer
 from tiled.server.app import build_app
+from tiled.structures.array import ArrayStructure
 
 from .utils import fail_with_status_code
 
@@ -293,3 +303,83 @@ def test_array_client_repr(tmpdir, chunks, expected):
         assert f"chunks={expected}" in rep
         if client["arr"].dims:
             assert "dims=('x', 'y', 'z')" in rep
+
+
+def test_force_reshape_noop_and_genuine_reshape():
+    # Exact match is a no-op.
+    arr = numpy.arange(6).reshape((2, 3))
+    assert force_reshape(arr, (2, 3)) is arr
+    # Same total size is a genuine, well-defined reshape.
+    reshaped = force_reshape(arr, (3, 2))
+    assert reshaped.shape == (3, 2)
+    numpy.testing.assert_array_equal(reshaped.ravel(), arr.ravel())
+
+
+def test_force_reshape_trims_leading_axis_when_file_ahead():
+    # The file has grown along the leading axis beyond the advertised shape,
+    # with trailing dims unchanged. Serve exactly the advertised shape by
+    # trimming the extra leading frames.
+    arr = numpy.arange(4 * 3).reshape((4, 3))
+    trimmed = force_reshape(arr, (2, 3))
+    assert trimmed.shape == (2, 3)
+    numpy.testing.assert_array_equal(trimmed, arr[:2])
+
+
+def test_force_reshape_raises_when_structure_ahead_of_data():
+    # The structure advertises more data than is available (catalog ahead of
+    # file, e.g. during a streaming append). We must not fabricate data. This
+    # is transient: more frames may still arrive.
+    arr = numpy.ones((3, 2, 4))
+    with pytest.raises(DataNotReadyError):
+        force_reshape(arr, (5, 2, 4))
+
+
+def test_force_reshape_raises_on_incompatible_shape():
+    # Trailing dims differ and total size differs: a genuine incompatibility
+    # that retrying cannot resolve.
+    arr = numpy.ones((4, 3))
+    with pytest.raises(IncompatibleShapeError):
+        force_reshape(arr, (4, 5))
+
+
+def test_structure_ahead_of_data_returns_503():
+    # Serve an array whose stored structure claims more frames than the
+    # underlying data has, mimicking a catalog that is ahead of the file
+    # during a streaming append. The read should surface as a retryable
+    # HTTP 503, not an opaque 500.
+    data = numpy.ones((3, 2, 4))
+    ahead_structure = ArrayStructure.from_array(numpy.ones((5, 2, 4)))
+    adapter = ArrayAdapter(data, ahead_structure)
+    app = build_app(MapAdapter({"streaming": adapter}))
+    with Context.from_app(app) as ahead_context:
+        client = from_context(ahead_context)
+        with fail_with_status_code(HTTP_503_SERVICE_UNAVAILABLE):
+            client["streaming"].read()
+
+
+def test_incompatible_structure_returns_422():
+    # Serve an array whose stored structure is incompatible with the data in a
+    # way that retrying cannot fix (trailing dimensions disagree). This is a
+    # permanent error, surfaced as HTTP 422.
+    data = numpy.ones((4, 3))
+    bad_structure = ArrayStructure.from_array(numpy.ones((4, 5)))
+    adapter = ArrayAdapter(data, bad_structure)
+    app = build_app(MapAdapter({"streaming": adapter}))
+    with Context.from_app(app) as bad_context:
+        client = from_context(bad_context)
+        with fail_with_status_code(HTTP_422_UNPROCESSABLE_CONTENT):
+            client["streaming"].read()
+
+
+def test_file_ahead_of_structure_serves_trimmed():
+    # Serve an array whose underlying data has more frames than the stored
+    # structure advertises. The client sees exactly the advertised shape.
+    data = numpy.arange(4 * 2 * 4).reshape((4, 2, 4))
+    behind_structure = ArrayStructure.from_array(numpy.ones((2, 2, 4)))
+    adapter = ArrayAdapter(data, behind_structure)
+    app = build_app(MapAdapter({"streaming": adapter}))
+    with Context.from_app(app) as behind_context:
+        client = from_context(behind_context)
+        result = client["streaming"].read()
+    assert result.shape == (2, 2, 4)
+    numpy.testing.assert_array_equal(result, data[:2])
