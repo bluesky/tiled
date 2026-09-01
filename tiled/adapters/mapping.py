@@ -23,6 +23,8 @@ from tiled.structures.container import ContainerStructure
 if TYPE_CHECKING:
     from fastapi import APIRouter
 
+    from .merged import MergedRecursiveAdapter
+
 from collections.abc import Iterable, Mapping
 
 from ..iterviews import ItemsView, KeysView, ValuesView
@@ -308,7 +310,9 @@ class MapAdapter(Generic[A], ContainerAdapter[A], IndexersMixin):
         """
         return self.query_registry(query, self)
 
-    def search_recursive(self, max_depth: Optional[int] = None) -> Any:
+    def search_recursive(
+        self, max_depth: Optional[int] = None
+    ) -> Union["MapAdapter[A]", "MergedRecursiveAdapter"]:
         """Return an adapter over ALL descendants of this node (any depth).
 
         The returned adapter's keys are "/"-joined paths relative to this
