@@ -185,6 +185,20 @@ def test_pydantic_config():
     Config.model_validate({"catalog": {"uri": "sqlite:///:memory:"}})
 
 
+def test_catalog_adapters_by_mimetype_mapping():
+    Config.model_validate(
+        {
+            "catalog": {
+                "uri": "sqlite:///:memory:",
+                "adapters_by_mimetype": {
+                    "application/x-edf": "tiled.examples.xdi:read_xdi",
+                    "application/x-gb": "tiled.examples.xdi:read_xdi",
+                },
+            }
+        }
+    )
+
+
 def test_duplicate_auth_providers():
     with pytest.raises(ValidationError, match="provider names must be unique"):
         Config.model_validate(
