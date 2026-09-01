@@ -32,17 +32,20 @@ from sqlalchemy import (
     type_coerce,
     update,
 )
-from sqlalchemy.dialects.postgresql import ARRAY, JSONB, TEXT
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncEngine
 from sqlalchemy.sql.expression import cast as sql_cast
 
-from ..catalog.orm import AccessBlob, Node, NodeAccessBlob
+from ..catalog.orm import AccessBlob as AccessBlobORM
+from ..catalog.orm import Node, NodeAccessBlob
 from ..queries import AccessBlobFilter
 from ..server.connection_pool import get_database_engine
 from ..server.settings import DatabaseSettings
+from ..type_aliases import AccessBlob
 from ..utils import UnsupportedQueryType
 from .orm import entities as _entities
+from .orm import entity_access_blobs as _entity_access_blobs
 from .orm import link_access_blobs as _link_access_blobs
 from .orm import links as _links
 from .orm import namespaces as _namespaces
@@ -51,7 +54,7 @@ UNSET = object()
 
 # The catalog ``nodes`` table, used to resolve entities.node_id by catalog path.
 _nodes = Node.__table__
-_access_blobs = AccessBlob.__table__
+_access_blobs = AccessBlobORM.__table__
 _node_access_blobs = NodeAccessBlob.__table__
 
 # ---------------------------------------------------------------------------
@@ -69,7 +72,7 @@ class EntityRecord(BaseModel):
     uri: Optional[str]
     properties: dict
     # None when node_id is set: access control is delegated to the node.
-    access_blob: Optional[dict] = None
+    access_blob: Optional[AccessBlob] = None
     created_at: datetime
 
 
@@ -81,63 +84,8 @@ class LinkRecord(BaseModel):
     predicate: str
     object_id: str
     properties: dict
-    access_blob: dict
+    access_blob: AccessBlob
     created_at: datetime
-
-
-def _json_access_blob_condition(
-    dialect_name: str, access_blob_column, query: AccessBlobFilter
-):
-    """
-    Translate one AccessBlobFilter into a SQL condition on a JSON
-    access_blob column, mirroring tiled.catalog.adapter.access_blob_filter
-    so that pagination (LIMIT/OFFSET) is applied to already-filtered rows
-    instead of filtering a page after the fact.
-    """
-    if not (query.user_id or query.tags):
-        # Results cannot possibly match an empty value or list,
-        # so put a False condition in the list ensuring that
-        # there are no rows returned.
-        return false()
-    if dialect_name == "sqlite":
-        access_tags_json = func.json_each(access_blob_column["tags"]).table_valued(
-            "value"
-        )
-        condition = (
-            select(1)
-            .select_from(access_tags_json)
-            .where(access_tags_json.c.value.in_(query.tags))
-            .exists()
-        )
-        if query.user_id is not None:
-            user_match = (
-                func.json_extract(func.json_quote(access_blob_column["user"]), "$")
-                == query.user_id
-            )
-            condition = or_(condition, user_match)
-    elif dialect_name == "postgresql":
-        access_blob_jsonb = type_coerce(access_blob_column, JSONB)
-        condition = access_blob_jsonb["tags"].has_any(sql_cast(query.tags, ARRAY(TEXT)))
-        if query.user_id is not None:
-            user_match = access_blob_jsonb["user"].astext == query.user_id
-            condition = or_(condition, user_match)
-    else:
-        raise UnsupportedQueryType("access_blob_filter")
-    return condition
-
-
-def _json_access_filters_condition(
-    dialect_name: str, access_blob_column, queries: list[AccessBlobFilter]
-):
-    condition = _json_access_blob_condition(
-        dialect_name, access_blob_column, queries[0]
-    )
-    for query in queries[1:]:
-        condition = and_(
-            condition,
-            _json_access_blob_condition(dialect_name, access_blob_column, query),
-        )
-    return condition
 
 
 def _access_blob_association_condition(
@@ -182,17 +130,16 @@ def _access_blob_association_filters_condition(
     return condition
 
 
-def _access_blob_from_association(row) -> dict:
-    if row.kind == "user":
-        return {"user": row.username}
-    return {"tags": row.tags or []}
+def _access_blob_from_association(row) -> AccessBlob:
+    return AccessBlob(username=row.username, tags=row.tags)
 
 
-def _access_blob_values(access_blob: Optional[dict]) -> dict:
-    access_blob = access_blob or {}
-    if "user" in access_blob:
-        return {"kind": "user", "username": access_blob["user"], "tags": None}
-    return {"kind": "tags", "username": None, "tags": access_blob.get("tags", [])}
+def _access_blob_values(access_blob: AccessBlob) -> dict:
+    if not isinstance(access_blob, AccessBlob):
+        raise TypeError("access_blob must be an AccessBlob")
+    if access_blob.username is not None:
+        return {"kind": "user", "username": access_blob.username, "tags": None}
+    return {"kind": "tags", "username": None, "tags": access_blob.tags or []}
 
 
 class GraphSQLAlchemyStore:
@@ -226,9 +173,12 @@ class GraphSQLAlchemyStore:
             name=row.name,
             uri=row.uri,
             properties=row.properties or {},
-            # Preserve None as-is (rather than coercing to {}): None means
-            # access control is delegated to the node (node_id is set).
-            access_blob=row.access_blob,
+            # No association means access control is delegated to node_id.
+            access_blob=(
+                AccessBlob(username=row.access_blob_username, tags=row.access_blob_tags)
+                if row.access_blob_id is not None
+                else None
+            ),
             created_at=row.created_at,
         )
 
@@ -244,6 +194,32 @@ class GraphSQLAlchemyStore:
             created_at=row.created_at,
         )
 
+    @staticmethod
+    def _entity_statement(id: Optional[str] = None, entity_access_blobs_value=None):
+        if entity_access_blobs_value is None:
+            entity_access_blobs_value = _access_blobs.alias("entity_access_blobs_value")
+        stmt = (
+            select(
+                _entities,
+                entity_access_blobs_value.c.id.label("access_blob_id"),
+                entity_access_blobs_value.c.username.label("access_blob_username"),
+                entity_access_blobs_value.c.tags.label("access_blob_tags"),
+            )
+            .outerjoin(
+                _entity_access_blobs, _entities.c.id == _entity_access_blobs.c.entity_id
+            )
+            .outerjoin(
+                entity_access_blobs_value,
+                _entity_access_blobs.c.access_blob_id == entity_access_blobs_value.c.id,
+            )
+        )
+        if id is not None:
+            stmt = stmt.where(_entities.c.id == id)
+        return stmt
+
+    async def _entity_row(self, conn, id: str):
+        return (await conn.execute(self._entity_statement(id))).one_or_none()
+
     async def create_entity(
         self,
         entity_type: str,
@@ -251,10 +227,14 @@ class GraphSQLAlchemyStore:
         node_id: Optional[int] = None,
         uri: Optional[str] = None,
         properties: Optional[dict] = None,
-        access_blob: Optional[dict] = None,
+        access_blob: Optional[AccessBlob] = None,
     ) -> EntityRecord:
         id_ = str(uuid.uuid4())
         now = datetime.now(timezone.utc)
+        if access_blob is not None and not isinstance(access_blob, AccessBlob):
+            raise TypeError("access_blob must be an AccessBlob")
+        if node_id is not None and access_blob is not None:
+            raise IntegrityError("entity node access blob", {}, None)
         async with self._engine.begin() as conn:
             await conn.execute(
                 insert(_entities).values(
@@ -264,25 +244,30 @@ class GraphSQLAlchemyStore:
                     name=name,
                     uri=uri,
                     properties=properties or {},
-                    # Not coerced to {}: passing None here (as the caller
-                    # must when node_id is set) stores SQL NULL.
-                    access_blob=access_blob,
                     created_at=now,
                 )
             )
-            row = (
-                await conn.execute(select(_entities).where(_entities.c.id == id_))
-            ).one()
+            if node_id is None:
+                access_blob_result = await conn.execute(
+                    insert(_access_blobs).values(
+                        **_access_blob_values(access_blob or AccessBlob(tags=[]))
+                    )
+                )
+                await conn.execute(
+                    insert(_entity_access_blobs).values(
+                        entity_id=id_,
+                        access_blob_id=access_blob_result.inserted_primary_key[0],
+                    )
+                )
+            row = await self._entity_row(conn, id_)
         return self._to_entity(row)
 
     async def get_entity(self, id: str) -> Optional[EntityRecord]:
         async with self._engine.connect() as conn:
-            row = (
-                await conn.execute(select(_entities).where(_entities.c.id == id))
-            ).one_or_none()
+            row = await self._entity_row(conn, id)
         return self._to_entity(row) if row else None
 
-    async def get_node_access_blob(self, node_id: int) -> Optional[dict]:
+    async def get_node_access_blob(self, node_id: int) -> Optional[AccessBlob]:
         """
         Look up a catalog node's access_blob, for resolving the effective
         access control of an entity that points to it (node_id is set).
@@ -308,7 +293,11 @@ class GraphSQLAlchemyStore:
         offset: int = 0,
         access_filters: Optional[list[AccessBlobFilter]] = None,
     ) -> list[EntityRecord]:
-        stmt = select(_entities).order_by(_entities.c.created_at)
+        entity_access_blobs_value = _access_blobs.alias("entity_access_blobs_value")
+        node_access_blobs_value = _access_blobs.alias("node_access_blobs_value")
+        stmt = self._entity_statement(
+            entity_access_blobs_value=entity_access_blobs_value
+        ).order_by(_entities.c.created_at)
         if entity_type is not None:
             stmt = stmt.where(_entities.c.entity_type == entity_type)
         if access_filters:
@@ -319,21 +308,21 @@ class GraphSQLAlchemyStore:
                     _entities.c.node_id == _node_access_blobs.c.node_id,
                 )
                 .outerjoin(
-                    _access_blobs,
-                    _node_access_blobs.c.access_blob_id == _access_blobs.c.id,
+                    node_access_blobs_value,
+                    _node_access_blobs.c.access_blob_id == node_access_blobs_value.c.id,
                 )
                 .where(
                     or_(
                         and_(
                             _entities.c.node_id.is_(None),
-                            _json_access_filters_condition(
-                                dialect_name, _entities.c.access_blob, access_filters
+                            _access_blob_association_filters_condition(
+                                dialect_name, entity_access_blobs_value, access_filters
                             ),
                         ),
                         and_(
                             _entities.c.node_id.isnot(None),
                             _access_blob_association_filters_condition(
-                                dialect_name, _access_blobs, access_filters
+                                dialect_name, node_access_blobs_value, access_filters
                             ),
                         ),
                     )
@@ -368,15 +357,74 @@ class GraphSQLAlchemyStore:
         if entity_type is not None:
             values["entity_type"] = entity_type
         if access_blob is not UNSET:
-            values["access_blob"] = access_blob
+            if access_blob is not None and not isinstance(access_blob, AccessBlob):
+                raise TypeError("access_blob must be an AccessBlob")
         async with self._engine.begin() as conn:
+            existing = await self._entity_row(conn, id)
+            if existing is None:
+                return None
+            effective_node_id = node_id if node_id is not UNSET else existing.node_id
+            if (
+                access_blob is not UNSET
+                and effective_node_id is not None
+                and access_blob is not None
+            ):
+                raise IntegrityError("entity node access blob", {}, None)
+            if existing.node_id is None and effective_node_id is not None:
+                await conn.execute(
+                    delete(_entity_access_blobs).where(
+                        _entity_access_blobs.c.entity_id == id
+                    )
+                )
             if values:
                 await conn.execute(
                     update(_entities).where(_entities.c.id == id).values(**values)
                 )
-            row = (
-                await conn.execute(select(_entities).where(_entities.c.id == id))
-            ).one_or_none()
+            if access_blob is not UNSET:
+                if access_blob is None:
+                    await conn.execute(
+                        delete(_entity_access_blobs).where(
+                            _entity_access_blobs.c.entity_id == id
+                        )
+                    )
+                elif existing.access_blob_id is None:
+                    access_blob_result = await conn.execute(
+                        insert(_access_blobs).values(**_access_blob_values(access_blob))
+                    )
+                    await conn.execute(
+                        insert(_entity_access_blobs).values(
+                            entity_id=id,
+                            access_blob_id=access_blob_result.inserted_primary_key[0],
+                        )
+                    )
+                else:
+                    await conn.execute(
+                        update(_access_blobs)
+                        .where(
+                            _access_blobs.c.id
+                            == select(_entity_access_blobs.c.access_blob_id)
+                            .where(_entity_access_blobs.c.entity_id == id)
+                            .scalar_subquery()
+                        )
+                        .values(**_access_blob_values(access_blob))
+                    )
+            if (
+                existing.node_id is not None
+                and effective_node_id is None
+                and access_blob is UNSET
+            ):
+                access_blob_result = await conn.execute(
+                    insert(_access_blobs).values(
+                        **_access_blob_values(AccessBlob(tags=[]))
+                    )
+                )
+                await conn.execute(
+                    insert(_entity_access_blobs).values(
+                        entity_id=id,
+                        access_blob_id=access_blob_result.inserted_primary_key[0],
+                    )
+                )
+            row = await self._entity_row(conn, id)
         return self._to_entity(row) if row else None
 
     async def create_link(
@@ -385,10 +433,12 @@ class GraphSQLAlchemyStore:
         predicate: str,
         object_id: str,
         properties: Optional[dict] = None,
-        access_blob: Optional[dict] = None,
+        access_blob: Optional[AccessBlob] = None,
     ) -> LinkRecord:
         id_ = str(uuid.uuid4())
         now = datetime.now(timezone.utc)
+        if access_blob is not None and not isinstance(access_blob, AccessBlob):
+            raise TypeError("access_blob must be an AccessBlob")
         # The subject_id/object_id foreign keys reference entities.id, so the
         # database rejects a link to a nonexistent entity (SQLite enforces this
         # too: the shared pool sets PRAGMA foreign_keys=ON). Insert directly and
@@ -407,7 +457,9 @@ class GraphSQLAlchemyStore:
                     )
                 )
                 access_blob_result = await conn.execute(
-                    insert(_access_blobs).values(**_access_blob_values(access_blob))
+                    insert(_access_blobs).values(
+                        **_access_blob_values(access_blob or AccessBlob(tags=[]))
+                    )
                 )
                 await conn.execute(
                     insert(_link_access_blobs).values(
@@ -514,6 +566,8 @@ class GraphSQLAlchemyStore:
                     update(_links).where(_links.c.id == id).values(**values)
                 )
             if access_blob is not UNSET:
+                if access_blob is not None and not isinstance(access_blob, AccessBlob):
+                    raise TypeError("access_blob must be an AccessBlob")
                 await conn.execute(
                     update(_access_blobs)
                     .where(
@@ -522,7 +576,7 @@ class GraphSQLAlchemyStore:
                         .where(_link_access_blobs.c.link_id == id)
                         .scalar_subquery()
                     )
-                    .values(**_access_blob_values(access_blob))
+                    .values(**_access_blob_values(access_blob or AccessBlob(tags=[])))
                 )
             row = (
                 await conn.execute(

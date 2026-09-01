@@ -1,4 +1,4 @@
-"""Convert node and link access_blob columns to assoc. tables
+"""Convert node, entity, and link access_blob columns to assoc. tables
 
 Revision ID: de302a096358
 Revises: c31f6a1d7e20
@@ -19,7 +19,9 @@ branch_labels = None
 depends_on = None
 
 
-def _copy_access_blobs(connection, source_table, association_table, owner_column):
+def _copy_access_blobs(
+    connection, source_table, association_table, owner_column, where=""
+):
     access_tags_variant = sa.JSON(none_as_null=True).with_variant(
         sa.ARRAY(sa.String()), "postgresql"
     )
@@ -35,7 +37,9 @@ def _copy_access_blobs(connection, source_table, association_table, owner_column
         sa.column(owner_column),
         sa.column("access_blob_id", sa.Integer),
     )
-    rows = connection.execute(sa.text(f"SELECT id, access_blob FROM {source_table}"))
+    rows = connection.execute(
+        sa.text(f"SELECT id, access_blob FROM {source_table} {where}")
+    )
     for row in rows:
         access_blob = row.access_blob
         if isinstance(access_blob, str):
@@ -62,8 +66,11 @@ def _copy_access_blobs(connection, source_table, association_table, owner_column
         )
 
 
-def _restore_access_blobs(dialect_name, source_table, id_column, destination_table):
+def _restore_access_blobs(
+    dialect_name, source_table, id_column, destination_table, default_empty=True
+):
     if dialect_name == "postgresql":
+        fallback = "'{}'::jsonb" if default_empty else "NULL"
         op.execute(
             f"""
             UPDATE {destination_table}
@@ -79,11 +86,12 @@ def _restore_access_blobs(dialect_name, source_table, id_column, destination_tab
                     JOIN access_blobs ON access_blobs.id = {source_table}.access_blob_id
                     WHERE {source_table}.{id_column} = {destination_table}.id
                 ),
-                '{{}}'::jsonb
+                {fallback}
             )
             """
         )
     elif dialect_name == "sqlite":
+        fallback = "json('{{}}')" if default_empty else "NULL"
         op.execute(
             f"""
             UPDATE {destination_table}
@@ -97,12 +105,201 @@ def _restore_access_blobs(dialect_name, source_table, id_column, destination_tab
                     JOIN access_blobs ON access_blobs.id = {source_table}.access_blob_id
                     WHERE {source_table}.{id_column} = {destination_table}.id
                 ),
-                json('{{}}')
+                {fallback}
             )
             """
         )
     else:
         raise NotImplementedError(f"Unsupported dialect: {dialect_name}")
+
+
+def _create_association_triggers(connection):
+    dialect_name = connection.engine.dialect.name
+    tables = ("node_access_blobs", "entity_access_blobs", "link_access_blobs")
+    error_message = (
+        "An entity with node_id set must not have its own access blob; "
+        "access is controlled by the referenced node."
+    )
+    if dialect_name == "sqlite":
+        for table in tables:
+            connection.execute(
+                sa.text(
+                    f"""
+CREATE TRIGGER {table}_delete_cleanup
+AFTER DELETE ON {table}
+BEGIN
+    DELETE FROM access_blobs WHERE id = OLD.access_blob_id;
+END"""
+                )
+            )
+            others = " OR ".join(
+                f"EXISTS (SELECT 1 FROM {other} WHERE access_blob_id = NEW.access_blob_id)"
+                for other in tables
+                if other != table
+            )
+            for operation in ("INSERT", "UPDATE OF access_blob_id"):
+                connection.execute(
+                    sa.text(
+                        f"""
+CREATE TRIGGER {table}_{operation.split()[0].lower()}_reject_shared_access_blob
+BEFORE {operation} ON {table}
+WHEN {others}
+BEGIN
+    SELECT RAISE(ABORT, 'An access blob may belong to only one node, entity, or link');
+END"""
+                    )
+                )
+        for operation in ("INSERT", "UPDATE OF entity_id"):
+            connection.execute(
+                sa.text(
+                    f"""
+CREATE TRIGGER entity_access_blobs_{operation.split()[0].lower()}_reject_node_backed_entity
+BEFORE {operation} ON entity_access_blobs
+WHEN EXISTS (SELECT 1 FROM entities WHERE id = NEW.entity_id AND node_id IS NOT NULL)
+BEGIN
+    SELECT RAISE(ABORT, '{error_message}');
+END"""
+                )
+            )
+        for operation in ("INSERT", "UPDATE OF node_id"):
+            connection.execute(
+                sa.text(
+                    f"""
+CREATE TRIGGER entities_node_access_blob_{operation.split()[0].lower()}
+BEFORE {operation} ON entities
+WHEN NEW.node_id IS NOT NULL AND EXISTS (
+    SELECT 1 FROM entity_access_blobs WHERE entity_id = NEW.id
+)
+BEGIN
+    SELECT RAISE(ABORT, '{error_message}');
+END"""
+                )
+            )
+    elif dialect_name == "postgresql":
+        connection.execute(
+            sa.text(
+                f"""
+CREATE OR REPLACE FUNCTION delete_orphaned_access_blob()
+RETURNS TRIGGER AS $$
+BEGIN
+    DELETE FROM access_blobs WHERE id = OLD.access_blob_id;
+    RETURN OLD;
+END;
+$$ LANGUAGE plpgsql;
+CREATE OR REPLACE FUNCTION reject_shared_access_blob()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF (TG_TABLE_NAME = 'node_access_blobs' AND EXISTS (
+        SELECT 1 FROM entity_access_blobs WHERE access_blob_id = NEW.access_blob_id
+        UNION ALL SELECT 1 FROM link_access_blobs WHERE access_blob_id = NEW.access_blob_id
+    )) OR (TG_TABLE_NAME = 'entity_access_blobs' AND EXISTS (
+        SELECT 1 FROM node_access_blobs WHERE access_blob_id = NEW.access_blob_id
+        UNION ALL SELECT 1 FROM link_access_blobs WHERE access_blob_id = NEW.access_blob_id
+    )) OR (TG_TABLE_NAME = 'link_access_blobs' AND EXISTS (
+        SELECT 1 FROM node_access_blobs WHERE access_blob_id = NEW.access_blob_id
+        UNION ALL SELECT 1 FROM entity_access_blobs WHERE access_blob_id = NEW.access_blob_id
+    )) THEN
+        RAISE EXCEPTION 'An access blob may belong to only one node, entity, or link';
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+CREATE OR REPLACE FUNCTION entities_reject_node_access_blob()
+RETURNS TRIGGER AS $$
+BEGIN
+    RAISE EXCEPTION '{error_message}';
+END;
+$$ LANGUAGE plpgsql;
+CREATE OR REPLACE FUNCTION entity_access_blob_reject_node_backed_entity()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM entities WHERE id = NEW.entity_id AND node_id IS NOT NULL) THEN
+        RAISE EXCEPTION '{error_message}';
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;"""
+            )
+        )
+        for table in tables:
+            connection.execute(
+                sa.text(
+                    f"""
+CREATE TRIGGER {table}_delete_cleanup
+AFTER DELETE ON {table}
+FOR EACH ROW EXECUTE FUNCTION delete_orphaned_access_blob();
+CREATE TRIGGER {table}_reject_shared_access_blob
+BEFORE INSERT OR UPDATE OF access_blob_id ON {table}
+FOR EACH ROW EXECUTE FUNCTION reject_shared_access_blob();"""
+                )
+            )
+        connection.execute(
+            sa.text(
+                """
+CREATE TRIGGER entity_access_blobs_reject_node_backed_entity
+BEFORE INSERT OR UPDATE OF entity_id ON entity_access_blobs
+FOR EACH ROW EXECUTE FUNCTION entity_access_blob_reject_node_backed_entity();
+CREATE TRIGGER entities_node_access_blob_check
+BEFORE UPDATE OF node_id ON entities
+FOR EACH ROW WHEN (NEW.node_id IS NOT NULL AND EXISTS (
+    SELECT 1 FROM entity_access_blobs WHERE entity_id = NEW.id
+))
+EXECUTE FUNCTION entities_reject_node_access_blob();"""
+            )
+        )
+
+
+def _drop_association_triggers(connection):
+    dialect_name = connection.engine.dialect.name
+    tables = ("node_access_blobs", "entity_access_blobs", "link_access_blobs")
+    if dialect_name == "sqlite":
+        for table in tables:
+            connection.execute(
+                sa.text(f"DROP TRIGGER IF EXISTS {table}_delete_cleanup")
+            )
+            for operation in ("insert", "update"):
+                connection.execute(
+                    sa.text(
+                        f"DROP TRIGGER IF EXISTS {table}_{operation}_reject_shared_access_blob"
+                    )
+                )
+        for operation in ("insert", "update"):
+            connection.execute(
+                sa.text(
+                    f"DROP TRIGGER IF EXISTS entity_access_blobs_{operation}_reject_node_backed_entity"
+                )
+            )
+        for operation in ("insert", "update"):
+            connection.execute(
+                sa.text(f"DROP TRIGGER IF EXISTS entities_node_access_blob_{operation}")
+            )
+    elif dialect_name == "postgresql":
+        for table in tables:
+            connection.execute(
+                sa.text(f"DROP TRIGGER IF EXISTS {table}_delete_cleanup ON {table}")
+            )
+            connection.execute(
+                sa.text(
+                    f"DROP TRIGGER IF EXISTS {table}_reject_shared_access_blob ON {table}"
+                )
+            )
+        connection.execute(
+            sa.text(
+                "DROP TRIGGER IF EXISTS entity_access_blobs_reject_node_backed_entity ON entity_access_blobs"
+            )
+        )
+        connection.execute(
+            sa.text(
+                "DROP TRIGGER IF EXISTS entities_node_access_blob_check ON entities"
+            )
+        )
+        for function in (
+            "delete_orphaned_access_blob",
+            "reject_shared_access_blob",
+            "entities_reject_node_access_blob",
+            "entity_access_blob_reject_node_backed_entity",
+        ):
+            connection.execute(sa.text(f"DROP FUNCTION IF EXISTS {function}"))
 
 
 def upgrade():
@@ -176,6 +373,23 @@ def upgrade():
             unique=True,
         ),
     )
+    op.create_table(
+        "entity_access_blobs",
+        sa.Column(
+            "entity_id",
+            sa.String(),
+            sa.ForeignKey("entities.id", ondelete="CASCADE"),
+            nullable=False,
+            primary_key=True,
+        ),
+        sa.Column(
+            "access_blob_id",
+            sa.Integer(),
+            sa.ForeignKey("access_blobs.id", ondelete="CASCADE"),
+            nullable=False,
+            unique=True,
+        ),
+    )
     if dialect_name == "postgresql":
         op.create_index(
             "ix_access_blobs_tags_gin",
@@ -186,111 +400,23 @@ def upgrade():
         )
     _copy_access_blobs(connection, "nodes", "node_access_blobs", "node_id")
     _copy_access_blobs(connection, "links", "link_access_blobs", "link_id")
+    _copy_access_blobs(
+        connection,
+        "entities",
+        "entity_access_blobs",
+        "entity_id",
+        "WHERE access_blob IS NOT NULL",
+    )
 
+    # Replace c31's JSON-column delegation checks before dropping that column.
     if dialect_name == "sqlite":
-        for association_table in ("node_access_blobs", "link_access_blobs"):
-            connection.execute(
-                sa.text(
-                    f"""
-CREATE TRIGGER {association_table}_delete_cleanup
-AFTER DELETE ON {association_table}
-BEGIN
-    DELETE FROM access_blobs WHERE id = OLD.access_blob_id;
-END"""
-                )
-            )
-        for table, other_table in (
-            ("node_access_blobs", "link_access_blobs"),
-            ("link_access_blobs", "node_access_blobs"),
-        ):
-            for operation in ("INSERT", "UPDATE OF access_blob_id"):
-                connection.execute(
-                    sa.text(
-                        f"""
-CREATE TRIGGER {table}_{operation.split()[0].lower()}_reject_shared_access_blob
-BEFORE {operation} ON {table}
-WHEN EXISTS (SELECT 1 FROM {other_table} WHERE access_blob_id = NEW.access_blob_id)
-BEGIN
-    SELECT RAISE(ABORT, 'An access blob may belong to only one node or link');
-END"""
-                    )
-                )
+        connection.execute(sa.text("DROP TRIGGER entities_node_access_blob_insert"))
+        connection.execute(sa.text("DROP TRIGGER entities_node_access_blob_update"))
     elif dialect_name == "postgresql":
         connection.execute(
-            sa.text(
-                """
-CREATE OR REPLACE FUNCTION delete_node_access_blob()
-RETURNS TRIGGER AS $$
-BEGIN
-    DELETE FROM access_blobs WHERE id = OLD.access_blob_id;
-    RETURN OLD;
-END;
-$$ LANGUAGE plpgsql;
-"""
-            )
+            sa.text("DROP TRIGGER entities_node_access_blob_check ON entities")
         )
-        connection.execute(
-            sa.text(
-                """
-CREATE TRIGGER node_access_blobs_delete_cleanup
-AFTER DELETE ON node_access_blobs
-FOR EACH ROW EXECUTE FUNCTION delete_node_access_blob();
-"""
-            )
-        )
-        connection.execute(
-            sa.text(
-                """
-CREATE OR REPLACE FUNCTION delete_link_access_blob()
-RETURNS TRIGGER AS $$
-BEGIN
-    DELETE FROM access_blobs WHERE id = OLD.access_blob_id;
-    RETURN OLD;
-END;
-$$ LANGUAGE plpgsql;
-"""
-            )
-        )
-        connection.execute(
-            sa.text(
-                """
-CREATE TRIGGER link_access_blobs_delete_cleanup
-AFTER DELETE ON link_access_blobs
-FOR EACH ROW EXECUTE FUNCTION delete_link_access_blob();
-"""
-            )
-        )
-        connection.execute(
-            sa.text(
-                """
-CREATE OR REPLACE FUNCTION reject_shared_access_blob()
-RETURNS TRIGGER AS $$
-BEGIN
-    IF TG_TABLE_NAME = 'node_access_blobs' AND EXISTS (
-        SELECT 1 FROM link_access_blobs WHERE access_blob_id = NEW.access_blob_id
-    ) THEN
-        RAISE EXCEPTION 'An access blob may belong to only one node or link';
-    ELSIF TG_TABLE_NAME = 'link_access_blobs' AND EXISTS (
-        SELECT 1 FROM node_access_blobs WHERE access_blob_id = NEW.access_blob_id
-    ) THEN
-        RAISE EXCEPTION 'An access blob may belong to only one node or link';
-    END IF;
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-"""
-            )
-        )
-        for table in ("node_access_blobs", "link_access_blobs"):
-            connection.execute(
-                sa.text(
-                    f"""
-CREATE TRIGGER {table}_reject_shared_access_blob
-BEFORE INSERT OR UPDATE OF access_blob_id ON {table}
-FOR EACH ROW EXECUTE FUNCTION reject_shared_access_blob();
-"""
-                )
-            )
+        connection.execute(sa.text("DROP FUNCTION entities_reject_node_access_blob"))
 
     with op.batch_alter_table("links") as batch_op:
         batch_op.drop_column("access_blob")
@@ -298,59 +424,68 @@ FOR EACH ROW EXECUTE FUNCTION reject_shared_access_blob();
     op.drop_index("top_level_metadata", table_name="nodes")
     with op.batch_alter_table("nodes") as batch_op:
         batch_op.drop_column("access_blob")
+    with op.batch_alter_table("entities") as batch_op:
+        batch_op.drop_column("access_blob")
     op.create_index(
         "top_level_metadata",
         "nodes",
         ["parent", "time_created", "id", "metadata"],
         postgresql_using="gin",
     )
+    _create_association_triggers(connection)
 
 
 def downgrade():
     connection = op.get_bind()
     dialect_name = connection.engine.dialect.name
 
+    _drop_association_triggers(connection)
+
+    with op.batch_alter_table("entities") as batch_op:
+        batch_op.add_column(sa.Column("access_blob", JSONVariant, nullable=True))
+    _restore_access_blobs(
+        dialect_name,
+        "entity_access_blobs",
+        "entity_id",
+        "entities",
+        default_empty=False,
+    )
+    op.drop_table("entity_access_blobs")
+
+    # Restore c31's JSON-column delegation checks.
+    error_message = (
+        "An entity with node_id set must not have its own access_blob; "
+        "access is controlled by the referenced node."
+    )
     if dialect_name == "sqlite":
-        connection.execute(
-            sa.text("DROP TRIGGER IF EXISTS node_access_blobs_delete_cleanup")
-        )
-        connection.execute(
-            sa.text("DROP TRIGGER IF EXISTS link_access_blobs_delete_cleanup")
-        )
-        for table in ("node_access_blobs", "link_access_blobs"):
+        for operation in ("INSERT", "UPDATE"):
             connection.execute(
                 sa.text(
-                    f"DROP TRIGGER IF EXISTS {table}_insert_reject_shared_access_blob"
-                )
-            )
-            connection.execute(
-                sa.text(
-                    f"DROP TRIGGER IF EXISTS {table}_update_reject_shared_access_blob"
+                    f"""
+CREATE TRIGGER entities_node_access_blob_{operation.lower()}
+BEFORE {operation} ON entities
+WHEN NEW.node_id IS NOT NULL AND NEW.access_blob IS NOT NULL
+BEGIN
+    SELECT RAISE(ABORT, '{error_message}');
+END"""
                 )
             )
     elif dialect_name == "postgresql":
         connection.execute(
             sa.text(
-                "DROP TRIGGER IF EXISTS node_access_blobs_delete_cleanup ON node_access_blobs"
+                f"""
+CREATE OR REPLACE FUNCTION entities_reject_node_access_blob()
+RETURNS TRIGGER AS $$
+BEGIN
+    RAISE EXCEPTION '{error_message}';
+END;
+$$ LANGUAGE plpgsql;
+CREATE TRIGGER entities_node_access_blob_check
+BEFORE INSERT OR UPDATE ON entities
+FOR EACH ROW WHEN (NEW.node_id IS NOT NULL AND NEW.access_blob IS NOT NULL)
+EXECUTE FUNCTION entities_reject_node_access_blob();"""
             )
         )
-        connection.execute(
-            sa.text(
-                "DROP TRIGGER IF EXISTS link_access_blobs_delete_cleanup ON link_access_blobs"
-            )
-        )
-        for table in ("node_access_blobs", "link_access_blobs"):
-            connection.execute(
-                sa.text(
-                    f"DROP TRIGGER IF EXISTS {table}_reject_shared_access_blob ON {table}"
-                )
-            )
-        connection.execute(
-            sa.text("DROP FUNCTION IF EXISTS delete_orphaned_access_blob")
-        )
-        connection.execute(sa.text("DROP FUNCTION IF EXISTS delete_node_access_blob"))
-        connection.execute(sa.text("DROP FUNCTION IF EXISTS delete_link_access_blob"))
-        connection.execute(sa.text("DROP FUNCTION IF EXISTS reject_shared_access_blob"))
 
     with op.batch_alter_table("links") as batch_op:
         batch_op.add_column(

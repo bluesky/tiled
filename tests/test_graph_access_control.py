@@ -12,7 +12,10 @@ from tiled.graph.schema import schema
 from tiled.graph.store import (
     GraphSQLAlchemyStore,
     _access_blobs,
+    _entities,
+    _entity_access_blobs,
     _link_access_blobs,
+    _links,
     _node_access_blobs,
     _nodes,
 )
@@ -28,6 +31,7 @@ from tiled.server.connection_pool import (
     get_database_engine,
 )
 from tiled.server.settings import DatabaseSettings
+from tiled.type_aliases import AccessBlob
 
 CREATE_ENTITY_MUTATION = """
 mutation($input: CreateEntityInput!) {
@@ -58,12 +62,10 @@ class FakeTagPolicy:
         access_blob=None,
     ):
         if access_blob is None:
-            return (True, {"user": principal})
-        if "tags" in access_blob:
+            return (True, AccessBlob(username=principal))
+        if access_blob.tags is not None:
             return (False, access_blob)
-        raise ValueError(
-            "access_blob must be either null or {'tags': [...]} for this test"
-        )
+        raise ValueError("access_blob updates must use tags for this test")
 
     async def modify_node(
         self,
@@ -73,9 +75,9 @@ class FakeTagPolicy:
         authn_scopes,
         access_blob,
     ):
-        if "tags" in access_blob:
+        if access_blob.tags is not None:
             return (False, access_blob)
-        raise ValueError("access_blob updates must use {'tags': [...]} for this test")
+        raise ValueError("access_blob updates must use tags for this test")
 
     async def allowed_scopes(
         self,
@@ -84,10 +86,10 @@ class FakeTagPolicy:
         authn_access_tags,
         authn_scopes,
     ):
-        access_blob = getattr(node, "access_blob", {}) or {}
-        if access_blob.get("user") == principal:
+        access_blob = node.access_blob
+        if access_blob.username == principal:
             return set(authn_scopes)
-        tags = set(access_blob.get("tags", []))
+        tags = set(access_blob.tags or [])
         if tags.intersection(self.user_tags.get(principal, set())):
             return set(authn_scopes)
         return set()
@@ -242,6 +244,88 @@ async def test_access_blob_cannot_belong_to_node_and_link(store):
 
 
 @pytest.mark.asyncio
+async def test_entity_access_blob_cleanup_and_node_exclusivity(store):
+    entity = await store.create_entity(
+        entity_type="sample", name="entity", access_blob=AccessBlob(tags=["team"])
+    )
+    async with store._engine.begin() as conn:
+        access_blob_id = await conn.scalar(
+            sa_select(_entity_access_blobs.c.access_blob_id).where(
+                _entity_access_blobs.c.entity_id == entity.id
+            )
+        )
+        await conn.execute(
+            sa_insert(_nodes).values(
+                id=2,
+                parent=None,
+                key="unassociated-node",
+                structure_family="container",
+                metadata={},
+                specs=[],
+            )
+        )
+        with pytest.raises(IntegrityError):
+            await conn.execute(
+                sa_insert(_node_access_blobs).values(
+                    node_id=2, access_blob_id=access_blob_id
+                )
+            )
+        await conn.execute(sa_delete(_entities).where(_entities.c.id == entity.id))
+        assert (
+            await conn.scalar(
+                sa_select(_access_blobs.c.id).where(
+                    _access_blobs.c.id == access_blob_id
+                )
+            )
+            is None
+        )
+
+
+@pytest.mark.asyncio
+async def test_entity_access_blob_cannot_belong_to_link(store):
+    entity = await store.create_entity(
+        entity_type="sample", name="entity", access_blob=AccessBlob(tags=["team"])
+    )
+    subject = await store.create_entity(entity_type="sample", name="subject")
+    object_ = await store.create_entity(entity_type="sample", name="object")
+    link = await store.create_link(subject.id, "relates_to", object_.id)
+    async with store._engine.begin() as conn:
+        access_blob_id = await conn.scalar(
+            sa_select(_entity_access_blobs.c.access_blob_id).where(
+                _entity_access_blobs.c.entity_id == entity.id
+            )
+        )
+        with pytest.raises(IntegrityError):
+            await conn.execute(
+                sa_insert(_link_access_blobs).values(
+                    link_id=link.id, access_blob_id=access_blob_id
+                )
+            )
+
+
+@pytest.mark.asyncio
+async def test_deleting_link_deletes_orphaned_access_blob(store):
+    subject = await store.create_entity(entity_type="sample", name="subject")
+    object_ = await store.create_entity(entity_type="sample", name="object")
+    link = await store.create_link(subject.id, "relates_to", object_.id)
+    async with store._engine.begin() as conn:
+        access_blob_id = await conn.scalar(
+            sa_select(_link_access_blobs.c.access_blob_id).where(
+                _link_access_blobs.c.link_id == link.id
+            )
+        )
+        await conn.execute(sa_delete(_links).where(_links.c.id == link.id))
+        assert (
+            await conn.scalar(
+                sa_select(_access_blobs.c.id).where(
+                    _access_blobs.c.id == access_blob_id
+                )
+            )
+            is None
+        )
+
+
+@pytest.mark.asyncio
 async def test_entity_create_defaults_to_user_access_blob_and_read_visibility(
     store, policy
 ):
@@ -257,7 +341,7 @@ async def test_entity_create_defaults_to_user_access_blob_and_read_visibility(
     entity_id = result.data["createEntity"]["id"]
 
     record = await store.get_entity(entity_id)
-    assert record.access_blob == {"user": "alice"}
+    assert record.access_blob == AccessBlob(username="alice")
 
     alice_read = await _execute(READ_ENTITY_QUERY, alice_ctx, {"id": entity_id})
     assert alice_read.errors is None
@@ -566,14 +650,14 @@ async def test_entity_node_access_blob_trigger_rejects_both_set(store):
             entity_type="sample",
             name="bad",
             node_id=1,
-            access_blob={"tags": ["team"]},
+            access_blob=AccessBlob(tags=["team"]),
         )
 
     entity = await store.create_entity(
         entity_type="sample", name="ok", node_id=1, access_blob=None
     )
     with pytest.raises(IntegrityError):
-        await store.update_entity(entity.id, access_blob={"tags": ["team"]})
+        await store.update_entity(entity.id, access_blob=AccessBlob(tags=["team"]))
 
 
 @pytest.mark.asyncio
@@ -657,7 +741,7 @@ async def test_update_entity_detaching_node_reinitializes_access_blob(store, pol
 
     record = await store.get_entity(entity_id)
     assert record.node_id is None
-    assert record.access_blob == {"user": "alice"}
+    assert record.access_blob == AccessBlob(username="alice")
 
 
 @pytest.mark.asyncio
