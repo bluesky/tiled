@@ -7,6 +7,9 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Fixed
 
+- Fix reads of array data whose on-disk shape has diverged from the shape
+  recorded in the catalog structure, which can happen while an array is being
+  extended (e.g. streaming appends).
 - Fix a regression where opening a URL with an `?api_key=...` query parameter
   in the web UI redirected to the login page instead of authenticating. This
   now also works in single-user (`--api-key`) mode, where the server exposes no
