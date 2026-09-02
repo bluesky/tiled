@@ -2,10 +2,12 @@ import base64
 import builtins
 import collections.abc
 import contextlib
+import dataclasses
 import functools
 import importlib
 import importlib.util
 import inspect
+import logging
 import operator
 import os
 import platform
@@ -20,6 +22,39 @@ from urllib.parse import urlparse, urlunparse
 
 import anyio
 import yaml
+
+logger = logging.getLogger(__name__)
+
+
+def filter_known_kwargs(target: Any, data: collections.abc.Mapping) -> dict:
+    """Return `data` restricted to keys that `target` accepts as kwargs.
+
+    `target` may be a dataclass (fields are consulted directly) or any other
+    callable (its signature is introspected). Keys dropped from `data` are
+    logged at DEBUG so a client talking to a newer server can be diagnosed
+    without failing.
+    """
+    if dataclasses.is_dataclass(target):
+        known = {f.name for f in dataclasses.fields(target)}
+    else:
+        params = inspect.signature(target).parameters
+        if any(p.kind is inspect.Parameter.VAR_KEYWORD for p in params.values()):
+            return dict(data)
+        known = {
+            name
+            for name, p in params.items()
+            if p.kind
+            in (
+                inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                inspect.Parameter.KEYWORD_ONLY,
+            )
+        }
+    filtered = {k: v for k, v in data.items() if k in known}
+    if dropped := set(data) - set(filtered):
+        name = getattr(target, "__name__", repr(target))
+        logger.debug("Ignoring unknown key(s) %s for %s", sorted(dropped), name)
+    return filtered
+
 
 # helper for avoiding re-typing patch mimetypes
 # namedtuple for the lack of StrEnum in py<3.11
@@ -611,6 +646,10 @@ class Conflicts(Exception):
 class BrokenLink(Exception):
     "Prompts the server to send 410 Gone with message"
 
+    pass
+
+
+class UnsafeIdentifier(ValueError):
     pass
 
 

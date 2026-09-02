@@ -99,6 +99,22 @@ def merge_slices(*args: Union["NDSlice", "NDBlock"]) -> Union["NDSlice", "NDBloc
     return _cls(*result)
 
 
+def _num_steps(slc: builtins.slice) -> int:
+    """Number of elements an expanded 1-D slice selects.
+
+    Tolerates reversed slices that reach the start of the axis, whose expanded
+    `stop` is negative (e.g. `slice(9, -11, -1)`) or `None`. For those the
+    exclusive lower bound is `-1` in Python `range` terms, regardless of the
+    particular negative value produced by `expand_for_shape`.
+    """
+    start = slc.start or 0
+    step = slc.step or 1
+    stop = slc.stop
+    if step < 0 and (stop is None or stop < 0):
+        stop = -1
+    return len(range(start, stop, step))
+
+
 def split_1d(start, stop, step, max_len: int, pref_splits: Optional[list[int]] = None):
     """Split a 1D slice into sub-slices that do not exceed max_len steps.
 
@@ -107,14 +123,21 @@ def split_1d(start, stop, step, max_len: int, pref_splits: Optional[list[int]] =
     as long as it does not violate the min/max constraints.
     """
 
+    # A reversed slice reaching the start of the axis is expanded (by ndindex) to
+    # a negative canonical stop (e.g. slice(9, -11, -1)). Such a slice has no
+    # non-negative integer stop, so partition it as if the exclusive bound were
+    # -1 and emit stop=None for the final sub-slice that reaches index 0.
+    reaches_start = step < 0 and stop is not None and stop < 0
+    eff_stop = -1 if reaches_start else stop
+
     # Total number of steps and max steps per split
-    total_steps = math.ceil(abs(stop - start) / abs(step))
+    total_steps = math.ceil(abs(eff_stop - start) / abs(step))
 
     # Convert preferred points to index space
     pref_indx = sorted(
         (x - start) // step
         for x in (pref_splits or [])
-        if x in range(start, stop, step)
+        if x in range(start, eff_stop, step)
     )
 
     result, crnt_indx, _pi = [], 0, 0
@@ -139,7 +162,7 @@ def split_1d(start, stop, step, max_len: int, pref_splits: Optional[list[int]] =
         result.append((start + crnt_indx * step, start + next_indx * step))
         crnt_indx = next_indx
 
-    result.append((start + crnt_indx * step, stop))
+    result.append((start + crnt_indx * step, None if reaches_start else stop))
 
     return result
 
@@ -189,17 +212,13 @@ def split_slice(
     sorting_order = (
         [len(ps) for ps in pref_splits]
         if pref_splits is not None
-        else [len(range(s.start, s.stop, s.step or 1)) for s in arr_slice]
+        else [_num_steps(s) for s in arr_slice]
     )
     result = [[s] for s in arr_slice]
     for d in sorted(range(ndim), key=lambda i: sorting_order[i], reverse=True):
         # Find the size of largest block along all other dimensions, excluding d
         max_other = math.prod(
-            [
-                max(len(range(s.start, s.stop, s.step or 1)) for s in result[_d])
-                for _d in range(ndim)
-                if _d != d
-            ]
+            [max(_num_steps(s) for s in result[_d]) for _d in range(ndim) if _d != d]
         )
         slc = result[d].pop()
 
@@ -214,7 +233,7 @@ def split_slice(
         result[d].extend([builtins.slice(a, b, slc.step) for a, b in splits])
 
         # Check if we need further subslicing along other dimensions
-        max_crnt = max(len(range(s.start, s.stop, s.step or 1)) for s in result[d])
+        max_crnt = max(_num_steps(s) for s in result[d])
         if max_crnt * max_other <= max_size:
             break
 
@@ -554,7 +573,7 @@ class NDSlice(tuple):
         for s in self:
             if isinstance(s, builtins.slice):
                 string_slice = (
-                    f"{(s.start or '')}:"
+                    f"{('' if s.start is None else s.start)}:"
                     + ("" if s.stop is None else f"{s.stop}")
                     + (f":{str(s.step)}" if s.step else "")
                 )
@@ -578,6 +597,31 @@ class NDSlice(tuple):
     def shape_after_slice(self, shape: tuple[int, ...]) -> tuple[int, ...]:
         "Calculate the shape after applying NDSlice to an array of the given shape"
         return ndindex(self).newshape(shape) if self else shape
+
+    def flat_indices(self, shape: tuple[int, ...]) -> tuple[int, ...]:
+        """Return the flat (C-order) positions selected by this slice.
+
+        Conceptually `numpy.arange(prod(shape)).reshape(shape)[self]` flattened
+        to 1-D: it labels each cell of an array of `shape` with its C-order
+        position and reports the positions this slice keeps. Integer entries drop
+        a dimension; slices (including strided and negative) and Ellipsis are
+        honored exactly as in NumPy indexing.
+
+        This is the inverse-mapping companion to :meth:`shape_after_slice` (which
+        gives the *shape* of a selection); here we get the flat *identities* of
+        the selected cells. It is useful for mapping an N-dimensional selection
+        back onto a flat, C-ordered collection -- e.g. finding which files of a
+        stacked file-sequence a given slice touches, where each file occupies one
+        cell of the stacking grid.
+
+        Returns a `tuple` of Python ints (empty if the slice selects nothing).
+        The selection order matches NumPy's, so the result also serves as the
+        read order for the underlying elements.
+        """
+        import numpy
+
+        grid = numpy.arange(math.prod(shape)).reshape(shape)
+        return tuple(grid[self.expand_for_shape(shape)].ravel().tolist())
 
     def unsqueeze(self) -> "NDSlice":
         "Convert all integer dims to slices of length 1 to preserve the dimensionality"

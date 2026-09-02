@@ -481,7 +481,13 @@ async def construct_resource(
     id_ = path_parts[-1] if path_parts else ""
     attributes = {"ancestors": path_parts[:-1]}
     if include_data_sources and hasattr(entry, "data_sources"):
-        attributes["data_sources"] = entry.data_sources
+        if callable(getattr(entry, "data_sources")):
+            # Catalog adapters expose `data_sources(include_assets=...)`; the
+            # assets are loaded only when the client asked to include data
+            # sources (they are otherwise omitted for large file sequences).
+            attributes["data_sources"] = await entry.data_sources(include_assets=True)
+        else:
+            attributes["data_sources"] = entry.data_sources
     if schemas.EntryFields.metadata in fields:
         if select_metadata is not None:
             attributes["metadata"] = {

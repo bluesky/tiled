@@ -7,20 +7,138 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Fixed
 
+- Fix `TypeError: Type is not JSON serializable: bytes` when serializing a
+  table with a bytes-dtype (numpy `S`) column to `application/json` or
+  `application/json-seq`. Such values are now decoded to strings.
+- Fix reads of array data whose on-disk shape has diverged from the shape
+  recorded in the catalog structure, which can happen while an array is being
+  extended (e.g. streaming appends).
+- Fix a regression where opening a URL with an `?api_key=...` query parameter
+  in the web UI redirected to the login page instead of authenticating. This
+  now also works in single-user (`--api-key`) mode, where the server exposes no
+  `/auth` routes: the web UI detects the API-key cookie session by probing a
+  protected endpoint rather than `/auth/whoami`.
+- Reading of individual partitions of multi-partitioned tables.
+- Fix the client showing a spurious "Retrying…" indicator (and a misleading
+  "Retry scheduled" debug log) when a request failed with a *non-retryable*
+  error, such as a 4xx response or `CannotRefreshAuthentication` during a normal
+  first-time login. The underlying retry context manager captures every
+  exception before deciding whether to retry, so the indicator was being driven
+  off exception capture rather than an actual retry. The indicator now appears
+  only when a retry genuinely occurs.
+- Fix the client ignoring the `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY`
+  environment variables. Because Tiled supplies a custom `httpx` transport (to
+  enable client-side response caching), httpx's built-in proxy resolution was
+  bypassed, so proxied requests (e.g. to an external OIDC provider) never went
+  through the configured proxy. The transport now honors these environment
+  variables. This can be disabled via the new `trust_env=False` parameter on
+  `from_uri`. As part of this fix, the client's `verify` setting is now applied
+  to the underlying transport (previously it was silently ignored when the
+  custom transport was in use).
+- Fix `check_scopes` incorrectly requiring every request under a
+  `ProxiedOIDCAuthenticator` (e.g. `EntraAuthenticator`) to carry the full set
+  of scopes known to the authenticator (the union of all scopes in
+  `scopes_map`). This broke scope-restricted API keys, which legitimately hold
+  only a subset of scopes. Authorization is now enforced solely against the
+  scopes each endpoint requires.
+- Render `NaN` as transparent pixels.
+- Fix client-side reading of reversed array slices that reach the start of an
+  axis (e.g. `arr[::-1]`) when the selection is large enough to be fetched in
+  multiple requests.
+
+## v0.2.16 (2026-08-21)
+
+### Changed
+
+- `ProxiedOIDCAuthenticator` now accepts a `scopes_map` parameter (previously
+  available only on `EntraAuthenticator`) and translates identity-provider
+  scopes into Tiled scopes when decoding tokens. Its effective `scopes` are the
+  union of any explicitly-configured `scopes` and the Tiled scopes granted via
+  `scopes_map`. When `scopes_map` is omitted, behavior is unchanged (the token's
+  native scopes are used).
+
+### Fixed
+
+- Fix precedence of scope check for `ProxiedOIDCAuthenticator`.
+- If refreshing access tokens yields `400 Bad Request`, clear the cached tokens
+  and prompt for login.
+
+## v0.2.15 (2026-08-11)
+
+### Added
+
+- Support clustered Redis for high availability.
+- Add client_secret,redirect_on_success,redirect_on_failure to
+  ProxiedOIDCAuthenticator. This is to allow login using Tiled-UI
+- Allow configuration of user_id_claim for OIDCAuthenticator
+- Lazy asset resolution for array datasets backed by many files: reading a
+  slice or block now resolves only the assets (files) the read touches,
+  computed purely from the structure geometry, instead of materializing every
+  asset row to build the adapter. (#1463)
+- Parallel, memory-bounded reads for many-file sequence datasets: files are
+  read concurrently and reduced per file before stacking, so peak memory stays
+  bounded regardless of how many files a slice spans. Tunable via the
+  `TILED_SEQUENCE_IO_WORKERS` and `TILED_SEQUENCE_READ_BATCH_BYTES` environment
+  variables. (#1463)
+- Add a new feature that stores a graph of links into the catalog database. Adds strawberry
+  as a dependency. Import/search/export of graph links is accomplished through graphql.
+
+### Changed
+
+- Server-side `CatalogNodeAdapter.data_sources` is now an async method taking
+  `include_assets` (default `False`) so common metadata and structure paths no
+  longer load asset rows; callers that need assets must
+  `await data_sources(include_assets=True)`. (#1463)
+
+### Fixed
+
+- Improve webhook handling to enable adding additional blocked networks and
+  allow specification of hostnames that are allowed to receive webhooks despite being
+  on a blocked network.
+- Fix the `raw_export` download progress bar, which showed a wrong total (e.g.
+  `1,257,333,024/100 bytes`) and did not advance during the transfer. The bar
+  now seeds each task's total from the known asset size, and raw-asset downloads
+  no longer negotiate `blosc2` (whose client decoder buffers the whole response
+  in memory and emits it only at the end, freezing the bar and spiking memory).
+  Downloads instead stream via `zstd`/`gzip`; pass `compression=False` to
+  `raw_export` to download uncompressed (`Accept-Encoding: identity`).
+- Fix truncation of `blosc2`-encoded downloads at exactly 65536 bytes. Streaming
+  responses (e.g. `raw_export` of a `bytes` node via `/asset/bytes`) are emitted
+  in 64 KiB chunks, and the server compresses each chunk into an independent
+  blosc2 frame. The client `Blosc2Decoder` decoded only the first frame; it now
+  walks every concatenated frame and reassembles the full payload.
+- Fix the webhook `history` and `delete` endpoints when a catalog is mounted under
+  a sub-path (the `trees:` config form).
 - Skip the `array-ref` streaming-cache update in `put_data_source` when the
   data source is not an array.
-- Strengthen the server-side backcompatibility. Strip the newly added `Asset.size` field
-  from metadata responses when the request comes from a `python-tiled` client older than
-  v0.2.13, whose `Asset` dataclass has no `size` field and would otherwise crash
-  in `DataSource.from_json` with an unexpected keyword argument.
+- Tolerate unknown fields on the client side when decoding server JSON into
+  `Asset`, `DataSource`, `Spec`, and structure dataclasses (`AwkwardStructure`,
+  `TableStructure`, `ContainerStructure`). Unknown keys are dropped and logged
+  at DEBUG so a client can talk to a newer server without crashing on
+  fields it does not recognize.
 - Widen `assets.size` from `INTEGER` (int32) to `BIGINT` (int64) so the
   server can register single files larger than ~2.1 GB without an
   `int32 out of range` error from PostgreSQL. Includes an alembic
   migration; SQLite is unaffected (its `INTEGER` affinity already stores
   64-bit values).
+- Ensure required scopes are present for actions when using ProxiedOIDCAuthenticator.
+- Restore layer-cache reuse when building the container image, which
+  previously rebuilt almost from scratch on every commit.
+- Fixed typo in the loggging from authenticators
+
+## v0.2.14 (2026-07-08)
+
+### Fixed
+
+- Including a check for authentication links when running whoami to allow for a
+  graceful message when authentication links are not present.
+- Strengthen the server-side backcompatibility. Strip the newly added `Asset.size` field
+  from metadata responses when the request comes from a `python-tiled` client older than
+  v0.2.13, whose `Asset` dataclass has no `size` field and would otherwise crash
+  in `DataSource.from_json` with an unexpected keyword argument.
 
 
-## v0.2.13 (2026-07-08)
+## v0.2.13 (2026-07-07)
 
 ### Fixed
 
@@ -44,11 +162,6 @@ Write the date in place of the "Unreleased" in the case a new version is release
   destination, streaming each asset into an in-memory `io.BytesIO` keyed by
   the on-disk-equivalent layout (`<filename>` for a single asset;
   `<asset_id>/<filename>` for multi-asset nodes). No filesystem I/O is performed in this mode.
-
-
-### Fixed
-
-- Including a check for authentication links when running whoami to allow for a graceful message when authentication links are not present.
 
 
 ## v0.2.12 (2026-06-16)

@@ -37,9 +37,11 @@ from starlette.status import (
     HTTP_410_GONE,
     HTTP_422_UNPROCESSABLE_CONTENT,
     HTTP_500_INTERNAL_SERVER_ERROR,
+    HTTP_503_SERVICE_UNAVAILABLE,
 )
 
 from tiled.adapters.protocols import AnyAdapter
+from tiled.adapters.utils import DataNotReadyError, ShapeMismatchError
 from tiled.authenticators import ProxiedOIDCAuthenticator
 from tiled.media_type_registration import SerializationRegistry
 from tiled.query_registration import QueryRegistry
@@ -110,6 +112,11 @@ from .utils import (
 )
 
 T = TypeVar("T")
+
+# When an array read fails because the catalog structure is ahead of the data
+# actually present on disk (a streaming append in progress), the client is told
+# to retry after this many seconds.
+ARRAY_RETRY_AFTER_SECONDS = int(os.getenv("TILED_ARRAY_RETRY_AFTER", "1"))
 
 
 def _patch_route_signature(
@@ -611,6 +618,16 @@ def get_router(
                     status_code=HTTP_500_INTERNAL_SERVER_ERROR,
                     detail="Block index out of range",
                 )
+            except DataNotReadyError as err:
+                raise HTTPException(
+                    status_code=HTTP_503_SERVICE_UNAVAILABLE,
+                    detail=str(err),
+                    headers={"Retry-After": str(ARRAY_RETRY_AFTER_SECONDS)},
+                )
+            except ShapeMismatchError as err:
+                raise HTTPException(
+                    status_code=HTTP_422_UNPROCESSABLE_CONTENT, detail=str(err)
+                )
             # Something is wrong with the shape of the data vs the value in the structure
             if (expected_shape is not None) and (expected_shape != array.shape):
                 raise HTTPException(
@@ -691,6 +708,16 @@ def get_router(
         except IndexError:
             raise HTTPException(
                 status_code=HTTP_400_BAD_REQUEST, detail="Block index out of range"
+            )
+        except DataNotReadyError as err:
+            raise HTTPException(
+                status_code=HTTP_503_SERVICE_UNAVAILABLE,
+                detail=str(err),
+                headers={"Retry-After": str(ARRAY_RETRY_AFTER_SECONDS)},
+            )
+        except ShapeMismatchError as err:
+            raise HTTPException(
+                status_code=HTTP_422_UNPROCESSABLE_CONTENT, detail=str(err)
             )
         if (expected_shape is not None) and (expected_shape != array.shape):
             raise HTTPException(
@@ -1912,7 +1939,9 @@ def get_router(
         links = links_for_node(
             structure_family, structure, get_base_url(request), path + f"/{node.key}"
         )
-        data_sources_dump = [ds.model_dump() for ds in node.data_sources]
+        data_sources_dump = [
+            ds.model_dump() for ds in await node.data_sources(include_assets=True)
+        ]
         strip_asset_fields_for_client(
             data_sources_dump, parse_python_tiled_client_version(request)
         )

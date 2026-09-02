@@ -8,6 +8,7 @@ from threading import Event, Lock
 from typing import Iterable, MutableMapping, Optional, Union
 
 import httpx
+from httpx._decoders import SUPPORTED_DECODERS
 from rich.progress import (
     BarColumn,
     DownloadColumn,
@@ -21,6 +22,16 @@ from .utils import handle_error, retry_context
 
 # This extracts the filename to the Content-Disposition header.
 CONTENT_DISPOSITION_PATTERN = re.compile(r"^attachment; ?filename=\"(.*)\"$")
+
+# Accept-Encoding advertised when downloading raw assets *with* compression.
+# We deliberately omit "blosc2": its client decoder buffers the entire response
+# in memory and only emits it on flush(), which defeats streaming (the progress
+# bar cannot advance, and a large asset is held wholly in RAM). The remaining
+# decoders (zstd, gzip, ...) decompress incrementally, so downloads stream and
+# report progress. "identity" is used instead when compression is disabled.
+STREAMING_ACCEPT_ENCODING = ", ".join(
+    encoding for encoding in SUPPORTED_DECODERS if encoding != "blosc2"
+)
 
 # This is used by the caller of download(...) as a placeholder
 # that should be substituted with the filename provided by the
@@ -57,26 +68,32 @@ def _download_url(
     target: Union[Path, str],
     mapping: Optional[MutableMapping],
     lock: Optional[Lock],
+    accept_encoding: Optional[str],
 ):
     """Fetch `url` and write the body to disk (when `mapping is None`) or to
     a `BytesIO` stored in `mapping` (otherwise). Returns the resolved target."""
     progress.console.log(f"Requesting {url}")
     resolved = target
+    # Override the client's default Accept-Encoding so that raw-asset downloads
+    # do not negotiate blosc2 (see STREAMING_ACCEPT_ENCODING) or, when the
+    # caller disables compression, are served uncompressed with a
+    # Content-Length (and thus a determinate progress bar).
+    headers = {"Accept-Encoding": accept_encoding} if accept_encoding else None
     try:
         if mapping is None:
             target.parent.mkdir(exist_ok=True, parents=True)
         for attempt in retry_context():
             with attempt:
-                with client.stream("GET", url) as response:
+                with client.stream("GET", url, headers=headers) as response:
                     handle_error(response)
                     resolved = _resolve_placeholder(target, response)
                     # Content-Length is absent when the server streams a
-                    # chunked response (e.g. when compression middleware
-                    # re-encodes the body). Fall back to an indeterminate
-                    # progress bar in that case.
+                    # compressed (chunked) response. In that case keep the
+                    # task's pre-seeded total (the asset size supplied by the
+                    # caller, or None for an indeterminate bar).
                     content_length = response.headers.get("Content-Length")
-                    total = int(content_length) if content_length else None
-                    progress.update(task_id, total=total)
+                    if content_length is not None:
+                        progress.update(task_id, total=int(content_length))
                     progress.start_task(task_id)
                     if mapping is None:
                         sink = open(resolved, "wb")
@@ -109,6 +126,8 @@ def download(
     *,
     mapping: Optional[MutableMapping] = None,
     max_workers: int = 4,
+    totals: Optional[Iterable[Optional[int]]] = None,
+    accept_encoding: Optional[str] = None,
 ):
     """Download multiple URLs in parallel.
 
@@ -120,6 +139,15 @@ def download(
     A target may embed `ATTACHMENT_FILENAME_PLACEHOLDER`, which is replaced
     with the filename advertised by the server via `Content-Disposition`.
     Returns the list of resolved targets in submission order.
+
+    `totals`, if given, must be parallel to `urls`; each entry pre-seeds the
+    known content length so the progress bar is determinate even when the
+    server omits `Content-Length` (e.g. a compressed streaming response). Use
+    `None` for an entry whose size is unknown (an indeterminate bar).
+
+    `accept_encoding`, if given, overrides the `Accept-Encoding` header for
+    every request (e.g. `STREAMING_ACCEPT_ENCODING` to keep compression while
+    excluding blosc2, or `"identity"` to disable compression).
     """
     if len(urls) != len(targets):
         kind = "keys" if mapping is not None else "paths"
@@ -127,6 +155,13 @@ def download(
             f"Must provide a list of URLs and a list of {kind} "
             f"with equal length. Received {len(urls)=} and "
             f"len({kind})={len(targets)}."
+        )
+    if totals is None:
+        totals = [None] * len(urls)
+    elif len(totals) != len(urls):
+        raise ValueError(
+            f"Must provide as many totals as URLs. "
+            f"Received {len(urls)=} and {len(totals)=}."
         )
 
     progress = Progress(
@@ -152,8 +187,8 @@ def download(
     try:
         with progress:
             with ThreadPoolExecutor(max_workers=max_workers) as pool:
-                for url, target in zip(urls, targets):
-                    task_id = progress.add_task("download", start=False)
+                for url, target, total in zip(urls, targets, totals):
+                    task_id = progress.add_task("download", start=False, total=total)
                     future = pool.submit(
                         _download_url,
                         progress,
@@ -164,6 +199,7 @@ def download(
                         target,
                         mapping,
                         lock,
+                        accept_encoding,
                     )
                     futures.append(future)
                 wait(futures)

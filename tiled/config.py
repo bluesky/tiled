@@ -228,14 +228,82 @@ class ValidationSpec(BaseSettings):
 
 
 class StreamingCacheConfig(BaseSettings):
-    uri: str
+    # A single standalone node: ``redis://`` / ``rediss://`` / ``memory``.
+    uri: Optional[str] = None
+    # Or a Redis Sentinel cluster: a list of ``"host:port"`` Sentinels plus
+    # the ``service_name`` of the monitored primary. The client follows
+    # failover to the current primary.
+    sentinels: Optional[list[str]] = None
+    service_name: Optional[str] = None
+    password: Optional[str] = None
+    # TLS for the Sentinel path (the standalone ``uri`` path uses ``rediss://``
+    # instead). Applies to both Sentinel discovery and data-node connections;
+    # verification uses redis-py's default, matching ``rediss://``.
+    ssl: bool = False
     data_ttl: int = 3600  # 1 hr
     seq_ttl: int = 2592000  # 30 days
     socket_timeout: int = 86400  # 1 day
     socket_connect_timeout: int = 10
+    # Interval (seconds) between health-check PINGs on idle connections, so
+    # redis-py detects a stalled connection after a Sentinel failover and
+    # reconnects instead of blocking on the dead primary. Kept low because
+    # socket_timeout is long: on a silent primary death (no TCP reset) this
+    # PING is the client's main timely signal, so it bounds failover detection.
+    health_check_interval: int = 10
 
     model_config = SettingsConfigDict(env_prefix="TILED_STREAMING_CACHE_")
     settings_customise_sources = classmethod(settings_customise_sources)
+
+    @model_validator(mode="after")
+    def check_source(self) -> "StreamingCacheConfig":
+        # 'uri' and 'sentinels' are mutually exclusive; setting both is
+        # ambiguous (which one wins?), so reject it rather than silently
+        # ignoring one.
+        if self.uri and self.sentinels:
+            raise ValueError(
+                "streaming_cache: set only one of 'uri' or 'sentinels', not both."
+            )
+        if self.sentinels:
+            if not self.service_name:
+                raise ValueError(
+                    "streaming_cache: 'service_name' is required when "
+                    "'sentinels' is set."
+                )
+            # Each Sentinel entry must be 'host:port' (parsed the same way as
+            # the client, via rpartition), else the client fails cryptically at
+            # connect time on int('') / a missing host.
+            for entry in self.sentinels:
+                host, sep, port = entry.rpartition(":")
+                if not (sep and host and port.isdigit()):
+                    raise ValueError(
+                        f"streaming_cache: sentinel entry {entry!r} must be "
+                        "'host:port'."
+                    )
+        elif self.uri:
+            # 'ssl', 'service_name', and 'password' apply only to the Sentinel
+            # path and are ignored with a 'uri'. Reject them so a misconfiguration
+            # fails loud -- especially 'ssl', where silently ignoring it would
+            # leave a connection the operator believes is encrypted running in
+            # plaintext.
+            if self.ssl:
+                raise ValueError(
+                    "streaming_cache: 'ssl' applies to the 'sentinels' path; for "
+                    "a single-node 'uri' use the rediss:// scheme instead."
+                )
+            if self.service_name:
+                raise ValueError(
+                    "streaming_cache: 'service_name' is only used with 'sentinels'."
+                )
+            if self.password:
+                raise ValueError(
+                    "streaming_cache: 'password' is only used with 'sentinels'; "
+                    "for a single-node 'uri' include the password in the uri."
+                )
+        else:
+            raise ValueError(
+                "streaming_cache: set either 'uri' or 'sentinels' + 'service_name'."
+            )
+        return self
 
 
 class WebhooksConfig(BaseSettings):
@@ -250,6 +318,12 @@ class WebhooksConfig(BaseSettings):
     secret_keys : list of str
         Keys used to encrypt webhook HMAC signing secrets at rest.
         Required; generate one with ``openssl rand -hex 32``.
+    blocked_networks: list of str
+        Range of network addresses to which webhooks cannot be delivered, except
+        for the exceptions that follow.
+    allow_delivery_hosts: list of str
+        List of host names to which webhooks must be delivered, regardless of
+        whether in the `blocked_networks list` or not.
     allow_http : bool
         When ``True``, webhook URLs are allowed to use plain HTTP instead of
         HTTPS.  Default ``False`` (HTTPS is required).
@@ -260,6 +334,8 @@ class WebhooksConfig(BaseSettings):
     """
 
     secret_keys: list[str] = []
+    blocked_networks: list[str] = []
+    allow_delivery_hosts: list[str] = []
     allow_http: bool = False
     allow_private_addresses: bool = False
 

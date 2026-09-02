@@ -79,6 +79,28 @@ def init_adapter_from_catalog(
     return adapter_cls(structure=data_source.structure, **kwargs)
 
 
+class ShapeMismatchError(ValueError):
+    """Array data cannot be served at the shape the structure advertises."""
+
+
+class DataNotReadyError(ShapeMismatchError):
+    """Transient mismatch: the structure is ahead of the data.
+
+    The advertised shape exceeds the available data along the leading axis
+    only, with all trailing dimensions matching. This typically means frames
+    are still being written and the data will catch up, so the read may be
+    retried.
+    """
+
+
+class IncompatibleShapeError(ShapeMismatchError):
+    """Permanent mismatch: the data cannot be reshaped to the advertised shape.
+
+    Retrying will not help: the trailing dimensions disagree, or the total
+    sizes are otherwise incompatible.
+    """
+
+
 def force_reshape(
     arr: Union[np.array, dask.array.Array], desired_shape: Tuple[int, ...]
 ) -> Union[np.array, dask.array.Array]:
@@ -98,14 +120,44 @@ def force_reshape(
     A view of the original array
     """
 
-    if arr.shape == tuple(desired_shape):
+    desired_shape = tuple(desired_shape)
+
+    if arr.shape == desired_shape:
         return arr  # Nothing to do here
 
+    same_rank = len(arr.shape) == len(desired_shape)
+    trailing_match = same_rank and arr.shape[1:] == desired_shape[1:]
+
+    # The data in storage has grown along the leading axis beyond what Tiled's
+    # structure advertises, while every trailing dimension is unchanged. This
+    # happens when a file is extended (e.g. streaming appends) after the catalog
+    # captured its structure. Serve exactly the advertised shape by slicing the
+    # leading axis, silently ignoring the extra frames.
+    if trailing_match and arr.shape[0] > desired_shape[0]:
+        return arr[: desired_shape[0]]
+
     if arr.size == math.prod(desired_shape):
+        # Total size matches: a genuine, well-defined reshape, e.g. serving a
+        # `(6, 200, 300)` array as `(3, 2, 200, 300)`.
         return arr.reshape(desired_shape)
 
-    raise ValueError(
-        f"Can not reshape {arr.shape} array data to {tuple(desired_shape)}"
+    if trailing_match and arr.shape[0] < desired_shape[0]:
+        # The structure advertises more frames than are available, along the
+        # leading axis only. This arises transiently during streaming appends,
+        # when the catalog's shape is updated (or observed from another server)
+        # before this reader's view of the file has caught up. We must never
+        # advertise one shape and then transmit another, and we cannot fabricate
+        # the missing data, but the data will likely catch up, so this is retryable.
+        raise DataNotReadyError(
+            f"The structure advertises shape {desired_shape}, but only "
+            f"{arr.shape} is currently available in the storage. The data may "
+            "still be arriving; please, retry the read later."
+        )
+
+    # Any other mismatch cannot be resolved by more frames arriving (the
+    # trailing dimensions disagree, or the total sizes are incompatible).
+    raise IncompatibleShapeError(
+        f"Can not reshape {arr.shape} array data to {desired_shape}"
     )
 
 
@@ -113,3 +165,38 @@ def split_chunks(total: int, chunk: int) -> tuple[int, ...]:
     "Split total into repeated chunks of size `chunk`, with a remainder at the end."
     num_full_chunks, remainder = divmod(total, chunk)
     return tuple([chunk] * num_full_chunks + ([remainder] if remainder else []))
+
+
+def grid_shape_for_files(
+    struct_shape: Tuple[int, ...], n_files: int
+) -> Optional[Tuple[int, ...]]:
+    """For multi-asset datasets, return the leading axes of `struct_shape` that
+    enumerate the files, one grid cell per file, or `None` when no clean split exists.
+
+    Context: `n_files` files were each read as one fixed-shape frame, stacked
+    into a new leading axis of length `n_files`, and that axis was then reshaped
+    into one or more leading dimensions of `struct_shape` (the trailing
+    dimensions are the shared per-frame shape). This recovers the grid of those
+    leading dimensions so a caller can map a grid cell back to its one file.
+
+    The split is clean only when a prefix of `struct_shape` multiplies to exactly
+    `n_files`: the smallest `j` with `prod(struct_shape[:j]) == n_files`. Then the
+    leading `j` dimensions index the files and this returns `struct_shape[:j]`.
+
+    For example, 12 files reshaped to `(3, 4, H, W)` returns `(3, 4)` -- the file
+    at grid cell `(i, j)` supplies the `H x W` frame at `[i, j]`. But `(5, ...)`
+    with 12 files returns `None`: no prefix hits 12, so a single file's frame
+    would straddle a dimension boundary and the leading indices no longer
+    correspond one-to-one with files.
+
+    The running product only grows (every dimension is `>= 1`), so once it passes
+    `n_files` without landing on it, no aligned split can exist and this stops.
+    """
+    product = 1
+    for j, dim in enumerate(struct_shape, start=1):
+        product *= dim
+        if product == n_files:
+            return struct_shape[:j]
+        if product > n_files:
+            break
+    return None

@@ -7,15 +7,25 @@ import dask.array
 import httpx
 import numpy
 import pytest
-from starlette.status import HTTP_406_NOT_ACCEPTABLE, HTTP_422_UNPROCESSABLE_CONTENT
+from starlette.status import (
+    HTTP_406_NOT_ACCEPTABLE,
+    HTTP_422_UNPROCESSABLE_CONTENT,
+    HTTP_503_SERVICE_UNAVAILABLE,
+)
 
 from tiled.adapters.array import ArrayAdapter
 from tiled.adapters.mapping import MapAdapter
+from tiled.adapters.utils import (
+    DataNotReadyError,
+    IncompatibleShapeError,
+    force_reshape,
+)
 from tiled.client import Context, from_context, record_history
 from tiled.client.array import ArrayClient
 from tiled.ndslice import NDSlice
 from tiled.serialization.array import as_buffer
 from tiled.server.app import build_app
+from tiled.structures.array import ArrayStructure
 
 from .utils import fail_with_status_code
 
@@ -112,6 +122,19 @@ def test_array_dtypes(kind, context):
     actual_via_read = client[kind].read()
     assert numpy.array_equal(actual_via_slice, actual_via_read)
     assert numpy.array_equal(actual_via_slice, expected)
+    # Exercise a range of 1-D slicing patterns end-to-end for every dtype:
+    # contiguous, negative-index, negative-start, strided, full reversal, and
+    # scalar (integer) indexing.
+    for index in (
+        slice(2, 8),
+        slice(-3, None),
+        slice(None, None, 2),
+        slice(None, None, -1),
+        slice(8, 1, -1),
+        0,
+        -1,
+    ):
+        assert numpy.array_equal(client[kind][index], expected[index]), index
 
 
 @pytest.mark.parametrize("kind", list(scalar_cases))
@@ -202,14 +225,82 @@ def test_request_chunking(context, bytesize_limit, num_gets_expected, monkeypatc
     numpy.testing.assert_equal(arr, cube_cases["chunked"])
 
 
-def test_request_slicing(context):
-    # One slice that requires data from all chunks
+@pytest.mark.parametrize(
+    "index",
+    [
+        # (multi-dim) one slice that requires data from all chunks
+        (slice(None), 42, slice(100, 300)),
+        # integer indexing, positive and negative
+        5,
+        -1,
+        # negative start / stop
+        slice(-3, None),
+        slice(2, -2),
+        # strided, positive and negative step (incl. full reversal reaching 0)
+        slice(None, None, 2),
+        slice(None, None, -1),
+        slice(8, 1, -1),
+        # mixed multi-dim: strided + integer + reversed
+        (slice(None, None, 2), 42, slice(300, 100, -1)),
+        (slice(2, 8, 3), slice(None, None, -2), 100),
+        # Ellipsis combined with integer indexing
+        (Ellipsis, 0),
+        (0, Ellipsis),
+        # empty-result slices (server is not contacted; short-circuited)
+        slice(5, 5),
+        slice(10, 3),
+    ],
+)
+def test_request_slicing(context, index):
+    # Each of these fits within a single response, so the client should make at
+    # most one GET (and none at all when the result is empty).
     client = from_context(context)["cube/chunked"]
-    expected = cube_cases["chunked"][:, 42, 100:300]
+    expected = numpy.asarray(cube_cases["chunked"])[index]
     with record_history() as h:
-        actual = client[:, 42, 100:300]
-    assert len(h.requests) == 1
+        actual = numpy.asarray(client[index])
     numpy.testing.assert_equal(actual, expected)
+    num_gets = sum(1 for entry in h.requests if entry.method == "GET")
+    assert num_gets == (0 if expected.size == 0 else 1)
+
+
+@pytest.mark.parametrize(
+    "index",
+    [
+        # positive-step slices split cleanly across chunk boundaries
+        (slice(None), slice(None), slice(100, 300)),
+        slice(None, None, 2),
+        slice(1, 9, 3),
+        slice(-3, None),
+        # reversed but stopping above 0 -> positive canonical stop
+        slice(8, 1, -1),
+        (slice(None, None, -2), slice(None, None, 2)),
+        # reversed reaching 0 -> negative canonical stop
+        slice(None, None, -1),
+        slice(5, None, -1),
+        (slice(None), slice(None, None, -1), slice(None)),
+    ],
+)
+def test_request_slicing_chunked_response(context, index, monkeypatch):
+    # Force the multi-request split path by shrinking the per-response limit so
+    # that each frame (300 x 400) is fetched separately, then verify the
+    # reassembled result matches NumPy for a variety of slices.
+    monkeypatch.setattr(ArrayClient, "RESPONSE_BYTESIZE_LIMIT", 300 * 400 * 8)
+    client = from_context(context)["cube/chunked"]
+    expected = numpy.asarray(cube_cases["chunked"])[index]
+    with record_history() as h:
+        actual = numpy.asarray(client[index])
+    numpy.testing.assert_equal(actual, expected)
+    # This slice spans multiple chunks, so more than one GET is expected.
+    num_gets = sum(1 for entry in h.requests if entry.method == "GET")
+    assert num_gets > 1
+
+
+@pytest.mark.parametrize("index", [10, -11, (0, 0, 400)])
+def test_out_of_range_index_raises(context, index):
+    # Out-of-range integer indexing should raise IndexError, matching NumPy.
+    client = from_context(context)["cube/chunked"]
+    with pytest.raises(IndexError):
+        client[index]
 
 
 def test_request_empty_slice(context):
@@ -293,3 +384,83 @@ def test_array_client_repr(tmpdir, chunks, expected):
         assert f"chunks={expected}" in rep
         if client["arr"].dims:
             assert "dims=('x', 'y', 'z')" in rep
+
+
+def test_force_reshape_noop_and_genuine_reshape():
+    # Exact match is a no-op.
+    arr = numpy.arange(6).reshape((2, 3))
+    assert force_reshape(arr, (2, 3)) is arr
+    # Same total size is a genuine, well-defined reshape.
+    reshaped = force_reshape(arr, (3, 2))
+    assert reshaped.shape == (3, 2)
+    numpy.testing.assert_array_equal(reshaped.ravel(), arr.ravel())
+
+
+def test_force_reshape_trims_leading_axis_when_file_ahead():
+    # The file has grown along the leading axis beyond the advertised shape,
+    # with trailing dims unchanged. Serve exactly the advertised shape by
+    # trimming the extra leading frames.
+    arr = numpy.arange(4 * 3).reshape((4, 3))
+    trimmed = force_reshape(arr, (2, 3))
+    assert trimmed.shape == (2, 3)
+    numpy.testing.assert_array_equal(trimmed, arr[:2])
+
+
+def test_force_reshape_raises_when_structure_ahead_of_data():
+    # The structure advertises more data than is available (catalog ahead of
+    # file, e.g. during a streaming append). We must not fabricate data. This
+    # is transient: more frames may still arrive.
+    arr = numpy.ones((3, 2, 4))
+    with pytest.raises(DataNotReadyError):
+        force_reshape(arr, (5, 2, 4))
+
+
+def test_force_reshape_raises_on_incompatible_shape():
+    # Trailing dims differ and total size differs: a genuine incompatibility
+    # that retrying cannot resolve.
+    arr = numpy.ones((4, 3))
+    with pytest.raises(IncompatibleShapeError):
+        force_reshape(arr, (4, 5))
+
+
+def test_structure_ahead_of_data_returns_503():
+    # Serve an array whose stored structure claims more frames than the
+    # underlying data has, mimicking a catalog that is ahead of the file
+    # during a streaming append. The read should surface as a retryable
+    # HTTP 503, not an opaque 500.
+    data = numpy.ones((3, 2, 4))
+    ahead_structure = ArrayStructure.from_array(numpy.ones((5, 2, 4)))
+    adapter = ArrayAdapter(data, ahead_structure)
+    app = build_app(MapAdapter({"streaming": adapter}))
+    with Context.from_app(app) as ahead_context:
+        client = from_context(ahead_context)
+        with fail_with_status_code(HTTP_503_SERVICE_UNAVAILABLE):
+            client["streaming"].read()
+
+
+def test_incompatible_structure_returns_422():
+    # Serve an array whose stored structure is incompatible with the data in a
+    # way that retrying cannot fix (trailing dimensions disagree). This is a
+    # permanent error, surfaced as HTTP 422.
+    data = numpy.ones((4, 3))
+    bad_structure = ArrayStructure.from_array(numpy.ones((4, 5)))
+    adapter = ArrayAdapter(data, bad_structure)
+    app = build_app(MapAdapter({"streaming": adapter}))
+    with Context.from_app(app) as bad_context:
+        client = from_context(bad_context)
+        with fail_with_status_code(HTTP_422_UNPROCESSABLE_CONTENT):
+            client["streaming"].read()
+
+
+def test_file_ahead_of_structure_serves_trimmed():
+    # Serve an array whose underlying data has more frames than the stored
+    # structure advertises. The client sees exactly the advertised shape.
+    data = numpy.arange(4 * 2 * 4).reshape((4, 2, 4))
+    behind_structure = ArrayStructure.from_array(numpy.ones((2, 2, 4)))
+    adapter = ArrayAdapter(data, behind_structure)
+    app = build_app(MapAdapter({"streaming": adapter}))
+    with Context.from_app(app) as behind_context:
+        client = from_context(behind_context)
+        result = client["streaming"].read()
+    assert result.shape == (2, 2, 4)
+    numpy.testing.assert_array_equal(result, data[:2])

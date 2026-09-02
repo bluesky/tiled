@@ -1,11 +1,15 @@
 import asyncio
+import os
 import random
 import string
+import time
 from contextlib import closing
 from dataclasses import asdict
+from pathlib import Path
 from typing import cast
 
 import dask.array
+import h5py
 import numpy
 import pandas
 import pandas.testing
@@ -24,6 +28,7 @@ from sqlalchemy.pool import AsyncAdaptedQueuePool, QueuePool, StaticPool
 from tiled.adapters.csv import CSVAdapter
 from tiled.adapters.dataframe import ArrayAdapter
 from tiled.adapters.tiff import TiffAdapter
+from tiled.adapters.utils import DataNotReadyError, IncompatibleShapeError
 from tiled.catalog import in_memory
 from tiled.catalog.adapter import WouldDeleteData
 from tiled.catalog.explain import record_explanations
@@ -35,6 +40,7 @@ from tiled.queries import Eq, Key
 from tiled.server.app import build_app, build_app_from_config
 from tiled.server.schemas import Asset, DataSource, Management
 from tiled.storage import SQLStorage, get_storage, parse_storage, sanitize_uri
+from tiled.structures.array import ArrayStructure, BuiltinDtype
 from tiled.structures.core import StructureFamily
 from tiled.utils import Conflicts, ensure_specified_sql_driver, ensure_uri
 
@@ -255,7 +261,272 @@ async def test_write_array_external(a, tmpdir):
     )
     x = await a.lookup_adapter(["x"])
     assert numpy.array_equal(await x.read(), arr)
-    assert x.data_sources[0].properties == {"chunks": [[5], [3]]}
+    assert (await x.data_sources())[0].properties == {"chunks": [[5], [3]]}
+
+
+# A reshaped file sequence: K = P*Q*R files, each an M x N image, whose data
+# source structure declares the logical shape (P, Q, R, M, N). The catalog's
+# lazy per-frame path must map an arbitrary (possibly strided, ellipsis-bearing)
+# slice on that 5-D shape back to exactly the file indices it touches.
+_RESHAPE_P, _RESHAPE_Q, _RESHAPE_R, _RESHAPE_M, _RESHAPE_N = 2, 3, 4, 5, 7
+
+
+@pytest.mark.parametrize(
+    "slice_input",
+    [
+        Ellipsis,  # full read -> every file
+        1,  # single leftmost index
+        (slice(0, 2), 1, slice(0, 4, 2)),  # strided along the R (stacking) axis
+        (slice(None), slice(1, 3), slice(0, 4, 2), Ellipsis, slice(0, 4)),
+        (Ellipsis, 0, 0, 0),
+        (0, Ellipsis, slice(0, 3)),
+        (slice(0, 2), slice(0, 3), slice(1, 4, 2)),
+        (slice(0, 1), slice(0, 2), slice(0, 2), slice(0, 2), slice(0, 3)),
+    ],
+)
+@pytest.mark.asyncio
+async def test_lazy_reshaped_sequence_selects_correct_assets(tmpdir, slice_input):
+    """The lazy per-frame path resolves exactly the assets a reshaped-sequence
+    slice needs, and reads back data identical to the eager reference.
+
+    Files are stored MxN but the structure declares (P, Q, R, M, N); this
+    exercises the reshape branch of `file_indices_for_slice`/`read` for
+    complex slices (strides, ellipsis, integer index reduction).
+    """
+    P, Q, R, M, N = _RESHAPE_P, _RESHAPE_Q, _RESHAPE_R, _RESHAPE_M, _RESHAPE_N
+    K = P * Q * R
+
+    # Distinct data per file so any mis-selection surfaces as a value mismatch.
+    rng = numpy.random.default_rng(0)
+    frames = [rng.integers(0, 255, size=(M, N), dtype="uint8") for _ in range(K)]
+    data_uris = []
+    for i, frame in enumerate(frames):
+        filepath = Path(tmpdir) / f"frame{i:05}.tif"
+        tifffile.imwrite(str(filepath), frame)
+        data_uris.append(ensure_uri(str(filepath)))
+
+    # Eager references, computed independently of the adapter's own logic.
+    full = numpy.stack(frames).reshape(P, Q, R, M, N)
+    # A cube whose value at (p, q, r, :, :) is the flat file index; slicing it
+    # the same way tells us exactly which files a given slice depends on.
+    idx_cube = numpy.broadcast_to(
+        numpy.arange(K).reshape(P, Q, R, 1, 1), (P, Q, R, M, N)
+    )
+
+    struct = ArrayStructure(
+        shape=(P, Q, R, M, N),
+        chunks=((1,) * P, (1,) * Q, (1,) * R, (M,), (N,)),
+        data_type=BuiltinDtype.from_numpy_dtype(numpy.dtype("uint8")),
+    )
+    # `properties["chunks"]` carries the *pre-reshape* (stacked) chunk layout:
+    # K single-file chunks along the stacking axis, then the per-file M, N dims.
+    pre_reshape_chunks = [[1] * K, [M], [N]]
+
+    adapter = in_memory(readable_storage=[tmpdir])
+    await adapter.startup()
+    try:
+        await adapter.create_node(
+            key="seq",
+            structure_family="array",
+            metadata={},
+            data_sources=[
+                DataSource(
+                    structure_family="array",
+                    mimetype="multipart/related;type=image/tiff",
+                    structure=asdict(struct),
+                    parameters={},
+                    properties={"chunks": pre_reshape_chunks},
+                    management="external",
+                    assets=[
+                        Asset(
+                            parameter="data_uris",
+                            num=i,
+                            data_uri=data_uri,
+                            is_directory=False,
+                        )
+                        for i, data_uri in enumerate(data_uris)
+                    ],
+                )
+            ],
+        )
+        x = await adapter.lookup_adapter(["seq"])
+
+        reference = full[slice_input]
+        expected_indices = set(numpy.unique(idx_cube[slice_input]).tolist())
+
+        # The lazy adapter must be used (not a fallback) and must resolve
+        # exactly the files this slice touches -- no more, no fewer.
+        lazy = await x._get_lazy_adapter(slice=slice_input)
+        assert lazy is not None
+        resolved_indices = {
+            i for i, uri in enumerate(lazy.filepaths._data_uris) if uri is not None
+        }
+        assert resolved_indices == expected_indices
+
+        # And a full read through the catalog returns the correct data.
+        result = await x.read(slice=slice_input)
+        numpy.testing.assert_array_equal(result, reference)
+    finally:
+        await adapter.shutdown()
+
+
+@pytest.mark.parametrize("num_offset", [1, 5])
+@pytest.mark.asyncio
+async def test_lazy_sequence_tolerates_num_offset(tmpdir, num_offset):
+    """The lazy path maps stacking rank to `num - offset`, so a contiguous run of
+    `num`s starting at any offset (e.g. 1-based numbering) resolves the same
+    files as 0-based numbering. Only the offset shifts; the dense stacking order
+    (and thus the eager reference) is unchanged.
+    """
+    P, Q, R, M, N = _RESHAPE_P, _RESHAPE_Q, _RESHAPE_R, _RESHAPE_M, _RESHAPE_N
+    K = P * Q * R
+
+    rng = numpy.random.default_rng(1)
+    frames = [rng.integers(0, 255, size=(M, N), dtype="uint8") for _ in range(K)]
+    data_uris = []
+    for i, frame in enumerate(frames):
+        filepath = Path(tmpdir) / f"frame{i:05}.tif"
+        tifffile.imwrite(str(filepath), frame)
+        data_uris.append(ensure_uri(str(filepath)))
+
+    full = numpy.stack(frames).reshape(P, Q, R, M, N)
+    idx_cube = numpy.broadcast_to(
+        numpy.arange(K).reshape(P, Q, R, 1, 1), (P, Q, R, M, N)
+    )
+    struct = ArrayStructure(
+        shape=(P, Q, R, M, N),
+        chunks=((1,) * P, (1,) * Q, (1,) * R, (M,), (N,)),
+        data_type=BuiltinDtype.from_numpy_dtype(numpy.dtype("uint8")),
+    )
+    pre_reshape_chunks = [[1] * K, [M], [N]]
+    slice_input = (slice(0, 2), 1, slice(0, 4, 2))
+
+    adapter = in_memory(readable_storage=[tmpdir])
+    await adapter.startup()
+    try:
+        await adapter.create_node(
+            key="seq",
+            structure_family="array",
+            metadata={},
+            data_sources=[
+                DataSource(
+                    structure_family="array",
+                    mimetype="multipart/related;type=image/tiff",
+                    structure=asdict(struct),
+                    parameters={},
+                    properties={"chunks": pre_reshape_chunks},
+                    management="external",
+                    assets=[
+                        # `num` starts at `num_offset` (e.g. 1-based), but the
+                        # assets are still in dense stacking order.
+                        Asset(
+                            parameter="data_uris",
+                            num=i + num_offset,
+                            data_uri=data_uri,
+                            is_directory=False,
+                        )
+                        for i, data_uri in enumerate(data_uris)
+                    ],
+                )
+            ],
+        )
+        x = await adapter.lookup_adapter(["seq"])
+
+        reference = full[slice_input]
+        # Expected 0-based stacking ranks (offset already accounted for).
+        expected_indices = set(numpy.unique(idx_cube[slice_input]).tolist())
+
+        lazy = await x._get_lazy_adapter(slice=slice_input)
+        assert lazy is not None
+        resolved_indices = {
+            i for i, uri in enumerate(lazy.filepaths._data_uris) if uri is not None
+        }
+        assert resolved_indices == expected_indices
+
+        result = await x.read(slice=slice_input)
+        numpy.testing.assert_array_equal(result, reference)
+    finally:
+        await adapter.shutdown()
+
+
+async def _register_ahead_hdf5(adapter, tmpdir, *, file_frames=3, ahead_frames=5):
+    """Register an external HDF5 array whose catalog structure is ahead of the file.
+
+    The backing file holds `file_frames` frames of shape `(rows, cols)`, but the
+    catalog structure advertises `ahead_frames`, mimicking a streaming append
+    where the catalog shape ran ahead of this reader's view of the file. Returns
+    the backing file path.
+    """
+    rows, cols = 2, 4
+    filepath = Path(tmpdir) / "streaming.h5"
+    with h5py.File(filepath, "w", libver="latest") as f:
+        f.create_dataset(
+            "data",
+            data=numpy.ones((file_frames, rows, cols)),
+            maxshape=(None, rows, cols),
+        )
+    ahead_structure = ArrayStructure(
+        shape=(ahead_frames, rows, cols),
+        chunks=((ahead_frames,), (rows,), (cols,)),
+        data_type=BuiltinDtype.from_numpy_dtype(numpy.dtype("float64")),
+    )
+    await adapter.create_node(
+        key="streaming",
+        structure_family=StructureFamily.array,
+        metadata={},
+        data_sources=[
+            DataSource(
+                structure_family="array",
+                mimetype="application/x-hdf5",
+                structure=asdict(ahead_structure),
+                parameters={"dataset": "data"},
+                management="external",
+                assets=[
+                    Asset(
+                        parameter="data_uris",
+                        num=0,
+                        data_uri=ensure_uri(str(filepath)),
+                        is_directory=False,
+                    )
+                ],
+            )
+        ],
+    )
+    return filepath
+
+
+@pytest.mark.asyncio
+async def test_structure_ahead_of_recently_modified_file_is_transient(tmpdir):
+    # The catalog structure is ahead of the data on disk and the backing file
+    # was just written, so a streaming append is plausibly in progress. The
+    # read raises the transient `DataNotReadyError`.
+    adapter = in_memory(readable_storage=[tmpdir])
+    await adapter.startup()
+    try:
+        await _register_ahead_hdf5(adapter, tmpdir)
+        x = await adapter.lookup_adapter(["streaming"])
+        with pytest.raises(DataNotReadyError):
+            await x.read()
+    finally:
+        await adapter.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_structure_ahead_of_stale_file_is_permanent(tmpdir):
+    # The catalog structure is ahead of the data on disk but the backing file
+    # has not been touched for a long time, so the data is at rest and will not
+    # catch up. The read is downgraded to a permanent `IncompatibleShapeError`.
+    adapter = in_memory(readable_storage=[tmpdir])
+    await adapter.startup()
+    try:
+        filepath = await _register_ahead_hdf5(adapter, tmpdir)
+        stale = time.time() - 3600
+        os.utime(filepath, (stale, stale))
+        x = await adapter.lookup_adapter(["streaming"])
+        with pytest.raises(IncompatibleShapeError):
+            await x.read()
+    finally:
+        await adapter.shutdown()
 
 
 @pytest.mark.asyncio

@@ -1,7 +1,9 @@
 import builtins
 import math
+import os
 from abc import abstractmethod
-from typing import Any, Iterable, List, Optional, Union
+from concurrent.futures import ThreadPoolExecutor
+from typing import Any, Dict, Iterable, List, Optional, Union
 
 import numpy as np
 from ndindex import ndindex
@@ -16,7 +18,62 @@ from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import DataSource
 from ..type_aliases import JSON, EllipsisType
 from ..utils import path_from_uri
-from .utils import force_reshape, init_adapter_from_catalog
+from .utils import force_reshape, grid_shape_for_files
+
+# Concurrency and memory knobs for reads that span many files of a sequence.
+#
+# IO_WORKERS: how many files to read concurrently. Reading a file is I/O-bound
+#   (open + read + decode, releasing the GIL in the C codecs), so a worker count
+#   somewhat above the CPU count keeps the storage busy. Override with
+#   TILED_SEQUENCE_IO_WORKERS.
+# READ_BATCH_BYTES: soft cap on the *full-frame* bytes held in memory at once
+#   while a multi-file read is in flight. A read that touches many files but
+#   keeps only a few pixels of each (e.g. one pixel from every file of a large
+#   stack) reads each file on a worker, reduces the frame, and drops it before
+#   the next, so peak memory stays near `min(IO_WORKERS, READ_BATCH_BYTES /
+#   frame_bytes)` full frames plus the (reduced) result, never the whole stack.
+#   Override with TILED_SEQUENCE_READ_BATCH_BYTES.
+IO_WORKERS = int(
+    os.environ.get("TILED_SEQUENCE_IO_WORKERS") or min(32, (os.cpu_count() or 4) + 4)
+)
+READ_BATCH_BYTES = int(os.environ.get("TILED_SEQUENCE_READ_BATCH_BYTES") or (1 << 30))
+
+
+class _LazyFilepaths:
+    """A sequence of filepaths derived lazily from a sequence of data URIs.
+
+    Wraps the `data_uris` given to :class:`FileSequenceAdapter` and converts
+    each URI to a local filesystem path (via :func:`path_from_uri`) only when
+    that entry is accessed. Deferring the conversion lets the catalog supply a
+    fixed-length list in which only the entries a given read needs are populated
+    (the rest left as `None`), so a single-frame read out of a large file
+    sequence never materializes all N paths. Indexing and slicing mirror a plain
+    `list` of paths, so subclasses can treat `self.filepaths` uniformly
+    whether the underlying URIs were fully or only partially resolved.
+    """
+
+    __slots__ = ("_data_uris",)
+
+    def __init__(self, data_uris: Any) -> None:
+        # Stored by reference (not copied) so a caller may populate entries
+        # after construction -- as the catalog's lazy per-frame path does once
+        # it knows which stack indices the read touches.
+        self._data_uris = data_uris
+
+    def __len__(self) -> int:
+        return len(self._data_uris)
+
+    def __getitem__(self, key: Union[int, builtins.slice]) -> Any:
+        item = self._data_uris[key]
+        if isinstance(key, builtins.slice):
+            return [path_from_uri(uri) for uri in item]
+        return path_from_uri(item)
+
+    def __repr__(self) -> str:
+        resolved = sum(uri is not None for uri in self._data_uris)
+        return (
+            f"<{type(self).__name__} length={len(self._data_uris)} resolved={resolved}>"
+        )
 
 
 class FileSequenceAdapter(Adapter[ArrayStructure]):
@@ -47,18 +104,26 @@ class FileSequenceAdapter(Adapter[ArrayStructure]):
         from data source parameters) they take precedence over the chunks derived from the files.
     """
 
+    # When True, the catalog may build this adapter with a partially-populated
+    # list of `data_uris` and resolve only the URIs needed for a given read
+    supports_lazy_assets = True
+
     structure_family = StructureFamily.array
 
     def __init__(
         self,
-        data_uris: Iterable[str],
+        data_uris: Optional[Iterable[str]] = None,
         structure: Optional[ArrayStructure] = None,
         *,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
         chunks: Optional[tuple[tuple[int, ...], ...]] = None,
     ) -> None:
-        self.filepaths = [path_from_uri(data_uri) for data_uri in data_uris]
+        # `self.filepaths` is a lazy view over the URIs: each is converted to a
+        # local path (path_from_uri) only when accessed. `data_uris` is a
+        # fixed-length list; the eager case fills every slot, while the catalog's
+        # lazy per-frame case leaves the slots it does not need as `None`.
+        self.filepaths = _LazyFilepaths(data_uris if data_uris is not None else [])
         self._chunks = chunks  # "True" chunks in the files before reshaping
         if structure is None:
             dat0 = self._load_from_files(0)
@@ -86,9 +151,37 @@ class FileSequenceAdapter(Adapter[ArrayStructure]):
         /,
         **kwargs: Optional[Any],
     ) -> "FileSequenceAdapter":
+        # One entry point for both the eager and lazy paths. The eager path
+        # derives `data_uris` from the data source's assets (dense 0-based
+        # stacking rank -> uri); the catalog's lazy path passes a sparse
+        # `{stack_index: uri}` mapping directly as the `data_uris` kwarg,
+        # holding only the frames a given read touches. Uses the `chunks`
+        # recorded in the data source properties (set when the stored files are
+        # reshaped to the structure shape).
+        if "data_uris" not in kwargs:
+            kwargs["data_uris"] = cls._stacking_uris_from_assets(data_source)
         kwargs["chunks"] = data_source.properties.get("chunks")
+        kwargs["metadata"] = node.metadata_
+        kwargs["specs"] = node.specs
+        return cls(structure=data_source.structure, **kwargs)
 
-        return init_adapter_from_catalog(cls, data_source, node, **kwargs)
+    @staticmethod
+    def _stacking_uris_from_assets(
+        data_source: DataSource[ArrayStructure],
+    ) -> list[str]:
+        """Return the list-valued assets' URIs in dense stacking-rank order.
+
+        The data source's assets arrive ordered by `(parameter, num)`, so the
+        list-valued ones are already in the stacking order eager reads use. This
+        is the sequence-specific analogue of `asset_parameters_to_adapter_kwargs`
+        (which the single-file and columnar adapters still use), specialized to
+        the one list parameter a file sequence carries.
+        """
+        return [
+            asset.data_uri
+            for asset in data_source.assets
+            if (asset.num is not None) or (asset.parameter == "data_uris")
+        ]
 
     @abstractmethod
     def _load_from_files(
@@ -109,6 +202,86 @@ class FileSequenceAdapter(Adapter[ArrayStructure]):
         """
 
         pass
+
+    def _read_one(self, filepath: str) -> NDArray[Any]:
+        """Read a single file into an array of its stored (per-file) shape.
+
+        The per-file primitive used by the concurrent readers below. Subclasses
+        implement the format-specific single-file read (e.g. `numpy.load`,
+        `tifffile.imread`, `PIL.Image.open`).
+        """
+        raise NotImplementedError
+
+    def _map_read(self, filepaths: Iterable[str]) -> List[NDArray[Any]]:
+        """Read files concurrently via `_read_one`, preserving input order.
+
+        Overlaps the (I/O-bound) per-file reads across `IO_WORKERS` threads.
+        Falls back to a serial map for a single file or when `IO_WORKERS == 1`.
+        """
+        filepaths = list(filepaths)
+        if IO_WORKERS <= 1 or len(filepaths) <= 1:
+            return [self._read_one(fp) for fp in filepaths]
+        with ThreadPoolExecutor(max_workers=min(IO_WORKERS, len(filepaths))) as ex:
+            return list(ex.map(self._read_one, filepaths))
+
+    def _read_selected(
+        self,
+        file_indices: tuple[int, ...],
+        frame_slice: tuple[Any, ...],
+        frame_shape: tuple[int, ...],
+    ) -> NDArray[Any]:
+        """Read the selected files and reduce each frame, with bounded memory.
+
+        `file_indices` are flat stacking-grid indices (in read order);
+        `frame_slice` is the trailing part of the selection that applies within
+        each file, expressed in *structure* coordinates; `frame_shape` is the
+        per-file structure shape (the structure dims after the stacking grid) --
+        i.e. what each loaded frame is reshaped to before `frame_slice` applies.
+
+        Each file is read on a worker, reshaped to `frame_shape`, reduced by
+        `frame_slice`, and written straight into the preallocated output; the
+        full frame is then dropped. Reducing *before* stacking is what keeps a
+        read that touches many files but keeps only a few pixels of each from
+        materializing the whole stack -- peak extra memory is about
+        `min(IO_WORKERS, READ_BATCH_BYTES / frame_bytes)` full frames in flight,
+        not `n_files x full_frame`. A single persistent pool reads all files
+        (no per-batch spin-up/idle-tail), keeping storage continuously busy.
+        Returns the reduced frames stacked along a new leading axis: shape
+        `(len(file_indices), *frame_slice applied to frame_shape)`.
+        """
+        dtype = self.structure().data_type.to_numpy_dtype()
+        key = tuple(frame_slice)
+        reduced_frame_shape = (
+            ndindex(key).newshape(tuple(frame_shape)) if key else tuple(frame_shape)
+        )
+        out = np.empty((len(file_indices), *reduced_frame_shape), dtype=dtype)
+        if len(file_indices) == 0:
+            return out
+
+        frame_nbytes = max(1, math.prod(frame_shape) * dtype.itemsize)
+        # Cap concurrent in-flight full frames so peak memory stays near
+        # READ_BATCH_BYTES regardless of how many files the read touches.
+        max_workers = max(1, min(IO_WORKERS, READ_BATCH_BYTES // frame_nbytes))
+
+        def fill(pos: int) -> None:
+            frame = self._read_one(self.filepaths[file_indices[pos]])
+            # Reshape the stored frame to the per-file structure shape so the
+            # (structure-space) `frame_slice` applies; `prod(frame_shape)` equals
+            # the stored size, so this never crosses a file boundary. The reduced
+            # frame is copied into `out[pos]`, so the full frame can be freed.
+            frame = force_reshape(frame, tuple(frame_shape))
+            out[pos] = frame[key] if key else frame
+
+        if max_workers <= 1 or len(file_indices) <= 1:
+            for pos in range(len(file_indices)):
+                fill(pos)
+        else:
+            with ThreadPoolExecutor(
+                max_workers=min(max_workers, len(file_indices))
+            ) as ex:
+                # Consume to propagate any worker exception and wait for all.
+                list(ex.map(fill, range(len(file_indices))))
+        return out
 
     def metadata(self) -> JSON:
         # TODO How to deal with the many headers?
@@ -143,45 +316,42 @@ class FileSequenceAdapter(Adapter[ArrayStructure]):
         # files are stacking dimensions, and they define which files need to be read.
         # Finally, the resulting array is reshaped to match the desired structure shape and slice.
         struct_shape = self.structure().shape
-        if self._chunks:
-            true_shape = tuple(map(sum, self._chunks))
-            if true_shape != struct_shape:
-                # The trailing dimensions must match (can be generalized in the future)
-                if math.prod(true_shape) != math.prod(struct_shape):
-                    raise RuntimeError(
-                        f"Array with shape {true_shape} derived from storage can not be reshaped "
-                        f"to match the desired structure, {struct_shape}."
-                    )
+        true_shape = tuple(map(sum, self._chunks)) if self._chunks else struct_shape
+        is_reshaped = true_shape != struct_shape
+        stacking_grid_shape = self._stacking_grid_shape(struct_shape, true_shape)
 
-                # The leading dimensions define stacking and the indices of files we need to read
-                stack_shape = (
-                    struct_shape[: -len(true_shape[1:])]
-                    if len(true_shape) > 1
-                    else struct_shape
-                )
-                slice = NDSlice(slice).expand_for_shape(struct_shape)  # typing: ignore
-                file_indx_slice = slice[: len(stack_shape)]
-                file_indx_list = (
-                    np.arange(true_shape[0])
-                    .reshape(stack_shape)[file_indx_slice]
-                    .ravel()
-                )
-
-                # The remaining slice to be applied after loading the data from files and stacking;
-                # expand to include any non-degenerate leading dimensions along the file axis
-                tail_dims_slice = slice[len(stack_shape) :]  # noqa: E203
-                for slc in file_indx_slice:
-                    if not isinstance(slc, int):
-                        tail_dims_slice = NDSlice(
-                            builtins.slice(None), *tail_dims_slice
-                        )
-
-                arr = self._load_from_files(slice=file_indx_list)
-                stacked_shape = ndindex(file_indx_slice).newshape(struct_shape)
-                arr = force_reshape(arr, stacked_shape)
-                arr = np.atleast_1d(arr[tail_dims_slice])
-
+        if is_reshaped:
+            if stacking_grid_shape is None:
+                # The reshape interleaves file contents: the per-file boundary
+                # falls *inside* a structure dimension, so no subset of whole
+                # files can satisfy the read. Load every file, stack, reshape to
+                # the structure shape, then apply the requested slice. Correct
+                # (row-major order is preserved) but with no partial-load benefit.
+                arr = force_reshape(self._load_from_files(), struct_shape)
+                arr = np.atleast_1d(arr[slice])
                 return force_reshape(arr, ndindex(slice).newshape(struct_shape))
+
+            # The reshape is file-boundary-aligned, so a subset of whole files can
+            # satisfy the read (`stacking_grid_shape` is now known non-None).
+            expanded = NDSlice(slice).expand_for_shape(struct_shape)
+            file_indx_slice = expanded[: len(stacking_grid_shape)]
+            # Map the leading (stacking) part of the selection onto flat file indices.
+            file_indx_list = NDSlice(file_indx_slice).flat_indices(stacking_grid_shape)
+
+            # The trailing part of the selection applies within each file (frame).
+            # Push it into the batched loader so each frame is reduced *before*
+            # frames are stacked -- this keeps a read that touches many files but
+            # keeps only a few pixels of each from materializing the whole stack.
+            # `frame_slice` and the per-file structure shape are both in structure
+            # coordinates; `_read_selected` reshapes each stored frame to that
+            # shape before applying `frame_slice`. Reducing per-file and reshaping
+            # the file axis afterward commute, so the result matches a full read.
+            frame_slice = expanded[len(stacking_grid_shape) :]  # noqa: E203
+            struct_frame_shape = struct_shape[len(stacking_grid_shape) :]  # noqa: E203
+            reduced = self._read_selected(
+                file_indx_list, frame_slice, struct_frame_shape
+            )
+            return force_reshape(reduced, ndindex(expanded).newshape(struct_shape))
 
         # Load the data from files, applying the slice along the left-most dimension if possible
         if slice is Ellipsis:
@@ -227,3 +397,55 @@ class FileSequenceAdapter(Adapter[ArrayStructure]):
         block_slice = block.slice_from_chunks(self._structure.chunks)
         arr = self.read(block_slice[0])
         return arr[slice] if slice else arr
+
+    @staticmethod
+    def _stacking_grid_shape(
+        struct_shape: tuple[int, ...],
+        true_shape: tuple[int, ...],
+    ) -> Optional[tuple[int, ...]]:
+        """The shape of the file-stacking dimensions, or None if not partially-loadable.
+
+        Pure function of the structure shape and the true (stored) shape -- no
+        adapter state, no I/O -- so both `read` and the `file_indices_for_slice`
+        classmethod (used by the catalog before any adapter is built) can share it.
+
+        Each file contributes one element along the left-most stored axis, so
+        `n_files == true_shape[0]`, and the shared `grid_shape_for_files` helper
+        computes the file-alignment geometry. The caller derives
+        `partial_loadable` as `result is not None` and `reshaped` as
+        `true_shape != struct_shape`.
+        """
+        if math.prod(true_shape) != math.prod(struct_shape):
+            raise RuntimeError(
+                f"Array with shape {true_shape} derived from storage can not be reshaped "
+                f"to match the desired structure, {struct_shape}."
+            )
+        return grid_shape_for_files(struct_shape, true_shape[0])
+
+    @classmethod
+    def file_indices_for_slice(
+        cls,
+        structure: ArrayStructure,
+        n_files: int,
+        slice: Any = ...,
+        properties: Optional[Dict[str, Any]] = None,
+        parameters: Optional[Dict[str, Any]] = None,
+    ) -> Optional[tuple[int, ...]]:
+        """Return the global file (stack) indices needed to satisfy `slice`.
+
+        The leading `grid_shape_for_files` dimensions map onto the `n_files` files,
+        so the touched files are the flat positions the slice selects within
+        them. `properties`/`parameters` are accepted for interface parity with
+        adapters that need them (e.g. HDF5) and ignored here.
+
+        Returns `None` when the reshape is not file-boundary-aligned (every file
+        may need to be loaded), signalling the catalog to skip the lazy path.
+        """
+        struct_shape = structure.shape
+        grid_shape = grid_shape_for_files(struct_shape, n_files)
+        if grid_shape is None:
+            return None
+        file_indx_slice = NDSlice(slice).expand_for_shape(struct_shape)[
+            : len(grid_shape)
+        ]
+        return NDSlice(file_indx_slice).flat_indices(grid_shape)

@@ -14,7 +14,7 @@ from ..structures.data_source import DataSource
 from ..type_aliases import JSON
 from ..utils import path_from_uri
 from .resource_cache import with_resource_cache
-from .sequence import FileSequenceAdapter
+from .sequence import IO_WORKERS, FileSequenceAdapter
 from .utils import force_reshape, init_adapter_from_catalog
 
 
@@ -111,4 +111,9 @@ class TiffSequenceAdapter(FileSequenceAdapter):
             if isinstance(slice, Iterable)
             else self.filepaths[slice]
         )
-        return tifffile.TiffSequence(selected).asarray()
+        # `ioworkers` lets tifffile read the selected files concurrently (I/O is
+        # the bottleneck for a large stack); default is serial (ioworkers=1).
+        return tifffile.TiffSequence(selected).asarray(ioworkers=IO_WORKERS)
+
+    def _read_one(self, filepath: str) -> NDArray[Any]:
+        return tifffile.imread(filepath)

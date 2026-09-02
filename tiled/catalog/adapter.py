@@ -8,12 +8,23 @@ import operator
 import os
 import shutil
 import sys
+import time
 import uuid
 from contextlib import closing
 from datetime import datetime, timezone
 from functools import partial, reduce
 from pathlib import Path
-from typing import Callable, Dict, List, Literal, Optional, Union, cast
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    List,
+    Literal,
+    Optional,
+    Union,
+    cast,
+)
 from urllib.parse import urlparse
 
 import anyio
@@ -57,6 +68,7 @@ from tiled.queries import (
     StructureFamilyQuery,
 )
 
+from ..adapters.utils import DataNotReadyError, IncompatibleShapeError
 from ..mimetypes import (
     APACHE_ARROW_FILE_MIME_TYPE,
     AWKWARD_BUFFERS_MIMETYPE,
@@ -92,6 +104,7 @@ from ..storage import (
     ObjectStorage,
     SQLStorage,
     get_storage,
+    mtime_from_uri,
     parse_storage,
     register_storage,
 )
@@ -111,7 +124,18 @@ from .core import check_catalog_database, initialize_database
 from .explain import ExplainAsyncSession
 from .utils import compute_structure_id
 
+if TYPE_CHECKING:
+    from ..adapters.protocols import AnyAdapter
+    from ..ndslice import NDBlock
+
 logger = logging.getLogger(__name__)
+
+# When a read fails because the catalog structure shape is ahead of the data
+# actually present in storage, treat it as a transient "not ready"
+# condition (rather than a permanent error) only if the backing file was
+# modified within this many seconds. This distinguishes an in-progress
+# streaming append from a write that was aborted and left at rest.
+ARRAY_NOT_READY_WINDOW = float(os.getenv("TILED_ARRAY_NOT_READY_WINDOW", "10.0"))
 
 # When data is uploaded, how is it saved?
 # TODO: Make this configurable at Catalog construction time.
@@ -258,9 +282,10 @@ class Context:
 
         self.streaming_cache = None
         if self.cache_config:
-            if self.cache_config["uri"].startswith("redis"):
+            uri = self.cache_config.get("uri")
+            if self.cache_config.get("sentinels") or (uri and uri.startswith("redis")):
                 self.cache_config["datastore"] = "redis"
-            elif self.cache_config["uri"].startswith("memory"):
+            elif uri and uri.startswith("memory"):
                 self.cache_config["datastore"] = "memory"
             self.streaming_cache = StreamingCache(self.cache_config)
 
@@ -405,9 +430,39 @@ class CatalogNodeAdapter:
         async with self.context.session() as db:
             return (await db.execute(statement)).scalar().all()
 
-    @property
-    def data_sources(self):
-        return [DataSource.from_orm(ds) for ds in (self.node.data_sources or [])]
+    async def data_sources(self, include_assets: bool = False):
+        """Return this node's data source(s) as pydantic `DataSource` objects.
+
+        With `include_assets=False` (the default), the assets are NOT
+        loaded: this uses the data source ORM objects already selectin-loaded
+        by `lookup_adapter` and issues no query. `asset_associations` is
+        `lazy="raise"`, so materializing all assets of a large file sequence
+        is avoided on the common metadata/structure/truthiness paths.
+
+        With `include_assets=True`, an explicit query eagerly loads each data
+        source's `asset_associations` (and their `asset`). Only the paths
+        that genuinely need assets -- the full `get_adapter()` build and the
+        opt-in `?include_data_sources=true` metadata response -- should ask
+        for them.
+        """
+        if not include_assets:
+            return [
+                DataSource.from_orm(ds, include_assets=False)
+                for ds in (self.node.data_sources or [])
+            ]
+        statement = (
+            select(orm.DataSource)
+            .where(orm.DataSource.node_id == self.node.id)
+            .options(
+                selectinload(orm.DataSource.structure),
+                selectinload(orm.DataSource.asset_associations).selectinload(
+                    orm.DataSourceAssetAssociation.asset
+                ),
+            )
+        )
+        async with self.context.session() as db:
+            ds_orms = (await db.execute(statement)).scalars().all()
+        return [DataSource.from_orm(ds, include_assets=True) for ds in ds_orms]
 
     async def asset_by_id(self, asset_id):
         statement = (
@@ -430,9 +485,10 @@ class CatalogNodeAdapter:
         return Asset.from_orm(asset)
 
     def structure(self):
-        if self.data_sources:
-            assert len(self.data_sources) == 1  # more not yet implemented
-            return self.data_sources[0].structure
+        data_sources = self.node.data_sources or []
+        if data_sources:
+            assert len(data_sources) == 1  # more not yet implemented
+            return DataSource.from_orm(data_sources[0], include_assets=False).structure
         return None
 
     def apply_conditions(self, statement):
@@ -556,7 +612,7 @@ class CatalogNodeAdapter:
 
             for i in range(len(segments)):
                 catalog_adapter = await self.lookup_adapter(segments[:i])
-                if catalog_adapter.data_sources:
+                if catalog_adapter.node.data_sources:
                     adapter = await catalog_adapter.get_adapter()
                     for segment in segments[i:]:
                         adapter = await anyio.to_thread.run_sync(adapter.get, segment)
@@ -567,8 +623,29 @@ class CatalogNodeAdapter:
 
         return STRUCTURES[node.structure_family](self.context, node)
 
+    def _ensure_uri_within_readable_storage(self, data_uri):
+        """Raise if a `file://` data URI lies outside every readable storage area.
+
+        Protects against misbehaving clients (or registrations) that would read
+        from unintended parts of the filesystem: a ``file`` URI is served only
+        when it resolves under one of the server's readable `FileStorage` roots.
+        Non-`file` schemes are not path-scoped and pass through unchecked.
+        """
+        if urlparse(data_uri).scheme != "file":
+            return
+        asset_path = path_from_uri(data_uri)
+        for storage in self.context.readable_storage.values():
+            if not isinstance(storage, FileStorage):
+                continue
+            if Path(os.path.commonpath([storage.path, asset_path])) == storage.path:
+                return
+        raise RuntimeError(
+            f"Refusing to serve {data_uri} because it is outside "
+            "the readable storage area for this server."
+        )
+
     async def get_adapter(self):
-        (data_source,) = self.data_sources
+        (data_source,) = await self.data_sources(include_assets=True)
         try:
             adapter_cls = self.context.adapters_by_mimetype[data_source.mimetype]
         except KeyError:
@@ -578,25 +655,7 @@ class CatalogNodeAdapter:
         for asset in data_source.assets:
             if asset.parameter is None:
                 continue
-            scheme = urlparse(asset.data_uri).scheme
-            if scheme == "file":
-                # Protect against misbehaving clients reading from unintended parts of the filesystem.
-                asset_path = path_from_uri(asset.data_uri)
-                for readable_storage in {
-                    item
-                    for item in self.context.readable_storage.values()
-                    if isinstance(item, FileStorage)
-                }:
-                    if (
-                        Path(os.path.commonpath([readable_storage.path, asset_path]))
-                        == readable_storage.path
-                    ):
-                        break
-                else:
-                    raise RuntimeError(
-                        f"Refusing to serve {asset.data_uri} because it is outside "
-                        "the readable storage area for this server."
-                    )
+            self._ensure_uri_within_readable_storage(asset.data_uri)
         adapter = await anyio.to_thread.run_sync(
             partial(
                 adapter_cls.from_catalog,
@@ -609,6 +668,149 @@ class CatalogNodeAdapter:
             if hasattr(adapter, "search"):
                 adapter = adapter.search(query)
         return adapter
+
+    async def _get_lazy_adapter(
+        self,
+        *,
+        block: Optional["NDBlock"] = None,
+        slice: Any = ...,
+    ) -> Optional["AnyAdapter"]:
+        """Build an I/O adapter that resolves only the assets a read will touch.
+
+        Returns `None` (so the caller falls back to :meth:`get_adapter`) unless
+        every precondition for lazy per-frame resolution holds:
+        a single file-scheme data source whose adapter class opts in via
+        `supports_lazy_assets`, whose `parameter == "data_uris"` asset `num`s
+        form a contiguous run of length n (any starting offset -- 0-based,
+        1-based, etc. -- so stacking rank == num - offset), and whose adapter
+        can determine, from the structure and the data source `properties`,
+        which files a slice touches.
+
+        Instead of materializing all N asset rows, this reads only the data
+        source's structure and properties (no assets), asks the adapter class
+        which stack indices (== stacking ranks) the given `block`/`slice` needs,
+        and fetches just those URIs. Keeps all DB access in the async layer; the
+        adapter (built through its normal `from_catalog` entry point with a
+        partially-populated URI list) resolves each URI to a filepath lazily,
+        only for the indices actually read.
+        """
+        if self.queries:
+            # Standing queries expect a fully-built adapter to search.
+            return None
+
+        # Read the data source's meta (id, mimetype, properties, structure)
+        # straight from the in-memory ORM object. `Node.data_sources` and each
+        # data source's `structure` are already selectin-loaded by
+        # `lookup_adapter`, so this avoids an extra DB round-trip. Assets are
+        # deliberately NOT touched here (asset_associations is lazy="raise").
+        data_source_orms = self.node.data_sources or []
+        if len(data_source_orms) != 1:
+            # Zero or multiple data sources: not supported by the lazy path.
+            return None
+        ds = data_source_orms[0]
+        if ds.structure is None:
+            return None
+
+        # The adapter class must opt in to lazy URI resolution
+        try:
+            adapter_cls = self.context.adapters_by_mimetype[ds.mimetype]
+        except KeyError:
+            return None
+        if not getattr(adapter_cls, "supports_lazy_assets", False):
+            return None
+
+        # Data source meta only (no assets); the structure is enough (with the
+        # file count) to compute the file geometry.
+        data_source = DataSource.from_orm(ds, include_assets=False)
+        structure = data_source.structure
+
+        # A block read's file selection depends ONLY on the block: read_block
+        # loads the whole block along the stacking axis and applies any
+        # within-block slice AFTER, to the already-loaded data. Convert the block
+        # to the equivalent leading-axis slice here (pure; uses structure.chunks).
+        if block is not None:
+            if any(block[1:]):
+                raise IndexError(block)
+            slice = block.slice_from_chunks(structure.chunks)[0]
+
+        # File count = number of numbered "data_uris" assets, NOT len(chunks[0]):
+        # one file may span several native chunks along the concatenation axis.
+        # The lazy path maps each 0-based stacking rank to an asset `num` via
+        # rank == num - offset, valid only when the `num`s are a contiguous run
+        # (offset is the smallest num: 0 for 0-based, 1 for 1-based, etc.). One
+        # aggregate query yields count/min/max without materializing asset rows:
+        # `count == n AND max - min == n - 1` holds iff the `num`s are exactly
+        # {offset .. offset + n - 1}. On any mismatch, fall back to the full build.
+        # TODO: It might be worth ensuring zero-based contiguous `num`s when writing
+        # assets; then the contiguity check can be dropped.
+        count_stmt = (
+            select(
+                func.count(orm.DataSourceAssetAssociation.num),
+                func.min(orm.DataSourceAssetAssociation.num),
+                func.max(orm.DataSourceAssetAssociation.num),
+            )
+            .where(orm.DataSourceAssetAssociation.data_source_id == ds.id)
+            .where(orm.DataSourceAssetAssociation.parameter == "data_uris")
+            .where(orm.DataSourceAssetAssociation.num.isnot(None))
+        )
+
+        async with self.context.session() as db:
+            n, min_num, max_num = (await db.execute(count_stmt)).one()
+            offset = min_num or 0  # `num`s run [offset, offset + n - 1]
+
+            # A single backing file -- fall back to the full adapter.
+            if n < 2:
+                return None
+
+            # The asset nums are not a contiguous run -- fall back to the full adapter.
+            if not n or max_num - min_num != n - 1:
+                return None
+
+            # Determine which files / assets this read needs purely from geometry.
+            indices = adapter_cls.file_indices_for_slice(
+                structure,
+                n,
+                slice,
+                properties=ds.properties or {},
+                parameters=ds.parameters or {},
+            )
+            if indices is None:
+                return None
+
+            # Fetch only the needed assets' URIs (indexed by (data_source_id, parameter, num)).
+            # The read's 0-based stack indices map to `num`s by adding the offset.
+            uri_stmt = (
+                select(
+                    orm.DataSourceAssetAssociation.num,
+                    orm.Asset.data_uri,
+                )
+                .join(
+                    orm.Asset,
+                    orm.Asset.id == orm.DataSourceAssetAssociation.asset_id,
+                )
+                .where(orm.DataSourceAssetAssociation.data_source_id == ds.id)
+                .where(orm.DataSourceAssetAssociation.parameter == "data_uris")
+                .where(
+                    orm.DataSourceAssetAssociation.num.in_(
+                        [offset + i for i in indices]
+                    )
+                )
+            )
+            uri_rows = (await db.execute(uri_stmt)).all()
+
+        # Build a fixed-length URI list populated with only the assets this read needs
+        # (the rest left as None). Stacking rank == num - offset (contiguous run,
+        # guaranteed by the precheck above), so it indexes directly into the list.
+        data_uris = [None] * n
+        for num, data_uri in uri_rows:
+            self._ensure_uri_within_readable_storage(data_uri)
+            data_uris[num - offset] = data_uri
+
+        # One entry point for both eager and lazy: pass the partially-populated
+        # URI list as the `data_uris` kwarg. `from_catalog` derives metadata/specs.
+        return adapter_cls.from_catalog(
+            data_source, self.node, **{**data_source.parameters, "data_uris": data_uris}
+        )
 
     def new_variation(
         self,
@@ -634,7 +836,7 @@ class CatalogNodeAdapter:
         )
 
     def search(self, query):
-        if self.data_sources:
+        if self.node.data_sources:
             # Stand queries, which will be passed down to the adapter
             # when / if get_adapter() is called.
             self.queries.append(query)
@@ -645,7 +847,7 @@ class CatalogNodeAdapter:
         return self.new_variation(sorting=sorting)
 
     async def get_distinct(self, metadata, structure_families, specs, counts):
-        if self.data_sources:
+        if self.node.data_sources:
             return (await self.get_adapter()).get_disinct(
                 metadata, structure_families, specs, counts
             )
@@ -1441,7 +1643,7 @@ class CatalogContainerAdapter(CatalogNodeAdapter):
             )
 
         # Case 1: Node has external data sources -- delegate to the associated adapter
-        if self.data_sources:
+        if self.node.data_sources:
             keys = (await self.get_adapter()).keys()
             if self.default_sorting_direction == -1:
                 keys = reversed(keys)
@@ -1474,7 +1676,7 @@ class CatalogContainerAdapter(CatalogNodeAdapter):
 
         The server uses `keys_page()` internally for cursor-based pagination.
         """
-        if self.data_sources:
+        if self.node.data_sources:
             keys = (await self.get_adapter()).keys()
             if self.default_sorting_direction == -1:
                 keys = reversed(keys)
@@ -1520,7 +1722,7 @@ class CatalogContainerAdapter(CatalogNodeAdapter):
             )
 
         # Case 1: Node has external data sources -- delegate to the associated adapter
-        if self.data_sources:
+        if self.node.data_sources:
             items = (await self.get_adapter()).items()
             if self.default_sorting_direction == -1:
                 items = reversed(items)
@@ -1561,7 +1763,7 @@ class CatalogContainerAdapter(CatalogNodeAdapter):
 
         The server uses `items_page()` internally for cursor-based pagination.
         """
-        if self.data_sources:
+        if self.node.data_sources:
             items = (await self.get_adapter()).items()
             if self.default_sorting_direction == -1:
                 items = reversed(items)
@@ -1596,7 +1798,7 @@ class CatalogContainerAdapter(CatalogNodeAdapter):
         if offset == 0 or not self._is_default_sort:
             return None
 
-        if self.data_sources:
+        if self.node.data_sources:
             # For nodes with external data sources the adapter manages its own
             # iteration order and conditions are not applied at the DB level
             # (see keys_page/items_page data_sources path). The offset is
@@ -1614,7 +1816,7 @@ class CatalogContainerAdapter(CatalogNodeAdapter):
         return row[0] if row is not None else None
 
     async def read(self, *args, **kwargs):
-        if not self.data_sources:
+        if not self.node.data_sources:
             fields = kwargs.get("fields")
             if fields:
                 return self.search(KeysFilter(fields))
@@ -1626,18 +1828,69 @@ class CatalogContainerAdapter(CatalogNodeAdapter):
 
 
 class CatalogArrayAdapter(CatalogNodeAdapter):
+    async def _assets_recently_modified(self) -> Optional[bool]:
+        """Report whether a backing asset was modified within the freshness window.
+
+        Returns `True` if at least one backing asset was modified within
+        `ARRAY_NOT_READY_WINDOW` seconds (an append is likely in progress),
+        `False` if backing assets exist but none were recently modified (the
+        data appears to be at rest), or `None` if freshness cannot be
+        determined for any asset (for example, an unsupported URI scheme or an
+        asset that cannot be stat'd).
+        """
+        try:
+            data_sources = await self.data_sources(include_assets=True)
+        except Exception:
+            return None
+        now = time.time()
+        found = False
+        for data_source in data_sources:
+            for asset in data_source.assets:
+                try:
+                    mtime = mtime_from_uri(asset.data_uri)
+                except (OSError, ValueError):
+                    continue
+                found = True
+                if now - mtime < ARRAY_NOT_READY_WINDOW:
+                    return True
+        return False if found else None
+
     async def read(self, *args, **kwargs):
-        if not self.data_sources:
+        if not self.node.data_sources:
             fields = kwargs.get("fields")
             if fields:
                 return self.search(KeysFilter(fields))
             return self
-        return await ensure_awaitable((await self.get_adapter()).read, *args, **kwargs)
+        # Try lazy per-frame resolution for a plain slice read (no field
+        # selection). Falls back to the full adapter build if not applicable.
+        try:
+            if "fields" not in kwargs:
+                slice_ = args[0] if args else kwargs.get("slice", ...)
+                adapter = await self._get_lazy_adapter(slice=slice_)
+                if adapter is not None:
+                    return await ensure_awaitable(adapter.read, *args, **kwargs)
+            return await ensure_awaitable(
+                (await self.get_adapter()).read, *args, **kwargs
+            )
+        except DataNotReadyError as err:
+            if (await self._assets_recently_modified()) is False:
+                raise IncompatibleShapeError(str(err)) from err
+            raise
 
     async def read_block(self, *args, **kwargs):
-        return await ensure_awaitable(
-            (await self.get_adapter()).read_block, *args, **kwargs
-        )
+        try:
+            block = args[0] if args else kwargs.get("block")
+            if block is not None:
+                adapter = await self._get_lazy_adapter(block=block)
+                if adapter is not None:
+                    return await ensure_awaitable(adapter.read_block, *args, **kwargs)
+            return await ensure_awaitable(
+                (await self.get_adapter()).read_block, *args, **kwargs
+            )
+        except DataNotReadyError as err:
+            if (await self._assets_recently_modified()) is False:
+                raise IncompatibleShapeError(str(err)) from err
+            raise
 
     async def _stream(self, media_type, entry, body, shape, block=None, offset=None):
         sequence = await self.context.streaming_cache.incr_seq(self.node.id)

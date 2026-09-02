@@ -33,6 +33,7 @@ from starlette.status import (
     HTTP_403_FORBIDDEN,
     HTTP_404_NOT_FOUND,
     HTTP_409_CONFLICT,
+    HTTP_422_UNPROCESSABLE_CONTENT,
     HTTP_500_INTERNAL_SERVER_ERROR,
 )
 
@@ -47,6 +48,7 @@ from ..config import (
     construct_build_app_kwargs,
     parse_configs,
 )
+from ..graph.router import create_router as get_links_router
 from ..media_type_registration import (
     CompressionRegistry,
     SerializationRegistry,
@@ -56,7 +58,7 @@ from ..media_type_registration import (
 )
 from ..query_registration import QueryRegistry, default_query_registry
 from ..type_aliases import AppTask, TaskMap
-from ..utils import SHARE_TILED_PATH, Conflicts, UnsupportedQueryType
+from ..utils import SHARE_TILED_PATH, Conflicts, UnsafeIdentifier, UnsupportedQueryType
 from ..validation_registration import ValidationRegistry, default_validation_registry
 from ._backcompat import raw_python_tiled_client_version
 from .authentication import move_api_key
@@ -176,7 +178,7 @@ def build_app(
 
     if scalable:
         streaming_cache = server_settings.get("streaming_cache", None)
-        if streaming_cache and streaming_cache["uri"].startswith("memory"):
+        if streaming_cache and (streaming_cache.get("uri") or "").startswith("memory"):
             raise UnscalableConfig(
                 dedent(
                     """
@@ -374,6 +376,15 @@ def build_app(
             content={"detail": exc.args[0]},
         )
 
+    @app.exception_handler(UnsafeIdentifier)
+    async def unsafe_identifier_exception_handler(
+        request: Request, exc: UnsafeIdentifier
+    ):
+        return JSONResponse(
+            status_code=HTTP_422_UNPROCESSABLE_CONTENT,
+            content={"detail": exc.args[0]},
+        )
+
     # This list will be mutated when settings are processed at app startup.
     app.state.allow_origins = []
     app.add_middleware(
@@ -418,6 +429,15 @@ def build_app(
 
     app.include_router(get_zarr_router_v2(), prefix="/zarr/v2")
     app.include_router(get_zarr_router_v3(), prefix="/zarr/v3")
+
+    # The graph feature stores its tables in the catalog
+    # database (entities.node_id is a foreign key to the catalog's nodes
+    # table), so it is only available when serving a catalog-backed tree.
+    # Note this is independent of `database:` config, which configures the
+    # unrelated authn/session database.
+    catalog_context = getattr(tree, "context", None)
+    if catalog_context is not None:
+        app.include_router(get_links_router(lambda: catalog_context.database_settings))
 
     # The Tree and Authenticator have the opportunity to add custom routes to
     # the server here. (Just for example, a Tree of BlueskyRuns uses this
