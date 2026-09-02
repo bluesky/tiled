@@ -274,7 +274,9 @@ properties:
     items:
       type: string
     description: |
-      Optional list of OAuth2 scopes to request.
+      Optional list of OAuth2 scopes to request. If provided, authorization
+      should be enforced by an external policy agent (for example ExternalPolicyDecisionPoint)
+      rather than by this authenticator.
   scopes_map:
     type: object
     description: |
