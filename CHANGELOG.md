@@ -7,6 +7,18 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Fixed
 
+- Fix `TypeError: Type is not JSON serializable: bytes` when serializing a
+  table with a bytes-dtype (numpy `S`) column to `application/json` or
+  `application/json-seq`. Such values are now decoded to strings.
+- Fix reads of array data whose on-disk shape has diverged from the shape
+  recorded in the catalog structure, which can happen while an array is being
+  extended (e.g. streaming appends).
+- Fix a regression where opening a URL with an `?api_key=...` query parameter
+  in the web UI redirected to the login page instead of authenticating. This
+  now also works in single-user (`--api-key`) mode, where the server exposes no
+  `/auth` routes: the web UI detects the API-key cookie session by probing a
+  protected endpoint rather than `/auth/whoami`.
+- Reading of individual partitions of multi-partitioned tables.
 - Fix the client showing a spurious "Retrying…" indicator (and a misleading
   "Retry scheduled" debug log) when a request failed with a *non-retryable*
   error, such as a 4xx response or `CannotRefreshAuthentication` during a normal
@@ -14,7 +26,6 @@ Write the date in place of the "Unreleased" in the case a new version is release
   exception before deciding whether to retry, so the indicator was being driven
   off exception capture rather than an actual retry. The indicator now appears
   only when a retry genuinely occurs.
-
 - Fix the client ignoring the `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY`
   environment variables. Because Tiled supplies a custom `httpx` transport (to
   enable client-side response caching), httpx's built-in proxy resolution was
@@ -24,13 +35,16 @@ Write the date in place of the "Unreleased" in the case a new version is release
   `from_uri`. As part of this fix, the client's `verify` setting is now applied
   to the underlying transport (previously it was silently ignored when the
   custom transport was in use).
-
 - Fix `check_scopes` incorrectly requiring every request under a
   `ProxiedOIDCAuthenticator` (e.g. `EntraAuthenticator`) to carry the full set
   of scopes known to the authenticator (the union of all scopes in
   `scopes_map`). This broke scope-restricted API keys, which legitimately hold
   only a subset of scopes. Authorization is now enforced solely against the
   scopes each endpoint requires.
+- Render `NaN` as transparent pixels.
+- Fix client-side reading of reversed array slices that reach the start of an
+  axis (e.g. `arr[::-1]`) when the selection is large enough to be fetched in
+  multiple requests.
 
 ## v0.2.16 (2026-08-21)
 
@@ -78,6 +92,9 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Fixed
 
+- Improve webhook handling to enable adding additional blocked networks and
+  allow specification of hostnames that are allowed to receive webhooks despite being
+  on a blocked network.
 - Fix the `raw_export` download progress bar, which showed a wrong total (e.g.
   `1,257,333,024/100 bytes`) and did not advance during the transfer. The bar
   now seeds each task's total from the known asset size, and raw-asset downloads

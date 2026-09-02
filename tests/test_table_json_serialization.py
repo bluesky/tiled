@@ -13,6 +13,7 @@ from tiled.adapters.dataframe import DataFrameAdapter
 from tiled.adapters.mapping import MapAdapter
 from tiled.client import Context, from_context
 from tiled.server.app import build_app_from_config
+from tiled.structures.core import StructureFamily
 
 # DataFrame with every problematic type in one place:
 #   - numpy float32 / int32 (orjson rejects non-native numpy scalars)
@@ -145,3 +146,32 @@ def test_timestamp_object(client, reader):
     assert isinstance(col[0], str)
     assert col[1] is None  # NaT → None
     assert isinstance(col[2], str)
+
+
+@pytest.mark.parametrize("media_type", ["application/json", "application/json-seq"])
+def test_bytes_column(media_type):
+    """A DataFrame column of genuine bytes must be decoded to str.
+
+    orjson cannot serialize bytes. The serializer is exercised directly here
+    rather than through an adapter, because adapters that round-trip data
+    through Arrow decode bytes to str before the serializer ever sees them,
+    leaving the decode branch uncovered. Includes a non-UTF-8 value to cover
+    the latin-1 fallback.
+    """
+    from tiled.serialization.table import default_serialization_registry
+
+    # b"abc": ASCII; "café".encode(): valid multi-byte UTF-8; b"\xff\xfe": not
+    # valid UTF-8, so it exercises the latin-1 fallback (decoding to "ÿþ").
+    df = pandas.DataFrame({"bytes_col": [b"abc", "café".encode("utf-8"), b"\xff\xfe"]})
+    serializer = default_serialization_registry.dispatch(
+        StructureFamily.table, media_type
+    )
+    output = serializer(media_type, df, {})
+    if media_type == "application/json-seq":
+        rows = [
+            json.loads(line) for line in b"".join(output).splitlines() if line.strip()
+        ]
+        col = [row["bytes_col"] for row in rows]
+    else:
+        col = json.loads(output)["bytes_col"]
+    assert col == ["abc", "café", "ÿþ"]

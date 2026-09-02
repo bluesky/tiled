@@ -1,6 +1,7 @@
 .git
 .github
 .venv
+.pixi
 docs
 benchmarks
 node_modules
