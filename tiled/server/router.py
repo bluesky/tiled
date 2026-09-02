@@ -128,11 +128,18 @@ ARRAY_RETRY_AFTER_SECONDS = int(os.getenv("TILED_ARRAY_RETRY_AFTER", "1"))
 def _access_blob_from_payload(access_blob):
     if access_blob == {}:
         return None
-    if "user" in access_blob:
+    if "user" in access_blob and set(access_blob) == {"user"}:
         return AccessBlob(username=access_blob["user"])
-    if "tags" in access_blob:
+    if "tags" in access_blob and set(access_blob) == {"tags"}:
         return AccessBlob(tags=access_blob["tags"])
-    return AccessBlob(tags=[])
+    raise HTTPException(
+        status_code=HTTP_400_BAD_REQUEST,
+        detail=(
+            'access_blob must be either {"user": <username>} or '
+            '{"tags": [<tag>, ...]}. '
+            f"Received {access_blob!r}"
+        ),
+    )
 
 
 def _access_blob_to_payload(access_blob):
@@ -2426,8 +2433,11 @@ def get_router(
             entry_access_blob_copy = deepcopy(
                 _access_blob_to_payload(entry.access_blob)
             )
+            # Per RFC 7386, merging a non-object patch REPLACES the target, so
+            # the no-op default for an omitted access_blob must be {} (merge
+            # with an empty object leaves the target unchanged), never [].
             access_blob = _access_blob_from_payload(
-                apply_merge_patch(entry_access_blob_copy, (body.access_blob or []))
+                apply_merge_patch(entry_access_blob_copy, (body.access_blob or {}))
             )
         else:
             raise HTTPException(

@@ -382,6 +382,14 @@ class GraphSQLAlchemyStore:
                 )
             if access_blob is not UNSET:
                 if access_blob is None:
+                    if effective_node_id is None:
+                        raise IntegrityError(
+                            "Refusing to clear access_blob on a standalone entity "
+                            "(no node_id): it would leave the entity without access "
+                            "control. Provide an AccessBlob or set node_id.",
+                            {},
+                            None,
+                        )
                     await conn.execute(
                         delete(_entity_access_blobs).where(
                             _entity_access_blobs.c.entity_id == id

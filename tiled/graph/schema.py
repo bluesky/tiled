@@ -151,9 +151,15 @@ async def _policy_access_filters(info: Info, scope: str) -> object:
 
 
 def _access_blob_from_input(access_blob: dict) -> AccessBlob:
-    if "user" in access_blob:
+    if "user" in access_blob and set(access_blob) == {"user"}:
         return AccessBlob(username=access_blob["user"])
-    return AccessBlob(tags=access_blob.get("tags", []))
+    if set(access_blob) <= {"tags"}:
+        return AccessBlob(tags=access_blob.get("tags", []))
+    raise GraphQLError(
+        'access_blob must be either {"user": <username>} or '
+        '{"tags": [<tag>, ...]}. '
+        f"Received {access_blob!r}"
+    )
 
 
 async def _init_access_blob(
