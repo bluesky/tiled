@@ -191,8 +191,7 @@ def test_catalog_adapters_by_mimetype_mapping():
             "catalog": {
                 "uri": "sqlite:///:memory:",
                 "adapters_by_mimetype": {
-                    "application/x-edf": "tiled.examples.xdi:read_xdi",
-                    "application/x-gb": "tiled.examples.xdi:read_xdi",
+                    "text/csv": "tiled.adapters.csv:CSVAdapter",
                 },
             }
         }
