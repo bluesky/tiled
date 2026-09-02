@@ -122,6 +122,19 @@ def test_array_dtypes(kind, context):
     actual_via_read = client[kind].read()
     assert numpy.array_equal(actual_via_slice, actual_via_read)
     assert numpy.array_equal(actual_via_slice, expected)
+    # Exercise a range of 1-D slicing patterns end-to-end for every dtype:
+    # contiguous, negative-index, negative-start, strided, full reversal, and
+    # scalar (integer) indexing.
+    for index in (
+        slice(2, 8),
+        slice(-3, None),
+        slice(None, None, 2),
+        slice(None, None, -1),
+        slice(8, 1, -1),
+        0,
+        -1,
+    ):
+        assert numpy.array_equal(client[kind][index], expected[index]), index
 
 
 @pytest.mark.parametrize("kind", list(scalar_cases))
@@ -212,14 +225,82 @@ def test_request_chunking(context, bytesize_limit, num_gets_expected, monkeypatc
     numpy.testing.assert_equal(arr, cube_cases["chunked"])
 
 
-def test_request_slicing(context):
-    # One slice that requires data from all chunks
+@pytest.mark.parametrize(
+    "index",
+    [
+        # (multi-dim) one slice that requires data from all chunks
+        (slice(None), 42, slice(100, 300)),
+        # integer indexing, positive and negative
+        5,
+        -1,
+        # negative start / stop
+        slice(-3, None),
+        slice(2, -2),
+        # strided, positive and negative step (incl. full reversal reaching 0)
+        slice(None, None, 2),
+        slice(None, None, -1),
+        slice(8, 1, -1),
+        # mixed multi-dim: strided + integer + reversed
+        (slice(None, None, 2), 42, slice(300, 100, -1)),
+        (slice(2, 8, 3), slice(None, None, -2), 100),
+        # Ellipsis combined with integer indexing
+        (Ellipsis, 0),
+        (0, Ellipsis),
+        # empty-result slices (server is not contacted; short-circuited)
+        slice(5, 5),
+        slice(10, 3),
+    ],
+)
+def test_request_slicing(context, index):
+    # Each of these fits within a single response, so the client should make at
+    # most one GET (and none at all when the result is empty).
     client = from_context(context)["cube/chunked"]
-    expected = cube_cases["chunked"][:, 42, 100:300]
+    expected = numpy.asarray(cube_cases["chunked"])[index]
     with record_history() as h:
-        actual = client[:, 42, 100:300]
-    assert len(h.requests) == 1
+        actual = numpy.asarray(client[index])
     numpy.testing.assert_equal(actual, expected)
+    num_gets = sum(1 for entry in h.requests if entry.method == "GET")
+    assert num_gets == (0 if expected.size == 0 else 1)
+
+
+@pytest.mark.parametrize(
+    "index",
+    [
+        # positive-step slices split cleanly across chunk boundaries
+        (slice(None), slice(None), slice(100, 300)),
+        slice(None, None, 2),
+        slice(1, 9, 3),
+        slice(-3, None),
+        # reversed but stopping above 0 -> positive canonical stop
+        slice(8, 1, -1),
+        (slice(None, None, -2), slice(None, None, 2)),
+        # reversed reaching 0 -> negative canonical stop
+        slice(None, None, -1),
+        slice(5, None, -1),
+        (slice(None), slice(None, None, -1), slice(None)),
+    ],
+)
+def test_request_slicing_chunked_response(context, index, monkeypatch):
+    # Force the multi-request split path by shrinking the per-response limit so
+    # that each frame (300 x 400) is fetched separately, then verify the
+    # reassembled result matches NumPy for a variety of slices.
+    monkeypatch.setattr(ArrayClient, "RESPONSE_BYTESIZE_LIMIT", 300 * 400 * 8)
+    client = from_context(context)["cube/chunked"]
+    expected = numpy.asarray(cube_cases["chunked"])[index]
+    with record_history() as h:
+        actual = numpy.asarray(client[index])
+    numpy.testing.assert_equal(actual, expected)
+    # This slice spans multiple chunks, so more than one GET is expected.
+    num_gets = sum(1 for entry in h.requests if entry.method == "GET")
+    assert num_gets > 1
+
+
+@pytest.mark.parametrize("index", [10, -11, (0, 0, 400)])
+def test_out_of_range_index_raises(context, index):
+    # Out-of-range integer indexing should raise IndexError, matching NumPy.
+    client = from_context(context)["cube/chunked"]
+    with pytest.raises(IndexError):
+        client[index]
 
 
 def test_request_empty_slice(context):
