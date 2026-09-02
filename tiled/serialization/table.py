@@ -134,6 +134,13 @@ if modules_available("orjson"):
                 return float(v)
             if isinstance(v, pandas.Timestamp):
                 return v.isoformat()
+            if isinstance(v, bytes):
+                # orjson cannot serialize bytes. Decode to text, falling back to
+                # latin-1 (which never raises) for non-UTF-8 byte strings.
+                try:
+                    return v.decode("utf-8")
+                except UnicodeDecodeError:
+                    return v.decode("latin-1")
             return v
 
         return [to_native(v) for v in arr]

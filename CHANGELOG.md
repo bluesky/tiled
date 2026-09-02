@@ -7,6 +7,9 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Fixed
 
+- Fix `TypeError: Type is not JSON serializable: bytes` when serializing a
+  table with a bytes-dtype (numpy `S`) column to `application/json` or
+  `application/json-seq`. Such values are now decoded to strings.
 - Fix reads of array data whose on-disk shape has diverged from the shape
   recorded in the catalog structure, which can happen while an array is being
   extended (e.g. streaming appends).
