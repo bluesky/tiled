@@ -3,7 +3,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
-## Unreleased
+## v0.2.18 (2026-09-02)
 
 ### Fixed
 
@@ -26,6 +26,22 @@ Write the date in place of the "Unreleased" in the case a new version is release
   exception before deciding whether to retry, so the indicator was being driven
   off exception capture rather than an actual retry. The indicator now appears
   only when a retry genuinely occurs.
+- Render `NaN` as transparent pixels.
+- Fix client-side reading of reversed array slices that reach the start of an
+  axis (e.g. `arr[::-1]`) when the selection is large enough to be fetched in
+  multiple requests.
+- Fixed regression in configuration parser, which had mistyped the catalog
+  configuration `adapter_by_mimetype` resulting in a spurious error.
+- Resolve issue where creating a streaming subscription would cause the server
+  to hang indefinitely on close. Added an additional asyncio task that watches
+  for disconnects and breaks out of the `buffer_live_events` loop when the
+  connection is closed. Also added a test to verify that `server.close()` does
+  not hang with an open streaming subscription.
+
+## v0.2.17 (2026-08-25)
+
+### Fixed
+
 - Fix the client ignoring the `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY`
   environment variables. Because Tiled supplies a custom `httpx` transport (to
   enable client-side response caching), httpx's built-in proxy resolution was
@@ -41,17 +57,6 @@ Write the date in place of the "Unreleased" in the case a new version is release
   `scopes_map`). This broke scope-restricted API keys, which legitimately hold
   only a subset of scopes. Authorization is now enforced solely against the
   scopes each endpoint requires.
-- Render `NaN` as transparent pixels.
-- Fix client-side reading of reversed array slices that reach the start of an
-  axis (e.g. `arr[::-1]`) when the selection is large enough to be fetched in
-  multiple requests.
-- Fixed regression in configuration parser, which had mistyped the catalog
-  configuration `adapter_by_mimetype` resulting in a spurious error.
-- Resolve issue where creating a streaming subscription would cause the server
-  to hang indefinitely on close. Added an additional asyncio task that watches
-  for disconnects and breaks out of the `buffer_live_events` loop when the
-  connection is closed. Also added a test to verify that `server.close()` does
-  not hang with an open streaming subscription.
 
 ## v0.2.16 (2026-08-21)
 
