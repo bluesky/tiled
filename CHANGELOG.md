@@ -10,6 +10,14 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - Fix `TypeError: Type is not JSON serializable: bytes` when serializing a
   table with a bytes-dtype (numpy `S`) column to `application/json` or
   `application/json-seq`. Such values are now decoded to strings.
+- Fix reads of array data whose on-disk shape has diverged from the shape
+  recorded in the catalog structure, which can happen while an array is being
+  extended (e.g. streaming appends).
+- Fix a regression where opening a URL with an `?api_key=...` query parameter
+  in the web UI redirected to the login page instead of authenticating. This
+  now also works in single-user (`--api-key`) mode, where the server exposes no
+  `/auth` routes: the web UI detects the API-key cookie session by probing a
+  protected endpoint rather than `/auth/whoami`.
 - Reading of individual partitions of multi-partitioned tables.
 - Fix the client showing a spurious "Retrying…" indicator (and a misleading
   "Retry scheduled" debug log) when a request failed with a *non-retryable*
@@ -34,6 +42,9 @@ Write the date in place of the "Unreleased" in the case a new version is release
   only a subset of scopes. Authorization is now enforced solely against the
   scopes each endpoint requires.
 - Render `NaN` as transparent pixels.
+- Fix client-side reading of reversed array slices that reach the start of an
+  axis (e.g. `arr[::-1]`) when the selection is large enough to be fetched in
+  multiple requests.
 
 ## v0.2.16 (2026-08-21)
 

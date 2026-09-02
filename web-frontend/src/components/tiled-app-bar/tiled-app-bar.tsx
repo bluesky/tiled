@@ -29,6 +29,16 @@ const TiledAppBar = () => {
         // Best-effort server-side revocation.
       }
     }
+    // Clear the HttpOnly API-key cookie (set by the server when a URL with
+    // ?api_key=... is opened). session/revoke only revokes the JWT session and
+    // does not touch this cookie. /auth/logout is deprecated but is the only
+    // endpoint that clears the cookie. TODO: migrate to a non-deprecated
+    // successor once one exists.
+    try {
+      await axiosInstance.post("/api/v1/auth/logout");
+    } catch {
+      // Best-effort cookie clearing.
+    }
     onLogout();
     if (authRequired) {
       navigate("/login", { replace: true });
