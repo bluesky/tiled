@@ -42,6 +42,8 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - Fix client-side reading of reversed array slices that reach the start of an
   axis (e.g. `arr[::-1]`) when the selection is large enough to be fetched in
   multiple requests.
+- Fixed regression in configuration parser, which had mistyped the catalog
+  configuration `adapter_by_mimetype` resulting in a spurious error.
 
 ## v0.2.16 (2026-08-21)
 
