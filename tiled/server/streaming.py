@@ -217,6 +217,12 @@ class PubSub:
 # so the client reconnects and replays any sequences missed during the outage.
 _LIVE_SUBSCRIPTION_LOST = object()
 
+# Sentinel pushed onto the live-event buffer when the peer goes away (client
+# disconnect or server shutdown, both delivered as a websocket.disconnect
+# receive event). It wakes the handler's send loop, which is otherwise blocked
+# waiting for data, so the handler can return and release the connection.
+_PEER_DISCONNECTED = object()
+
 
 def _make_ws_handler_common(
     *,
@@ -335,17 +341,51 @@ def _make_ws_handler_common(
 
         live_task = asyncio.create_task(buffer_live_events())
 
+        # Track the disconnect code so we can surface it to the send loop.
+        disconnect_code = None
+
+        async def watch_for_disconnect():
+            """Wake the send loop on a disconnect event.
+
+            The send loop below blocks on an idle buffer and only sends; it never
+            reads. A client disconnect or a server shutdown arrives as a
+            websocket.disconnect receive event, so without draining ``receive()``
+            here the handler would never notice the socket is gone and would
+            keep the ASGI task (and thus graceful shutdown) alive forever.
+            """
+            nonlocal disconnect_code
+            try:
+                while True:
+                    message = await websocket.receive()
+                    if message["type"] == "websocket.disconnect":
+                        disconnect_code = message.get("code")
+                        break
+            except RuntimeError:
+                # Raised if the socket was already closed by the send path.
+                pass
+            finally:
+                stream_buffer.put_nowait(_PEER_DISCONNECTED)
+
+        disconnect_task = asyncio.create_task(watch_for_disconnect())
+
         last_sent = 0
-        if sequence is not None:
-            # If a sequence number is passed, replay old data
-            current_seq = last_sent = int(await current_sequence_getter())
-            logger.debug("Replaying old data...")
-            for s in range(sequence, current_seq + 1):
-                await stream_data(s)
         # Finally stream all buffered data into the websocket
         try:
+            if sequence is not None:
+                # If a sequence number is passed, replay old data
+                current_seq = last_sent = int(await current_sequence_getter())
+                logger.debug("Replaying old data...")
+                for s in range(sequence, current_seq + 1):
+                    await stream_data(s)
+
             while not end_stream.is_set():
                 live_seq = await stream_buffer.get()
+
+                if live_seq is _PEER_DISCONNECTED:
+                    # Client disconnected or the server is shutting down. Surface
+                    # it through the shared disconnect path so the connection is
+                    # released and graceful shutdown can proceed.
+                    raise WebSocketDisconnect(code=disconnect_code or 1000)
 
                 if live_seq is _LIVE_SUBSCRIPTION_LOST:
                     # Must be an *abnormal* close: a graceful 1000 reads as
@@ -367,7 +407,15 @@ def _make_ws_handler_common(
             logger.info(f"Client disconnected from node {node_id}")
         finally:
             live_task.cancel()
-            await live_task
+            disconnect_task.cancel()
+            try:
+                await asyncio.gather(live_task, disconnect_task, return_exceptions=True)
+            except asyncio.CancelledError:
+                # In case a second cancel arrives while cleaning up, ignore it.
+                # The tasks are already cancelled and we don't want to raise an exception here.
+                # This was observed in tests using Starlette's TestClient, which cancels
+                # all tasks on exit.
+                pass
 
     return handler
 

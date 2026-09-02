@@ -74,6 +74,9 @@ sphinx_rtd_theme = "*"
 sphinxcontrib-mermaid = "*"
 types-cachetools = "*"
 
+[feature.dev.tasks]
+lint = "pre-commit run --show-diff-on-failure --color=always --all-files"
+
 [feature.formats.dependencies]
 h5netcdf = "*"
 h5py = "*"
