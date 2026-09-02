@@ -61,71 +61,6 @@ ENTITY_NODE_ACCESS_BLOB_ERROR = (
 )
 
 
-@event.listens_for(metadata, "after_create")
-def _create_entities_node_access_blob_trigger(target, connection, **kw):
-    """
-    Enforce, at the database level, that an entity pointing to a catalog
-    node (node_id set) does not also carry its own access_blob. This
-    mirrors the trigger created by the
-    de302a096358_convert_access_blob_column_to_assoc_ alembic migration,
-    which applies the same DDL for databases provisioned via `alembic
-    upgrade` rather than `create_all` (e.g.
-    tiled.catalog.core.initialize_database, which is what the test suite
-    exercises).
-    """
-    if connection.engine.dialect.name == "sqlite":
-        connection.execute(
-            text(
-                f"""
-CREATE TRIGGER IF NOT EXISTS entities_node_access_blob_insert
-BEFORE INSERT ON entities
-WHEN (NEW.node_id IS NOT NULL AND EXISTS (
-    SELECT 1 FROM entity_access_blobs WHERE entity_id = NEW.id
-))
-BEGIN
-    SELECT RAISE(ABORT, '{ENTITY_NODE_ACCESS_BLOB_ERROR}');
-END"""
-            )
-        )
-        connection.execute(
-            text(
-                f"""
-CREATE TRIGGER IF NOT EXISTS entities_node_access_blob_update
-BEFORE UPDATE ON entities
-WHEN (NEW.node_id IS NOT NULL AND EXISTS (
-    SELECT 1 FROM entity_access_blobs WHERE entity_id = NEW.id
-))
-BEGIN
-    SELECT RAISE(ABORT, '{ENTITY_NODE_ACCESS_BLOB_ERROR}');
-END"""
-            )
-        )
-    elif connection.engine.dialect.name == "postgresql":
-        connection.execute(
-            text(
-                f"""
-CREATE OR REPLACE FUNCTION entities_reject_node_access_blob()
-RETURNS TRIGGER AS $$
-BEGIN
-    RAISE EXCEPTION '{ENTITY_NODE_ACCESS_BLOB_ERROR}';
-END;
-$$ LANGUAGE plpgsql;"""
-            )
-        )
-        connection.execute(
-            text(
-                """
-CREATE TRIGGER entities_node_access_blob_check
-BEFORE UPDATE OF node_id ON entities
-FOR EACH ROW
-WHEN (NEW.node_id IS NOT NULL AND EXISTS (
-    SELECT 1 FROM entity_access_blobs WHERE entity_id = NEW.id
-))
-EXECUTE FUNCTION entities_reject_node_access_blob();"""
-            )
-        )
-
-
 links = Table(
     "links",
     metadata,
@@ -185,6 +120,68 @@ entity_access_blobs = Table(
         unique=True,
     ),
 )
+
+
+@event.listens_for(entity_access_blobs, "after_create")
+def _create_entities_node_access_blob_trigger(target, connection, **kw):
+    """
+    Enforce, at the database level, that an entity pointing to a catalog
+    node (node_id set) does not also carry its own access_blob.
+    """
+    if connection.engine.dialect.name == "sqlite":
+        # Only an UPDATE that sets node_id can turn an existing blob-bearing
+        # entity into an illegal node-backed-with-blob row. The INSERT case
+        # cannot occur in a single statement: an entities INSERT sets only
+        # node_id, while the blob lives in a separate entity_access_blobs row
+        # written by a separate INSERT -- which is itself guarded by
+        # entity_access_blobs_insert_reject_node_backed_entity. This mirrors
+        # the PostgreSQL branch, which likewise only guards UPDATE OF node_id.
+        connection.execute(
+            text(
+                f"""
+CREATE TRIGGER IF NOT EXISTS entities_node_access_blob_update
+BEFORE UPDATE OF node_id ON entities
+WHEN (NEW.node_id IS NOT NULL AND EXISTS (
+    SELECT 1 FROM entity_access_blobs WHERE entity_id = NEW.id
+))
+BEGIN
+    SELECT RAISE(ABORT, '{ENTITY_NODE_ACCESS_BLOB_ERROR}');
+END"""
+            )
+        )
+    elif connection.engine.dialect.name == "postgresql":
+        # PostgreSQL does not allow subqueries in a trigger WHEN clause
+        # ("cannot use subquery in trigger WHEN condition"), so the EXISTS
+        # check against entity_access_blobs lives in the function body; the
+        # trigger WHEN clause keeps only the cheap scalar column test.
+        connection.execute(
+            text(
+                f"""
+CREATE OR REPLACE FUNCTION entities_reject_node_access_blob()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM entity_access_blobs WHERE entity_id = NEW.id
+    ) THEN
+        RAISE EXCEPTION '{ENTITY_NODE_ACCESS_BLOB_ERROR}';
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;"""
+            )
+        )
+        # OR REPLACE keeps this belt-and-suspenders idempotent even though the
+        # table-level listener already fires only once (PostgreSQL 14+).
+        connection.execute(
+            text(
+                """
+CREATE OR REPLACE TRIGGER entities_node_access_blob_check
+BEFORE UPDATE OF node_id ON entities
+FOR EACH ROW
+WHEN (NEW.node_id IS NOT NULL)
+EXECUTE FUNCTION entities_reject_node_access_blob();"""
+            )
+        )
 
 
 @event.listens_for(link_access_blobs, "after_create")
