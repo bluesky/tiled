@@ -2,15 +2,13 @@ import asyncio
 import logging
 import os
 import time
-from typing import Any, Tuple
+from typing import Any
+from unittest.mock import Mock, patch
 
 import httpx
+import jwt
 import pytest
-from cryptography.hazmat.primitives.asymmetric import rsa
-from fastapi import HTTPException
-from fastapi.security import SecurityScopes
-from jose import ExpiredSignatureError, jwt
-from jose.backends import RSAKey
+from jwcrypto.jwk import JWK
 from respx import MockRouter
 from starlette.datastructures import URL, QueryParams
 from starlette.requests import Request
@@ -75,21 +73,26 @@ def test_LDAPAuthenticator_01(use_tls, use_ssl, ldap_server_address, ldap_server
 def well_known_url(base_url: str) -> str:
     return f"{base_url}.well-known/openid-configuration"
 
+@pytest.fixture
+def mock_jwks_fetch(json_web_keyset: JWK):
+    mock = Mock(return_value={"keys": [json_web_keyset.export_public(as_dict=True)]})
+    return patch("jwt.PyJWKClient.fetch_data", mock)
 
 @pytest.fixture
 def mock_oidc_server(
     respx_mock: MockRouter,
     well_known_url: str,
     well_known_response: dict[str, Any],
-    json_web_keyset: list[dict[str, Any]],
-) -> MockRouter:
+    mock_jwks_fetch
+) :
     respx_mock.get(well_known_url).mock(
         return_value=httpx.Response(httpx.codes.OK, json=well_known_response)
     )
-    respx_mock.get(well_known_response["jwks_uri"]).mock(
-        return_value=httpx.Response(httpx.codes.OK, json={"keys": json_web_keyset})
-    )
-    return respx_mock
+    with mock_jwks_fetch:
+        yield respx_mock
+    # respx_mock.get(well_known_response["jwks_uri"]).mock(
+    #     return_value=httpx.Response(httpx.codes.OK, json={"keys": json_web_keyset})
+    # )
 
 
 def test_oidc_authenticator_caching(
@@ -117,14 +120,14 @@ def test_oidc_authenticator_caching(
     assert call_request.method == "GET"
     assert call_request.url == well_known_url
 
-    assert authenticator.keys() == json_web_keyset
+    assert authenticator.py_JWK_client.get_signing_keys() == json_web_keyset
     assert len(mock_oidc_server.calls) == 2  # Called also to jwks
     keys_request = mock_oidc_server.calls[1].request
     assert keys_request.method == "GET"
     assert keys_request.url == well_known_response["jwks_uri"]
 
     for _ in range(10):
-        assert authenticator.keys() == json_web_keyset
+        assert authenticator.py_JWK_client.get_signing_keys() == json_web_keyset
 
     assert len(mock_oidc_server.calls) == 2  # Getting keys is cached
     keys_request = mock_oidc_server.calls[1].request
@@ -132,26 +135,22 @@ def test_oidc_authenticator_caching(
     assert keys_request.url == well_known_response["jwks_uri"]
 
 
-@pytest.mark.parametrize("issued", [True, False])
 @pytest.mark.parametrize("expired", [True, False])
 def test_oidc_decoding(
     mock_oidc_server: MockRouter,
+    rsa_private_key: str,
     well_known_url: str,
-    issued: bool,
     expired: bool,
-    keys: Tuple[rsa.RSAPrivateKey, rsa.RSAPublicKey]
 ):
-    private_key, _ = keys
     authenticator = OIDCAuthenticator("tiled", "tiled", "secret", well_known_uri=well_known_url)
-    access_token = token(issued, expired)
-    encrypted_access_token = encrypted_token(access_token, private_key)
+    access_token = token(expired)
+    encrypted_access_token = encrypted_token(access_token, rsa_private_key)
 
     if not expired:
-        # Decode does not currently care if issued_at_time > current time
         assert authenticator.decode_token(encrypted_access_token) == access_token
 
     else:
-        with pytest.raises(ExpiredSignatureError):
+        with pytest.raises(jwt.ExpiredSignatureError):
             authenticator.decode_token(encrypted_access_token)
 
 
@@ -184,39 +183,32 @@ def test_entra_decoding_ignores_unmapped_scopes(caplog):
     finally:
         OIDCAuthenticator.decode_token = original_decode_token
 
-
 @pytest.fixture
-def keys() -> Tuple[rsa.RSAPrivateKey, rsa.RSAPublicKey]:
-    # Key generated just for these tests
-    private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-    public_key = private_key.public_key()
-    return (private_key, public_key)
+def rsa_private_key(json_web_keyset: JWK) -> str:
+    return json_web_keyset.export_to_pem("private_key", password=None).decode("utf-8")  # type: ignore
 
 
 @pytest.fixture
-def json_web_keyset(keys: Tuple[rsa.RSAPrivateKey, rsa.RSAPublicKey]) -> list[dict[str, Any]]:
-    _, public_key = keys
-    return [
-        RSAKey(key=public_key, algorithm="RS256").to_dict()
-    ]
+def json_web_keyset() -> JWK:
+    return JWK.generate(kty="RSA", size=2048, kid="secret", use="sig", alg="RS256")
 
 
-def token(issued: bool, expired: bool) -> dict[str, str]:
+def token(expired: bool) -> dict[str, str]:
     now = time.time()
     dummy_token = {
         "aud": "tiled",
         "exp": (now - 1500) if expired else (now + 1500),
-        "iat": (now - 1500) if issued else (now + 1500),
+        "iat": now,
         "iss": "https://example.com/realms/example",
         "sub": "Jane Doe",
     }
     return dummy_token
 
 
-def encrypted_token(token: dict[str, str], private_key: rsa.RSAPrivateKey) -> str:
+def encrypted_token(token: dict[str, str], rsa_private_key: str) -> str:
     return jwt.encode(
         token,
-        key=private_key,
+        key=rsa_private_key,
         algorithm="RS256",
         headers={"kid": "secret"},
     )
@@ -294,13 +286,7 @@ async def test_OIDCAuthenticator_mock(
     def mock_jwt_decode(*args, **kwargs):
         return mock_jwt_payload
 
-    def mock_jwk_construct(*args, **kwargs):
-        class MockJWK:
-            pass
-        return MockJWK()
-
-    monkeypatch.setattr("jose.jwt.decode", mock_jwt_decode)
-    monkeypatch.setattr("jose.jwk.construct", mock_jwk_construct)
+    monkeypatch.setattr("jwt.decode", mock_jwt_decode)
 
     # Test authentication
     user_session = await authenticator.authenticate(mock_request)

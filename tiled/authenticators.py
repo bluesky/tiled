@@ -10,10 +10,10 @@ from datetime import timedelta
 from typing import Any, Dict, List, Mapping, Optional, cast
 
 import httpx
+import jwt
 from cachetools import TTLCache, cached
 from fastapi import APIRouter, Request
 from fastapi.security import OAuth2, OAuth2AuthorizationCodeBearer
-from jose import JWTError, jwt
 from pydantic import Secret
 from starlette.responses import RedirectResponse
 
@@ -205,20 +205,21 @@ properties:
     def end_session_endpoint(self) -> str:
         return cast(str, self._config_from_oidc_url.get("end_session_endpoint"))
 
-    @cached(TTLCache(maxsize=1, ttl=timedelta(hours=1).total_seconds()))
-    def keys(self) -> List[str]:
-        return httpx.get(self.jwks_uri).raise_for_status().json().get("keys", [])
-
+    # @cached(TTLCache(maxsize=1, ttl=timedelta(hours=1).total_seconds()))
+    @functools.cached_property
+    def py_JWK_client(self) -> jwt.PyJWKClient:
+        return jwt.PyJWKClient(self.jwks_uri)
+    
     def decode_token(
-        self, id_token: str, access_token: Optional[str] = None
+        self, token: str
     ) -> dict[str, Any]:
+        signing_key = self.py_JWK_client.get_signing_key_from_jwt(token)
         return jwt.decode(
-            id_token,
-            key=self.keys(),
+            jwt=token,
+            key=signing_key,
             algorithms=self.id_token_signing_alg_values_supported,
             audience=self._audience,
             issuer=self.issuer,
-            access_token=access_token,
         )
 
     async def authenticate(self, request: Request) -> Optional[UserSessionState]:
@@ -247,11 +248,12 @@ properties:
         id_token = response_body["id_token"]
         access_token = response_body["access_token"]
         try:
-            verified_body = self.decode_token(id_token, access_token)
-        except JWTError:
+            verified_id_token = self.decode_token(id_token)
+            verified_access_token = self.decode_token(access_token)
+        except jwt.PyJWTError as e:
             logger.exception(
                 "Authentication error. Unverified token: %r",
-                jwt.get_unverified_claims(id_token),
+                e,
             )
             return None
         return UserSessionState(verified_body[self.user_id_claim], {})
@@ -495,10 +497,10 @@ class EntraAuthenticator(ProxiedOIDCAuthenticator):
         refresh_token = response_body.get("refresh_token")
         try:
             verified_body = self.decode_token(id_token, access_token)
-        except JWTError:
+        except jwt.PyJWTError as e:
             logger.exception(
                 "Authentication error. Unverified token: %r",
-                jwt.get_unverified_claims(id_token),
+                e,
             )
             return None
         # Log the id_token claims available for username resolution so

@@ -4,14 +4,14 @@ import sys
 import urllib.parse
 
 import dask.array
-import jose.jwt
+import jwt
 import msgpack
 import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pytest
 from starlette.testclient import WebSocketDenialResponse
-
+from jwcrypto.jwk import JWK
 from tiled.client import from_context
 from tiled.config import parse_configs
 
@@ -914,7 +914,7 @@ def test_query_param_access_token(tiled_websocket_context_multiuser, envelope_fo
 
 @pytest.mark.parametrize("envelope_format", (["msgpack", "json"]))
 def test_expired_access_token_query_param(
-    tiled_websocket_context_multiuser, envelope_format
+    tiled_websocket_context_multiuser, envelope_format, 
 ):
     """Test that an expired JWT in the query parameter is rejected with 401."""
     context = tiled_websocket_context_multiuser
@@ -923,14 +923,15 @@ def test_expired_access_token_query_param(
     client.write_array(np.arange(10), key="test_expired_jwt")
 
     # Create an expired token using the same secret key.
-    expired_token = jose.jwt.encode(
+    private_key = JWK.generate(kty="RSA", size=2048, kid="secret", use="sig", alg="RS256").export_to_pem("private_key", password=None).decode("utf-8")
+    expired_token = jwt.encode(
         {
             "sub": "fake",
             "type": "access",
             "exp": datetime.datetime.now(datetime.timezone.utc)
             - datetime.timedelta(seconds=60),
         },
-        "SECRET",
+        key=rsa_private_key,
         algorithm="HS256",
     )
     token_param = urllib.parse.quote(expired_token, safe="")
