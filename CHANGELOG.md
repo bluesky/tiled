@@ -5,6 +5,15 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## v0.2.18 (2026-09-02)
 
+### Changed
+
+- Enforce uniqueness of graph entities per catalog node: at most one entity may
+  exist for a given `(node_id, kind, name)`. A duplicate `createEntity`/
+  `updateEntity` now fails with an `ENTITY_EXISTS` error. Free-standing
+  (external) entities, which have no node, are left unconstrained.
+- Rename the experimental graph entity's `entity_type` field to `kind`, in both
+  the database column and the GraphQL API (`entityType` becomes `kind`).
+
 ### Fixed
 
 - Fix `TypeError: Type is not JSON serializable: bytes` when serializing a
