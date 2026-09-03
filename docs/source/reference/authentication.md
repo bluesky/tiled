@@ -25,7 +25,7 @@ is included with the tiled source code, and start a server like so.
 
 ```{eval-rst}
 .. literalinclude:: ../../../example_configs/toy_authentication.yml
-   :caption: example_configs/toy_authentication.py
+   :caption: example_configs/toy_authentication.yml
 ```
 
 Note that you will need to run these helper tools to prep the backing databases that Tiled needs:
