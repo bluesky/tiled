@@ -545,8 +545,19 @@ async def check_scopes(
     scopes: set[str] = Depends(get_current_scopes),
     settings: Settings = Depends(get_settings),
 ) -> None:
-    # Authorization is enforced per-endpoint: the request must carry the scopes
-    # that this specific endpoint requires (`security_scopes`).
+    if isinstance(settings.authenticator, ProxiedOIDCAuthenticator):
+        if settings.authenticator.scopes and not set(
+            settings.authenticator.scopes
+        ).issubset(scopes):
+            raise HTTPException(
+                status_code=HTTP_401_UNAUTHORIZED,
+                detail=(
+                    "Authenticator has scopes that the request does not have. "
+                    f"Authenticator has scopes {settings.authenticator.scopes}. "
+                    f"Request had scopes {list(scopes)}"
+                ),
+                headers=headers_for_401(request, security_scopes),
+            )
     if not set(security_scopes.scopes).issubset(scopes):
         raise HTTPException(
             status_code=HTTP_401_UNAUTHORIZED,
