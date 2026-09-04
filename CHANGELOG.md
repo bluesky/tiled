@@ -3,6 +3,12 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
+## v0.2.19 (Unreleased)
+
+### Added
+- Websocket endpoint that uses a single connection to stream multiple Tiled
+  nodes along with protocol
+
 ## v0.2.18 (2026-09-02)
 
 ### Fixed

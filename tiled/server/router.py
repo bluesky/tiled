@@ -48,11 +48,12 @@ from tiled.query_registration import QueryRegistry
 from tiled.schemas import About
 from tiled.server.protocols import ExternalAuthenticator, InternalAuthenticator
 from tiled.server.schemas import Principal
+from tiled.server.websocket_comm import WebSocketConnectionManager
 
 from .. import __version__
 from ..links import links_for_node
 from ..ndslice import NDBlock, NDSlice
-from ..stream_messages import ArrayPatch
+from ..stream_messages import ArrayPatch, ConnectionAckMsg
 from ..structures.core import Spec, StructureFamily
 from ..type_aliases import AccessTags, Scopes
 from ..utils import BrokenLink, ensure_awaitable, patch_mimetypes, path_from_uri
@@ -774,6 +775,54 @@ def get_router(
         )
         await entry.close_stream()
 
+    @router.websocket("/stream/multi")
+    async def multi_websocket_endpoint(
+        websocket: WebSocket,
+        envelope_format: schemas.EnvelopeFormat = schemas.EnvelopeFormat.json,
+        principal: Optional[schemas.Principal] = Depends(
+            get_current_principal_websocket
+        ),
+        authn_access_tags: Optional[AccessTags] = Depends(
+            get_current_access_tags_websocket
+        ),
+        authn_scopes: Scopes = Depends(get_current_scopes_websocket),
+        settings: Settings = Depends(get_settings),
+        db_factory: Callable = Depends(get_database_session_factory),
+        api_key: Optional[str] = Depends(get_api_key_websocket),
+        decoded_access_token: Optional[dict] = Depends(
+            get_decoded_access_token_websocket
+        ),
+    ):
+        has_credentials = api_key is not None or decoded_access_token is not None
+        needs_first_message_auth = (
+            not has_credentials and not settings.allow_anonymous_access
+        )
+        if needs_first_message_auth:
+            (
+                success,
+                principal,
+                authn_access_tags,
+                authn_scopes,
+            ) = await authenticate_websocket_first_message(
+                websocket, settings, db_factory
+            )
+            if not success:
+                await websocket.close(code=4003, reason="Authentication failed")
+                return
+            else:
+                await websocket.send_json(ConnectionAckMsg())
+
+        websocket_manager = WebSocketConnectionManager(
+            websocket,
+            envelope_format,
+            principal,
+            authn_access_tags,
+            authn_scopes,
+            deserialization_registry
+        )
+
+        await websocket_manager.run()
+
     @router.websocket("/stream/single/{path:path}")
     async def websocket_endpoint(
         websocket: WebSocket,
@@ -809,24 +858,13 @@ def get_router(
             not has_credentials and not settings.allow_anonymous_access
         )
         if needs_first_message_auth:
-            await websocket.accept()
-            try:
-                message = await websocket.receive_json()
-            except Exception:
-                await websocket.close(code=4001, reason="Expected JSON auth message")
-                return
-            if not isinstance(message, dict) or message.get("type") != "auth":
-                await websocket.close(
-                    code=4001, reason='Expected {"type": "auth", ...}'
-                )
-                return
             (
                 success,
                 principal,
                 authn_access_tags,
                 authn_scopes,
             ) = await authenticate_websocket_first_message(
-                websocket, message, settings, db_factory
+                websocket, settings, db_factory
             )
             if not success:
                 await websocket.close(code=4003, reason="Authentication failed")

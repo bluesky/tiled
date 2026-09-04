@@ -1,3 +1,4 @@
+import asyncio
 import collections.abc
 import dataclasses
 import inspect
@@ -18,6 +19,8 @@ import msgpack
 from fastapi import HTTPException, Response, WebSocket
 from starlette.responses import JSONResponse, StreamingResponse
 from starlette.status import HTTP_200_OK, HTTP_304_NOT_MODIFIED, HTTP_400_BAD_REQUEST
+
+from tiled.stream_messages import NextMsg
 
 # Some are not directly used, but they register things on import.
 from .. import queries
@@ -763,21 +766,25 @@ def get_websocket_envelope_formatter(
     if envelope_format == "msgpack":
 
         async def stream_msgpack(
-            websocket: WebSocket,
+            sink: WebSocket | asyncio.Queue,
             metadata: dict,
             payload_bytes: Optional[bytes],
         ):
             if payload_bytes is not None:
                 metadata["payload"] = payload_bytes
-            data = msgpack.packb(metadata)
-            await websocket.send_bytes(data)
-
+            if isinstance(sink, WebSocket):
+                data = msgpack.packb(metadata)
+                await sink.send_bytes(data)
+            elif isinstance(sink, asyncio.Queue):
+                data = NextMsg(path=metadata["path"], metadata=metadata)
+                await sink.put(data)
+    
         return stream_msgpack
 
     elif envelope_format == "json":
 
         async def stream_json(
-            websocket: WebSocket,
+            sink: WebSocket | asyncio.Queue,
             metadata: dict,
             payload_bytes: Optional[bytes],
         ):
@@ -821,7 +828,11 @@ def get_websocket_envelope_formatter(
             if "arrow_schema" in metadata:
                 metadata["arrow_schema"] = str(metadata["arrow_schema"])
             data = safe_json_dump(metadata)
-            await websocket.send_text(data.decode())
+            if isinstance(sink, WebSocket):
+                await sink.send_text(data.decode())
+            elif isinstance(sink, asyncio.Queue):
+                data = NextMsg(path=metadata["path"], metadata=metadata)
+                await sink.put(data)
 
         return stream_json
 

@@ -1,7 +1,10 @@
 from datetime import datetime
-from typing import Generic, Literal, Optional, TypeVar, Union
+from typing import Annotated, Generic, Literal, Optional, TypeVar, Union, Any
+from uuid import UUID, uuid4
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, TypeAdapter
+
+from tiled.server.schemas import EnvelopeFormat
 
 from .structures.array import ArrayStructure, BuiltinDtype, StructDtype
 from .structures.core import Spec, StructureFamily
@@ -110,3 +113,60 @@ class TableData(Update):
     append: bool
     payload: bytes
     arrow_schema: str
+
+
+## Definition of a bi-directional websocket protocol. Based off of https://github.com/enisdenjo/graphql-ws/blob/master/PROTOCOL.md
+
+# Client -> Server. Authenticate client via websocket connection
+class ConnectionAuthMsg(BaseModel):
+    type: Literal["connection_auth"] = "connection_auth"
+    envelope_format: EnvelopeFormat = EnvelopeFormat.json
+    api_key: Optional[str] = None
+    access_token: Optional[str] = None
+
+# Server -> Client. Auth successfully, server acknowledges client
+class ConnectionAckMsg(BaseModel):
+    type: Literal["connection_ack"] = "connection_ack"
+
+# Client -> Server. Subscribe to tiled node
+class SubscribeMsg(BaseModel):
+    type: Literal["subscribe"] = "subscribe"
+    path: str
+    start: int = 0
+
+
+class SubscribeAckMsg(BaseModel):
+    type: Literal["subscribe_ack"]
+    path: str
+    node_id: UUID
+
+# Server -> Client. Packet of data, use the same UUID that was used to subscribe
+class NextMsg(BaseModel):
+    id: UUID
+    type: Literal["next"] = "next"
+    metadata: Any
+    # sequence: int
+
+# Server -> Client. Error message
+class ErrorMsg(BaseModel):
+    # path: Optional[str] = None
+    id: Optional[UUID] = None
+    type: Literal["error"] = "error"
+    error: str
+
+# Bidirectional. Either client or server stops a node from streaming
+class CompleteMsg(BaseModel):
+    path: Optional[UUID] = None
+    type: Literal["complete"] = "complete"
+
+class Ping(BaseModel):
+    type: Literal["ping"] = "ping"
+    payload: Optional[str] = None
+
+class Pong(BaseModel):
+    type: Literal["pong"] = "pong"
+    payload: Optional[str] = None
+
+WebsocketMsg = Annotated[Union[ConnectionAuthMsg, ConnectionAckMsg, SubscribeMsg, NextMsg, ErrorMsg, CompleteMsg, Ping, Pong], Field(discriminator="type"),]
+
+websocket_msg_adapter = TypeAdapter(WebsocketMsg)
