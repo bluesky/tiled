@@ -43,6 +43,7 @@ from starlette.status import (
 
 from tiled.access_control.scopes import NO_SCOPES, PUBLIC_SCOPES, SINGLE_USER_SCOPES
 from tiled.authenticators import ProxiedOIDCAuthenticator
+from tiled.stream_messages import ConnectionAuthMsg
 
 # To hide third-party warning
 # .../jose/backends/cryptography_backend.py:18: CryptographyDeprecationWarning:
@@ -459,7 +460,6 @@ async def get_current_scopes_websocket(
 
 async def authenticate_websocket_first_message(
     websocket: WebSocket,
-    message: dict,
     settings: Settings,
     db_factory: Callable,
 ) -> tuple[bool, Optional[schemas.Principal], Optional[set], set]:
@@ -473,8 +473,15 @@ async def authenticate_websocket_first_message(
     credentials were valid, False otherwise.  ``principal`` may legitimately
     be None in single-user API-key mode even when auth succeeds.
     """
-    api_key = message.get("api_key")
-    access_token = message.get("access_token")
+    await websocket.accept()
+    try:
+        json_message = await websocket.receive_json()
+        message = ConnectionAuthMsg.model_validate(json_message)
+    except Exception:
+        await websocket.close(code=4001, reason="Expected JSON auth message")
+        return False, None, None, NO_SCOPES
+    api_key = message.api_key
+    access_token = message.access_token
 
     if api_key is not None:
         try:

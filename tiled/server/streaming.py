@@ -8,9 +8,11 @@ from typing import Any, Callable, Dict, Optional, Protocol
 
 import cachetools
 import orjson
-from fastapi import WebSocketDisconnect
+from fastapi import WebSocket, WebSocketDisconnect
 from redis import asyncio as redis
 from redis.asyncio.sentinel import Sentinel
+
+from tiled.stream_messages import CompleteMsg, ErrorMsg
 
 from ..ndslice import NDSlice
 from ..utils import safe_json_dump as _safe_json_dump
@@ -226,7 +228,7 @@ _PEER_DISCONNECTED = object()
 
 def _make_ws_handler_common(
     *,
-    websocket,
+    sink: WebSocket | asyncio.Queue,
     formatter,
     uri: str,
     node_id: str,
@@ -281,12 +283,12 @@ def _make_ws_handler_common(
     """
 
     async def handler(sequence: Optional[int] = None, already_accepted: bool = False):
-        if not already_accepted:
-            await websocket.accept()
+        if not already_accepted and isinstance(sink, WebSocket):
+            await sink.accept()
         end_stream = asyncio.Event()
 
         # Send schema to provide client context to interpret what follows.
-        await formatter(websocket, schema, None)
+        await formatter(sink, schema, None)
 
         async def stream_data(sequence):
             """Helper function to stream a specific sequence number to a websocket"""
@@ -313,7 +315,7 @@ def _make_ws_handler_common(
                 else:
                     s = ",".join(f":{dim}" for dim in metadata["shape"])
                     metadata["uri"] = f"{uri}?slice={s}"
-            await formatter(websocket, metadata, payload_bytes)
+            await formatter(sink, metadata, payload_bytes)
 
         # Setup buffer
         stream_buffer = asyncio.Queue()
@@ -392,7 +394,10 @@ def _make_ws_handler_common(
                     # ConnectionClosedOK on the client and would not reconnect.
                     # 1012 yields ConnectionClosedError, so the client reconnects
                     # and resumes from its last received sequence.
-                    await websocket.close(code=1012, reason="Live subscription lost")
+                    if isinstance(sink, WebSocket):
+                        await sink.close(code=1012, reason="Live subscription lost")
+                    elif isinstance(sink, asyncio.Queue):
+                        await sink.put(ErrorMsg(path=node_id, error="Live subscription lost"))
                     return
 
                 # Skip duplicates or already replayed messages
@@ -401,8 +406,10 @@ def _make_ws_handler_common(
 
                 await stream_data(live_seq)
                 last_sent = live_seq
-
-            await websocket.close(code=1000, reason="Producer ended stream")
+            if isinstance(sink, WebSocket):
+                await sink.close(code=1000, reason="Producer ended stream")
+            elif isinstance(sink, asyncio.Queue):
+                await sink.put(CompleteMsg(path=node_id))
         except WebSocketDisconnect:
             logger.info(f"Client disconnected from node {node_id}")
         finally:
@@ -525,7 +532,7 @@ class TTLCacheDatastore(StreamingDatastore):
             return agen, agen.aclose
 
         return _make_ws_handler_common(
-            websocket=websocket,
+            sink=websocket,
             formatter=formatter,
             uri=uri,
             node_id=node_id,
@@ -619,7 +626,7 @@ class RedisStreamingDatastore(StreamingDatastore):
             return live_iter(), cleanup
 
         return _make_ws_handler_common(
-            websocket=websocket,
+            sink=websocket,
             formatter=formatter,
             uri=uri,
             node_id=node_id,
