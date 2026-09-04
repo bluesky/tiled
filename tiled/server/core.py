@@ -496,7 +496,14 @@ async def construct_resource(
         else:
             attributes["metadata"] = entry.metadata()
     if schemas.EntryFields.access_blob in fields and hasattr(entry, "access_blob"):
-        attributes["access_blob"] = entry.access_blob
+        if entry.access_blob is None:
+            attributes["access_blob"] = {}
+        elif entry.access_blob.username is not None:
+            attributes["access_blob"] = {"user": entry.access_blob.username}
+        elif entry.access_blob.tags is not None:
+            attributes["access_blob"] = {"tags": entry.access_blob.tags}
+        else:
+            attributes["access_blob"] = {}
     if schemas.EntryFields.specs in fields:
         attributes["specs"] = []
         for spec in getattr(entry, "specs", []):

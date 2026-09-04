@@ -1,6 +1,7 @@
 from typing import List
 
 from sqlalchemy import (
+    ARRAY,
     JSON,
     BigInteger,
     Boolean,
@@ -10,6 +11,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    String,
     Table,
     Unicode,
     event,
@@ -19,7 +21,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy.schema import PrimaryKeyConstraint, UniqueConstraint
+from sqlalchemy.schema import CheckConstraint, PrimaryKeyConstraint, UniqueConstraint
 from sqlalchemy.sql import func
 
 from ..server.schemas import Management
@@ -28,6 +30,7 @@ from .base import Base
 
 # Use JSON with SQLite and JSONB with PostgreSQL.
 JSONVariant = JSON().with_variant(JSONB(), "postgresql")
+AccessTagsVariant = JSON(none_as_null=True).with_variant(ARRAY(String()), "postgresql")
 
 
 class Timestamped:
@@ -76,7 +79,6 @@ class Node(Timestamped, Base):
     structure_family = Column(Enum(StructureFamily), nullable=False)
     metadata_ = Column("metadata", JSONVariant, nullable=False)
     specs = Column(JSONVariant, nullable=False)
-    access_blob = Column("access_blob", JSONVariant, nullable=False)
 
     data_sources = relationship(
         "DataSource",
@@ -88,6 +90,13 @@ class Node(Timestamped, Base):
     revisions = relationship(
         "Revision",
         backref="node",
+        passive_deletes=True,
+    )
+    access_blob = relationship(
+        "AccessBlob",
+        secondary="node_access_blobs",
+        uselist=False,
+        lazy="selectin",
         passive_deletes=True,
     )
 
@@ -107,7 +116,6 @@ class Node(Timestamped, Base):
             "time_created",
             "id",
             "metadata",
-            "access_blob",
             postgresql_using="gin",
         ),
         # B-tree index supporting cursor-based pagination (WHERE parent = ?
@@ -135,6 +143,100 @@ class NodesClosure(Base):
         Index("idx_nodes_closure_ancestor", "ancestor"),
         Index("idx_nodes_closure_descendant", "descendant"),
     )
+
+
+class AccessBlob(Base):
+    """
+    An access blob contains a set of tags that are used to control access to nodes.
+    May otherwise contain information indicating that a node is "user-owned".
+
+    Associated with catalog nodes and graph links through separate association
+    tables.
+    """
+
+    __tablename__ = "access_blobs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    kind = Column(Enum("user", "tags", name="access_kind"), nullable=False)
+    username = Column(String, nullable=True)
+    tags = Column(AccessTagsVariant, nullable=True)
+
+    __table_args__ = (
+        CheckConstraint(
+            "(username IS NOT NULL AND tags IS NULL) OR "
+            "(username IS NULL AND tags IS NOT NULL)",
+            name="ck_access_blob_user_xor_tags",
+        ),
+        # Tight partial index for owner lookups used by access_blob_filter.
+        Index(
+            "ix_access_blobs_username_user",
+            "username",
+            postgresql_where=text("kind = 'user' AND username IS NOT NULL"),
+            sqlite_where=text("kind = 'user' AND username IS NOT NULL"),
+        ),
+        # Helps narrow to the relevant subset for tags/user branches quickly,
+        # including SQLite where tags membership itself is not index-friendly.
+        Index("ix_access_blobs_kind_id", "kind", "id"),
+        # PostgreSQL can index array overlap checks directly.
+        Index(
+            "ix_access_blobs_tags_gin",
+            "tags",
+            postgresql_using="gin",
+            postgresql_where=text("kind = 'tags' AND tags IS NOT NULL"),
+        ),
+    )
+
+
+class NodeAccessBlob(Base):
+    __tablename__ = "node_access_blobs"
+
+    node_id = Column(
+        ForeignKey("nodes.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    access_blob_id = Column(
+        ForeignKey("access_blobs.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+    )
+
+
+@event.listens_for(NodeAccessBlob.__table__, "after_create")
+def create_node_access_blob_cleanup_trigger(target, connection, **kw):
+    if connection.engine.dialect.name == "sqlite":
+        connection.execute(
+            text(
+                """
+CREATE TRIGGER node_access_blobs_delete_cleanup
+AFTER DELETE ON node_access_blobs
+BEGIN
+    DELETE FROM access_blobs WHERE id = OLD.access_blob_id;
+END"""
+            )
+        )
+    elif connection.engine.dialect.name == "postgresql":
+        connection.execute(
+            text(
+                """
+CREATE OR REPLACE FUNCTION delete_node_access_blob()
+RETURNS TRIGGER AS $$
+BEGIN
+    DELETE FROM access_blobs WHERE id = OLD.access_blob_id;
+    RETURN OLD;
+END;
+$$ LANGUAGE plpgsql;
+"""
+            )
+        )
+        connection.execute(
+            text(
+                """
+CREATE TRIGGER node_access_blobs_delete_cleanup
+AFTER DELETE ON node_access_blobs
+FOR EACH ROW EXECUTE FUNCTION delete_node_access_blob();
+"""
+            )
+        )
 
 
 class DataSourceAssetAssociation(Base):
@@ -373,8 +475,8 @@ EXECUTE FUNCTION update_closure_table_when_inserting();
     connection.execute(
         text(
             """
-INSERT INTO nodes(id, key, parent, structure_family, metadata, specs, access_blob)
-SELECT 0, '', NULL, 'container', '{}', '[]', '{}';
+INSERT INTO nodes(id, key, parent, structure_family, metadata, specs)
+SELECT 0, '', NULL, 'container', '{}', '[]';
 """
         )
     )
@@ -551,7 +653,7 @@ class Asset(Timestamped, Base):
 
 class Revision(Timestamped, Base):
     """
-    This tracks history of metadata, specs, and access_blob supporting 'undo' functionality.
+    This tracks history of metadata and specs supporting 'undo' functionality.
     """
 
     __tablename__ = "revisions"
@@ -567,7 +669,6 @@ class Revision(Timestamped, Base):
 
     metadata_ = Column("metadata", JSONVariant, nullable=False)
     specs = Column(JSONVariant, nullable=False)
-    access_blob = Column("access_blob", JSONVariant, nullable=False)
 
     __table_args__ = (
         UniqueConstraint(
