@@ -2,10 +2,8 @@
 Tests for recursive search: `Container.search_recursive(...)` (Python) and
 `GET /api/v1/search-recursive/{path}` (HTTP).
 
-These tests are written test-first, per issue #1368:
+These tests are written based on discussion in issue #1368:
 https://github.com/bluesky/tiled/issues/1368#issuecomment-5284649768
-
-They are expected to FAIL until the feature is implemented.
 """
 
 import subprocess
