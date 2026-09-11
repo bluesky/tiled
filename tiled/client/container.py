@@ -605,6 +605,11 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             queries=[query],
             max_depth=max_depth,
             include_data_sources=self._include_data_sources,
+            # The server reports `ancestors` relative to the true root, like
+            # every other endpoint; strip this Node's own path so that result
+            # keys/paths stay relative to the root that `search_recursive`
+            # was called on.
+            root_path_parts=[part for part in self.path_parts if part],
         )
 
     def distinct(
@@ -1546,6 +1551,7 @@ class RecursiveSearchResults(collections.abc.Mapping):
         queries,
         max_depth=None,
         include_data_sources=False,
+        root_path_parts=(),
     ):
         self.context = context
         self._link = link
@@ -1554,6 +1560,7 @@ class RecursiveSearchResults(collections.abc.Mapping):
         self._queries_as_params = _queries_to_params(*self._queries)
         self._max_depth = max_depth
         self._include_data_sources = include_data_sources
+        self._root_path_parts = tuple(root_path_parts)
         self._cached_len = None
 
     def __repr__(self):
@@ -1621,7 +1628,10 @@ class RecursiveSearchResults(collections.abc.Mapping):
                 time.monotonic() + LENGTH_CACHE_TTL,
             )
             for item in content["data"]:
-                key = tuple(item["attributes"]["ancestors"]) + (item["id"],)
+                # `ancestors` is server-absolute; make the key relative to
+                # the Node that `search_recursive` was called on.
+                full_path = tuple(item["attributes"]["ancestors"]) + (item["id"],)
+                key = full_path[len(self._root_path_parts) :]  # noqa: E203
                 yield key, client_for_item(
                     self.context,
                     self.structure_clients,

@@ -224,6 +224,33 @@ def test_search_recursive_ancestors_relative_to_root(client):
     nested = client["nested"]
     results = nested.search_recursive(Key("sample_id") == "abc123")
     assert set(results.keys()) == {("images", "sample_042")}
+    # The Python API's keys are relative to the search root, but the client
+    # objects returned still know their true, server-absolute path.
+    assert results[("images", "sample_042")].path_parts == [
+        "nested",
+        "images",
+        "sample_042",
+    ]
+
+
+@pytest.mark.asyncio(loop_scope="module")
+async def test_search_recursive_http_ancestors_are_server_absolute(client):
+    "Unlike the Python API's keys, the raw HTTP `ancestors` are always server-absolute."
+    nested = client["nested"]
+    link = nested.item["links"]["search_recursive"]
+    response = client.context.http_client.get(
+        link,
+        params={
+            "filter[eq][condition][key]": "sample_id",
+            "filter[eq][condition][value]": '"abc123"',
+        },
+    )
+    content = response.json()
+    assert response.status_code == 200
+    ancestors_by_id = {
+        item["id"]: item["attributes"]["ancestors"] for item in content["data"]
+    }
+    assert ancestors_by_id["sample_042"] == ["nested", "images"]
 
 
 def test_search_recursive_max_depth(client):
@@ -289,6 +316,22 @@ def test_search_recursive_mounted_subtree_max_depth(mixed_client):
     # one level into the mounted catalog.
     results = mixed_client.search_recursive(Key("sample_id") == "abc123", max_depth=2)
     assert set(results.keys()) == {("map_top",), ("mounted", "top_level_match")}
+
+
+def test_search_recursive_mounted_path_results_parent(mixed_client):
+    "`.parent` of a nested result found via a scoped search resolves to the real absolute path."
+    results = mixed_client["mounted"].search_recursive(Key("sample_id") == "abc123")
+    assert len(results) == 3
+
+    # This result's key is relative to "mounted": ("nested", "images", "sample_042").
+    # The server reports `ancestors` as server-absolute (like every other
+    # endpoint), so `.parent`/`.path_parts` resolve to the true path,
+    # "mounted/nested/images", not the (nonexistent) root-relative
+    # "nested/images".
+    nested_result = results[("nested", "images", "sample_042")]
+    assert nested_result.path_parts == ["mounted", "nested", "images", "sample_042"]
+    parent = nested_result.parent
+    assert parent.path_parts == ["mounted", "nested", "images"]
 
 
 @pytest.mark.asyncio(loop_scope="module")

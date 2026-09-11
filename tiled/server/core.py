@@ -313,10 +313,6 @@ async def construct_entries_response(
             max_depth=max_depth,
             exact_count_limit=exact_count_limit,
         )
-        if recursive:
-            # `ancestors` should be relative to the search root `path`, not
-            # the server-absolute path used above to build links.
-            resource.attributes.ancestors = relative_segments[:-1]
         data.append(resource)
         # If any entry has entry.metadata_stale_at = None, then there will
         # be no 'Expires' header. We will pessimistically assume the values
