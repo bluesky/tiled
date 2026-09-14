@@ -294,6 +294,81 @@ async def test_entity_update_and_delete_enforce_access_control(store, policy):
 
 
 @pytest.mark.asyncio
+async def test_update_entity_without_access_blob_preserves_it(store, policy):
+    """
+    Omitting access_blob on updateEntity must leave it unchanged, not write a
+    strawberry UnsetType sentinel into it (which is not JSON serializable and
+    raised "Type is not JSON serializable: UnsetType").
+    """
+    alice_ctx = _context(store, policy, "alice", {"read:metadata", "write:metadata"})
+    created = await _execute(
+        CREATE_ENTITY_MUTATION,
+        alice_ctx,
+        {"input": {"kind": "sample", "name": "E"}},
+    )
+    assert created.errors is None
+    entity_id = created.data["createEntity"]["id"]
+
+    update_mutation = """
+    mutation($id: ID!, $input: UpdateEntityInput!) {
+      updateEntity(id: $id, input: $input) { id uri }
+    }
+    """
+    result = await _execute(
+        update_mutation, alice_ctx, {"id": entity_id, "input": {"uri": "new-uri"}}
+    )
+    assert result.errors is None
+    assert result.data["updateEntity"]["uri"] == "new-uri"
+    record = await store.get_entity(entity_id)
+    # Unchanged: the original user blob, not a serialized UnsetType.
+    assert record.access_blob == {"user": "alice"}
+
+
+@pytest.mark.asyncio
+async def test_update_link_without_access_blob_preserves_it(store, policy):
+    """updateLink with only a predicate must leave the link's access_blob intact."""
+    alice_ctx = _context(store, policy, "alice", {"read:metadata", "write:metadata"})
+    s = await _execute(
+        CREATE_ENTITY_MUTATION,
+        alice_ctx,
+        {"input": {"kind": "sample", "name": "S", "accessBlob": {"tags": ["team"]}}},
+    )
+    o = await _execute(
+        CREATE_ENTITY_MUTATION,
+        alice_ctx,
+        {"input": {"kind": "sample", "name": "O", "accessBlob": {"tags": ["team"]}}},
+    )
+    sid = s.data["createEntity"]["id"]
+    oid = o.data["createEntity"]["id"]
+    link = await _execute(
+        CREATE_LINK_MUTATION,
+        alice_ctx,
+        {
+            "input": {
+                "subjectId": sid,
+                "predicate": "relates_to",
+                "objectId": oid,
+                "accessBlob": {"tags": ["team"]},
+            }
+        },
+    )
+    assert link.errors is None
+    link_id = link.data["createLink"]["id"]
+
+    update_mutation = """
+    mutation($id: ID!, $input: UpdateLinkInput!) {
+      updateLink(id: $id, input: $input) { id predicate }
+    }
+    """
+    result = await _execute(
+        update_mutation, alice_ctx, {"id": link_id, "input": {"predicate": "derived"}}
+    )
+    assert result.errors is None
+    record = await store.get_link(link_id)
+    assert record.access_blob == {"tags": ["team"]}
+
+
+@pytest.mark.asyncio
 async def test_link_crud_and_access_control(store, policy):
     """Exercise link create/read/update/delete with policy-based checks."""
 

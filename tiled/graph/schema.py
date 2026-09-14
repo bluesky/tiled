@@ -630,7 +630,11 @@ class Mutation:
         if node_binding_changed and node_id is not None:
             await _assert_node_write(info, node_id)
         effective_node_id = current.node_id if node_id is STORE_UNSET else node_id
-        access_blob = UNSET
+        # Default to the store's UNSET sentinel (leave unchanged), not
+        # strawberry's UNSET: the latter is a distinct object the store cannot
+        # recognize, so it would be written verbatim into access_blob, raising
+        # "Type is not JSON serializable: UnsetType".
+        access_blob = STORE_UNSET
         if effective_node_id is not None:
             if input.access_blob is not UNSET and (input.access_blob or {}):
                 raise GraphQLError(ENTITY_NODE_ACCESS_BLOB_ERROR)
@@ -681,7 +685,9 @@ class Mutation:
             return None
         await _assert_allowed(info, current.access_blob, "write:metadata")
         namespaces = await _namespaces(info)
-        access_blob = UNSET
+        # Store's UNSET sentinel (leave unchanged), not strawberry's; see
+        # update_entity for why passing strawberry's UNSET corrupts access_blob.
+        access_blob = STORE_UNSET
         if input.access_blob is not UNSET:
             requested_access_blob = input.access_blob or {}
             access_blob = await _modify_access_blob(

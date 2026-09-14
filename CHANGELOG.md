@@ -19,6 +19,10 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Fixed
 
+- Fix the experimental graph's `updateEntity` and `updateLink` mutations, which
+  wrote a placeholder `UnsetType` into `access_blob` when the field was omitted
+  (raising "Type is not JSON serializable: UnsetType") instead of leaving it
+  unchanged; they now use the store's `UNSET` sentinel.
 - Binding a graph entity to a catalog node (via `createEntity`, `upsertEntity`,
   or re-binding through `updateEntity`) now requires `write:metadata` permission
   on that specific node, not merely the global `write:metadata` scope. Without
