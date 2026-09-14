@@ -16,6 +16,10 @@ Write the date in place of the "Unreleased" in the case a new version is release
   instead of racing a check-then-insert.
 - Rename the experimental graph entity's `entity_type` field to `kind`, in both
   the database column and the GraphQL API (`entityType` becomes `kind`).
+- Store the graph `entities.id`/`links.id` primary keys and the
+  `links.subject_id`/`links.object_id` foreign keys as PostgreSQL's native
+  `UUID` type (a `CHAR(36)` string on backends without one, e.g. SQLite). Ids
+  remain plain strings in the GraphQL API and Python client.
 
 ### Fixed
 

@@ -18,7 +18,10 @@ is declared as a Core table on ``Base.metadata`` in ``tiled.catalog.orm``.
 
 from __future__ import annotations
 
+import uuid
+
 from sqlalchemy import (
+    CHAR,
     JSON,
     Column,
     DateTime,
@@ -27,18 +30,55 @@ from sqlalchemy import (
     Integer,
     String,
     Table,
+    TypeDecorator,
     event,
     text,
 )
+from sqlalchemy.dialects.postgresql import UUID as PGUUID
 
 from ..catalog.base import Base
+
+
+class GUID(TypeDecorator):
+    """Platform-independent UUID column.
+
+    On PostgreSQL this maps to the native `UUID` type (16 bytes, smaller and
+    faster to index than a character string). On backends without a native UUID
+    type (e.g. SQLite) it maps to `CHAR(36)` holding the canonical hyphenated
+    string. The Python side works with plain `str` values on both read and
+    write; only the on-disk representation and input validation differ by
+    backend.
+    """
+
+    impl = CHAR
+    cache_ok = True
+
+    def load_dialect_impl(self, dialect):
+        if dialect.name == "postgresql":
+            return dialect.type_descriptor(PGUUID(as_uuid=True))
+        return dialect.type_descriptor(CHAR(36))
+
+    def process_bind_param(self, value, dialect):
+        if value is None:
+            return None
+        if not isinstance(value, uuid.UUID):
+            value = uuid.UUID(str(value))
+        # PostgreSQL's UUID type takes the object; elsewhere store the canonical
+        # hyphenated string.
+        return value if dialect.name == "postgresql" else str(value)
+
+    def process_result_value(self, value, dialect):
+        # Normalize to a canonical string so callers keep receiving str ids
+        # regardless of backend (psycopg returns uuid.UUID objects).
+        return None if value is None else str(value)
+
 
 metadata = Base.metadata
 
 entities = Table(
     "entities",
     metadata,
-    Column("id", String, primary_key=True),
+    Column("id", GUID, primary_key=True),
     Column(
         "node_id",
         Integer,
@@ -93,66 +133,50 @@ def _create_entities_node_access_blob_trigger(target, connection, **kw):
     exercises).
     """
     if connection.engine.dialect.name == "sqlite":
-        connection.execute(
-            text(
-                f"""
+        connection.execute(text(f"""
 CREATE TRIGGER entities_node_access_blob_insert
 BEFORE INSERT ON entities
 WHEN (NEW.node_id IS NOT NULL AND NEW.access_blob IS NOT NULL)
 BEGIN
     SELECT RAISE(ABORT, '{ENTITY_NODE_ACCESS_BLOB_ERROR}');
-END"""
-            )
-        )
-        connection.execute(
-            text(
-                f"""
+END"""))
+        connection.execute(text(f"""
 CREATE TRIGGER entities_node_access_blob_update
 BEFORE UPDATE ON entities
 WHEN (NEW.node_id IS NOT NULL AND NEW.access_blob IS NOT NULL)
 BEGIN
     SELECT RAISE(ABORT, '{ENTITY_NODE_ACCESS_BLOB_ERROR}');
-END"""
-            )
-        )
+END"""))
     elif connection.engine.dialect.name == "postgresql":
-        connection.execute(
-            text(
-                f"""
+        connection.execute(text(f"""
 CREATE OR REPLACE FUNCTION entities_reject_node_access_blob()
 RETURNS TRIGGER AS $$
 BEGIN
     RAISE EXCEPTION '{ENTITY_NODE_ACCESS_BLOB_ERROR}';
 END;
-$$ LANGUAGE plpgsql;"""
-            )
-        )
-        connection.execute(
-            text(
-                """
+$$ LANGUAGE plpgsql;"""))
+        connection.execute(text("""
 CREATE TRIGGER entities_node_access_blob_check
 BEFORE INSERT OR UPDATE ON entities
 FOR EACH ROW
 WHEN (NEW.node_id IS NOT NULL AND NEW.access_blob IS NOT NULL)
-EXECUTE FUNCTION entities_reject_node_access_blob();"""
-            )
-        )
+EXECUTE FUNCTION entities_reject_node_access_blob();"""))
 
 
 links = Table(
     "links",
     metadata,
-    Column("id", String, primary_key=True),
+    Column("id", GUID, primary_key=True),
     Column(
         "subject_id",
-        String,
+        GUID,
         ForeignKey("entities.id", ondelete="CASCADE"),
         nullable=False,
     ),
     Column("predicate", String, nullable=False),
     Column(
         "object_id",
-        String,
+        GUID,
         ForeignKey("entities.id", ondelete="CASCADE"),
         nullable=False,
     ),
