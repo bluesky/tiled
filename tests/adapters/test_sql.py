@@ -4,6 +4,7 @@ from typing import Any, Callable, Generator, Optional, Union, cast
 import numpy as np
 import pyarrow as pa
 import pytest
+import sqlalchemy.pool
 
 from tiled.adapters.sql import (
     COLUMN_NAME_PATTERN,
@@ -186,6 +187,69 @@ def adapter_psql_many_partitions(
 ) -> Generator[SQLAdapter, None, None]:
     data_source = data_source_from_init_storage(postgres_uri, 3)
     yield adapter_from_data_source(data_source)
+
+
+def test_ping_discards_connection_closed_server_side() -> None:
+    """The pool's checkout ping must discard a connection that has been closed
+    server-side (e.g. a Patroni failover/restart) and transparently supply a
+    fresh one, instead of handing back the dead connection.
+
+    Regression test for connections surfacing
+    'terminating connection due to administrator command' on reuse.
+    """
+    from tiled.storage import _ping_pooled_connections_on_checkout
+
+    class _FakeCursor:
+        def __init__(self, conn: "_FakeConn") -> None:
+            self._conn = conn
+
+        def execute(self, statement: str) -> None:
+            if self._conn.dead:
+                raise RuntimeError("server closed the connection unexpectedly")
+
+        def close(self) -> None:
+            pass
+
+    class _FakeConn:
+        def __init__(self) -> None:
+            self.dead = False
+
+        def cursor(self) -> _FakeCursor:
+            return _FakeCursor(self)
+
+        def rollback(self) -> None:  # used by the pool on return (reset_on_return)
+            pass
+
+        def close(self) -> None:
+            pass
+
+    created: list[_FakeConn] = []
+
+    def creator() -> _FakeConn:
+        conn = _FakeConn()
+        created.append(conn)
+        return conn
+
+    pool = sqlalchemy.pool.QueuePool(creator, pool_size=1, max_overflow=0)
+    _ping_pooled_connections_on_checkout(pool)
+
+    # First checkout returns a fresh connection; ping passes.
+    fairy = pool.connect()
+    first = fairy.dbapi_connection
+    fairy.close()  # return to pool (still open)
+
+    # Simulate the server terminating this pooled connection.
+    first.dead = True
+
+    # Next checkout must ping, detect the dead connection, discard it, and
+    # supply a working one -- without raising.
+    fairy = pool.connect()
+    second = fairy.dbapi_connection
+    fairy.close()
+
+    assert second is not first
+    assert not second.dead
+    assert len(created) == 2  # the dead one was replaced
 
 
 def test_psql(adapter_psql_one_partition: SQLAdapter) -> None:

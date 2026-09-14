@@ -7,6 +7,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Dict, Iterator, Literal, Optional, Union
 from urllib.parse import urlparse, urlunparse
 
+import sqlalchemy.event
+import sqlalchemy.exc
 import sqlalchemy.pool
 
 from .utils import ensure_uri, path_from_uri, sanitize_uri
@@ -206,6 +208,34 @@ class ObjectStorage(Storage):
         return _class(**kwargs, **self.config, prefix=prefix)
 
 
+def _ping_pooled_connections_on_checkout(pool: "sqlalchemy.pool.Pool") -> None:
+    """Discard pooled connections that have been closed server-side.
+
+    This pool is not attached to a SQLAlchemy Engine, so ``pool_pre_ping``
+    (which requires a dialect) is unavailable. Instead, validate each
+    connection on checkout with a lightweight ``SELECT 1``; if it fails, raise
+    ``DisconnectionError`` so the pool discards the dead connection and
+    transparently supplies a fresh one.
+
+    Without this, a connection terminated server-side -- e.g. a PostgreSQL
+    failover or restart (Patroni) -- lingers in the pool and surfaces on next
+    use as ``FATAL: terminating connection due to administrator command``.
+    """
+
+    @sqlalchemy.event.listens_for(pool, "checkout")
+    def _ping(dbapi_connection, connection_record, connection_proxy):
+        cursor = dbapi_connection.cursor()
+        try:
+            cursor.execute("SELECT 1")
+        except Exception as exc:
+            # Tells the pool to discard this connection and retry with a new one.
+            raise sqlalchemy.exc.DisconnectionError(
+                "Connection was closed server-side; discarding from pool."
+            ) from exc
+        finally:
+            cursor.close()
+
+
 @dataclasses.dataclass(frozen=True)
 class SQLStorage(Storage):
     "General purpose SQL database storage with connection pooling"
@@ -255,6 +285,7 @@ class SQLStorage(Storage):
                 creator, pool_size=self.pool_size, max_overflow=self.max_overflow
             )
             monitor_db_pool(pool, self.uri)
+            _ping_pooled_connections_on_checkout(pool)
 
         return pool
 
