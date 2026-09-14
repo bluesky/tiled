@@ -5,34 +5,61 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## Unreleased
 
+### Added
+
+- Add a client-side interface for the experimental "graph of links". Catalog
+  node clients gain `bind_entity(...)` and `entities()` methods, and
+  `tiled.client.graph` provides `make_entity`, `make_link`, and
+  `register_namespace` helpers plus a `GraphClient` wrapper over the GraphQL API.
+  The `GraphClient` and its `EntityHandle`/`LinkHandle` handles support the full
+  lifecycle: look entities and links up by id or filter (`get_entity`,
+  `find_entities`, `get_link`, `find_links`), traverse between them
+  (`outgoing_links`, `incoming_links`, and a link's `subject`/`object`), and
+  update or delete them in place (`update`/`delete`, including their
+  `properties`). `bind_entity(...)` is idempotent (get-or-create): re-binding
+  the same `(node, kind, name)` returns the existing entity instead of raising.
+
 ### Changed
 
 - Enforce uniqueness of graph entities per catalog node: at most one entity may
   exist for a given `(node_id, kind, name)`. A duplicate `createEntity`/
   `updateEntity` now fails with an `ENTITY_EXISTS` error. Free-standing
   (external) entities, which have no node, are left unconstrained. A new
-  `upsertEntity` mutation does an atomic get-or-create against that constraint
-  (via `INSERT ... ON CONFLICT`), so concurrent binds converge on one row
-  instead of racing a check-then-insert.
+  `upsertEntity` mutation (and the client's `upsert_entity`, used by
+  `bind_entity`) does an atomic get-or-create against that constraint so
+  concurrent binds converge on one row instead of racing a check-then-insert.
+- The experimental graph's `updateEntity`/`updateLink` mutations (and the
+  client `update` methods) can now change an entity's or link's `properties`.
 - Rename the experimental graph entity's `entity_type` field to `kind`, in both
-  the database column and the GraphQL API (`entityType` becomes `kind`).
+   the database column and the GraphQL API (`entityType` becomes `kind`).
 - Store the graph `entities.id`/`links.id` primary keys and the
   `links.subject_id`/`links.object_id` foreign keys as PostgreSQL's native
   `UUID` type (a `CHAR(36)` string on backends without one, e.g. SQLite). Ids
   remain plain strings in the GraphQL API and Python client.
+- `tiled serve demo` now serves a single, catalog-backed demo that combines the
+  data-structure showcase with the experimental "graph of links" provenance
+  feature. The server is public (anonymous read access) and prints a
+  single-user API key (default `secret`) for trying out writes and graph
+  mutations. The graph is defined in `tiled/examples/demo_graph.json`. The
+  standalone `example_configs/graphs/` scripts have been removed in favor of
+  this demo.
+
 
 ### Fixed
 
-- Fix the experimental graph's `updateEntity` and `updateLink` mutations, which
-  wrote a placeholder `UnsetType` into `access_blob` when the field was omitted
-  (raising "Type is not JSON serializable: UnsetType") instead of leaving it
-  unchanged; they now use the store's `UNSET` sentinel.
 - Binding a graph entity to a catalog node (via `createEntity`, `upsertEntity`,
   or re-binding through `updateEntity`) now requires `write:metadata` permission
   on that specific node, not merely the global `write:metadata` scope. Without
   this check any writer could attach entities to — or, via the uniqueness
   constraint, squat the canonical `(node, kind, name)` slot of — nodes they
   cannot write.
+- Make the experimental graph's `entities` and `links` listings paginate
+  deterministically by breaking `created_at` ties on the unique id, so
+  `limit`/`offset` no longer risk skipping or repeating rows created in the same
+  batch.
+- Fix the experimental graph's `updateEntity` and `updateLink` mutations, which
+  wrote a placeholder `UnsetType` into `access_blob` when the field was omitted
+  instead of leaving it unchanged.
 - Extend to zarr routes the previous fix for reads of array data whose
   on-disk shape has diverged from the shape recorded in the catalog
   structure, which can happen while an array is being extended

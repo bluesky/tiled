@@ -293,6 +293,46 @@ class BaseClient:
         "Location of node in tree, given as list of path segments."
         return self._item["attributes"]["ancestors"] + [self._item["id"]]
 
+    def bind_entity(self, kind=None, name=None, *, properties=None):
+        """Bind a graph entity to this catalog node (get-or-create).
+
+        The entity represents this node in the "graph of links". `name`
+        defaults to the node's key and `kind` (the entity type) defaults to
+        the node's structure family (e.g. `"array"`, `"table"`,
+        `"container"`). Both are free-form; pass them explicitly to describe
+        the node in a particular context.
+
+        Idempotent: binding the same `(node, kind, name)` again returns the
+        existing entity (refreshing its `uri`/`properties`) rather than
+        raising. Use `entities()` to list all entities bound to this node.
+        Returns an `EntityHandle` suitable for `tiled.client.graph.make_link`.
+        """
+        from .graph import GraphClient
+
+        name = name if name is not None else self._item["id"]
+        kind = (
+            kind if kind is not None else self._item["attributes"]["structure_family"]
+        )
+        # The server resolves this node's path to its internal id and does an
+        # atomic get-or-create keyed on (node, kind, name), so no separate
+        # resolve/existence query is needed and repeat calls are safe.
+        return GraphClient(self.context).upsert_entity(
+            kind=kind,
+            name=name,
+            node_path_parts=self.path_parts,
+            uri=self.uri,
+            properties=properties,
+        )
+
+    def entities(self):
+        """Graph entities bound to this catalog node
+
+        Returns a list of `EntityHandle`s. Empty if the node has none.
+        """
+        from .graph import GraphClient
+
+        return GraphClient(self.context).find_entities(node_path_parts=self.path_parts)
+
     @property
     def structure_family(self):
         "Quick access to this entry"

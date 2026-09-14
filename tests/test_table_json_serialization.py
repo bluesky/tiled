@@ -36,6 +36,9 @@ _df = pandas.DataFrame(
             ],
             dtype=object,
         ),
+        # Fixed-width bytes column (numpy 'S' dtype). orjson cannot serialize
+        # bytes, so these must be decoded to str.
+        "bytes_col": numpy.array([b"abc", b"def", b"ghi"], dtype="S3"),
     }
 )
 
