@@ -1,3 +1,5 @@
+import uuid
+
 import pytest
 from sqlalchemy import insert as sa_insert
 from sqlalchemy.exc import IntegrityError
@@ -862,6 +864,103 @@ async def test_upsert_entity_requires_node_binding(store, policy):
     )
     assert result.errors
     assert result.errors[0].extensions["code"] == "NODE_REQUIRED"
+
+
+@pytest.mark.asyncio
+async def test_update_entity_and_link_properties(store, policy):
+    """Entity and link properties are mutable through the update mutations."""
+    alice_ctx = _context(store, policy, "alice", {"read:metadata", "write:metadata"})
+    s = await _execute(
+        CREATE_ENTITY_MUTATION,
+        alice_ctx,
+        {"input": {"kind": "sample", "name": "S", "accessBlob": {"tags": ["team"]}}},
+    )
+    o = await _execute(
+        CREATE_ENTITY_MUTATION,
+        alice_ctx,
+        {"input": {"kind": "sample", "name": "O", "accessBlob": {"tags": ["team"]}}},
+    )
+    sid = s.data["createEntity"]["id"]
+    oid = o.data["createEntity"]["id"]
+
+    update_entity = """
+    mutation($id: ID!, $input: UpdateEntityInput!) {
+      updateEntity(id: $id, input: $input) { id properties }
+    }
+    """
+    result = await _execute(
+        update_entity,
+        alice_ctx,
+        {"id": sid, "input": {"properties": {"grade": "A"}}},
+    )
+    assert result.errors is None
+    assert result.data["updateEntity"]["properties"] == {"grade": "A"}
+
+    link = await _execute(
+        CREATE_LINK_MUTATION,
+        alice_ctx,
+        {
+            "input": {
+                "subjectId": sid,
+                "predicate": "relates_to",
+                "objectId": oid,
+                "accessBlob": {"tags": ["team"]},
+            }
+        },
+    )
+    link_id = link.data["createLink"]["id"]
+    update_link = """
+    mutation($id: ID!, $input: UpdateLinkInput!) {
+      updateLink(id: $id, input: $input) { id properties }
+    }
+    """
+    result = await _execute(
+        update_link,
+        alice_ctx,
+        {"id": link_id, "input": {"properties": {"confidence": 0.5}}},
+    )
+    assert result.errors is None
+    assert result.data["updateLink"]["properties"] == {"confidence": 0.5}
+
+
+@pytest.mark.asyncio
+async def test_pagination_stable_under_created_at_ties(store):
+    """
+    Entities sharing an identical created_at must still paginate without
+    skipping or repeating rows. created_at alone is not a unique sort key
+    (it is assigned per-row in Python and can collide on bulk inserts), so
+    the store breaks ties on the unique id.
+    """
+    from datetime import datetime, timezone
+
+    from tiled.graph.store import _entities
+
+    # Random ids so the created_at tiebreak (order by id) is exercised; the id
+    # column is a UUID, so use real uuid4 values. The canonical string order
+    # matches the uuid value order, so the expected order is just the sorted ids.
+    ids = [str(uuid.uuid4()) for _ in range(5)]
+    tie = datetime(2020, 1, 1, tzinfo=timezone.utc)
+    async with store._engine.begin() as conn:
+        for i, id_ in enumerate(ids):
+            await conn.execute(
+                sa_insert(_entities).values(
+                    id=id_,
+                    node_id=None,
+                    kind="sample",
+                    name=f"e{i}",
+                    uri=None,
+                    properties={},
+                    access_blob={"tags": ["team"]},
+                    created_at=tie,
+                )
+            )
+
+    seen = []
+    for offset in range(5):
+        page = await store.list_entities(limit=1, offset=offset)
+        seen.extend(record.id for record in page)
+    # Every row seen exactly once, in a stable (id-sorted) order.
+    assert seen == sorted(ids)
 
 
 UPSERT_NAMESPACE_MUTATION = """

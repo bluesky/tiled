@@ -353,18 +353,20 @@ def _link_from_record(r: LinkRecord, namespaces: dict[str, str]) -> Link:
 
 @strawberry.input
 class UpdateEntityInput:
+    kind: Optional[str] = None
     name: Optional[str] = None
     # Re-bind to a catalog node by path (list of key segments), detach with an
     # explicit null, or leave the current binding unchanged by omitting it.
     node_path_parts: Optional[list[str]] | UnsetType = UNSET
     uri: Optional[str] | UnsetType = UNSET
-    kind: Optional[str] = None
+    properties: Optional[JSON] | UnsetType = UNSET  # type: ignore[valid-type]
     access_blob: Optional[JSON] | UnsetType = UNSET  # type: ignore[valid-type]
 
 
 @strawberry.input
 class UpdateLinkInput:
     predicate: Optional[str] | UnsetType = UNSET
+    properties: Optional[JSON] | UnsetType = UNSET  # type: ignore[valid-type]
     access_blob: Optional[JSON] | UnsetType = UNSET  # type: ignore[valid-type]
 
 
@@ -413,6 +415,7 @@ class Query:
         self,
         info: Info,
         kind: Optional[str] = None,
+        name: Optional[str] = None,
         node_path_parts: Optional[list[str]] = None,
         limit: int = 100,
         offset: int = 0,
@@ -428,6 +431,7 @@ class Query:
                 return []
         records = await _store(info).list_entities(
             kind=kind,
+            name=name,
             node_id=node_id,
             limit=limit,
             offset=offset,
@@ -650,13 +654,19 @@ class Mutation:
             # own access_blob now that it no longer delegates to a node.
             access_blob = await _init_access_blob(info, None)
         uri = STORE_UNSET if input.uri is UNSET else input.uri
+        properties = (
+            STORE_UNSET
+            if input.properties is UNSET
+            else expand_value(input.properties or {}, await _namespaces(info))
+        )
         try:
             record = await _store(info).update_entity(
                 str(id),
+                kind=input.kind,
                 name=input.name,
                 node_id=node_id,
                 uri=uri,
-                kind=input.kind,
+                properties=properties,
                 access_blob=access_blob,
             )
         except EntityConflictError as exc:
@@ -676,7 +686,7 @@ class Mutation:
             logger.info("Deleted link id=%s", id)
         return deleted
 
-    @strawberry.mutation(description="Update a link's predicate.")
+    @strawberry.mutation(description="Update a link's predicate or properties.")
     async def update_link(
         self, info: Info, id: strawberry.ID, input: UpdateLinkInput
     ) -> Optional[Link]:
@@ -698,9 +708,15 @@ class Mutation:
             if input.predicate is UNSET
             else expand_term(input.predicate, namespaces)
         )
+        properties = (
+            STORE_UNSET
+            if input.properties is UNSET
+            else expand_value(input.properties or {}, namespaces)
+        )
         record = await _store(info).update_link(
             str(id),
             predicate=predicate,
+            properties=properties,
             access_blob=access_blob,
         )
         if record:

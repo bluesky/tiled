@@ -331,16 +331,22 @@ class GraphSQLAlchemyStore:
     async def list_entities(
         self,
         kind: Optional[str] = None,
+        name: Optional[str] = None,
         node_id: Optional[int] = None,
         limit: int = 100,
         offset: int = 0,
         access_filters: Optional[list[AccessBlobFilter]] = None,
     ) -> list[EntityRecord]:
-        stmt = select(_entities).order_by(_entities.c.created_at)
+        # Order by created_at with the unique id as a tiebreaker: created_at
+        # is assigned per-row in Python and can collide on bulk inserts, and a
+        # non-unique sort key makes LIMIT/OFFSET pagination skip or repeat rows.
+        stmt = select(_entities).order_by(_entities.c.created_at, _entities.c.id)
         if kind is not None:
             stmt = stmt.where(_entities.c.kind == kind)
         if node_id is not None:
             stmt = stmt.where(_entities.c.node_id == node_id)
+        if name is not None:
+            stmt = stmt.where(_entities.c.name == name)
         if access_filters:
             dialect_name = self._engine.url.get_dialect().name
             # An entity's effective access_blob is its node's access_blob
@@ -370,10 +376,11 @@ class GraphSQLAlchemyStore:
     async def update_entity(
         self,
         id: str,
+        kind: Optional[str] = None,
         name: Optional[str] = None,
         node_id: object = UNSET,
         uri: object = UNSET,
-        kind: Optional[str] = None,
+        properties: object = UNSET,
         access_blob: object = UNSET,
     ) -> Optional[EntityRecord]:
         values: dict = {}
@@ -385,6 +392,8 @@ class GraphSQLAlchemyStore:
             values["uri"] = uri
         if kind is not None:
             values["kind"] = kind
+        if properties is not UNSET:
+            values["properties"] = properties
         if access_blob is not UNSET:
             values["access_blob"] = access_blob
         async with self._engine.begin() as conn:
@@ -463,7 +472,8 @@ class GraphSQLAlchemyStore:
         offset: int = 0,
         access_filters: Optional[list[AccessBlobFilter]] = None,
     ) -> list[LinkRecord]:
-        stmt = select(_links).order_by(_links.c.created_at)
+        # See list_entities: id breaks created_at ties so pagination is stable.
+        stmt = select(_links).order_by(_links.c.created_at, _links.c.id)
         if subject_id is not None:
             stmt = stmt.where(_links.c.subject_id == subject_id)
         if predicate is not None:
@@ -491,11 +501,14 @@ class GraphSQLAlchemyStore:
         self,
         id: str,
         predicate: object = UNSET,
+        properties: object = UNSET,
         access_blob: object = UNSET,
     ) -> Optional[LinkRecord]:
         values: dict = {}
         if predicate is not UNSET:
             values["predicate"] = predicate
+        if properties is not UNSET:
+            values["properties"] = properties
         if access_blob is not UNSET:
             values["access_blob"] = access_blob
         async with self._engine.begin() as conn:
@@ -552,8 +565,8 @@ class GraphSQLAlchemyStore:
     async def resolve_node_id(self, path: list[str]) -> Optional[int]:
         """
         Look up the internal catalog node id for a path of key segments,
-        e.g. ``["raw_dataset"]`` for a top-level entry or ``["a", "b"]``
-        for a nested one. Returns None if no such node exists.
+        e.g. ``["linked", "measured"]`` for a nested entry or ``["a", "b"]``
+        for another nested one. Returns None if no such node exists.
 
         The catalog's root node always has id 0 (see
         tiled.catalog.adapter.node_from_segments, which this mirrors).
