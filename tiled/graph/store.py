@@ -254,18 +254,18 @@ class GraphSQLAlchemyStore:
         access_blob: Optional[dict] = None,
     ) -> EntityRecord:
         """
-        Get-or-create an entity keyed on ``(node_id, kind, name)``.
+        Get-or-create an entity keyed on `(node_id, kind, name)`.
 
-        Implemented as a single atomic ``INSERT ... ON CONFLICT DO UPDATE``
-        against the ``entities_node_kind_name_uq`` unique index, so concurrent
+        Implemented as a single atomic `INSERT ... ON CONFLICT DO UPDATE`
+        against the `entities_node_kind_name_uq` unique index, so concurrent
         callers converge on one row rather than racing a check-then-insert.
-        On conflict the existing row's ``uri`` and ``properties`` are refreshed
-        to the supplied values (``access_blob`` is left untouched: for a
+        On conflict the existing row's `uri` and `properties` are refreshed
+        to the supplied values (`access_blob` is left untouched: for a
         node-bound entity it must stay NULL, per the trigger).
 
         Only meaningful for node-bound entities. External entities have
-        ``node_id`` NULL, which the unique index treats as distinct, so the
-        ON CONFLICT clause never fires and this always inserts a new row --
+        `node_id` NULL, which the unique index treats as distinct, so the
+        ON CONFLICT clause never fires and this always inserts a new row,
         matching the store's "external entities are unconstrained" rule.
         """
         dialect_name = self._engine.url.get_dialect().name
