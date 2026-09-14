@@ -34,6 +34,8 @@ from sqlalchemy import (
     update,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, TEXT
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncEngine
 from sqlalchemy.sql.expression import cast as sql_cast
@@ -240,6 +242,70 @@ class GraphSQLAlchemyStore:
                 f"An entity with kind={kind!r} name={name!r} "
                 "already exists for this node."
             ) from exc
+        return self._to_entity(row)
+
+    async def upsert_entity(
+        self,
+        kind: str,
+        name: str,
+        node_id: Optional[int] = None,
+        uri: Optional[str] = None,
+        properties: Optional[dict] = None,
+        access_blob: Optional[dict] = None,
+    ) -> EntityRecord:
+        """
+        Get-or-create an entity keyed on ``(node_id, kind, name)``.
+
+        Implemented as a single atomic ``INSERT ... ON CONFLICT DO UPDATE``
+        against the ``entities_node_kind_name_uq`` unique index, so concurrent
+        callers converge on one row rather than racing a check-then-insert.
+        On conflict the existing row's ``uri`` and ``properties`` are refreshed
+        to the supplied values (``access_blob`` is left untouched: for a
+        node-bound entity it must stay NULL, per the trigger).
+
+        Only meaningful for node-bound entities. External entities have
+        ``node_id`` NULL, which the unique index treats as distinct, so the
+        ON CONFLICT clause never fires and this always inserts a new row --
+        matching the store's "external entities are unconstrained" rule.
+        """
+        dialect_name = self._engine.url.get_dialect().name
+        if dialect_name == "sqlite":
+            insert_stmt = sqlite_insert(_entities)
+        elif dialect_name == "postgresql":
+            insert_stmt = pg_insert(_entities)
+        else:
+            raise UnsupportedQueryType(f"upsert not supported on {dialect_name!r}")
+        now = datetime.now(timezone.utc)
+        insert_stmt = insert_stmt.values(
+            id=str(uuid.uuid4()),
+            node_id=node_id,
+            kind=kind,
+            name=name,
+            uri=uri,
+            properties=properties or {},
+            access_blob=access_blob,
+            created_at=now,
+        )
+        stmt = insert_stmt.on_conflict_do_update(
+            index_elements=["node_id", "kind", "name"],
+            set_={
+                "uri": insert_stmt.excluded.uri,
+                "properties": insert_stmt.excluded.properties,
+            },
+        )
+        async with self._engine.begin() as conn:
+            await conn.execute(stmt)
+            # Read the row back by its natural key rather than the freshly
+            # minted id: on conflict, the surviving row keeps its original id.
+            row = (
+                await conn.execute(
+                    select(_entities).where(
+                        _entities.c.node_id == node_id,
+                        _entities.c.kind == kind,
+                        _entities.c.name == name,
+                    )
+                )
+            ).one()
         return self._to_entity(row)
 
     async def get_entity(self, id: str) -> Optional[EntityRecord]:

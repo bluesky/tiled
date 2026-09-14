@@ -703,6 +703,92 @@ async def test_entities_listing_filters_by_node_access_blob(store, filter_policy
     assert names == {"node-linked-visible"}
 
 
+@pytest.mark.asyncio
+async def test_create_entity_requires_write_on_bound_node(store, policy):
+    """
+    Binding an entity to a catalog node requires write:metadata on that node,
+    not merely the global write scope. Otherwise any writer could attach (or,
+    via the uniqueness constraint, squat) entities on nodes they cannot write.
+    """
+    # Node visible/writable to alice (alice_tag) but not to bob.
+    await _insert_node(store, 1, {"tags": ["alice_tag"]}, key="node")
+
+    bob_ctx = _context(store, policy, "bob", {"read:metadata", "write:metadata"})
+    denied = await _execute(
+        CREATE_ENTITY_MUTATION,
+        bob_ctx,
+        {"input": {"kind": "sample", "name": "E", "nodePathParts": ["node"]}},
+    )
+    assert denied.errors
+    assert "Not permitted" in denied.errors[0].message
+
+    alice_ctx = _context(store, policy, "alice", {"read:metadata", "write:metadata"})
+    allowed = await _execute(
+        CREATE_ENTITY_MUTATION,
+        alice_ctx,
+        {"input": {"kind": "sample", "name": "E", "nodePathParts": ["node"]}},
+    )
+    assert allowed.errors is None
+
+
+UPSERT_ENTITY_MUTATION = """
+mutation($input: CreateEntityInput!) {
+    upsertEntity(input: $input) { id name kind }
+}
+"""
+
+
+@pytest.mark.asyncio
+async def test_upsert_entity_is_idempotent(store, policy):
+    """upsertEntity returns the same row for a repeated (node, kind, name)."""
+    await _insert_node(store, 1, {"tags": ["team"]}, key="node")
+    alice_ctx = _context(store, policy, "alice", {"read:metadata", "write:metadata"})
+
+    first = await _execute(
+        UPSERT_ENTITY_MUTATION,
+        alice_ctx,
+        {"input": {"kind": "array", "name": "a1", "nodePathParts": ["node"]}},
+    )
+    second = await _execute(
+        UPSERT_ENTITY_MUTATION,
+        alice_ctx,
+        {"input": {"kind": "array", "name": "a1", "nodePathParts": ["node"]}},
+    )
+    assert first.errors is None and second.errors is None
+    assert first.data["upsertEntity"]["id"] == second.data["upsertEntity"]["id"]
+
+    listed = await store.list_entities(node_id=1)
+    assert len(listed) == 1
+
+
+@pytest.mark.asyncio
+async def test_upsert_entity_requires_write_on_node(store, policy):
+    """upsertEntity enforces the same node-write permission as createEntity."""
+    await _insert_node(store, 1, {"tags": ["alice_tag"]}, key="node")
+    bob_ctx = _context(store, policy, "bob", {"read:metadata", "write:metadata"})
+
+    denied = await _execute(
+        UPSERT_ENTITY_MUTATION,
+        bob_ctx,
+        {"input": {"kind": "array", "name": "a1", "nodePathParts": ["node"]}},
+    )
+    assert denied.errors
+    assert "Not permitted" in denied.errors[0].message
+
+
+@pytest.mark.asyncio
+async def test_upsert_entity_requires_node_binding(store, policy):
+    """upsertEntity has no natural key for external entities, so it errors."""
+    alice_ctx = _context(store, policy, "alice", {"read:metadata", "write:metadata"})
+    result = await _execute(
+        UPSERT_ENTITY_MUTATION,
+        alice_ctx,
+        {"input": {"kind": "sample", "name": "ext"}},
+    )
+    assert result.errors
+    assert result.errors[0].extensions["code"] == "NODE_REQUIRED"
+
+
 UPSERT_NAMESPACE_MUTATION = """
 mutation($prefix: String!, $uri: String!) {
     upsertNamespace(prefix: $prefix, uri: $uri) { prefix uri }
