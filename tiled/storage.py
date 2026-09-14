@@ -234,6 +234,9 @@ def _ping_pooled_connections_on_checkout(pool: "sqlalchemy.pool.Pool") -> None:
             ) from exc
         finally:
             cursor.close()
+        # The ping's SELECT opens a read transaction; roll it back so the
+        # connection is handed to the caller clean (not idle-in-transaction).
+        dbapi_connection.rollback()
 
 
 @dataclasses.dataclass(frozen=True)
