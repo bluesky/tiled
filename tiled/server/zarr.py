@@ -15,9 +15,10 @@ from starlette.status import (
     HTTP_503_SERVICE_UNAVAILABLE,
 )
 
+from ..access_control.protocols import AccessTags
 from ..adapters.utils import DataNotReadyError, ShapeMismatchError
 from ..structures.core import StructureFamily
-from ..type_aliases import AccessTags, Scopes
+from ..type_aliases import Scopes
 from ..utils import ensure_awaitable
 from .authentication import (
     get_current_access_tags,

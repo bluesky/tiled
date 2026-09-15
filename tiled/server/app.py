@@ -118,6 +118,31 @@ def custom_openapi(app):
     return app.openapi_schema
 
 
+def _find_catalog_context(tree):
+    """
+    Find a catalog database context within the served tree.
+
+    The access tags parser needs the catalog's database settings (the URI) to
+    read tag definitions. The served tree may be a single catalog adapter, or a
+    MapAdapter nesting several catalog mounts (e.g. /foo, /bar mounted from the
+    same catalog database). Walk the tree and return the first catalog context
+    found (any one suffices: access tags are a single shared namespace written
+    to one catalog database).
+
+    Returns the context, or None if the tree contains no catalog adapter.
+    """
+    context = getattr(tree, "context", None)
+    if context is not None:
+        return context
+    values = getattr(tree, "values", None)
+    if callable(values):
+        for child in values():
+            found = _find_catalog_context(child)
+            if found is not None:
+                return found
+    return None
+
+
 def build_app(
     tree,
     authentication: Optional[Authentication] = None,
@@ -736,7 +761,32 @@ def build_app(
             if app.state.access_policy is not None and hasattr(
                 app.state.access_policy, "access_tags_parser"
             ):
-                await app.state.access_policy.access_tags_parser.connect()
+                # Access tag definitions live in the catalog database, so the
+                # parser connects with the catalog's own database settings.
+                access_tags_catalog_context = _find_catalog_context(tree)
+                if access_tags_catalog_context is None:
+                    raise ValueError(
+                        "This access policy reads access tags from the catalog "
+                        "database, so it requires a catalog-backed tree."
+                    )
+                await app.state.access_policy.access_tags_parser.connect(
+                    access_tags_catalog_context.database_settings
+                )
+                # The scopes in the catalog database (written there by the
+                # access tags compiler) should be a subset of the scopes that
+                # the server's access policy is configured with.
+                defined_scopes = (
+                    await app.state.access_policy.access_tags_parser.get_defined_scopes()
+                )
+                unknown_scopes = defined_scopes - set(app.state.access_policy.scopes)
+                if unknown_scopes:
+                    logger.warning(
+                        f"The catalog database contains scopes that the access "
+                        f"policy is not configured with: {sorted(unknown_scopes)}. "
+                        f"This suggests the access tags were compiled with a "
+                        f"different scope list than the access policy's. Tag "
+                        f"grants holding these scopes may be restricted."
+                    )
 
             async def purge_expired_sessions_and_api_keys():
                 PURGE_INTERVAL = 600  # seconds

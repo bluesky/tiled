@@ -23,9 +23,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Security
 from sqlalchemy import select
 from starlette.status import HTTP_404_NOT_FOUND
 
+from ..access_control.protocols import AccessTags
 from ..catalog import orm
 from ..config import WebhooksConfig
-from ..type_aliases import AccessTags, Scopes
+from ..type_aliases import Scopes
 from .authentication import (
     check_scopes,
     get_current_access_tags,

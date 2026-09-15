@@ -3,7 +3,6 @@ import dataclasses
 import inspect
 import os
 import warnings
-from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 from functools import cache, partial
 from pathlib import Path
@@ -50,11 +49,12 @@ from tiled.server.protocols import ExternalAuthenticator, InternalAuthenticator
 from tiled.server.schemas import Principal
 
 from .. import __version__
+from ..access_control.protocols import AccessTags
 from ..links import links_for_node
 from ..ndslice import NDBlock, NDSlice
 from ..stream_messages import ArrayPatch
 from ..structures.core import Spec, StructureFamily
-from ..type_aliases import AccessTags, Scopes
+from ..type_aliases import Scopes
 from ..utils import BrokenLink, ensure_awaitable, patch_mimetypes, path_from_uri
 from ..validation_registration import ValidationError, ValidationRegistry
 from . import schemas
@@ -1886,11 +1886,11 @@ def get_router(
         authn_access_tags: Optional[AccessTags],
         authn_scopes: Scopes,
     ):
-        metadata, structure_family, specs, access_blob = (
+        metadata, structure_family, specs, access_tags = (
             body.metadata,
             body.structure_family,
             body.specs,
-            body.access_blob,
+            AccessTags(body.access_tags) if body.access_tags is not None else None,
         )
         if structure_family == StructureFamily.container:
             structure = None
@@ -1914,19 +1914,19 @@ def get_router(
         ):
             try:
                 (
-                    access_blob_modified,
-                    access_blob,
+                    access_tags_modified,
+                    access_tags,
                 ) = await request.app.state.access_policy.init_node(
-                    principal, authn_access_tags, authn_scopes, access_blob=access_blob
+                    principal, authn_access_tags, authn_scopes, access_tags=access_tags
                 )
             except ValueError as e:
                 raise HTTPException(
                     status_code=HTTP_403_FORBIDDEN,
-                    detail=f"Access policy rejects the provided access blob.\n{e}",
+                    detail=f"Access policy rejects the provided access tags.\n{e}",
                 )
         else:
-            access_blob_modified = access_blob != {}
-            access_blob = {}
+            access_tags_modified = access_tags != AccessTags()
+            access_tags = AccessTags()
 
         node = await entry.create_node(
             metadata=body.metadata,
@@ -1934,7 +1934,7 @@ def get_router(
             key=key,
             specs=body.specs,
             data_sources=body.data_sources,
-            access_blob=access_blob,
+            access_tags=access_tags,
         )
         links = links_for_node(
             structure_family, structure, get_base_url(request), path + f"/{node.key}"
@@ -1952,8 +1952,10 @@ def get_router(
         }
         if metadata_modified:
             response_data["metadata"] = metadata
-        if access_blob_modified:
-            response_data["access_blob"] = access_blob
+        if access_tags_modified:
+            response_data["access_tags"] = (
+                sorted(access_tags) if access_tags is not None else None
+            )
 
         return json_or_msgpack(request, response_data)
 
@@ -2377,7 +2379,11 @@ def get_router(
         if body.content_type == patch_mimetypes.JSON_PATCH:
             metadata = apply_json_patch(entry.metadata(), (body.metadata or []))
             specs = apply_json_patch((entry.specs or []), (body.specs or []))
-            access_blob = apply_json_patch(entry.access_blob, (body.access_blob or []))
+            # Patch against the same deterministic (sorted) list that the
+            # server serves, so that index-based patch operations are stable.
+            access_tags = apply_json_patch(
+                sorted(entry.access_tags), (body.access_tags or [])
+            )
         elif body.content_type == patch_mimetypes.MERGE_PATCH:
             metadata = apply_merge_patch(entry.metadata(), (body.metadata or {}))
             # body.specs = [] clears specs, as per json merge patch specification
@@ -2385,19 +2391,27 @@ def get_router(
             current_specs = entry.specs or []
             target_specs = current_specs if body.specs is None else body.specs
             specs = apply_merge_patch(current_specs, target_specs)
-            # json_merge_patch applies merge in-place, which would
-            # otherwise modify the in-memory node and prevent the
-            # access policy from sanity checking the access blob.
-            # make a copy so we can compare the node against the
-            # proposed new access blob.
-            entry_access_blob_copy = deepcopy(entry.access_blob)
-            access_blob = apply_merge_patch(
-                entry_access_blob_copy, (body.access_blob or [])
+            # sorted() makes a mutable copy, protecting the in-memory node
+            # from in-place modification by json_merge_patch so that the
+            # access policy can compare the node against the proposed tags.
+            access_tags = apply_merge_patch(
+                sorted(entry.access_tags), (body.access_tags or [])
             )
         else:
             raise HTTPException(
                 status_code=HTTP_406_NOT_ACCEPTABLE,
                 detail=f"valid content types: {', '.join(patch_mimetypes)}",
+            )
+        # A patch is unconstrained by the request schema, so validate that it
+        # produced a flat list of tag names, and normalize to AccessTags.
+        if isinstance(access_tags, list) and all(
+            isinstance(tag, str) for tag in access_tags
+        ):
+            access_tags = AccessTags(access_tags)
+        else:
+            raise HTTPException(
+                status_code=HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="access_tags patch must produce a list of strings",
             )
 
         # Manually validate limits that bypass pydantic validation via patch
@@ -2423,31 +2437,33 @@ def get_router(
             policy, "modify_node"
         ):
             try:
-                (access_blob_modified, access_blob) = await policy.modify_node(
-                    entry, principal, authn_access_tags, authn_scopes, access_blob
+                (access_tags_modified, access_tags) = await policy.modify_node(
+                    entry, principal, authn_access_tags, authn_scopes, access_tags
                 )
             except ValueError as e:
                 raise HTTPException(
                     status_code=HTTP_403_FORBIDDEN,
-                    detail=f"Access policy rejects the provided access blob.\n{e}",
+                    detail=f"Access policy rejects the provided access tags.\n{e}",
                 )
         else:
-            # Cannot modify the access blob if there is no access policy
-            access_blob_modified = access_blob != entry.access_blob
-            access_blob = entry.access_blob
+            # Cannot modify the access tags if there is no access policy
+            access_tags_modified = access_tags != entry.access_tags
+            access_tags = entry.access_tags
 
         await entry.replace_metadata(
             metadata=metadata,
             specs=specs,
-            access_blob=access_blob,
+            access_tags=access_tags,
             drop_revision=drop_revision,
         )
 
         response_data = {"id": entry.node.key}
         if metadata_modified:
             response_data["metadata"] = metadata
-        if access_blob_modified:
-            response_data["access_blob"] = access_blob
+        if access_tags_modified:
+            response_data["access_tags"] = (
+                sorted(access_tags) if access_tags is not None else None
+            )
         return json_or_msgpack(request, response_data)
 
     @router.put("/metadata/{path:path}", response_model=schemas.PutMetadataResponse)
@@ -2482,10 +2498,12 @@ def get_router(
                 detail="This node does not support update of metadata.",
             )
 
-        metadata, specs, access_blob = (
+        metadata, specs, access_tags = (
             body.metadata if body.metadata is not None else entry.metadata(),
             body.specs if body.specs is not None else entry.specs,
-            body.access_blob if body.access_blob is not None else entry.access_blob,
+            AccessTags(body.access_tags)
+            if body.access_tags is not None
+            else entry.access_tags,
         )
 
         metadata_modified, metadata = await validate_specs(
@@ -2499,31 +2517,33 @@ def get_router(
             policy, "modify_node"
         ):
             try:
-                (access_blob_modified, access_blob) = await policy.modify_node(
-                    entry, principal, authn_access_tags, authn_scopes, access_blob
+                (access_tags_modified, access_tags) = await policy.modify_node(
+                    entry, principal, authn_access_tags, authn_scopes, access_tags
                 )
             except ValueError as e:
                 raise HTTPException(
                     status_code=HTTP_403_FORBIDDEN,
-                    detail=f"Access policy rejects the provided access blob.\n{e}",
+                    detail=f"Access policy rejects the provided access tags.\n{e}",
                 )
         else:
-            # Cannot modify the access blob if there is no access policy
-            access_blob_modified = access_blob != entry.access_blob
-            access_blob = entry.access_blob
+            # Cannot modify the access tags if there is no access policy
+            access_tags_modified = access_tags != entry.access_tags
+            access_tags = entry.access_tags
 
         await entry.replace_metadata(
             metadata=metadata,
             specs=specs,
-            access_blob=access_blob,
+            access_tags=access_tags,
             drop_revision=drop_revision,
         )
 
         response_data = {"id": entry.node.key}
         if metadata_modified:
             response_data["metadata"] = metadata
-        if access_blob_modified:
-            response_data["access_blob"] = access_blob
+        if access_tags_modified:
+            response_data["access_tags"] = (
+                sorted(access_tags) if access_tags is not None else None
+            )
         return json_or_msgpack(request, response_data)
 
     @router.get("/revisions/{path:path}")

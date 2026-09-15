@@ -410,8 +410,7 @@ properties:
           access_policy: "tiled.access_control.access_policies:TagBasedAccessPolicy"
           args:
             provider: "pam"
-            tags_db:
-              uri: "file:compiled_tags.sqlite"
+            # Access tag definitions are read from the catalog database.
             access_tags_parser: "tiled.access_control.access_tags:AccessTagsParser"
           ```
       args:

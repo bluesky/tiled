@@ -10,11 +10,11 @@ from starlette.status import (
     HTTP_410_GONE,
 )
 
-from ..access_control.protocols import AccessPolicy
+from ..access_control.protocols import AccessPolicy, AccessTags
 from ..adapters.protocols import AnyAdapter
 from ..ndslice import NDBlock, NDSlice
 from ..structures.core import StructureFamily
-from ..type_aliases import AccessTags, Scopes
+from ..type_aliases import Scopes
 from ..utils import BrokenLink
 from .core import NoEntry
 from .schemas import Principal

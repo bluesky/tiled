@@ -63,6 +63,24 @@ async def client(catalog_adapter):
 
 
 @pytest.mark.asyncio
+async def test_root_node_has_default_access_tags(a):
+    access_tags = (
+        (
+            await a.context.execute(
+                "SELECT access_tags.name "
+                "FROM access_tags "
+                "JOIN node_access_tags "
+                "ON node_access_tags.tag_id = access_tags.id "
+                "WHERE node_access_tags.node_id = 0"
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert list(access_tags) == ["public"]
+
+
+@pytest.mark.asyncio
 async def test_nested_node_creation(a):
     await a.create_node(
         key="b",

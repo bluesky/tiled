@@ -31,8 +31,6 @@ JSON = Mapping[str, JSON_ITEM]
 Scopes = Set[str]
 Query = Any  # for now...
 Filters = List[Query]
-AccessBlob = Mapping[str, Any]
-AccessTags = Set[str]
 Chunks = Tuple[Tuple[int, ...], ...]
 
 AppTask = Callable[[], Coroutine[None, None, Any]]
