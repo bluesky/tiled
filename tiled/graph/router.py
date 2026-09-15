@@ -55,7 +55,7 @@ query ExploreGraph {
   entities(limit: 10) {
     id
     name
-    entityType
+    kind
     uri
     outgoingLinks(limit: 5) {
       predicate

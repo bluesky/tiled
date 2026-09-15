@@ -41,7 +41,7 @@ from tiled.queries import AccessBlobFilter
 from .curie import compact_term, compact_value, expand_term, expand_value
 from .orm import ENTITY_NODE_ACCESS_BLOB_ERROR
 from .store import UNSET as STORE_UNSET
-from .store import EntityRecord, GraphSQLAlchemyStore, LinkRecord
+from .store import EntityConflictError, EntityRecord, GraphSQLAlchemyStore, LinkRecord
 
 logger = logging.getLogger(__name__)
 
@@ -115,6 +115,23 @@ async def _is_allowed(info: Info, access_blob: Optional[dict], scope: str) -> bo
 async def _assert_allowed(info: Info, access_blob: Optional[dict], scope: str) -> None:
     if not await _is_allowed(info, access_blob, scope):
         raise GraphQLError("Not permitted")
+
+
+async def _assert_node_write(info: Info, node_id: Optional[int]) -> None:
+    """
+    Require write:metadata on the catalog node an entity is being bound to.
+
+    Binding an entity to a node attaches graph metadata to that node and
+    delegates the entity's access control to it, so it must require the same
+    permission as writing the node's own metadata. Without this check any
+    principal holding the global write:metadata scope could attach (or, via
+    the uniqueness constraint, squat) entities on nodes they cannot write.
+    A None node_id (external entity) is a no-op.
+    """
+    if node_id is None:
+        return
+    access_blob = await _store(info).get_node_access_blob(node_id)
+    await _assert_allowed(info, access_blob, "write:metadata")
 
 
 async def _effective_access_blob(info: Info, record: EntityRecord) -> Optional[dict]:
@@ -208,7 +225,7 @@ async def _modify_access_blob(
 class Entity:
     id: strawberry.ID
     is_node_bound: bool
-    entity_type: str
+    kind: str
     name: str
     uri: Optional[str]
     properties: Optional[JSON]  # type: ignore[valid-type]
@@ -308,7 +325,7 @@ def _entity_from_record(r: EntityRecord, namespaces: dict[str, str]) -> Entity:
     return Entity(
         id=strawberry.ID(r.id),
         is_node_bound=r.node_id is not None,
-        entity_type=r.entity_type,
+        kind=r.kind,
         name=r.name,
         uri=r.uri,
         properties=properties,
@@ -336,24 +353,26 @@ def _link_from_record(r: LinkRecord, namespaces: dict[str, str]) -> Link:
 
 @strawberry.input
 class UpdateEntityInput:
+    kind: Optional[str] = None
     name: Optional[str] = None
     # Re-bind to a catalog node by path (list of key segments), detach with an
     # explicit null, or leave the current binding unchanged by omitting it.
     node_path_parts: Optional[list[str]] | UnsetType = UNSET
     uri: Optional[str] | UnsetType = UNSET
-    entity_type: Optional[str] = None
+    properties: Optional[JSON] | UnsetType = UNSET  # type: ignore[valid-type]
     access_blob: Optional[JSON] | UnsetType = UNSET  # type: ignore[valid-type]
 
 
 @strawberry.input
 class UpdateLinkInput:
     predicate: Optional[str] | UnsetType = UNSET
+    properties: Optional[JSON] | UnsetType = UNSET  # type: ignore[valid-type]
     access_blob: Optional[JSON] | UnsetType = UNSET  # type: ignore[valid-type]
 
 
 @strawberry.input
 class CreateEntityInput:
-    entity_type: str
+    kind: str
     name: str
     # Bind this entity to a catalog node by its path of key segments
     # (e.g. ["a", "b"]). Resolved to the internal node id server-side, so
@@ -395,7 +414,8 @@ class Query:
     async def entities(
         self,
         info: Info,
-        entity_type: Optional[str] = None,
+        kind: Optional[str] = None,
+        name: Optional[str] = None,
         node_path_parts: Optional[list[str]] = None,
         limit: int = 100,
         offset: int = 0,
@@ -410,7 +430,8 @@ class Query:
                 # No such catalog node -> it can have no bound entities.
                 return []
         records = await _store(info).list_entities(
-            entity_type=entity_type,
+            kind=kind,
+            name=name,
             node_id=node_id,
             limit=limit,
             offset=offset,
@@ -472,23 +493,69 @@ class Mutation:
         _assert_authn_scope(info, "write:metadata")
         namespaces = await _namespaces(info)
         node_id = await _resolve_node_binding(info, input.node_path_parts)
+        # Binding to a node requires write access on that node, not merely the
+        # global write:metadata scope.
+        await _assert_node_write(info, node_id)
         if node_id is not None:
             if input.access_blob:
                 raise GraphQLError(ENTITY_NODE_ACCESS_BLOB_ERROR)
             access_blob = None
         else:
             access_blob = await _init_access_blob(info, input.access_blob)
-        record = await _store(info).create_entity(
-            entity_type=input.entity_type,
+        try:
+            record = await _store(info).create_entity(
+                kind=input.kind,
+                name=input.name,
+                node_id=node_id,
+                uri=input.uri,
+                properties=expand_value(input.properties or {}, namespaces),
+                access_blob=access_blob,
+            )
+        except EntityConflictError as exc:
+            raise GraphQLError(str(exc), extensions={"code": "ENTITY_EXISTS"})
+        logger.info(
+            "Created entity kind=%r name=%r id=%s",
+            record.kind,
+            record.name,
+            record.id,
+        )
+        return _entity_from_record(record, namespaces)
+
+    @strawberry.mutation(
+        description=(
+            "Get-or-create an entity bound to a catalog node, keyed on "
+            "(node, kind, name). Idempotent: returns the existing entity if "
+            "one already matches, else creates it."
+        )
+    )
+    async def upsert_entity(self, info: Info, input: CreateEntityInput) -> Entity:
+        _assert_authn_scope(info, "write:metadata")
+        namespaces = await _namespaces(info)
+        node_id = await _resolve_node_binding(info, input.node_path_parts)
+        await _assert_node_write(info, node_id)
+        if node_id is None:
+            # Upsert has no natural key for external entities (node_id NULL is
+            # distinct in the unique index), so it would silently create
+            # duplicates. Require a node binding and steer callers to
+            # createEntity for free-standing entities.
+            raise GraphQLError(
+                "upsertEntity requires nodePathParts; use createEntity for "
+                "external (node-unbound) entities.",
+                extensions={"code": "NODE_REQUIRED"},
+            )
+        if input.access_blob:
+            raise GraphQLError(ENTITY_NODE_ACCESS_BLOB_ERROR)
+        record = await _store(info).upsert_entity(
+            kind=input.kind,
             name=input.name,
             node_id=node_id,
             uri=input.uri,
             properties=expand_value(input.properties or {}, namespaces),
-            access_blob=access_blob,
+            access_blob=None,
         )
         logger.info(
-            "Created entity type=%r name=%r id=%s",
-            record.entity_type,
+            "Upserted entity kind=%r name=%r id=%s",
+            record.kind,
             record.name,
             record.id,
         )
@@ -542,7 +609,7 @@ class Mutation:
             logger.info("Deleted entity id=%s", id)
         return deleted
 
-    @strawberry.mutation(description="Update an entity's name, uri, or entity_type.")
+    @strawberry.mutation(description="Update an entity's name, uri, or kind.")
     async def update_entity(
         self, info: Info, id: strawberry.ID, input: UpdateEntityInput
     ) -> Optional[Entity]:
@@ -562,8 +629,16 @@ class Mutation:
         else:
             node_id = await _resolve_node_binding(info, input.node_path_parts)
         node_binding_changed = node_id is not STORE_UNSET
+        # Re-binding to a (different) node requires write access on that target
+        # node, in addition to write access on the entity as it stands now.
+        if node_binding_changed and node_id is not None:
+            await _assert_node_write(info, node_id)
         effective_node_id = current.node_id if node_id is STORE_UNSET else node_id
-        access_blob = UNSET
+        # Default to the store's UNSET sentinel (leave unchanged), not
+        # strawberry's UNSET: the latter is a distinct object the store cannot
+        # recognize, so it would be written verbatim into access_blob, raising
+        # "Type is not JSON serializable: UnsetType".
+        access_blob = STORE_UNSET
         if effective_node_id is not None:
             if input.access_blob is not UNSET and (input.access_blob or {}):
                 raise GraphQLError(ENTITY_NODE_ACCESS_BLOB_ERROR)
@@ -579,14 +654,23 @@ class Mutation:
             # own access_blob now that it no longer delegates to a node.
             access_blob = await _init_access_blob(info, None)
         uri = STORE_UNSET if input.uri is UNSET else input.uri
-        record = await _store(info).update_entity(
-            str(id),
-            name=input.name,
-            node_id=node_id,
-            uri=uri,
-            entity_type=input.entity_type,
-            access_blob=access_blob,
+        properties = (
+            STORE_UNSET
+            if input.properties is UNSET
+            else expand_value(input.properties or {}, await _namespaces(info))
         )
+        try:
+            record = await _store(info).update_entity(
+                str(id),
+                kind=input.kind,
+                name=input.name,
+                node_id=node_id,
+                uri=uri,
+                properties=properties,
+                access_blob=access_blob,
+            )
+        except EntityConflictError as exc:
+            raise GraphQLError(str(exc), extensions={"code": "ENTITY_EXISTS"})
         if record:
             logger.info("Updated entity id=%s", id)
         return _entity_from_record(record, await _namespaces(info)) if record else None
@@ -602,7 +686,7 @@ class Mutation:
             logger.info("Deleted link id=%s", id)
         return deleted
 
-    @strawberry.mutation(description="Update a link's predicate.")
+    @strawberry.mutation(description="Update a link's predicate or properties.")
     async def update_link(
         self, info: Info, id: strawberry.ID, input: UpdateLinkInput
     ) -> Optional[Link]:
@@ -611,7 +695,9 @@ class Mutation:
             return None
         await _assert_allowed(info, current.access_blob, "write:metadata")
         namespaces = await _namespaces(info)
-        access_blob = UNSET
+        # Store's UNSET sentinel (leave unchanged), not strawberry's; see
+        # update_entity for why passing strawberry's UNSET corrupts access_blob.
+        access_blob = STORE_UNSET
         if input.access_blob is not UNSET:
             requested_access_blob = input.access_blob or {}
             access_blob = await _modify_access_blob(
@@ -622,9 +708,15 @@ class Mutation:
             if input.predicate is UNSET
             else expand_term(input.predicate, namespaces)
         )
+        properties = (
+            STORE_UNSET
+            if input.properties is UNSET
+            else expand_value(input.properties or {}, namespaces)
+        )
         record = await _store(info).update_link(
             str(id),
             predicate=predicate,
+            properties=properties,
             access_blob=access_blob,
         )
         if record:
