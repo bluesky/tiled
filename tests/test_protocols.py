@@ -493,8 +493,8 @@ class CustomAccessPolicy(AccessPolicy):
         authn_access_tags: Optional[AccessTags],
         authn_scopes: Scopes,
         access_blob: Optional[AccessBlob] = None,
-    ) -> Tuple[bool, Optional[AccessBlob]]:
-        return (False, access_blob)
+    ) -> Tuple[bool, AccessBlob]:
+        return (False, access_blob or AccessBlob(tags=[]))
 
     async def modify_node(
         self,
@@ -502,9 +502,9 @@ class CustomAccessPolicy(AccessPolicy):
         principal: Principal,
         authn_access_tags: Optional[AccessTags],
         authn_scopes: Scopes,
-        access_blob: Optional[AccessBlob] = None,
-    ) -> Tuple[bool, Optional[AccessBlob]]:
-        return (False, access_blob)
+        access_blob: Optional[AccessBlob],
+    ) -> Tuple[bool, AccessBlob]:
+        return (False, access_blob or AccessBlob(tags=[]))
 
     async def allowed_scopes(
         self,

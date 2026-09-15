@@ -1,4 +1,5 @@
 import asyncio
+import json
 import os
 import random
 import string
@@ -60,6 +61,22 @@ async def client(catalog_adapter):
     app = build_app(catalog_adapter)
     with Context.from_app(app) as context:
         yield from_context(context)
+
+
+@pytest.mark.asyncio
+async def test_root_node_has_default_access_blob(a):
+    tags = (
+        await a.context.execute(
+            "SELECT access_blobs.tags "
+            "FROM access_blobs "
+            "JOIN node_access_blobs "
+            "ON node_access_blobs.access_blob_id = access_blobs.id "
+            "WHERE node_access_blobs.node_id = 0"
+        )
+    ).scalar_one()
+    if isinstance(tags, str):
+        tags = json.loads(tags)
+    assert tags == ["public"]
 
 
 @pytest.mark.asyncio
