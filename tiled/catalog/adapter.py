@@ -1457,6 +1457,120 @@ class CatalogNodeAdapter:
 
         return len(set(record[0] for record in deleted_asset_records))
 
+    async def delete_asset(self, asset_id, external_only=True):
+        """Dissociate a single Asset from this Node and delete it if unreferenced.
+
+        The association(s) between this Node's DataSource(s) and the Asset with
+        the given `asset_id` are removed. If, afterward, the Asset is no longer
+        referenced by any DataSource (belonging to any Node), the Asset record
+        is deleted; and, if it is internally managed, the underlying data (file,
+        directory, object, or storage-database rows) is deleted as well.
+
+        If the Asset is still referenced by other Nodes/DataSources, only the
+        association with this Node is removed; the Asset record and its
+        underlying data are retained.
+
+        Externally managed Assets are never physically deleted, even if unreferenced.
+
+        Parameters
+        ----------
+        asset_id : int
+            The id of the Asset to dissociate/delete.
+        external_only : bool, optional
+            Safety check: if True (the default), refuse to delete an
+            internally-managed Asset (raises `WouldDeleteData`). Pass False to
+            allow deletion of the underlying data.
+
+        Returns
+        -------
+        dict or None
+            None if this Node has no Asset with the given id. Otherwise a
+            summary dict with keys `asset_deleted` and `data_deleted` (bools).
+        """
+        async with self.context.session() as db:
+            info_stmt = (
+                select(
+                    orm.DataSourceAssetAssociation.data_source_id,
+                    orm.DataSource.management,
+                    # keep only table_name and dataset_id from parameters
+                    orm.DataSource.parameters["table_name"].label("table_name"),
+                    orm.DataSource.parameters["dataset_id"].label("dataset_id"),
+                )
+                .select_from(orm.DataSourceAssetAssociation)
+                .join(
+                    orm.DataSource,
+                    orm.DataSource.id == orm.DataSourceAssetAssociation.data_source_id,
+                )
+                .where(orm.DataSource.node_id == self.node.id)
+                .where(orm.DataSourceAssetAssociation.asset_id == asset_id)
+            )
+            rows = (await db.execute(info_stmt)).all()
+            if not rows:
+                return None  # This Node has no such Asset.
+            table_name, dataset_id = rows[0].table_name, rows[0].dataset_id
+
+            # Safety check: refuse to delete internally-managed data unless the
+            # caller explicitly opts in. Treat the Asset as internally managed
+            # if ANY DataSource on this Node that references it is internally managed.
+            is_internal = any(row.management != Management.external for row in rows)
+            if external_only and is_internal:
+                raise WouldDeleteData(
+                    "This asset is internally managed. Deleting it would also "
+                    "delete the underlying data. If you want to delete it, pass "
+                    "external_only=False."
+                )
+
+            # Dissociate: remove the association(s) to this Node's DataSource(s).
+            data_source_ids = {row.data_source_id for row in rows}
+            await db.execute(
+                delete(orm.DataSourceAssetAssociation)
+                .where(orm.DataSourceAssetAssociation.asset_id == asset_id)
+                .where(
+                    orm.DataSourceAssetAssociation.data_source_id.in_(data_source_ids)
+                )
+            )
+
+            # Delete the Asset record only if it is no longer referenced by any
+            # DataSource (belonging to any Node). The existence check is folded
+            # into the DELETE, so this is a single round-trip instead of an
+            # EXISTS query followed by a DELETE. RETURNING yields the
+            # physical-location fields only when the row is actually deleted.
+            deleted = (
+                await db.execute(
+                    delete(orm.Asset)
+                    .where(orm.Asset.id == asset_id)
+                    .where(
+                        ~exists(
+                            select(1)
+                            .select_from(orm.DataSourceAssetAssociation)
+                            .where(orm.DataSourceAssetAssociation.asset_id == asset_id)
+                        )
+                    )
+                    .returning(orm.Asset.data_uri, orm.Asset.is_directory)
+                )
+            ).first()
+            asset_deleted = deleted is not None
+
+            await db.commit()
+
+        # Delete the underlying data only if the Asset record was removed AND it
+        # is internally managed. (Externally managed data is never deleted).
+        data_deleted = False
+        if asset_deleted and is_internal:
+            data_uri, is_directory = deleted
+            await anyio.to_thread.run_sync(
+                partial(
+                    delete_physical_asset,
+                    data_uri,
+                    is_directory=is_directory,
+                    table_name=table_name,
+                    dataset_id=dataset_id,
+                )
+            )
+            data_deleted = True
+
+        return {"asset_deleted": asset_deleted, "data_deleted": data_deleted}
+
     async def delete_revision(self, number):
         async with self.context.session() as db:
             result = await db.execute(
