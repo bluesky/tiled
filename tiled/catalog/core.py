@@ -1,4 +1,4 @@
-from sqlalchemy import insert, select, text
+from sqlalchemy import literal, select, text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from ..alembic_utils import DatabaseUpgradeNeeded, UninitializedDatabase, check_database
@@ -55,24 +55,28 @@ async def initialize_database(engine: AsyncEngine):
         # auto-registration of principal tags (register_principal_tag_rows).
         # On a server without an access policy, tags are ignored and
         # these rows are inert.
-        public_tag_id = await connection.scalar(
-            select(orm.AccessTag.id).where(orm.AccessTag.name == "public")
+        if engine.dialect.name == "postgresql":
+            from sqlalchemy.dialects.postgresql import insert as upsert
+        else:
+            from sqlalchemy.dialects.sqlite import insert as upsert
+
+        await connection.execute(
+            upsert(orm.AccessTag.__table__)
+            .values(name="public", is_public=True)
+            .on_conflict_do_nothing(index_elements=["name"])
         )
-        if public_tag_id is None:
-            result = await connection.execute(
-                insert(orm.AccessTag).values(name="public", is_public=True)
+        # The tag id is resolved in SQL, so no round-trip is needed and the
+        # statement is a no-op when the association already exists.
+        await connection.execute(
+            upsert(orm.NodeAccessTag.__table__)
+            .from_select(
+                ["node_id", "tag_id"],
+                select(literal(0), orm.AccessTag.id).where(
+                    orm.AccessTag.name == "public"
+                ),
             )
-            public_tag_id = result.inserted_primary_key[0]
-        root_is_tagged = await connection.scalar(
-            select(orm.NodeAccessTag.tag_id).where(
-                orm.NodeAccessTag.node_id == 0,
-                orm.NodeAccessTag.tag_id == public_tag_id,
-            )
+            .on_conflict_do_nothing(index_elements=["node_id", "tag_id"])
         )
-        if root_is_tagged is None:
-            await connection.execute(
-                insert(orm.NodeAccessTag).values(node_id=0, tag_id=public_tag_id)
-            )
         if engine.dialect.name == "sqlite":
             # Use write-ahead log mode. This persists across all future connections
             # until/unless manually switched.
