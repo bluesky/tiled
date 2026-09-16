@@ -28,7 +28,7 @@ def well_known_url() -> str:
 def oidc_config(well_known_url: str) -> Dict[str, Any]:
     return {
         "authentication": {
-            "secret_keys": ["SECRET"],
+            "secret_keys": ["SECRET_KEY_FOR_TESTING_PURPOSES_ONLY"],
             "providers": [
                 {
                     "provider": "keycloak_oidc",
@@ -205,12 +205,11 @@ def test_device_flow_polling(
         ),
     ]
 
-    stamina.set_testing(testing=True, attempts=1)
-
-    with patch("webbrowser.open", return_value=False):
-        tokens = prompt_for_credentials(
-            httpx.Client(), context.server_info.authentication.providers
-        )
+    with stamina.set_testing(testing=True, attempts=1):
+        with patch("webbrowser.open", return_value=False):
+            tokens = prompt_for_credentials(
+                httpx.Client(), context.server_info.authentication.providers
+            )
 
     out, err = capsys.readouterr()
     assert out == textwrap.dedent(
@@ -499,15 +498,14 @@ def test_tiled_mediated_device_flow_polling_pending(
         httpx.Response(status_code=httpx.codes.OK, json=tokens_response),
     ]
 
-    stamina.set_testing(testing=True, attempts=1)
-
-    with patch("webbrowser.open", return_value=False):
-        tokens = device_code_grant(
-            httpx.Client(),
-            auth_endpoint=tiled_mediated_urls["auth_endpoint"],
-            client_id=None,
-            token_endpoint=None,
-        )
+    with stamina.set_testing(testing=True, attempts=1):
+        with patch("webbrowser.open", return_value=False):
+            tokens = device_code_grant(
+                httpx.Client(),
+                auth_endpoint=tiled_mediated_urls["auth_endpoint"],
+                client_id=None,
+                token_endpoint=None,
+            )
 
     assert tokens == tokens_response
     assert token_polling_route.call_count == 2
