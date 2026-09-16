@@ -37,6 +37,9 @@ tree = MapAdapter(
         "empty_table": DataFrameAdapter.from_pandas(
             pandas.DataFrame({"A": []}), npartitions=1
         ),
+        "single_row_table": DataFrameAdapter.from_pandas(
+            pandas.DataFrame({"A": [1]}), npartitions=1
+        ),
         "structured_data": MapAdapter(
             {
                 "pets": ArrayAdapter.from_array(
@@ -108,12 +111,15 @@ def test_csv_mimetype_opt_params(client, filename, tmpdir):
 def test_streaming_export(client, buffer):
     "The application/json-seq format is streamed via a generator."
     client["C"].export(buffer, format="application/json-seq")
-    # Verify that output is valid newline-delimited JSON.
+    # Verify the RFC 7464 record-separator and line-feed framing.
     buffer.seek(0)
-    lines = buffer.read().decode().splitlines()
-    assert len(lines) == 100
-    for line in lines:
-        json.loads(line)
+    payload = buffer.read()
+    assert payload.startswith(b"\x1e")
+    records = [record for record in payload.split(b"\x1e") if record]
+    assert len(records) == 100
+    for record in records:
+        assert record.endswith(b"\n")
+        json.loads(record)
 
 
 def test_streaming_export_empty(client, buffer):
@@ -121,6 +127,23 @@ def test_streaming_export_empty(client, buffer):
     client["empty_table"].export(buffer, format="application/json-seq")
     buffer.seek(0)
     assert buffer.read() == b""
+
+
+def test_json_sequence_single_row_uses_record_separator(client):
+    """A one-row JSON sequence must not be mistaken for one JSON document."""
+    url = client["single_row_table"].item["links"]["partition"]
+    response = client.context.http_client.get(
+        url,
+        params={"partition": 0, "format": "application/json-seq"},
+    )
+    response.raise_for_status()
+
+    assert response.headers["content-type"].split(";", 1)[0] == "application/json-seq"
+    assert response.content.startswith(b"\x1e")
+    assert response.content.endswith(b"\n")
+    assert json.loads(response.content[1:]) == {"A": 1}
+    with pytest.raises(json.JSONDecodeError):
+        json.loads(response.content)
 
 
 def test_export_weather_data_var(client, tmpdir, buffer):
