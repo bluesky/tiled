@@ -1,7 +1,7 @@
 version: "3.2"
 services:
   minio:
-    image: minio/minio:latest
+    image: coollabsio/minio:latest
     ports:
       - 9000:9000
       - 9001:9001
@@ -13,7 +13,7 @@ services:
     command: server /data --console-address :9001
     restart: unless-stopped
   create-bucket:
-    image: minio/mc:latest
+    image: quay.io/minio/mc:latest
     environment:
       MC_HOST_minio: http://minioadmin:minioadmin@minio:9000
     entrypoint:
