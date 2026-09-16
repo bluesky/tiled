@@ -7,7 +7,7 @@ from tiled.catalog import in_memory
 from tiled.catalog.core import initialize_database
 from tiled.config import Database
 from tiled.graph.schema import schema
-from tiled.graph.store import GraphSQLAlchemyStore, _nodes
+from tiled.graph.store import EntityConflictError, GraphSQLAlchemyStore, _nodes
 from tiled.queries import AccessBlobFilter
 from tiled.server.app import build_app
 from tiled.server.authentication import (
@@ -199,7 +199,7 @@ async def test_entity_create_defaults_to_user_access_blob_and_read_visibility(
     result = await _execute(
         CREATE_ENTITY_MUTATION,
         alice_ctx,
-        {"input": {"entityType": "sample", "name": "E1", "properties": {}}},
+        {"input": {"kind": "sample", "name": "E1", "properties": {}}},
     )
     assert result.errors is None
     entity_id = result.data["createEntity"]["id"]
@@ -227,7 +227,7 @@ async def test_entity_can_be_tagged_and_shared_for_reads(store, policy):
         alice_ctx,
         {
             "input": {
-                "entityType": "sample",
+                "kind": "sample",
                 "name": "Etag",
                 "properties": {},
                 "accessBlob": {"tags": ["team"]},
@@ -251,7 +251,7 @@ async def test_entity_update_and_delete_enforce_access_control(store, policy):
     created = await _execute(
         CREATE_ENTITY_MUTATION,
         alice_ctx,
-        {"input": {"entityType": "sample", "name": "E2", "properties": {}}},
+        {"input": {"kind": "sample", "name": "E2", "properties": {}}},
     )
     assert created.errors is None
     entity_id = created.data["createEntity"]["id"]
@@ -294,6 +294,81 @@ async def test_entity_update_and_delete_enforce_access_control(store, policy):
 
 
 @pytest.mark.asyncio
+async def test_update_entity_without_access_blob_preserves_it(store, policy):
+    """
+    Omitting access_blob on updateEntity must leave it unchanged, not write a
+    strawberry UnsetType sentinel into it (which is not JSON serializable and
+    raised "Type is not JSON serializable: UnsetType").
+    """
+    alice_ctx = _context(store, policy, "alice", {"read:metadata", "write:metadata"})
+    created = await _execute(
+        CREATE_ENTITY_MUTATION,
+        alice_ctx,
+        {"input": {"kind": "sample", "name": "E"}},
+    )
+    assert created.errors is None
+    entity_id = created.data["createEntity"]["id"]
+
+    update_mutation = """
+    mutation($id: ID!, $input: UpdateEntityInput!) {
+      updateEntity(id: $id, input: $input) { id uri }
+    }
+    """
+    result = await _execute(
+        update_mutation, alice_ctx, {"id": entity_id, "input": {"uri": "new-uri"}}
+    )
+    assert result.errors is None
+    assert result.data["updateEntity"]["uri"] == "new-uri"
+    record = await store.get_entity(entity_id)
+    # Unchanged: the original user blob, not a serialized UnsetType.
+    assert record.access_blob == {"user": "alice"}
+
+
+@pytest.mark.asyncio
+async def test_update_link_without_access_blob_preserves_it(store, policy):
+    """updateLink with only a predicate must leave the link's access_blob intact."""
+    alice_ctx = _context(store, policy, "alice", {"read:metadata", "write:metadata"})
+    s = await _execute(
+        CREATE_ENTITY_MUTATION,
+        alice_ctx,
+        {"input": {"kind": "sample", "name": "S", "accessBlob": {"tags": ["team"]}}},
+    )
+    o = await _execute(
+        CREATE_ENTITY_MUTATION,
+        alice_ctx,
+        {"input": {"kind": "sample", "name": "O", "accessBlob": {"tags": ["team"]}}},
+    )
+    sid = s.data["createEntity"]["id"]
+    oid = o.data["createEntity"]["id"]
+    link = await _execute(
+        CREATE_LINK_MUTATION,
+        alice_ctx,
+        {
+            "input": {
+                "subjectId": sid,
+                "predicate": "relates_to",
+                "objectId": oid,
+                "accessBlob": {"tags": ["team"]},
+            }
+        },
+    )
+    assert link.errors is None
+    link_id = link.data["createLink"]["id"]
+
+    update_mutation = """
+    mutation($id: ID!, $input: UpdateLinkInput!) {
+      updateLink(id: $id, input: $input) { id predicate }
+    }
+    """
+    result = await _execute(
+        update_mutation, alice_ctx, {"id": link_id, "input": {"predicate": "derived"}}
+    )
+    assert result.errors is None
+    record = await store.get_link(link_id)
+    assert record.access_blob == {"tags": ["team"]}
+
+
+@pytest.mark.asyncio
 async def test_link_crud_and_access_control(store, policy):
     """Exercise link create/read/update/delete with policy-based checks."""
 
@@ -304,7 +379,7 @@ async def test_link_crud_and_access_control(store, policy):
         alice_ctx,
         {
             "input": {
-                "entityType": "sample",
+                "kind": "sample",
                 "name": "S",
                 "properties": {},
                 "accessBlob": {"tags": ["team"]},
@@ -316,7 +391,7 @@ async def test_link_crud_and_access_control(store, policy):
         alice_ctx,
         {
             "input": {
-                "entityType": "sample",
+                "kind": "sample",
                 "name": "O",
                 "properties": {},
                 "accessBlob": {"tags": ["team"]},
@@ -405,7 +480,7 @@ async def test_query_paths_use_access_policy_filters(store, filter_policy):
         alice_ctx,
         {
             "input": {
-                "entityType": "sample",
+                "kind": "sample",
                 "name": "team-visible",
                 "properties": {},
                 "accessBlob": {"tags": ["team"]},
@@ -417,7 +492,7 @@ async def test_query_paths_use_access_policy_filters(store, filter_policy):
         alice_ctx,
         {
             "input": {
-                "entityType": "sample",
+                "kind": "sample",
                 "name": "private-visible-to-alice",
                 "properties": {},
             }
@@ -453,7 +528,7 @@ async def test_pagination_applies_after_access_filtering(store, filter_policy):
             alice_ctx,
             {
                 "input": {
-                    "entityType": "sample",
+                    "kind": "sample",
                     "name": f"private-{i}",
                     "properties": {},
                 }
@@ -465,7 +540,7 @@ async def test_pagination_applies_after_access_filtering(store, filter_policy):
             alice_ctx,
             {
                 "input": {
-                    "entityType": "sample",
+                    "kind": "sample",
                     "name": f"team-{i}",
                     "properties": {},
                     "accessBlob": {"tags": ["team"]},
@@ -500,17 +575,66 @@ async def test_entity_node_access_blob_trigger_rejects_both_set(store):
 
     with pytest.raises(IntegrityError):
         await store.create_entity(
-            entity_type="sample",
+            kind="sample",
             name="bad",
             node_id=1,
             access_blob={"tags": ["team"]},
         )
 
     entity = await store.create_entity(
-        entity_type="sample", name="ok", node_id=1, access_blob=None
+        kind="sample", name="ok", node_id=1, access_blob=None
     )
     with pytest.raises(IntegrityError):
         await store.update_entity(entity.id, access_blob={"tags": ["team"]})
+
+
+@pytest.mark.asyncio
+async def test_duplicate_node_kind_name_conflicts(store):
+    """
+    The unique index deduplicates node-bound entities on (node_id, kind, name):
+    the store raises EntityConflictError on a duplicate, while free-standing
+    entities (node_id NULL) are left unconstrained.
+    """
+    await _insert_node(store, 1, {"tags": ["team"]})
+
+    await store.create_entity(kind="sample", name="dup", node_id=1, access_blob=None)
+    with pytest.raises(EntityConflictError):
+        await store.create_entity(
+            kind="sample", name="dup", node_id=1, access_blob=None
+        )
+
+    # A different kind, name, or node is allowed.
+    await store.create_entity(kind="other", name="dup", node_id=1, access_blob=None)
+
+    # Free-standing entities (node_id NULL) are not deduplicated.
+    await store.create_entity(
+        kind="sample", name="ext", node_id=None, access_blob={"tags": ["team"]}
+    )
+    await store.create_entity(
+        kind="sample", name="ext", node_id=None, access_blob={"tags": ["team"]}
+    )
+
+
+@pytest.mark.asyncio
+async def test_create_entity_duplicate_returns_entity_exists(store, policy):
+    """The GraphQL mutation surfaces a duplicate as an ENTITY_EXISTS error."""
+    await _insert_node(store, 1, {"tags": ["team"]})
+    alice_ctx = _context(store, policy, "alice", {"read:metadata", "write:metadata"})
+
+    first = await _execute(
+        CREATE_ENTITY_MUTATION,
+        alice_ctx,
+        {"input": {"kind": "sample", "name": "dup", "nodePathParts": ["node"]}},
+    )
+    assert first.errors is None
+
+    second = await _execute(
+        CREATE_ENTITY_MUTATION,
+        alice_ctx,
+        {"input": {"kind": "sample", "name": "dup", "nodePathParts": ["node"]}},
+    )
+    assert second.errors
+    assert second.errors[0].extensions["code"] == "ENTITY_EXISTS"
 
 
 @pytest.mark.asyncio
@@ -524,7 +648,7 @@ async def test_create_entity_rejects_node_id_with_access_blob(store, policy):
         alice_ctx,
         {
             "input": {
-                "entityType": "sample",
+                "kind": "sample",
                 "name": "bad",
                 "nodePathParts": ["node"],
                 "accessBlob": {"tags": ["team"]},
@@ -547,7 +671,7 @@ async def test_update_entity_rejects_setting_access_blob_on_node_linked_entity(
         alice_ctx,
         {
             "input": {
-                "entityType": "sample",
+                "kind": "sample",
                 "name": "linked",
                 "nodePathParts": ["node"],
             }
@@ -585,7 +709,7 @@ async def test_update_entity_detaching_node_reinitializes_access_blob(store, pol
         alice_ctx,
         {
             "input": {
-                "entityType": "sample",
+                "kind": "sample",
                 "name": "linked",
                 "nodePathParts": ["node"],
             }
@@ -619,7 +743,7 @@ async def test_entity_read_access_delegates_to_node_access_blob(store):
     node_policy = FakeTagPolicy({"alice": {"node_team"}, "bob": {"team"}})
     await _insert_node(store, 1, {"tags": ["node_team"]})
     entity = await store.create_entity(
-        entity_type="sample", name="linked", node_id=1, access_blob=None
+        kind="sample", name="linked", node_id=1, access_blob=None
     )
 
     alice_ctx = _context(store, node_policy, "alice", {"read:metadata"})
@@ -641,10 +765,10 @@ async def test_entities_listing_filters_by_node_access_blob(store, filter_policy
     await _insert_node(store, 1, {"tags": ["team"]}, key="visible-node")
     await _insert_node(store, 2, {"tags": ["other"]}, key="hidden-node")
     await store.create_entity(
-        entity_type="sample", name="node-linked-visible", node_id=1, access_blob=None
+        kind="sample", name="node-linked-visible", node_id=1, access_blob=None
     )
     await store.create_entity(
-        entity_type="sample", name="node-linked-hidden", node_id=2, access_blob=None
+        kind="sample", name="node-linked-hidden", node_id=2, access_blob=None
     )
 
     bob_ctx = _context(store, filter_policy, "bob", {"read:metadata"})
@@ -652,6 +776,92 @@ async def test_entities_listing_filters_by_node_access_blob(store, filter_policy
     assert result.errors is None
     names = {item["name"] for item in result.data["entities"]}
     assert names == {"node-linked-visible"}
+
+
+@pytest.mark.asyncio
+async def test_create_entity_requires_write_on_bound_node(store, policy):
+    """
+    Binding an entity to a catalog node requires write:metadata on that node,
+    not merely the global write scope. Otherwise any writer could attach (or,
+    via the uniqueness constraint, squat) entities on nodes they cannot write.
+    """
+    # Node visible/writable to alice (alice_tag) but not to bob.
+    await _insert_node(store, 1, {"tags": ["alice_tag"]}, key="node")
+
+    bob_ctx = _context(store, policy, "bob", {"read:metadata", "write:metadata"})
+    denied = await _execute(
+        CREATE_ENTITY_MUTATION,
+        bob_ctx,
+        {"input": {"kind": "sample", "name": "E", "nodePathParts": ["node"]}},
+    )
+    assert denied.errors
+    assert "Not permitted" in denied.errors[0].message
+
+    alice_ctx = _context(store, policy, "alice", {"read:metadata", "write:metadata"})
+    allowed = await _execute(
+        CREATE_ENTITY_MUTATION,
+        alice_ctx,
+        {"input": {"kind": "sample", "name": "E", "nodePathParts": ["node"]}},
+    )
+    assert allowed.errors is None
+
+
+UPSERT_ENTITY_MUTATION = """
+mutation($input: CreateEntityInput!) {
+    upsertEntity(input: $input) { id name kind }
+}
+"""
+
+
+@pytest.mark.asyncio
+async def test_upsert_entity_is_idempotent(store, policy):
+    """upsertEntity returns the same row for a repeated (node, kind, name)."""
+    await _insert_node(store, 1, {"tags": ["team"]}, key="node")
+    alice_ctx = _context(store, policy, "alice", {"read:metadata", "write:metadata"})
+
+    first = await _execute(
+        UPSERT_ENTITY_MUTATION,
+        alice_ctx,
+        {"input": {"kind": "array", "name": "a1", "nodePathParts": ["node"]}},
+    )
+    second = await _execute(
+        UPSERT_ENTITY_MUTATION,
+        alice_ctx,
+        {"input": {"kind": "array", "name": "a1", "nodePathParts": ["node"]}},
+    )
+    assert first.errors is None and second.errors is None
+    assert first.data["upsertEntity"]["id"] == second.data["upsertEntity"]["id"]
+
+    listed = await store.list_entities(node_id=1)
+    assert len(listed) == 1
+
+
+@pytest.mark.asyncio
+async def test_upsert_entity_requires_write_on_node(store, policy):
+    """upsertEntity enforces the same node-write permission as createEntity."""
+    await _insert_node(store, 1, {"tags": ["alice_tag"]}, key="node")
+    bob_ctx = _context(store, policy, "bob", {"read:metadata", "write:metadata"})
+
+    denied = await _execute(
+        UPSERT_ENTITY_MUTATION,
+        bob_ctx,
+        {"input": {"kind": "array", "name": "a1", "nodePathParts": ["node"]}},
+    )
+    assert denied.errors
+    assert "Not permitted" in denied.errors[0].message
+
+
+@pytest.mark.asyncio
+async def test_upsert_entity_requires_node_binding(store, policy):
+    """upsertEntity has no natural key for external entities, so it errors."""
+    alice_ctx = _context(store, policy, "alice", {"read:metadata", "write:metadata"})
+    result = await _execute(
+        UPSERT_ENTITY_MUTATION,
+        alice_ctx,
+        {"input": {"kind": "sample", "name": "ext"}},
+    )
+    assert result.errors
+    assert result.errors[0].extensions["code"] == "NODE_REQUIRED"
 
 
 UPSERT_NAMESPACE_MUTATION = """
@@ -728,7 +938,7 @@ async def test_graphql_expands_and_compacts_curies(store, policy):
         alice_ctx,
         {
             "input": {
-                "entityType": "sample",
+                "kind": "sample",
                 "name": "E",
                 "properties": {"schema:name": "hello"},
             }
@@ -756,7 +966,7 @@ async def test_graphql_expands_and_compacts_curies(store, policy):
     other = await _execute(
         create_entity_with_properties,
         alice_ctx,
-        {"input": {"entityType": "sample", "name": "O", "properties": {}}},
+        {"input": {"kind": "sample", "name": "O", "properties": {}}},
     )
     other_id = other.data["createEntity"]["id"]
     link_created = await _execute(
@@ -812,7 +1022,7 @@ def test_graphql_http_route_access_control_integration(tmp_path, policy):
                 "query": CREATE_ENTITY_MUTATION,
                 "variables": {
                     "input": {
-                        "entityType": "sample",
+                        "kind": "sample",
                         "name": "S",
                         "properties": {},
                         "accessBlob": {"tags": ["team"]},
@@ -826,7 +1036,7 @@ def test_graphql_http_route_access_control_integration(tmp_path, policy):
                 "query": CREATE_ENTITY_MUTATION,
                 "variables": {
                     "input": {
-                        "entityType": "sample",
+                        "kind": "sample",
                         "name": "O",
                         "properties": {},
                         "accessBlob": {"tags": ["team"]},

@@ -5,8 +5,34 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## Unreleased
 
+### Changed
+
+- Enforce uniqueness of graph entities per catalog node: at most one entity may
+  exist for a given `(node_id, kind, name)`. A duplicate `createEntity`/
+  `updateEntity` now fails with an `ENTITY_EXISTS` error. Free-standing
+  (external) entities, which have no node, are left unconstrained. A new
+  `upsertEntity` mutation does an atomic get-or-create against that constraint
+  (via `INSERT ... ON CONFLICT`), so concurrent binds converge on one row
+  instead of racing a check-then-insert.
+- Rename the experimental graph entity's `entity_type` field to `kind`, in both
+  the database column and the GraphQL API (`entityType` becomes `kind`).
+- Store the graph `entities.id`/`links.id` primary keys and the
+  `links.subject_id`/`links.object_id` foreign keys as PostgreSQL's native
+  `UUID` type (a `CHAR(36)` string on backends without one, e.g. SQLite). Ids
+  remain plain strings in the GraphQL API and Python client.
+
 ### Fixed
 
+- Fix the experimental graph's `updateEntity` and `updateLink` mutations, which
+  wrote a placeholder `UnsetType` into `access_blob` when the field was omitted
+  (raising "Type is not JSON serializable: UnsetType") instead of leaving it
+  unchanged; they now use the store's `UNSET` sentinel.
+- Binding a graph entity to a catalog node (via `createEntity`, `upsertEntity`,
+  or re-binding through `updateEntity`) now requires `write:metadata` permission
+  on that specific node, not merely the global `write:metadata` scope. Without
+  this check any writer could attach entities to — or, via the uniqueness
+  constraint, squat the canonical `(node, kind, name)` slot of — nodes they
+  cannot write.
 - Extend to zarr routes the previous fix for reads of array data whose
   on-disk shape has diverged from the shape recorded in the catalog
   structure, which can happen while an array is being extended

@@ -129,7 +129,7 @@ query {
   entities {
     id
     name
-    entityType
+    kind
     properties
   }
   links {
