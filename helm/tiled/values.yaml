@@ -130,6 +130,9 @@ volumeMounts:
     mountPath: "/deploy/config"
     readOnly: true
 
+# -- If enabled the tiled pod will restart on changes to config
+restartOnConfigChange: true
+
 nodeSelector: {}
 
 tolerations: []
