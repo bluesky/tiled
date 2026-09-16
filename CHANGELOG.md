@@ -5,6 +5,13 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## Unreleased
 
+### Changed
+
+- Replace the `nodes` `top_level_metadata` GIN index (a `btree_gin` over
+  `parent, time_created, id, metadata, access_blob`) with a focused
+  `GIN (metadata jsonb_path_ops)` index on PostgreSQL. On SQLite the
+  old index is dropped with no replacement (metadata search uses `json_each`/FTS5).
+
 ### Fixed
 
 - Extend to zarr routes the previous fix for reads of array data whose
