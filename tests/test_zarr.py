@@ -10,7 +10,13 @@ import uvicorn
 import zarr
 from fsspec.implementations.http import HTTPFileSystem
 from httpx import ASGITransport, AsyncClient
-from starlette.status import HTTP_200_OK, HTTP_401_UNAUTHORIZED, HTTP_404_NOT_FOUND
+from starlette.status import (
+    HTTP_200_OK,
+    HTTP_401_UNAUTHORIZED,
+    HTTP_404_NOT_FOUND,
+    HTTP_422_UNPROCESSABLE_CONTENT,
+    HTTP_503_SERVICE_UNAVAILABLE,
+)
 
 from tiled.adapters.array import ArrayAdapter
 from tiled.adapters.dataframe import DataFrameAdapter
@@ -101,6 +107,18 @@ table_tree = MapAdapter(
         "single": DataFrameAdapter.from_pandas(df, npartitions=1),
     }
 )
+pathological_tree = MapAdapter(
+    {
+        # an array where the data are behind the recorded structure
+        "structure_ahead": ArrayAdapter.from_array(
+            numpy.random.rand(3, 2, 4), shape=(5, 2, 4)
+        ),
+        # an array where the shapes misalign
+        "structure_misaligned": ArrayAdapter.from_array(
+            numpy.random.rand(4, 3), shape=(4, 5)
+        ),
+    }
+)
 
 tree = MapAdapter(
     {
@@ -110,6 +128,7 @@ tree = MapAdapter(
         "zero": zero_tree,
         "table": table_tree,
         "random_2d": array_tree["random_2d"],
+        "pathological": pathological_tree,
     }
 )
 
@@ -200,6 +219,45 @@ async def test_zarr_array_routes(prefix, path, app):
             assert response.status_code == HTTP_200_OK
 
 
+@pytest.mark.parametrize("path", ["/pathological/structure_ahead"])
+@pytest.mark.asyncio
+async def test_zarr_structure_ahead_of_data_503(prefix, path, app):
+    # Serve an array whose stored structure claims more frames than the
+    # underlying data has, mimicking a catalog that is ahead of the file
+    # during a streaming append. The read should surface as a retryable
+    # HTTP 503, not an opaque 500.
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://test",
+        headers={"Authorization": "Apikey secret"},
+        follow_redirects=True,
+    ) as client:
+        if prefix == "/zarr/v2":
+            response = await client.get(prefix + path + "/0.0.0")
+        else:
+            response = await client.get(prefix + path + "/c/0/0/0")
+        assert response.status_code == HTTP_503_SERVICE_UNAVAILABLE
+
+
+@pytest.mark.parametrize("path", ["/pathological/structure_misaligned"])
+@pytest.mark.asyncio
+async def test_zarr_incompatible_structure_returns_422(prefix, path, app):
+    # Serve an array whose stored structure is incompatible with the data in a
+    # way that retrying cannot fix (trailing dimensions disagree). This is a
+    # permanent error, surfaced as HTTP 422.
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://test",
+        headers={"Authorization": "Apikey secret"},
+        follow_redirects=True,
+    ) as client:
+        if prefix == "/zarr/v2":
+            response = await client.get(prefix + path + "/0.0")
+        else:
+            response = await client.get(prefix + path + "/c/0/0")
+        assert response.status_code == HTTP_422_UNPROCESSABLE_CONTENT
+
+
 @pytest.mark.parametrize(
     "path",
     [
@@ -235,7 +293,7 @@ def test_zarr_integration(server_url, fs, prefix):
 
     assert grp.store.fs == fs
     assert set(grp.keys()) == set(tree.keys())
-    assert len(set(grp.group_keys())) == 5
+    assert len(set(grp.group_keys())) == 6
     assert len(set(grp.array_keys())) == 1
 
 
