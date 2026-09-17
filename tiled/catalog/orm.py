@@ -90,13 +90,13 @@ class Node(Timestamped, Base):
         backref="node",
         passive_deletes=True,
     )
-    # Many-to-many relationship to AccessTag through the node_access_tags
+    # Many-to-many relationship to AccessTag through the node_access_tags_association
     # association table. Writable: assigning/appending AccessTag objects
-    # inserts/deletes rows in node_access_tags (never in access_tags itself).
+    # inserts/deletes rows in node_access_tags_association (never in access_tags itself).
     # passive_deletes defers cleanup of association rows to the DB-level
     # ON DELETE CASCADE when a node is deleted.
     access_tags: Mapped[List["AccessTag"]] = relationship(
-        secondary="node_access_tags",
+        secondary="node_access_tags_association",
         lazy="selectin",
         passive_deletes=True,
     )
@@ -153,11 +153,11 @@ class AccessTag(Timestamped, Base):
     AccessTags are the unit of access control: nodes carry a set of tags, and
     principals are granted access by being associated with one or more tags.
     The allowed operations for a principal on a node are determined by the
-    scopes bound to their AccessTagPrincipalScope rows.
+    scopes bound to their AccessTagPrincipalScopeAssociation rows.
 
     A tag with is_public=True grants read access to unauthenticated requests.
 
-    Ownership is tracked via AccessTagOwner rows; tag owners may apply tags
+    Ownership is tracked via AccessTagOwnerAssociation rows; tag owners may apply tags
     without being a server administrator.
     """
 
@@ -169,12 +169,12 @@ class AccessTag(Timestamped, Base):
         Boolean, nullable=False, default=False, server_default=text("false")
     )
 
-    principal_scopes: Mapped[List["AccessTagPrincipalScope"]] = relationship(
+    principal_scopes: Mapped[List["AccessTagPrincipalScopeAssociation"]] = relationship(
         back_populates="tag",
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
-    owners: Mapped[List["AccessTagOwner"]] = relationship(
+    owners: Mapped[List["AccessTagOwnerAssociation"]] = relationship(
         back_populates="tag",
         cascade="all, delete-orphan",
         passive_deletes=True,
@@ -183,7 +183,7 @@ class AccessTag(Timestamped, Base):
     __table_args__ = (
         # Partial index for public tags only, covering name-only queries
         Index(
-            "idx_access_tags_is_public",
+            "ix_access_tags_is_public",
             "name",
             postgresql_where=text("is_public"),
             sqlite_where=text("is_public"),
@@ -191,7 +191,7 @@ class AccessTag(Timestamped, Base):
     )
 
 
-class NodeAccessTag(Base):
+class NodeAccessTagAssociation(Base):
     """
     Association table mapping Nodes to Access Tags (many-to-many).
     Used to perform lookups in both directions, i.e.:
@@ -199,25 +199,25 @@ class NodeAccessTag(Base):
         - Which nodes have this tag? (served by the secondary index)
     """
 
-    __tablename__ = "node_access_tags"
+    __tablename__ = "node_access_tags_association"
 
     node_id = Column(
         Integer,
-        ForeignKey("nodes.id", name="fk_node_access_tags_node", ondelete="CASCADE"),
+        ForeignKey("nodes.id", name="fk_node_access_tags_association_node", ondelete="CASCADE"),
         nullable=False,
     )
     tag_id = Column(
         Integer,
         ForeignKey(
-            "access_tags.id", name="fk_node_access_tags_tag", ondelete="CASCADE"
+            "access_tags.id", name="fk_node_access_tags_association_tag", ondelete="CASCADE"
         ),
         nullable=False,
     )
 
     __table_args__ = (
-        PrimaryKeyConstraint("node_id", "tag_id", name="node_access_tags_pkey"),
+        PrimaryKeyConstraint("node_id", "tag_id", name="node_access_tags_association_pkey"),
         # Covering index for the reverse (tag -> nodes) direction.
-        Index("idx_node_access_tags_tag_id_node_id", "tag_id", "node_id"),
+        Index("ix_node_access_tags_association_tag_id_node_id", "tag_id", "node_id"),
     )
 
 
@@ -228,7 +228,7 @@ class AccessTagsPrincipal(Timestamped, Base):
 
     The name is the canonical identifier used in authentication tokens and group
     memberships.  Scopes granted to this principal for a given tag are stored in
-    AccessTagPrincipalScope rows; ownership of a tag is stored in AccessTagOwner
+    AccessTagPrincipalScopeAssociation rows; ownership of a tag is stored in AccessTagOwnerAssociation
     rows.
     """
 
@@ -237,19 +237,19 @@ class AccessTagsPrincipal(Timestamped, Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(Unicode(255), nullable=False, unique=True)
 
-    tag_scopes: Mapped[List["AccessTagPrincipalScope"]] = relationship(
+    tag_scopes: Mapped[List["AccessTagPrincipalScopeAssociation"]] = relationship(
         back_populates="principal",
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
-    owned_tags: Mapped[List["AccessTagOwner"]] = relationship(
+    owned_tags: Mapped[List["AccessTagOwnerAssociation"]] = relationship(
         back_populates="principal",
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
 
 
-class AccessTagPrincipalScope(Base):
+class AccessTagPrincipalScopeAssociation(Base):
     """
     Junction (association table) between AccessTag and AccessTagsPrincipal,
     with one row per granted scope: a Principal is granted a scope on all
@@ -263,13 +263,13 @@ class AccessTagPrincipalScope(Base):
           nodes be filtered for that principal?
     """
 
-    __tablename__ = "access_tag_principal_scopes"
+    __tablename__ = "access_tag_principal_scopes_association"
 
     tag_id = Column(
         Integer,
         ForeignKey(
             "access_tags.id",
-            name="fk_access_tag_principal_scopes_access_tag",
+            name="fk_access_tag_principal_scopes_association_access_tag",
             ondelete="CASCADE",
         ),
         nullable=False,
@@ -278,7 +278,7 @@ class AccessTagPrincipalScope(Base):
         Integer,
         ForeignKey(
             "access_tags_principals.id",
-            name="fk_access_tag_principal_scopes_principal",
+            name="fk_access_tag_principal_scopes_association_principal",
             ondelete="CASCADE",
         ),
         nullable=False,
@@ -307,12 +307,12 @@ class AccessTagPrincipalScope(Base):
             "tag_id",
             "principal_id",
             "scope",
-            name="access_tag_principal_scopes_pkey",
+            name="access_tag_principal_scopes_association_pkey",
         ),
         # Covering index serving '(principal, scope) -> tags' lookups, used to
         # filter nodes visible to a principal.
         Index(
-            "idx_access_tag_principal_scopes_principal_scope",
+            "ix_access_tag_principal_scopes_association_principal_scope",
             "principal_id",
             "scope",
             "tag_id",
@@ -320,18 +320,18 @@ class AccessTagPrincipalScope(Base):
     )
 
 
-class AccessTagOwner(Base):
+class AccessTagOwnerAssociation(Base):
     """
     Association table which records that a Principal owns an AccessTag and may
     apply that tag to a node (if scopes permit).
     """
 
-    __tablename__ = "access_tag_owners"
+    __tablename__ = "access_tag_owners_association"
 
     tag_id = Column(
         Integer,
         ForeignKey(
-            "access_tags.id", name="fk_access_tag_owners_access_tag", ondelete="CASCADE"
+            "access_tags.id", name="fk_access_tag_owners_association_access_tag", ondelete="CASCADE"
         ),
         nullable=False,
     )
@@ -339,7 +339,7 @@ class AccessTagOwner(Base):
         Integer,
         ForeignKey(
             "access_tags_principals.id",
-            name="fk_access_tag_owners_principal",
+            name="fk_access_tag_owners_association_principal",
             ondelete="CASCADE",
         ),
         nullable=False,
@@ -350,10 +350,10 @@ class AccessTagOwner(Base):
 
     __table_args__ = (
         # Serves 'owners of a tag' and exact (tag, principal) membership probes.
-        PrimaryKeyConstraint("tag_id", "principal_id", name="access_tag_owners_pkey"),
+        PrimaryKeyConstraint("tag_id", "principal_id", name="access_tag_owners_association_pkey"),
         # Serves 'tags owned by a principal' lookups and FK cascade on
         # principal deletion.
-        Index("idx_access_tag_owners_principal_id", "principal_id"),
+        Index("ix_access_tag_owners_association_principal_id", "principal_id"),
     )
 
 

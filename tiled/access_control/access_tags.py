@@ -19,18 +19,18 @@ from .scopes import validate_scopes
 # Name of the scope enum, shared by the PostgreSQL enum type and the SQLite
 # CHECK constraint that stands in for it. Taken from the ORM so that the two
 # cannot drift.
-SCOPE_ENUM_NAME = orm.AccessTagPrincipalScope.__table__.c.scope.type.name
+SCOPE_ENUM_NAME = orm.AccessTagPrincipalScopeAssociation.__table__.c.scope.type.name
 
-# The access_tag_principal_scopes junction table, joined to the tables its
+# The access_tag_principal_scopes_association junction table, joined to the tables its
 # two foreign keys reference so that it can be queried by name. The scope is
 # stored inline on the junction and needs no join. Shared by the lookups in
 # both directions: (tag, principal) -> scopes and (principal, scope) -> tags.
-access_tag_principal_scopes_named = orm.AccessTagPrincipalScope.__table__.join(
+access_tag_principal_scopes_association_named = orm.AccessTagPrincipalScopeAssociation.__table__.join(
     orm.AccessTag.__table__,
-    orm.AccessTag.id == orm.AccessTagPrincipalScope.tag_id,
+    orm.AccessTag.id == orm.AccessTagPrincipalScopeAssociation.tag_id,
 ).join(
     orm.AccessTagsPrincipal.__table__,
-    orm.AccessTagsPrincipal.id == orm.AccessTagPrincipalScope.principal_id,
+    orm.AccessTagsPrincipal.id == orm.AccessTagPrincipalScopeAssociation.principal_id,
 )
 
 
@@ -80,7 +80,7 @@ class AccessTagsParser:
             else:
                 constraints = await conn.run_sync(
                     lambda sync: inspect(sync).get_check_constraints(
-                        orm.AccessTagPrincipalScope.__tablename__
+                        orm.AccessTagPrincipalScopeAssociation.__tablename__
                     )
                 )
                 for constraint in constraints:
@@ -97,8 +97,8 @@ class AccessTagsParser:
 
     async def get_scopes_from_tag(self, tagname, username):
         statement = (
-            select(orm.AccessTagPrincipalScope.scope)
-            .select_from(access_tag_principal_scopes_named)
+            select(orm.AccessTagPrincipalScopeAssociation.scope)
+            .select_from(access_tag_principal_scopes_association_named)
             .where(
                 orm.AccessTag.name == tagname,
                 orm.AccessTagsPrincipal.name == username,
@@ -110,11 +110,11 @@ class AccessTagsParser:
 
     async def is_tag_owner(self, tagname, username):
         statement = (
-            select(orm.AccessTagOwner.tag_id)
-            .join(orm.AccessTag, orm.AccessTag.id == orm.AccessTagOwner.tag_id)
+            select(orm.AccessTagOwnerAssociation.tag_id)
+            .join(orm.AccessTag, orm.AccessTag.id == orm.AccessTagOwnerAssociation.tag_id)
             .join(
                 orm.AccessTagsPrincipal,
-                orm.AccessTagsPrincipal.id == orm.AccessTagOwner.principal_id,
+                orm.AccessTagsPrincipal.id == orm.AccessTagOwnerAssociation.principal_id,
             )
             .where(
                 orm.AccessTag.name == tagname,
@@ -136,9 +136,9 @@ class AccessTagsParser:
     async def get_tags_from_scope(self, scope, username):
         statement = (
             select(orm.AccessTag.name)
-            .select_from(access_tag_principal_scopes_named)
+            .select_from(access_tag_principal_scopes_association_named)
             .where(
-                orm.AccessTagPrincipalScope.scope == scope,
+                orm.AccessTagPrincipalScopeAssociation.scope == scope,
                 orm.AccessTagsPrincipal.name == username,
             )
         )
@@ -156,8 +156,8 @@ class AccessTagsParser:
 ACCESS_TAGS_TABLES = [
     orm.AccessTag.__table__,
     orm.AccessTagsPrincipal.__table__,
-    orm.AccessTagPrincipalScope.__table__,
-    orm.AccessTagOwner.__table__,
+    orm.AccessTagPrincipalScopeAssociation.__table__,
+    orm.AccessTagOwnerAssociation.__table__,
 ]
 
 # Association tables recording which tags are assigned to which data. Unlike
@@ -166,9 +166,9 @@ ACCESS_TAGS_TABLES = [
 # that a later compile cannot restore. The compiler never writes these tables;
 # it only checks them before deleting a tag.
 ASSIGNMENT_TABLES = [
-    orm.NodeAccessTag.__table__,
-    graph_orm.entity_access_tags,
-    graph_orm.link_access_tags,
+    orm.NodeAccessTagAssociation.__table__,
+    graph_orm.entity_access_tags_association,
+    graph_orm.link_access_tags_association,
 ]
 
 # PostgreSQL advisory lock key serializing concurrent compiles against the
@@ -201,10 +201,10 @@ async def update_access_tags_tables(engine, tags, owners, public_tags):
     Synchronize the access tag tables with the compiled tag state.
 
     Names are upserted, so existing rows -- and therefore their ids, which the
-    node_access_tags association table references -- are preserved across
+    node_access_tags_association association table references -- are preserved across
     recompilations. Definitions absent from the compiled state are deleted;
     deleting a tag or principal cascades to the rows that reference it,
-    including node_access_tags rows for a deleted tag. The whole update is a
+    including node_access_tags_association rows for a deleted tag. The whole update is a
     single transaction.
 
     Scopes are not staged: they are stored inline on the junction rows, so
@@ -216,8 +216,8 @@ async def update_access_tags_tables(engine, tags, owners, public_tags):
     upsert = _upsert(engine)
     tags_table = orm.AccessTag.__table__
     users_table = orm.AccessTagsPrincipal.__table__
-    tags_users_scopes_table = orm.AccessTagPrincipalScope.__table__
-    tag_owners_table = orm.AccessTagOwner.__table__
+    tags_users_scopes_table = orm.AccessTagPrincipalScopeAssociation.__table__
+    tag_owners_table = orm.AccessTagOwnerAssociation.__table__
 
     # stage all items in memory, deduplicated
     # (a name may appear in both tags and owners)

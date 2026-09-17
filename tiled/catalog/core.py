@@ -68,7 +68,7 @@ async def initialize_database(engine: AsyncEngine):
         # The tag id is resolved in SQL, so no round-trip is needed and the
         # statement is a no-op when the association already exists.
         await connection.execute(
-            upsert(orm.NodeAccessTag.__table__)
+            upsert(orm.NodeAccessTagAssociation.__table__)
             .from_select(
                 ["node_id", "tag_id"],
                 select(literal(0), orm.AccessTag.id).where(

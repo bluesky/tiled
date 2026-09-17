@@ -69,9 +69,9 @@ async def test_root_node_has_default_access_tags(a):
             await a.context.execute(
                 "SELECT access_tags.name "
                 "FROM access_tags "
-                "JOIN node_access_tags "
-                "ON node_access_tags.tag_id = access_tags.id "
-                "WHERE node_access_tags.node_id = 0"
+                "JOIN node_access_tags_association "
+                "ON node_access_tags_association.tag_id = access_tags.id "
+                "WHERE node_access_tags_association.node_id = 0"
             )
         )
         .scalars()

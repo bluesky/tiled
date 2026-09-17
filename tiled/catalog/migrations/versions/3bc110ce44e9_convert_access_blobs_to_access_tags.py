@@ -11,7 +11,7 @@ named, deduplicated access tags:
 * ``access_tags`` holds one row per distinct tag name. Every owner carrying a
   given tag points at the same deduplicated row. The ``public`` tag is marked
   ``is_public``.
-* ``node_access_tags``, ``entity_access_tags``, and ``link_access_tags`` are
+* ``node_access_tags_association``, ``entity_access_tags_association``, and ``link_access_tags_association`` are
   many-to-many association tables (an owner may carry several tags; a tag may
   be carried by many owners).
 * A blob of kind ``user`` (a principal-owned node/entity/link) becomes the tag
@@ -26,10 +26,10 @@ named, deduplicated access tags:
   no tags: they assume the access tags of the referenced node. Database
   triggers enforcing that invariant are recreated in tag form.
 * The supporting tables for tag definitions -- ``access_tags_principals``,
-  ``access_tag_principal_scopes``, ``access_tag_owners`` -- are created empty.
+  ``access_tag_principal_scopes_association``, ``access_tag_owners_association`` -- are created empty.
   They are populated for the first time by the access tags compiler, not by
   this migration. Scopes are stored inline on
-  ``access_tag_principal_scopes.scope`` as a native enum, so there is no
+  ``access_tag_principal_scopes_association.scope`` as a native enum, so there is no
   ``scopes`` lookup table.
 
 The downgrade reconstructs one blob per owner from its tags before dropping
@@ -46,7 +46,7 @@ down_revision = "de302a096358"
 branch_labels = None
 depends_on = None
 
-# The access_tag_principal_scopes.scope column is a native enum (scope_name on
+# The access_tag_principal_scopes_association.scope column is a native enum (scope_name on
 # PostgreSQL). The values are frozen here at this revision's authorship; the
 # live set of valid scopes is the ScopeName enum in
 # tiled.access_control.scopes, but migrations must not import application code
@@ -81,9 +81,9 @@ ENTITY_NODE_ACCESS_TAGS_ERROR = (
 
 # (owner table, tag association table, owner id column, blob association table)
 OWNERS = (
-    ("nodes", "node_access_tags", "node_id", "node_access_blobs"),
-    ("entities", "entity_access_tags", "entity_id", "entity_access_blobs"),
-    ("links", "link_access_tags", "link_id", "link_access_blobs"),
+    ("nodes", "node_access_tags_association", "node_id", "node_access_blobs"),
+    ("entities", "entity_access_tags_association", "entity_id", "entity_access_blobs"),
+    ("links", "link_access_tags_association", "link_id", "link_access_blobs"),
 )
 
 
@@ -113,7 +113,7 @@ def _create_tag_tables():
     # Partial + covering, matching the ORM: index-only scan for
     # "SELECT name WHERE is_public", zero maintenance for non-public rows.
     op.create_index(
-        "idx_access_tags_is_public",
+        "ix_access_tags_is_public",
         "access_tags",
         ["name"],
         postgresql_where=sa.text("is_public"),
@@ -121,12 +121,12 @@ def _create_tag_tables():
     )
 
     op.create_table(
-        "node_access_tags",
+        "node_access_tags_association",
         sa.Column(
             "node_id",
             sa.Integer(),
             sa.ForeignKey(
-                "nodes.id", name="fk_node_access_tags_node", ondelete="CASCADE"
+                "nodes.id", name="fk_node_access_tags_association_node", ondelete="CASCADE"
             ),
             nullable=False,
         ),
@@ -134,20 +134,20 @@ def _create_tag_tables():
             "tag_id",
             sa.Integer(),
             sa.ForeignKey(
-                "access_tags.id", name="fk_node_access_tags_tag", ondelete="CASCADE"
+                "access_tags.id", name="fk_node_access_tags_association_tag", ondelete="CASCADE"
             ),
             nullable=False,
         ),
-        sa.PrimaryKeyConstraint("node_id", "tag_id", name="node_access_tags_pkey"),
+        sa.PrimaryKeyConstraint("node_id", "tag_id", name="node_access_tags_association_pkey"),
     )
 
     op.create_table(
-        "entity_access_tags",
+        "entity_access_tags_association",
         sa.Column(
             "entity_id",
             sa.String(),
             sa.ForeignKey(
-                "entities.id", name="fk_entity_access_tags_entity", ondelete="CASCADE"
+                "entities.id", name="fk_entity_access_tags_association_entity", ondelete="CASCADE"
             ),
             primary_key=True,
         ),
@@ -155,18 +155,18 @@ def _create_tag_tables():
             "tag_id",
             sa.Integer(),
             sa.ForeignKey(
-                "access_tags.id", name="fk_entity_access_tags_tag", ondelete="CASCADE"
+                "access_tags.id", name="fk_entity_access_tags_association_tag", ondelete="CASCADE"
             ),
             primary_key=True,
         ),
     )
     op.create_table(
-        "link_access_tags",
+        "link_access_tags_association",
         sa.Column(
             "link_id",
             sa.String(),
             sa.ForeignKey(
-                "links.id", name="fk_link_access_tags_link", ondelete="CASCADE"
+                "links.id", name="fk_link_access_tags_association_link", ondelete="CASCADE"
             ),
             primary_key=True,
         ),
@@ -174,7 +174,7 @@ def _create_tag_tables():
             "tag_id",
             sa.Integer(),
             sa.ForeignKey(
-                "access_tags.id", name="fk_link_access_tags_tag", ondelete="CASCADE"
+                "access_tags.id", name="fk_link_access_tags_association_tag", ondelete="CASCADE"
             ),
             primary_key=True,
         ),
@@ -194,13 +194,13 @@ def _create_tag_tables():
         sa.Column("time_updated", sa.DateTime(), server_default=sa.func.now()),
     )
     op.create_table(
-        "access_tag_principal_scopes",
+        "access_tag_principal_scopes_association",
         sa.Column(
             "tag_id",
             sa.Integer(),
             sa.ForeignKey(
                 "access_tags.id",
-                name="fk_access_tag_principal_scopes_access_tag",
+                name="fk_access_tag_principal_scopes_association_access_tag",
                 ondelete="CASCADE",
             ),
             nullable=False,
@@ -210,7 +210,7 @@ def _create_tag_tables():
             sa.Integer(),
             sa.ForeignKey(
                 "access_tags_principals.id",
-                name="fk_access_tag_principal_scopes_principal",
+                name="fk_access_tag_principal_scopes_association_principal",
                 ondelete="CASCADE",
             ),
             nullable=False,
@@ -220,22 +220,22 @@ def _create_tag_tables():
             "tag_id",
             "principal_id",
             "scope",
-            name="access_tag_principal_scopes_pkey",
+            name="access_tag_principal_scopes_association_pkey",
         ),
     )
     op.create_index(
-        "idx_access_tag_principal_scopes_principal_scope",
-        "access_tag_principal_scopes",
+        "ix_access_tag_principal_scopes_association_principal_scope",
+        "access_tag_principal_scopes_association",
         ["principal_id", "scope", "tag_id"],
     )
     op.create_table(
-        "access_tag_owners",
+        "access_tag_owners_association",
         sa.Column(
             "tag_id",
             sa.Integer(),
             sa.ForeignKey(
                 "access_tags.id",
-                name="fk_access_tag_owners_access_tag",
+                name="fk_access_tag_owners_association_access_tag",
                 ondelete="CASCADE",
             ),
             nullable=False,
@@ -245,18 +245,18 @@ def _create_tag_tables():
             sa.Integer(),
             sa.ForeignKey(
                 "access_tags_principals.id",
-                name="fk_access_tag_owners_principal",
+                name="fk_access_tag_owners_association_principal",
                 ondelete="CASCADE",
             ),
             nullable=False,
         ),
         sa.PrimaryKeyConstraint(
-            "tag_id", "principal_id", name="access_tag_owners_pkey"
+            "tag_id", "principal_id", name="access_tag_owners_association_pkey"
         ),
     )
     op.create_index(
-        "idx_access_tag_owners_principal_id",
-        "access_tag_owners",
+        "ix_access_tag_owners_association_principal_id",
+        "access_tag_owners_association",
         ["principal_id"],
     )
 
@@ -269,18 +269,18 @@ def _create_tag_assoc_indexes():
     fills these tables does not pay index maintenance per row.
     """
     op.create_index(
-        "idx_node_access_tags_tag_id_node_id",
-        "node_access_tags",
+        "ix_node_access_tags_association_tag_id_node_id",
+        "node_access_tags_association",
         ["tag_id", "node_id"],
     )
     op.create_index(
-        "idx_entity_access_tags_tag_id_entity_id",
-        "entity_access_tags",
+        "ix_entity_access_tags_association_tag_id_entity_id",
+        "entity_access_tags_association",
         ["tag_id", "entity_id"],
     )
     op.create_index(
-        "idx_link_access_tags_tag_id_link_id",
-        "link_access_tags",
+        "ix_link_access_tags_association_tag_id_link_id",
+        "link_access_tags_association",
         ["tag_id", "link_id"],
     )
 
@@ -303,12 +303,12 @@ def _analyze(connection, *tables):
 
 def _drop_tag_tables():
     """Drop the tag tables, dependents before their referents."""
-    op.drop_table("access_tag_principal_scopes")
-    op.drop_table("access_tag_owners")
+    op.drop_table("access_tag_principal_scopes_association")
+    op.drop_table("access_tag_owners_association")
     op.drop_table("access_tags_principals")
-    op.drop_table("node_access_tags")
-    op.drop_table("entity_access_tags")
-    op.drop_table("link_access_tags")
+    op.drop_table("node_access_tags_association")
+    op.drop_table("entity_access_tags_association")
+    op.drop_table("link_access_tags_association")
     op.drop_table("access_tags")
 
 
@@ -534,7 +534,7 @@ def _create_entity_tag_triggers(connection):
 CREATE TRIGGER entities_node_access_tags_update
 BEFORE UPDATE OF node_id ON entities
 WHEN (NEW.node_id IS NOT NULL AND EXISTS (
-    SELECT 1 FROM entity_access_tags WHERE entity_id = NEW.id
+    SELECT 1 FROM entity_access_tags_association WHERE entity_id = NEW.id
 ))
 BEGIN
     SELECT RAISE(ABORT, '{ENTITY_NODE_ACCESS_TAGS_ERROR}');
@@ -545,8 +545,8 @@ END"""
             connection.execute(
                 sa.text(
                     f"""
-CREATE TRIGGER entity_access_tags_{operation.split()[0].lower()}_reject_node_backed_entity
-BEFORE {operation} ON entity_access_tags
+CREATE TRIGGER entity_access_tags_association_{operation.split()[0].lower()}_reject_node_backed_entity
+BEFORE {operation} ON entity_access_tags_association
 WHEN EXISTS (SELECT 1 FROM entities WHERE id = NEW.entity_id AND node_id IS NOT NULL)
 BEGIN
     SELECT RAISE(ABORT, '{ENTITY_NODE_ACCESS_TAGS_ERROR}');
@@ -565,7 +565,7 @@ CREATE OR REPLACE FUNCTION entities_reject_node_access_tags()
 RETURNS TRIGGER AS $$
 BEGIN
     IF EXISTS (
-        SELECT 1 FROM entity_access_tags WHERE entity_id = NEW.id
+        SELECT 1 FROM entity_access_tags_association WHERE entity_id = NEW.id
     ) THEN
         RAISE EXCEPTION '{ENTITY_NODE_ACCESS_TAGS_ERROR}'
             USING ERRCODE = '23514';
@@ -588,7 +588,7 @@ EXECUTE FUNCTION entities_reject_node_access_tags();"""
         connection.execute(
             sa.text(
                 f"""
-CREATE OR REPLACE FUNCTION entity_access_tags_reject_node_backed_entity()
+CREATE OR REPLACE FUNCTION entity_access_tags_association_reject_node_backed_entity()
 RETURNS TRIGGER AS $$
 BEGIN
     IF EXISTS (SELECT 1 FROM entities WHERE id = NEW.entity_id AND node_id IS NOT NULL) THEN
@@ -603,9 +603,9 @@ $$ LANGUAGE plpgsql;"""
         connection.execute(
             sa.text(
                 """
-CREATE TRIGGER entity_access_tags_reject_node_backed_entity
-BEFORE INSERT OR UPDATE OF entity_id ON entity_access_tags
-FOR EACH ROW EXECUTE FUNCTION entity_access_tags_reject_node_backed_entity();"""
+CREATE TRIGGER entity_access_tags_association_reject_node_backed_entity
+BEFORE INSERT OR UPDATE OF entity_id ON entity_access_tags_association
+FOR EACH ROW EXECUTE FUNCTION entity_access_tags_association_reject_node_backed_entity();"""
             )
         )
 
@@ -619,7 +619,7 @@ def _drop_entity_tag_triggers(connection):
         for operation in ("insert", "update"):
             connection.execute(
                 sa.text(
-                    f"DROP TRIGGER IF EXISTS entity_access_tags_{operation}_reject_node_backed_entity"
+                    f"DROP TRIGGER IF EXISTS entity_access_tags_association_{operation}_reject_node_backed_entity"
                 )
             )
     elif dialect_name == "postgresql":
@@ -630,13 +630,13 @@ def _drop_entity_tag_triggers(connection):
         )
         connection.execute(
             sa.text(
-                "DROP TRIGGER IF EXISTS entity_access_tags_reject_node_backed_entity "
-                "ON entity_access_tags"
+                "DROP TRIGGER IF EXISTS entity_access_tags_association_reject_node_backed_entity "
+                "ON entity_access_tags_association"
             )
         )
         for function in (
             "entities_reject_node_access_tags",
-            "entity_access_tags_reject_node_backed_entity",
+            "entity_access_tags_association_reject_node_backed_entity",
         ):
             connection.execute(sa.text(f"DROP FUNCTION IF EXISTS {function}"))
 
@@ -899,9 +899,9 @@ def upgrade():
     _analyze(
         connection,
         "access_tags",
-        "node_access_tags",
-        "entity_access_tags",
-        "link_access_tags",
+        "node_access_tags_association",
+        "entity_access_tags_association",
+        "link_access_tags_association",
     )
 
 
@@ -984,18 +984,18 @@ def downgrade():
     # owns a blob in the blob world; entities only when standalone (an entity
     # with node_id set delegates access control to the referenced node).
     _reconstruct_blobs_from_tags(
-        connection, "nodes", "node_access_tags", "node_id", "node_access_blobs"
+        connection, "nodes", "node_access_tags_association", "node_id", "node_access_blobs"
     )
     _reconstruct_blobs_from_tags(
         connection,
         "entities",
-        "entity_access_tags",
+        "entity_access_tags_association",
         "entity_id",
         "entity_access_blobs",
         where="WHERE owner_table.node_id IS NULL",
     )
     _reconstruct_blobs_from_tags(
-        connection, "links", "link_access_tags", "link_id", "link_access_blobs"
+        connection, "links", "link_access_tags_association", "link_id", "link_access_blobs"
     )
 
     # access_blobs is fully reconstructed; build its indexes now.

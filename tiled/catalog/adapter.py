@@ -982,7 +982,7 @@ class CatalogNodeAdapter:
         async with self.context.session() as db:
             if access_tags:
                 # Assigning AccessTag rows to the (many-to-many) relationship
-                # creates the node_access_tags association rows on flush.
+                # creates the node_access_tags_association association rows on flush.
                 node.access_tags = await _resolve_access_tags(db, access_tags)
             # TODO Consider using nested transitions to ensure that
             # both the node is created (name not already taken)
@@ -1570,12 +1570,12 @@ class CatalogNodeAdapter:
                 # Replace the node's tag set: drop existing association rows
                 # and insert one per (deduplicated) tag name.
                 await db.execute(
-                    delete(orm.NodeAccessTag).where(
-                        orm.NodeAccessTag.node_id == self.node.id
+                    delete(orm.NodeAccessTagAssociation).where(
+                        orm.NodeAccessTagAssociation.node_id == self.node.id
                     )
                 )
                 for tag in await _resolve_access_tags(db, AccessTags(access_tags)):
-                    db.add(orm.NodeAccessTag(node_id=self.node.id, tag_id=tag.id))
+                    db.add(orm.NodeAccessTagAssociation(node_id=self.node.id, tag_id=tag.id))
             await db.commit()
             # Upon successful update, inform websocket subscribers through redis
             if self.context.streaming_cache:
@@ -2434,9 +2434,9 @@ def access_tags_filter(query, tree):
         # EXISTS is used (vs IN) as it is much more preformant in SQLite,
         # though performance in Postgres appears similar for both.
         condition = (
-            select(orm.NodeAccessTag.node_id)
-            .join(orm.AccessTag, orm.AccessTag.id == orm.NodeAccessTag.tag_id)
-            .where(orm.NodeAccessTag.node_id == orm.Node.id)
+            select(orm.NodeAccessTagAssociation.node_id)
+            .join(orm.AccessTag, orm.AccessTag.id == orm.NodeAccessTagAssociation.tag_id)
+            .where(orm.NodeAccessTagAssociation.node_id == orm.Node.id)
             .where(orm.AccessTag.name.in_(query.tags))
             .exists()
         )
@@ -2609,24 +2609,24 @@ async def _create_mount_node_segments(engine, mount_path, specs=None, access_tag
                     )
                 )
                 node_id = result.inserted_primary_key[0]
-                node_access_tags = access_tags if is_leaf else AccessTags([])
-                if node_access_tags:
+                node_access_tags_association = access_tags if is_leaf else AccessTags([])
+                if node_access_tags_association:
                     # Resolve tag names to ids; raise on any undefined tag.
                     rows = (
                         await conn.execute(
                             select(orm.AccessTag.id, orm.AccessTag.name).where(
-                                orm.AccessTag.name.in_(node_access_tags)
+                                orm.AccessTag.name.in_(node_access_tags_association)
                             )
                         )
                     ).all()
-                    missing = set(node_access_tags) - {name for _, name in rows}
+                    missing = set(node_access_tags_association) - {name for _, name in rows}
                     if missing:
                         raise ValueError(
                             "Cannot apply access tags that are not defined: "
                             f"{sorted(missing)}"
                         )
                     await conn.execute(
-                        insert(orm.NodeAccessTag).values(
+                        insert(orm.NodeAccessTagAssociation).values(
                             [
                                 {"node_id": node_id, "tag_id": tag_id}
                                 for tag_id, _ in rows

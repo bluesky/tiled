@@ -99,10 +99,10 @@ class FakeTagPolicy:
         authn_access_tags,
         authn_scopes,
     ):
-        node_access_tags = set(node.access_tags or ())
-        if f"user:{principal}" in node_access_tags:
+        node_access_tags_association = set(node.access_tags or ())
+        if f"user:{principal}" in node_access_tags_association:
             return set(authn_scopes)
-        if node_access_tags.intersection(self.user_access_tags.get(principal, set())):
+        if node_access_tags_association.intersection(self.user_access_tags.get(principal, set())):
             return set(authn_scopes)
         return set()
 
@@ -696,7 +696,7 @@ async def test_entity_node_access_tags_rejected_when_both_set(store):
 async def test_entity_node_access_tags_trigger_rejects_direct_insert(store):
     """
     The database trigger is the data-integrity backstop: a raw INSERT into
-    entity_access_tags (bypassing even the store) for a node-backed entity
+    entity_access_tags_association (bypassing even the store) for a node-backed entity
     must be rejected by the database itself.
     """
     await _insert_node(store, 1, ["team"])

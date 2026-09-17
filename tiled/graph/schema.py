@@ -131,7 +131,7 @@ async def _effective_access_tags(info: Info, record: EntityRecord) -> AccessTags
     """
     An entity that points to a catalog node (node_id set) delegates its
     access control to that node, rather than carrying its own access tags
-    (it has none in that case; see the entities_node_access_tags_* triggers
+    (it has none in that case; see the entities_node_access_tags_association_* triggers
     in tiled.graph.orm). Resolve whichever is authoritative.
     """
     if record.node_id is not None:
