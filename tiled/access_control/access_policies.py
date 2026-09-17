@@ -12,7 +12,7 @@ from ..server.schemas import Principal
 from ..type_aliases import Filters, Scopes
 from ..utils import Sentinel, import_object
 from .protocols import AccessPolicy, AccessTags
-from .scopes import ALL_SCOPES, NO_SCOPES, PUBLIC_SCOPES
+from .scopes import ALL_SCOPES, NO_SCOPES, PUBLIC_SCOPES, validate_scopes
 
 ALL_ACCESS = []
 NO_ACCESS = Sentinel("NO_ACCESS")
@@ -73,6 +73,7 @@ class TagBasedAccessPolicy(AccessPolicy):
     ):
         self.provider = provider
         self.scopes = scopes if (scopes is not None) else ALL_SCOPES
+        validate_scopes(self.scopes, "TagBasedAccessPolicy 'scopes'")
 
         access_tags_parser = import_object(access_tags_parser)
         # The parser reads tag definitions from the catalog database; it is
@@ -393,10 +394,10 @@ class TagBasedAccessPolicy(AccessPolicy):
                 elif not await self.is_tag_defined(tag):
                     continue
                 if identifier is not None:
-                    tag_scopes = await self.get_scopes_from_tag(tag, identifier)
-                    allowed.update(
-                        tag_scopes if tag_scopes.issubset(self.scopes) else set()
-                    )
+                    allowed.update(await self.get_scopes_from_tag(tag, identifier))
+            # Clamp to the policy's configured scopes, such as if
+            # the tag grants scopes outside the policy's scopes set.
+            allowed &= set(self.scopes)
 
         return allowed
 

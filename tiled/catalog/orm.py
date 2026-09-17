@@ -249,38 +249,13 @@ class AccessTagsPrincipal(Timestamped, Base):
     )
 
 
-class Scope(Base):
-    """
-    A named permission scope (e.g. 'read:data', 'write:data', 'create:node').
-
-    The set of valid scope names is the closed ScopeName enum. A Scope row is
-    created the first time a scope name appears in a tag definition.
-    """
-
-    __tablename__ = "scopes"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    name = Column(
-        Enum(
-            ScopeName,
-            name="scope_name",
-            values_callable=lambda enum: [member.value for member in enum],
-        ),
-        nullable=False,
-        unique=True,
-    )
-
-    principal_tags: Mapped[List["AccessTagPrincipalScope"]] = relationship(
-        back_populates="scope",
-        cascade="all, delete-orphan",
-        passive_deletes=True,
-    )
-
-
 class AccessTagPrincipalScope(Base):
     """
-    Three-way junction (association table): a Principal is granted a Scope on
-    all nodes carrying an AccessTag.
+    Junction (association table) between AccessTag and AccessTagsPrincipal,
+    with one row per granted scope: a Principal is granted a scope on all
+    nodes carrying an AccessTag. Only tag_id and principal_id are foreign
+    keys; the scope is stored inline as the closed ScopeName enum and is part
+    of the primary key.
 
     Used to check:
         - What scopes does a principal have on a given node per the node's tags?
@@ -308,19 +283,22 @@ class AccessTagPrincipalScope(Base):
         ),
         nullable=False,
     )
-    scope_id = Column(
-        Integer,
-        ForeignKey(
-            "scopes.id",
-            name="fk_access_tag_principal_scopes_scope",
-            ondelete="CASCADE",
+    scope = Column(
+        Enum(
+            ScopeName,
+            name="scope_name",
+            # PostgreSQL enforces the closed set with a native enum type. On
+            # SQLite the column is a plain VARCHAR, so without this an invalid
+            # scope would insert silently and then raise LookupError on every
+            # subsequent read. Emits a CHECK on SQLite; no-op on PostgreSQL.
+            create_constraint=True,
+            values_callable=lambda enum: [member.value for member in enum],
         ),
         nullable=False,
     )
 
     tag: Mapped["AccessTag"] = relationship(back_populates="principal_scopes")
     principal: Mapped["AccessTagsPrincipal"] = relationship(back_populates="tag_scopes")
-    scope: Mapped["Scope"] = relationship(back_populates="principal_tags")
 
     __table_args__ = (
         # Serves '(tag, principal) -> scopes' probes, e.g. checking scopes on a
@@ -328,7 +306,7 @@ class AccessTagPrincipalScope(Base):
         PrimaryKeyConstraint(
             "tag_id",
             "principal_id",
-            "scope_id",
+            "scope",
             name="access_tag_principal_scopes_pkey",
         ),
         # Covering index serving '(principal, scope) -> tags' lookups, used to
@@ -336,12 +314,9 @@ class AccessTagPrincipalScope(Base):
         Index(
             "idx_access_tag_principal_scopes_principal_scope",
             "principal_id",
-            "scope_id",
+            "scope",
             "tag_id",
         ),
-        # Supports FK cascade when a Scope row is deleted (e.g. during
-        # reconciliation of the configured scope set).
-        Index("idx_access_tag_principal_scopes_scope_id", "scope_id"),
     )
 
 
