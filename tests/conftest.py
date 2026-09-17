@@ -56,7 +56,9 @@ def s3_bucket_uri():
     server.start()
     host, port = server.get_host_and_port()
     # moto accepts any credentials; use placeholder values.
-    os.environ["TILED_TEST_BUCKET"] = f"http://bucketadmin:bucketadmin@{host}:{port}/buck"
+    os.environ[
+        "TILED_TEST_BUCKET"
+    ] = f"http://bucketadmin:bucketadmin@{host}:{port}/buck"
     try:
         yield
     finally:
