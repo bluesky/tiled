@@ -468,6 +468,13 @@ class APIKeyRequestParams(pydantic.BaseModel):
     note: Optional[str] = None
 
 
+# BACK-COMPAT: remove together with the access_blob helpers in _backcompat.py.
+_ACCESS_BLOB_DEPRECATION = (
+    "Deprecated in favor of `access_tags`. Accepted from clients older than "
+    "v0.2.19 and translated server-side."
+)
+
+
 class PostMetadataRequest(pydantic.BaseModel):
     id: Optional[str] = None
     structure_family: StructureFamily
@@ -475,6 +482,10 @@ class PostMetadataRequest(pydantic.BaseModel):
     data_sources: List[DataSource] = []
     specs: Specs = []
     access_tags: Optional[List[str]] = None
+    # BACK-COMPAT: remove together with the access_blob helpers in _backcompat.py.
+    access_blob: Optional[Dict] = pydantic.Field(
+        default=None, deprecated=_ACCESS_BLOB_DEPRECATION
+    )
 
     # Wait for fix https://github.com/pydantic/pydantic/issues/3957
     # to do this with `unique_items` parameters to `pydantic.constr`.
@@ -537,6 +548,10 @@ class PutMetadataRequest(pydantic.BaseModel):
     metadata: Optional[Dict] = None
     specs: Optional[Specs] = None
     access_tags: Optional[List[str]] = None
+    # BACK-COMPAT: remove together with the access_blob helpers in _backcompat.py.
+    access_blob: Optional[Dict] = pydantic.Field(
+        default=None, deprecated=_ACCESS_BLOB_DEPRECATION
+    )
 
     # Wait for fix https://github.com/pydantic/pydantic/issues/3957
     # to do this with `unique_items` parameters to `pydantic.constr`.
@@ -591,6 +606,11 @@ class PatchMetadataRequest(HyphenizedBaseModel):
     # Define an alias to override parent class alias generator
     access_tags: Optional[Union[List[JSONPatchAny], List[str]]] = Field(
         alias="access_tags", default=None
+    )
+    # BACK-COMPAT: remove together with the access_blob helpers in _backcompat.py.
+    # A legacy client patches the blob, so this is a patch of a Dict.
+    access_blob: Optional[Union[List[JSONPatchAny], Dict]] = Field(
+        alias="access_blob", default=None, deprecated=_ACCESS_BLOB_DEPRECATION
     )
 
     @pydantic.field_validator("specs")

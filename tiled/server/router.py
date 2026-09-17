@@ -59,6 +59,12 @@ from ..utils import BrokenLink, ensure_awaitable, patch_mimetypes, path_from_uri
 from ..validation_registration import ValidationError, ValidationRegistry
 from . import schemas
 from ._backcompat import (
+    access_blob_from_access_tags,
+    access_tags_from_patch_request,
+    access_tags_from_request,
+    client_expects_access_blob,
+    legacy_access_blob,
+    legacy_access_blob_error,
     parse_python_tiled_client_version,
     strip_asset_fields_for_client,
 )
@@ -1892,6 +1898,13 @@ def get_router(
             body.specs,
             normalize_access_tags(body.access_tags) if body.access_tags is not None else None,
         )
+        # BACK-COMPAT: a client older than v0.2.19 spells this `access_blob`.
+        # Remove with the helpers in _backcompat.py.
+        if legacy_access_blob(body) is not None:
+            try:
+                access_tags = access_tags_from_request(body)
+            except ValueError as e:
+                raise legacy_access_blob_error(e)
         if structure_family == StructureFamily.container:
             structure = None
         else:
@@ -1957,7 +1970,10 @@ def get_router(
                 sorted(access_tags) if access_tags is not None else None
             )
 
-        return json_or_msgpack(request, response_data)
+        # NOTE: Back-compatibility for clients older than v0.2.19
+        return json_or_msgpack(
+            request, _write_response_backcompat(request, response_data)
+        )
 
     @router.put("/data_source/{path:path}")
     async def put_data_source(
@@ -2414,6 +2430,21 @@ def get_router(
                 detail="access_tags patch must produce a list of strings",
             )
 
+        # BACK-COMPAT: a client older than v0.2.19 patches an `access_blob`
+        # dict rather than a tag list, so its patch has to be applied in that
+        # shape. Remove with the helpers in _backcompat.py.
+        if legacy_access_blob(body) is not None:
+            try:
+                access_tags = access_tags_from_patch_request(
+                    body,
+                    entry.access_tags,
+                    apply_json_patch
+                    if body.content_type == patch_mimetypes.JSON_PATCH
+                    else apply_merge_patch,
+                )
+            except ValueError as e:
+                raise legacy_access_blob_error(e)
+
         # Manually validate limits that bypass pydantic validation via patch
         if len(specs) > schemas.MAX_ALLOWED_SPECS:
             raise HTTPException(
@@ -2464,7 +2495,10 @@ def get_router(
             response_data["access_tags"] = (
                 sorted(access_tags) if access_tags is not None else None
             )
-        return json_or_msgpack(request, response_data)
+        # NOTE: Back-compatibility for clients older than v0.2.19
+        return json_or_msgpack(
+            request, _write_response_backcompat(request, response_data)
+        )
 
     @router.put("/metadata/{path:path}", response_model=schemas.PutMetadataResponse)
     async def put_metadata(
@@ -2505,6 +2539,15 @@ def get_router(
             if body.access_tags is not None
             else entry.access_tags,
         )
+        # BACK-COMPAT: a client older than v0.2.19 spells this `access_blob`.
+        # Remove with the helpers in _backcompat.py.
+        if legacy_access_blob(body) is not None:
+            try:
+                access_tags = access_tags_from_request(body)
+            except ValueError as e:
+                raise legacy_access_blob_error(e)
+            if access_tags is None:
+                access_tags = entry.access_tags
 
         metadata_modified, metadata = await validate_specs(
             specs=specs,
@@ -2544,7 +2587,10 @@ def get_router(
             response_data["access_tags"] = (
                 sorted(access_tags) if access_tags is not None else None
             )
-        return json_or_msgpack(request, response_data)
+        # NOTE: Back-compatibility for clients older than v0.2.19
+        return json_or_msgpack(
+            request, _write_response_backcompat(request, response_data)
+        )
 
     @router.get("/revisions/{path:path}")
     async def get_revisions(
@@ -2868,8 +2914,11 @@ def _model_dump_backcompat(request: Request, response: schemas.Response) -> dict
     - Clients older than v0.2.13 crash on `size` in assets, because their
       `tiled.structures.data_source.Asset` dataclass has no `size` field and
       `DataSource.from_json` unpacks kwargs directly.
+    - Clients older than v0.2.19 expect `access_blob` rather than `access_tags`,
+      and read it unconditionally (`tiled.client.base.BaseClient.metadata_copy`),
+      so they raise KeyError without it.
 
-    To be removed in a future major release.
+    To be removed in a future release.
     """
     response_dict = response.model_dump()
     client_version = parse_python_tiled_client_version(request)
@@ -2886,4 +2935,29 @@ def _model_dump_backcompat(request: Request, response: schemas.Response) -> dict
         for ds in all_data_sources:
             ds.pop("properties", None)
     strip_asset_fields_for_client(all_data_sources, client_version)
+    if client_expects_access_blob(client_version):
+        for resource in resources:
+            attributes = resource.get("attributes") or {}
+            if "access_tags" in attributes:
+                attributes["access_blob"] = access_blob_from_access_tags(
+                    attributes.pop("access_tags")
+                )
     return response_dict
+
+
+def _write_response_backcompat(request: Request, response_data: dict) -> dict:
+    """Adjust a write endpoint's response payload to match older clients.
+
+    The POST/PUT/PATCH metadata endpoints return a bare dict rather than a
+    `schemas.Response`, so they cannot go through `_model_dump_backcompat`.
+
+    To be removed in a future release.
+    """
+    if (
+        client_expects_access_blob(parse_python_tiled_client_version(request))
+        and "access_tags" in response_data
+    ):
+        response_data["access_blob"] = access_blob_from_access_tags(
+            response_data.pop("access_tags")
+        )
+    return response_data
