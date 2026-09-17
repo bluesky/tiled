@@ -5,7 +5,7 @@ from sqlalchemy import select as sa_select
 from sqlalchemy.exc import IntegrityError
 from starlette.testclient import TestClient
 
-from tiled.access_control.protocols import AccessTags
+from tiled.access_control.protocols import normalize_access_tags
 from tiled.catalog import in_memory as catalog_in_memory
 from tiled.catalog.core import initialize_database
 from tiled.config import Database
@@ -77,7 +77,7 @@ class FakeTagPolicy:
         if access_tags is None:
             # No tags supplied: tag the new node with its creator's
             # principal tag, as TagBasedAccessPolicy does.
-            return (True, AccessTags([f"user:{principal}"]))
+            return (True, normalize_access_tags([f"user:{principal}"]))
         return (False, access_tags)
 
     async def modify_node(
@@ -90,7 +90,7 @@ class FakeTagPolicy:
     ):
         if access_tags is not None:
             return (False, access_tags)
-        return (False, AccessTags(node.access_tags or ()))
+        return (False, normalize_access_tags(node.access_tags or ()))
 
     async def allowed_scopes(
         self,

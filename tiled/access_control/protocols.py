@@ -1,24 +1,27 @@
 from abc import ABC, abstractmethod
 from typing import Iterable, Optional, Tuple
 
-from typing_extensions import Self
-
 from ..adapters.protocols import BaseAdapter
 from ..server.schemas import Principal
-from ..type_aliases import Filters, Scopes
+from ..type_aliases import AccessTags, Filters, Scopes
 
 # Prefixes of principal tags ('user:<id>', 'service:<uuid>'), which mark
 # nodes as owned by a single principal.
 PRINCIPAL_TAG_PREFIXES = ("user:", "service:")
 
 
-class AccessTags(frozenset[str]):
-    def __new__(cls, tags: Iterable[str] = ()) -> Self:
-        if isinstance(tags, str):
-            raise TypeError(
-                "AccessTags expects an iterable of strings, not a single string."
-            )
-        return super().__new__(cls, tags)
+def normalize_access_tags(tags: Iterable[str] = ()) -> AccessTags:
+    """
+    Validate tag names and normalize them to a frozenset.
+
+    A bare string is rejected rather than accepted: frozenset("abc") would
+    silently produce {'a', 'b', 'c'} instead of {'abc'}.
+    """
+    if isinstance(tags, str):
+        raise TypeError(
+            "access tags must be an iterable of strings, not a single string."
+        )
+    return frozenset(tags)
 
 
 class AccessPolicy(ABC):
@@ -40,7 +43,7 @@ class AccessPolicy(ABC):
         authn_scopes: Scopes,
         access_tags: Optional[AccessTags],
     ) -> Tuple[bool, AccessTags]:
-        return (False, access_tags or AccessTags())
+        return (False, access_tags or normalize_access_tags())
 
     @abstractmethod
     async def allowed_scopes(

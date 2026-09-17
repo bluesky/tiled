@@ -7,10 +7,10 @@ from fastapi import Request, WebSocket
 from starlette.types import Scope
 
 from ..access_control.access_policies import NO_ACCESS
-from ..access_control.protocols import AccessPolicy, AccessTags
+from ..access_control.protocols import AccessPolicy
 from ..adapters.mapping import MapAdapter
 from ..server.schemas import Principal
-from ..type_aliases import Scopes
+from ..type_aliases import AccessTags, Scopes
 
 EMPTY_NODE = MapAdapter({})
 API_KEY_COOKIE_NAME = "tiled_api_key"
