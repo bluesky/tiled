@@ -140,11 +140,6 @@ def _create_tag_tables():
         ),
         sa.PrimaryKeyConstraint("node_id", "tag_id", name="node_access_tags_pkey"),
     )
-    op.create_index(
-        "idx_node_access_tags_tag_id_node_id",
-        "node_access_tags",
-        ["tag_id", "node_id"],
-    )
 
     op.create_table(
         "entity_access_tags",
@@ -165,12 +160,6 @@ def _create_tag_tables():
             primary_key=True,
         ),
     )
-    op.create_index(
-        "idx_entity_access_tags_tag_id_entity_id",
-        "entity_access_tags",
-        ["tag_id", "entity_id"],
-    )
-
     op.create_table(
         "link_access_tags",
         sa.Column(
@@ -190,11 +179,10 @@ def _create_tag_tables():
             primary_key=True,
         ),
     )
-    op.create_index(
-        "idx_link_access_tags_tag_id_link_id",
-        "link_access_tags",
-        ["tag_id", "link_id"],
-    )
+    # The three association tables' secondary indexes are not created here.
+    # They are not constraints and the population step does not read through
+    # them -- it reads the blob tables and writes these -- so they are built
+    # once over the finished tables by _create_tag_assoc_indexes() below.
 
     # Tag-definition support tables. Created empty: they are populated for the
     # first time by the access tags compiler, never by this migration.
@@ -271,6 +259,46 @@ def _create_tag_tables():
         "access_tag_owners",
         ["principal_id"],
     )
+
+
+def _create_tag_assoc_indexes():
+    """
+    Build the association tables' secondary indexes, once they are populated.
+
+    Deferred from _create_tag_tables() so that the bulk INSERT ... SELECT that
+    fills these tables does not pay index maintenance per row.
+    """
+    op.create_index(
+        "idx_node_access_tags_tag_id_node_id",
+        "node_access_tags",
+        ["tag_id", "node_id"],
+    )
+    op.create_index(
+        "idx_entity_access_tags_tag_id_entity_id",
+        "entity_access_tags",
+        ["tag_id", "entity_id"],
+    )
+    op.create_index(
+        "idx_link_access_tags_tag_id_link_id",
+        "link_access_tags",
+        ["tag_id", "link_id"],
+    )
+
+
+def _analyze(connection, *tables):
+    """
+    Refresh planner statistics for tables this migration bulk-loaded.
+
+    PostgreSQL commits a freshly populated table with no statistics, so until
+    autovacuum happens to reach it the planner is estimating from defaults on
+    tables the server queries on every request. ANALYZE is cheap next to the
+    load itself. SQLite's ANALYZE is a different, much heavier operation whose
+    results are only consulted when a query is ambiguous, so it is skipped.
+    """
+    if connection.engine.dialect.name != "postgresql":
+        return
+    for table in tables:
+        connection.execute(sa.text(f"ANALYZE {table}"))
 
 
 def _drop_tag_tables():
@@ -852,6 +880,7 @@ def upgrade():
 
     _create_tag_tables()
     _populate_tags_from_blobs(connection)
+    _create_tag_assoc_indexes()
 
     # The blob-era delete-cleanup triggers on the association tables would
     # cascade into access_blobs while the association tables are dropped;
@@ -867,6 +896,13 @@ def upgrade():
         op.execute("DROP TYPE IF EXISTS access_kind")
 
     _create_entity_tag_triggers(connection)
+    _analyze(
+        connection,
+        "access_tags",
+        "node_access_tags",
+        "entity_access_tags",
+        "link_access_tags",
+    )
 
 
 def downgrade():
@@ -891,14 +927,8 @@ def downgrade():
             name="ck_access_blob_user_xor_tags",
         ),
     )
-    op.create_index(
-        "ix_access_blobs_username_user",
-        "access_blobs",
-        ["username"],
-        sqlite_where=sa.text("kind = 'user' AND username IS NOT NULL"),
-        postgresql_where=sa.text("kind = 'user' AND username IS NOT NULL"),
-    )
-    op.create_index("ix_access_blobs_kind_id", "access_blobs", ["kind", "id"])
+    # As in revision de302a096358, the indexes on access_blobs are built after
+    # the rows are reconstructed, at the end of this function.
     op.create_table(
         "node_access_blobs",
         sa.Column(
@@ -950,15 +980,6 @@ def downgrade():
             unique=True,
         ),
     )
-    if dialect_name == "postgresql":
-        op.create_index(
-            "ix_access_blobs_tags_gin",
-            "access_blobs",
-            ["tags"],
-            postgresql_using="gin",
-            postgresql_where=sa.text("kind = 'tags' AND tags IS NOT NULL"),
-        )
-
     # Reconstruct blobs before dropping the tag tables. Every node and link
     # owns a blob in the blob world; entities only when standalone (an entity
     # with node_id set delegates access control to the referenced node).
@@ -977,8 +998,33 @@ def downgrade():
         connection, "links", "link_access_tags", "link_id", "link_access_blobs"
     )
 
+    # access_blobs is fully reconstructed; build its indexes now.
+    op.create_index(
+        "ix_access_blobs_username_user",
+        "access_blobs",
+        ["username"],
+        sqlite_where=sa.text("kind = 'user' AND username IS NOT NULL"),
+        postgresql_where=sa.text("kind = 'user' AND username IS NOT NULL"),
+    )
+    op.create_index("ix_access_blobs_kind_id", "access_blobs", ["kind", "id"])
+    if dialect_name == "postgresql":
+        op.create_index(
+            "ix_access_blobs_tags_gin",
+            "access_blobs",
+            ["tags"],
+            postgresql_using="gin",
+            postgresql_where=sa.text("kind = 'tags' AND tags IS NOT NULL"),
+        )
+
     _create_blob_triggers(connection)
 
     _drop_tag_tables()
     if dialect_name == "postgresql":
         op.execute("DROP TYPE IF EXISTS scope_name")
+    _analyze(
+        connection,
+        "access_blobs",
+        "node_access_blobs",
+        "entity_access_blobs",
+        "link_access_blobs",
+    )
