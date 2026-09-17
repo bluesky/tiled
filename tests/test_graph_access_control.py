@@ -102,7 +102,9 @@ class FakeTagPolicy:
         node_access_tags_association = set(node.access_tags or ())
         if f"user:{principal}" in node_access_tags_association:
             return set(authn_scopes)
-        if node_access_tags_association.intersection(self.user_access_tags.get(principal, set())):
+        if node_access_tags_association.intersection(
+            self.user_access_tags.get(principal, set())
+        ):
             return set(authn_scopes)
         return set()
 

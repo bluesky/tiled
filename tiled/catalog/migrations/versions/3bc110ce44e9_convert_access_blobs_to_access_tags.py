@@ -126,7 +126,9 @@ def _create_tag_tables():
             "node_id",
             sa.Integer(),
             sa.ForeignKey(
-                "nodes.id", name="fk_node_access_tags_association_node", ondelete="CASCADE"
+                "nodes.id",
+                name="fk_node_access_tags_association_node",
+                ondelete="CASCADE",
             ),
             nullable=False,
         ),
@@ -134,11 +136,15 @@ def _create_tag_tables():
             "tag_id",
             sa.Integer(),
             sa.ForeignKey(
-                "access_tags.id", name="fk_node_access_tags_association_tag", ondelete="CASCADE"
+                "access_tags.id",
+                name="fk_node_access_tags_association_tag",
+                ondelete="CASCADE",
             ),
             nullable=False,
         ),
-        sa.PrimaryKeyConstraint("node_id", "tag_id", name="node_access_tags_association_pkey"),
+        sa.PrimaryKeyConstraint(
+            "node_id", "tag_id", name="node_access_tags_association_pkey"
+        ),
     )
 
     op.create_table(
@@ -147,7 +153,9 @@ def _create_tag_tables():
             "entity_id",
             sa.String(),
             sa.ForeignKey(
-                "entities.id", name="fk_entity_access_tags_association_entity", ondelete="CASCADE"
+                "entities.id",
+                name="fk_entity_access_tags_association_entity",
+                ondelete="CASCADE",
             ),
             primary_key=True,
         ),
@@ -155,7 +163,9 @@ def _create_tag_tables():
             "tag_id",
             sa.Integer(),
             sa.ForeignKey(
-                "access_tags.id", name="fk_entity_access_tags_association_tag", ondelete="CASCADE"
+                "access_tags.id",
+                name="fk_entity_access_tags_association_tag",
+                ondelete="CASCADE",
             ),
             primary_key=True,
         ),
@@ -166,7 +176,9 @@ def _create_tag_tables():
             "link_id",
             sa.String(),
             sa.ForeignKey(
-                "links.id", name="fk_link_access_tags_association_link", ondelete="CASCADE"
+                "links.id",
+                name="fk_link_access_tags_association_link",
+                ondelete="CASCADE",
             ),
             primary_key=True,
         ),
@@ -174,7 +186,9 @@ def _create_tag_tables():
             "tag_id",
             sa.Integer(),
             sa.ForeignKey(
-                "access_tags.id", name="fk_link_access_tags_association_tag", ondelete="CASCADE"
+                "access_tags.id",
+                name="fk_link_access_tags_association_tag",
+                ondelete="CASCADE",
             ),
             primary_key=True,
         ),
@@ -984,7 +998,11 @@ def downgrade():
     # owns a blob in the blob world; entities only when standalone (an entity
     # with node_id set delegates access control to the referenced node).
     _reconstruct_blobs_from_tags(
-        connection, "nodes", "node_access_tags_association", "node_id", "node_access_blobs"
+        connection,
+        "nodes",
+        "node_access_tags_association",
+        "node_id",
+        "node_access_blobs",
     )
     _reconstruct_blobs_from_tags(
         connection,
@@ -995,7 +1013,11 @@ def downgrade():
         where="WHERE owner_table.node_id IS NULL",
     )
     _reconstruct_blobs_from_tags(
-        connection, "links", "link_access_tags_association", "link_id", "link_access_blobs"
+        connection,
+        "links",
+        "link_access_tags_association",
+        "link_id",
+        "link_access_blobs",
     )
 
     # access_blobs is fully reconstructed; build its indexes now.

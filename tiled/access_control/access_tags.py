@@ -25,12 +25,15 @@ SCOPE_ENUM_NAME = orm.AccessTagPrincipalScopeAssociation.__table__.c.scope.type.
 # two foreign keys reference so that it can be queried by name. The scope is
 # stored inline on the junction and needs no join. Shared by the lookups in
 # both directions: (tag, principal) -> scopes and (principal, scope) -> tags.
-access_tag_principal_scopes_association_named = orm.AccessTagPrincipalScopeAssociation.__table__.join(
-    orm.AccessTag.__table__,
-    orm.AccessTag.id == orm.AccessTagPrincipalScopeAssociation.tag_id,
-).join(
-    orm.AccessTagsPrincipal.__table__,
-    orm.AccessTagsPrincipal.id == orm.AccessTagPrincipalScopeAssociation.principal_id,
+access_tag_principal_scopes_association_named = (
+    orm.AccessTagPrincipalScopeAssociation.__table__.join(
+        orm.AccessTag.__table__,
+        orm.AccessTag.id == orm.AccessTagPrincipalScopeAssociation.tag_id,
+    ).join(
+        orm.AccessTagsPrincipal.__table__,
+        orm.AccessTagsPrincipal.id
+        == orm.AccessTagPrincipalScopeAssociation.principal_id,
+    )
 )
 
 
@@ -111,10 +114,13 @@ class AccessTagsParser:
     async def is_tag_owner(self, tagname, username):
         statement = (
             select(orm.AccessTagOwnerAssociation.tag_id)
-            .join(orm.AccessTag, orm.AccessTag.id == orm.AccessTagOwnerAssociation.tag_id)
+            .join(
+                orm.AccessTag, orm.AccessTag.id == orm.AccessTagOwnerAssociation.tag_id
+            )
             .join(
                 orm.AccessTagsPrincipal,
-                orm.AccessTagsPrincipal.id == orm.AccessTagOwnerAssociation.principal_id,
+                orm.AccessTagsPrincipal.id
+                == orm.AccessTagOwnerAssociation.principal_id,
             )
             .where(
                 orm.AccessTag.name == tagname,

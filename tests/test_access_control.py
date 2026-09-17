@@ -613,7 +613,9 @@ def _principal_owns_access_tag(catalog_uri, access_tag_name, principal=None):
     Whether ``access_tag_name`` has any owner (or specifically ``principal`` as owner).
     """
     sql = (
-        "SELECT 1 " "FROM access_tag_owners_association o " "JOIN access_tags t ON t.id = o.tag_id "
+        "SELECT 1 "
+        "FROM access_tag_owners_association o "
+        "JOIN access_tags t ON t.id = o.tag_id "
     )
     params = {"t": access_tag_name}
     if principal is not None:
@@ -713,9 +715,11 @@ async def test_catalog_rejects_an_invalid_scope(
                 )
         # asyncpg raises DBAPIError for the enum; SQLite raises IntegrityError
         # for the CHECK. Both are SQLAlchemy DBAPI errors.
-        assert "not:a:real:scope" in str(info.value) or "CHECK" in str(
-            info.value
-        ) or "constraint" in str(info.value).lower()
+        assert (
+            "not:a:real:scope" in str(info.value)
+            or "CHECK" in str(info.value)
+            or "constraint" in str(info.value).lower()
+        )
     finally:
         await engine.dispose()
 

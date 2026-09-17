@@ -105,7 +105,9 @@ entity_access_tags_association = Table(
         "entity_id",
         String,
         ForeignKey(
-            "entities.id", name="fk_entity_access_tags_association_entity", ondelete="CASCADE"
+            "entities.id",
+            name="fk_entity_access_tags_association_entity",
+            ondelete="CASCADE",
         ),
         primary_key=True,
     ),
@@ -113,7 +115,9 @@ entity_access_tags_association = Table(
         "tag_id",
         Integer,
         ForeignKey(
-            "access_tags.id", name="fk_entity_access_tags_association_tag", ondelete="CASCADE"
+            "access_tags.id",
+            name="fk_entity_access_tags_association_tag",
+            ondelete="CASCADE",
         ),
         primary_key=True,
     ),
@@ -126,14 +130,18 @@ link_access_tags_association = Table(
     Column(
         "link_id",
         String,
-        ForeignKey("links.id", name="fk_link_access_tags_association_link", ondelete="CASCADE"),
+        ForeignKey(
+            "links.id", name="fk_link_access_tags_association_link", ondelete="CASCADE"
+        ),
         primary_key=True,
     ),
     Column(
         "tag_id",
         Integer,
         ForeignKey(
-            "access_tags.id", name="fk_link_access_tags_association_tag", ondelete="CASCADE"
+            "access_tags.id",
+            name="fk_link_access_tags_association_tag",
+            ondelete="CASCADE",
         ),
         primary_key=True,
     ),

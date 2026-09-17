@@ -203,19 +203,25 @@ class NodeAccessTagAssociation(Base):
 
     node_id = Column(
         Integer,
-        ForeignKey("nodes.id", name="fk_node_access_tags_association_node", ondelete="CASCADE"),
+        ForeignKey(
+            "nodes.id", name="fk_node_access_tags_association_node", ondelete="CASCADE"
+        ),
         nullable=False,
     )
     tag_id = Column(
         Integer,
         ForeignKey(
-            "access_tags.id", name="fk_node_access_tags_association_tag", ondelete="CASCADE"
+            "access_tags.id",
+            name="fk_node_access_tags_association_tag",
+            ondelete="CASCADE",
         ),
         nullable=False,
     )
 
     __table_args__ = (
-        PrimaryKeyConstraint("node_id", "tag_id", name="node_access_tags_association_pkey"),
+        PrimaryKeyConstraint(
+            "node_id", "tag_id", name="node_access_tags_association_pkey"
+        ),
         # Covering index for the reverse (tag -> nodes) direction.
         Index("ix_node_access_tags_association_tag_id_node_id", "tag_id", "node_id"),
     )
@@ -331,7 +337,9 @@ class AccessTagOwnerAssociation(Base):
     tag_id = Column(
         Integer,
         ForeignKey(
-            "access_tags.id", name="fk_access_tag_owners_association_access_tag", ondelete="CASCADE"
+            "access_tags.id",
+            name="fk_access_tag_owners_association_access_tag",
+            ondelete="CASCADE",
         ),
         nullable=False,
     )
@@ -350,7 +358,9 @@ class AccessTagOwnerAssociation(Base):
 
     __table_args__ = (
         # Serves 'owners of a tag' and exact (tag, principal) membership probes.
-        PrimaryKeyConstraint("tag_id", "principal_id", name="access_tag_owners_association_pkey"),
+        PrimaryKeyConstraint(
+            "tag_id", "principal_id", name="access_tag_owners_association_pkey"
+        ),
         # Serves 'tags owned by a principal' lookups and FK cascade on
         # principal deletion.
         Index("ix_access_tag_owners_association_principal_id", "principal_id"),
