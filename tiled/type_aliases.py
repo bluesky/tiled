@@ -12,6 +12,7 @@ from typing import (
     Any,
     Callable,
     Coroutine,
+    FrozenSet,
     List,
     Mapping,
     Sequence,
@@ -28,11 +29,10 @@ JSON_ITEM = Union[
 ]
 JSON = Mapping[str, JSON_ITEM]
 
+AccessTags = FrozenSet[str]
 Scopes = Set[str]
 Query = Any  # for now...
 Filters = List[Query]
-AccessBlob = Mapping[str, Any]
-AccessTags = Set[str]
 Chunks = Tuple[Tuple[int, ...], ...]
 
 AppTask = Callable[[], Coroutine[None, None, Any]]
@@ -52,6 +52,7 @@ EntryPointString = Annotated[
 
 
 __all__ = [
+    "AccessTags",
     "AppTask",
     "EllipsisType",
     "JSON",

@@ -89,7 +89,7 @@ class EntryFields(str, enum.Enum):
     specs = "specs"
     data_sources = "data_sources"
     none = ""
-    access_blob = "access_blob"
+    access_tags = "access_tags"
 
 
 class NodeStructure(pydantic.BaseModel):
@@ -152,7 +152,6 @@ class Revision(pydantic.BaseModel):
     revision_number: int
     metadata: dict
     specs: Specs
-    access_blob: dict
     time_updated: datetime
 
     @classmethod
@@ -163,7 +162,6 @@ class Revision(pydantic.BaseModel):
             revision_number=orm.revision_number,
             metadata=orm.metadata_,
             specs=orm.specs,
-            access_blob=orm.access_blob,
             time_updated=orm.time_updated,
         )
 
@@ -225,7 +223,9 @@ class NodeAttributes(pydantic.BaseModel):
             TableStructure,
         ]
     ] = None
-    access_blob: Optional[Dict] = None  # free-form, access_policy-specified dict
+    access_tags: Optional[
+        List[str]
+    ] = None  # list of tags that control access to this node
 
     sorting: Optional[List[SortingItem]] = None
     data_sources: Optional[List[DataSource]] = None
@@ -474,7 +474,7 @@ class PostMetadataRequest(pydantic.BaseModel):
     metadata: Dict = {}
     data_sources: List[DataSource] = []
     specs: Specs = []
-    access_blob: Optional[Dict] = {}
+    access_tags: Optional[List[str]] = None
 
     # Wait for fix https://github.com/pydantic/pydantic/issues/3957
     # to do this with `unique_items` parameters to `pydantic.constr`.
@@ -509,7 +509,7 @@ class PostMetadataResponse(pydantic.BaseModel, Generic[ResourceLinksT]):
     links: Union[ArrayLinks, DataFrameLinks, SparseLinks]
     metadata: Dict
     data_sources: List[DataSource]
-    access_blob: Dict
+    access_tags: List[str]
 
 
 class PutMetadataResponse(pydantic.BaseModel, Generic[ResourceLinksT]):
@@ -518,7 +518,7 @@ class PutMetadataResponse(pydantic.BaseModel, Generic[ResourceLinksT]):
     # May be None if not altered
     metadata: Optional[Dict] = None
     data_sources: Optional[List[DataSource]] = None
-    access_blob: Optional[Dict] = None
+    access_tags: Optional[List[str]] = None
 
 
 class DistinctValueInfo(pydantic.BaseModel):
@@ -536,7 +536,7 @@ class PutMetadataRequest(pydantic.BaseModel):
     # These fields are optional because None means "no changes; do not update".
     metadata: Optional[Dict] = None
     specs: Optional[Specs] = None
-    access_blob: Optional[Dict] = None
+    access_tags: Optional[List[str]] = None
 
     # Wait for fix https://github.com/pydantic/pydantic/issues/3957
     # to do this with `unique_items` parameters to `pydantic.constr`.
@@ -587,10 +587,10 @@ class PatchMetadataRequest(HyphenizedBaseModel):
     )
 
     # These fields are optional because None means "no changes; do not update".
-    # Dict for merge-patch:
+    # List for merge-patch:
     # Define an alias to override parent class alias generator
-    access_blob: Optional[Union[List[JSONPatchAny], Dict]] = Field(
-        alias="access_blob", default=None
+    access_tags: Optional[Union[List[JSONPatchAny], List[str]]] = Field(
+        alias="access_tags", default=None
     )
 
     @pydantic.field_validator("specs")
@@ -618,7 +618,7 @@ class PatchMetadataResponse(pydantic.BaseModel, Generic[ResourceLinksT]):
     # May be None if not altered
     metadata: Optional[Dict]
     data_sources: Optional[List[DataSource]]
-    access_blob: Optional[Dict]
+    access_tags: Optional[List[str]]
 
 
 SearchResponse = Response[
