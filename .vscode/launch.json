@@ -25,6 +25,32 @@
         "subProcess": true,
       },
       {
+        "name": "Debug Tiled Server (blueapi / DLS policy)",
+        "preLaunchTask": "tiled: init blueapi catalog",
+        "type": "debugpy",
+        "request": "launch",
+        "module": "tiled",
+        "args": [
+          "serve",
+          "config",
+          "--host", "127.0.0.1",
+          // The port blueapi's tiled-oauth2-proxy forwards to. Run
+          // `docker compose stop tiled` in blueapi/tests/system_tests first.
+          "--port", "8407",
+        ],
+        "env": {
+          "TILED_CONFIG": "${workspaceFolder}/example_configs/blueapi/config/config.yml",
+          // So that access_policy "config.dls:..." resolves.
+          "PYTHONPATH": "${workspaceFolder}/example_configs/blueapi",
+        },
+        // Keeps the relative storage paths in config.yml next to the config.
+        "cwd": "${workspaceFolder}/example_configs/blueapi",
+        "console": "integratedTerminal",
+        "justMyCode": false,
+        "jinja": true,
+        "subProcess": true,
+      },
+      {
         "name": "Debug Tiled Server (Custom Config)",
         "type": "debugpy",
         "request": "launch",

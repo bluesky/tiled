@@ -126,7 +126,7 @@ class _RegularWebsocketWrapper:
         params = self._uri.params
         headers = {}
         if auth_header:
-            headers["Authorization"] = auth_header 
+            headers["Authorization"] = auth_header
         if start is not None:
             params = params.set("start", start)
         self._websocket = connect(
@@ -377,14 +377,20 @@ class Subscription(abc.ABC):
         # Reset schema so first message on new connection is parsed as schema
         self._schema = None
         should_revoke_api_key = False
+        key_info = None
 
-        def _get_auth_header(context:Context):
+        def _get_auth_header(context: Context):
+            nonlocal should_revoke_api_key, key_info
             if not context.authenticated:
                 return None
             elif context.api_key is not None:
-                return f"Apikey {api_key}"
-            elif context.http_client and isinstance(context.http_client.auth,TiledAuth):
-                access_token = context.http_client.auth.sync_get_token("access_token",reload_from_disk=True)
+                return f"Apikey {context.api_key}"
+            elif context.http_client and isinstance(
+                context.http_client.auth, TiledAuth
+            ):
+                access_token = context.http_client.auth.sync_get_token(
+                    "access_token", reload_from_disk=True
+                )
                 return f"Bearer {access_token}"
             else:
                 # Request a short-lived API key to use for authenticating the WS connection.
@@ -392,11 +398,12 @@ class Subscription(abc.ABC):
                     expires_in=API_KEY_LIFETIME, note="websocket"
                 )
                 should_revoke_api_key = True
-                api_key = key_info["secret"]
-                return f"Apikey {api_key}"
-                
+                return f"Apikey {key_info['secret']}"
+
         # Connect using the websocket wrapper
-        self._websocket.connect(_get_auth_header(self.context), start, max_size=max_size)
+        self._websocket.connect(
+            _get_auth_header(self.context), start, max_size=max_size
+        )
         self._connected_event.set()
 
         if should_revoke_api_key:
