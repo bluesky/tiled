@@ -1459,6 +1459,191 @@ def test_in_use_tag_retained_on_recompile(
     admin_client[top][node_key]
 
 
+# BACK-COMPAT: clients older than v0.2.19 speak `access_blob` rather than
+# `access_tags`. Remove these along with tiled/server/_backcompat.py's
+# access_blob helpers.
+#
+# These sit as late in the module as they can. They must stay above
+# test_apikey_auth_access_control, which logs the shared alice client out and
+# leaves it holding a tag-restricted API key; the fixtures here are
+# module-scoped and the factory caches one client per username, so every later
+# request for alice gets that restricted client and writes fail with 403.
+LEGACY_UA = {"user-agent": "python-tiled/0.2.18"}
+MODERN_UA = {"user-agent": "python-tiled/0.2.19"}
+
+
+def _post_node(client, parent, key, headers, **body):
+    return client.context.http_client.post(
+        str(client.context.api_uri) + f"metadata/{parent}",
+        json={
+            "id": key,
+            "structure_family": "container",
+            "metadata": {},
+            "specs": [],
+            "data_sources": [],
+            **body,
+        },
+        headers=headers,
+    )
+
+
+# BACK-COMPAT: remove with the access_blob helpers in tiled/server/_backcompat.py.
+def test_legacy_access_blob_on_create(access_control_test_context_factory):
+    """A pre-v0.2.19 client creating a node with `access_blob`."""
+    alice_client = access_control_test_context_factory("alice", "alice")
+    top = "foo"
+
+    response = _post_node(
+        alice_client, top, "legacy_A", LEGACY_UA, access_blob={"tags": ["alice_tag"]}
+    )
+    assert response.status_code == 200
+    assert alice_client[top]["legacy_A"].access_tags == ["alice_tag"]
+    # The tags were applied as asked, so the response reports no change --
+    # as it did before, which is why there is no access_blob key here.
+    assert "access_blob" not in response.json()
+    assert "access_tags" not in response.json()
+
+    # An empty blob means "no tags specified", so the node is user-owned. That
+    # *is* a change, so the response reports it, in the old dialect.
+    response = _post_node(alice_client, top, "legacy_B", LEGACY_UA, access_blob={})
+    assert response.status_code == 200
+    assert "user:alice" in alice_client[top]["legacy_B"].access_tags
+    assert response.json()["access_blob"] == {"user": "alice"}
+
+
+# BACK-COMPAT: remove with the access_blob helpers in tiled/server/_backcompat.py.
+def test_legacy_access_blob_malformed_is_rejected(access_control_test_context_factory):
+    """A failed translation reaches the client as the status the old server used.
+
+    The old server rejected any blob that was not exactly {"tags": [...]},
+    including the {"user": ...} form it generated itself. The status mapping is
+    unit-tested; what this pins is that the router is wired to apply it.
+    """
+    alice_client = access_control_test_context_factory("alice", "alice")
+    response = _post_node(
+        alice_client, "foo", "legacy_D", LEGACY_UA, access_blob={"user": "alice"}
+    )
+    assert response.status_code == HTTP_403_FORBIDDEN
+
+
+# BACK-COMPAT: remove with the access_blob helpers in tiled/server/_backcompat.py.
+def test_legacy_access_blob_in_responses(access_control_test_context_factory):
+    """Old clients read `access_blob` unconditionally; new ones must not see it."""
+    alice_client = access_control_test_context_factory("alice", "alice")
+    top = "foo"
+    alice_client[top].write_array(arr, key="legacy_F", access_tags=["alice_tag"])
+    url = str(alice_client.context.api_uri) + f"metadata/{top}/legacy_F"
+
+    legacy = alice_client.context.http_client.get(url, headers=LEGACY_UA).json()
+    attributes = legacy["data"]["attributes"]
+    assert attributes["access_blob"] == {"tags": ["alice_tag"]}
+    assert "access_tags" not in attributes
+
+    modern = alice_client.context.http_client.get(url, headers=MODERN_UA).json()
+    attributes = modern["data"]["attributes"]
+    assert attributes["access_tags"] == ["alice_tag"]
+    assert "access_blob" not in attributes
+
+
+# BACK-COMPAT: remove with the access_blob helpers in tiled/server/_backcompat.py.
+def test_legacy_access_blob_patch_of_user_owned_node(
+    access_control_test_context_factory,
+):
+    """A no-op patch against a user-owned node must not be rejected.
+
+    The old client builds its patch by diffing the blob it was served, so a
+    user-owned node yields a patch relative to {"user": <id>} -- a shape that
+    has no representation in the tag vocabulary a client may send.
+    """
+    alice_client = access_control_test_context_factory("alice", "alice")
+    top = "foo"
+    alice_client[top].write_array(arr, key="legacy_H")
+    url = str(alice_client.context.api_uri) + f"metadata/{top}/legacy_H"
+
+    response = alice_client.context.http_client.patch(
+        url,
+        json={
+            "content-type": "application/json-patch+json",
+            "metadata": [{"op": "add", "path": "/note", "value": "hello"}],
+            "specs": None,
+            "access_blob": [],
+        },
+        headers=LEGACY_UA,
+    )
+    assert response.status_code == 200
+    assert alice_client[top]["legacy_H"].metadata["note"] == "hello"
+    # Ownership survived the round trip through the blob dialect.
+    legacy = alice_client.context.http_client.get(url, headers=LEGACY_UA).json()
+    assert legacy["data"]["attributes"]["access_blob"] == {"user": "alice"}
+
+
+# BACK-COMPAT: remove with the access_blob helpers in tiled/server/_backcompat.py.
+def test_legacy_access_blob_patch_replacing_tags(access_control_test_context_factory):
+    """A patch that rewrites the tag list is applied to the blob, then translated."""
+    sue_client = access_control_test_context_factory("sue", "sue")
+    top = "baz"
+    sue_client[top].write_array(arr, key="legacy_I", access_tags=["physicists_tag"])
+    url = str(sue_client.context.api_uri) + f"metadata/{top}/legacy_I"
+
+    response = sue_client.context.http_client.patch(
+        url,
+        json={
+            "content-type": "application/json-patch+json",
+            "metadata": None,
+            "specs": None,
+            "access_blob": [
+                {
+                    "op": "replace",
+                    "path": "/tags",
+                    "value": ["physicists_tag", "chemists_tag"],
+                }
+            ],
+        },
+        headers=LEGACY_UA,
+    )
+    assert response.status_code == 200
+    assert sorted(sue_client[top]["legacy_I"].access_tags) == [
+        "chemists_tag",
+        "physicists_tag",
+    ]
+
+
+# BACK-COMPAT: remove with the access_blob helpers in tiled/server/_backcompat.py.
+def test_legacy_access_blob_put(access_control_test_context_factory):
+    """PUT replaces the tag set wholesale, in the old dialect."""
+    sue_client = access_control_test_context_factory("sue", "sue")
+    top = "baz"
+    sue_client[top].write_array(arr, key="legacy_J", access_tags=["physicists_tag"])
+    url = str(sue_client.context.api_uri) + f"metadata/{top}/legacy_J"
+
+    response = sue_client.context.http_client.put(
+        url,
+        json={
+            "metadata": {"note": "replaced"},
+            "specs": [],
+            "access_blob": {"tags": ["physicists_tag", "chemists_tag"]},
+        },
+        headers=LEGACY_UA,
+    )
+    assert response.status_code == 200
+    assert sorted(sue_client[top]["legacy_J"].access_tags) == [
+        "chemists_tag",
+        "physicists_tag",
+    ]
+
+    # access_blob=None means "no change", as it did before.
+    response = sue_client.context.http_client.put(
+        url,
+        json={"metadata": {"note": "again"}, "specs": [], "access_blob": None},
+        headers=LEGACY_UA,
+    )
+    assert response.status_code == 200
+    assert sorted(sue_client[top]["legacy_J"].access_tags) == [
+        "chemists_tag",
+        "physicists_tag",
+    ]
+
+
 def test_apikey_auth_access_control(access_control_test_context_factory):
     """
     Test access control when authenticated by an API key, including:
