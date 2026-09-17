@@ -779,9 +779,10 @@ def build_app(
                 enforced_scopes = (
                     await app.state.access_policy.access_tags_parser.get_enforced_scopes()
                 )
-                # An empty set means the constraint could not be read at all,
-                # which says nothing about what the catalog accepts. Comparing
-                # against it would report every scope as a disagreement.
+                # An empty set means the constraint is missing or could not be
+                # read. The catalog then stores any value as a scope, so this
+                # is reported on its own rather than compared: every scope
+                # would otherwise look like a disagreement.
                 if enforced_scopes:
                     unknown_scopes = enforced_scopes - {
                         scope.value for scope in ScopeName
@@ -820,6 +821,19 @@ def build_app(
                             f"the running version of Tiled need to be "
                             f"reconciled."
                         )
+                else:
+                    logger.error(
+                        "Tiled could not read the set of scopes that the "
+                        "catalog database enforces. The catalog will store "
+                        "any value as a scope, and an access tag that grants "
+                        "an unrecognized scope cannot be read at all: every "
+                        "permission that tag grants is lost, and requests for "
+                        "data carrying it fail with an error rather than "
+                        "being denied. The catalog's scope constraint appears "
+                        "to have been dropped outside of a migration. The "
+                        "catalog schema and the running version of Tiled need "
+                        "to be reconciled."
+                    )
 
             async def purge_expired_sessions_and_api_keys():
                 PURGE_INTERVAL = 600  # seconds
