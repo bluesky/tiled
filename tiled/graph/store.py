@@ -14,7 +14,7 @@ does not create tables.
 
 Access control: entities and links carry access tags drawn from the catalog's
 ``access_tags`` table (the same tags nodes use), through the
-``entity_access_tags`` and ``link_access_tags`` association tables. An entity
+``entity_access_tags_association`` and ``link_access_tags_association`` association tables. An entity
 that points to a catalog node (``node_id`` set) carries no tags of its own;
 it assumes the access tags of the referenced node.
 """
@@ -31,13 +31,13 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from ..catalog.core import register_principal_tag_rows
-from ..catalog.orm import AccessTag, Node, NodeAccessTag
+from ..catalog.orm import AccessTag, Node, NodeAccessTagAssociation
 from ..queries import AccessTagsFilter
 from ..server.connection_pool import get_database_engine
 from ..server.settings import DatabaseSettings
 from .orm import entities as _entities
-from .orm import entity_access_tags as _entity_access_tags
-from .orm import link_access_tags as _link_access_tags
+from .orm import entity_access_tags_association as _entity_access_tags
+from .orm import link_access_tags_association as _link_access_tags
 from .orm import links as _links
 from .orm import namespaces as _namespaces
 
@@ -47,7 +47,7 @@ UNSET = object()
 # resolve/read access tags (shared with catalog nodes).
 _nodes = Node.__table__
 _access_tags = AccessTag.__table__
-_node_access_tags = NodeAccessTag.__table__
+_node_access_tags = NodeAccessTagAssociation.__table__
 
 # ---------------------------------------------------------------------------
 # Data records

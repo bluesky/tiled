@@ -15,9 +15,9 @@ write rows; it does not create them itself. This mirrors how ``metadata_fts5``
 is declared as a Core table on ``Base.metadata`` in ``tiled.catalog.orm``.
 
 Access control: entities and links carry access tags drawn from the same
-catalog ``access_tags`` table that nodes use. The ``entity_access_tags`` and
-``link_access_tags`` association tables mirror the catalog's
-``node_access_tags`` table. An entity that points to a catalog node
+catalog ``access_tags`` table that nodes use. The ``entity_access_tags_association`` and
+``link_access_tags_association`` association tables mirror the catalog's
+``node_access_tags_association`` table. An entity that points to a catalog node
 (``node_id`` set) must not carry its own access tags -- it assumes the tags of
 the referenced node -- and this is enforced at the database level by triggers.
 """
@@ -92,20 +92,20 @@ links = Table(
 )
 
 # Association tables mapping entities/links to catalog access tags
-# (many-to-many), mirroring the catalog's node_access_tags table. Both
+# (many-to-many), mirroring the catalog's node_access_tags_association table. Both
 # directions of lookup are served: "which tags are on this entity/link?"
 # by the composite primary key, and "which entities/links have this tag?"
 # by the covering reverse index. Deleting an entity, link, or tag cascades
 # to its association rows via the foreign keys.
 
-entity_access_tags = Table(
-    "entity_access_tags",
+entity_access_tags_association = Table(
+    "entity_access_tags_association",
     metadata,
     Column(
         "entity_id",
         String,
         ForeignKey(
-            "entities.id", name="fk_entity_access_tags_entity", ondelete="CASCADE"
+            "entities.id", name="fk_entity_access_tags_association_entity", ondelete="CASCADE"
         ),
         primary_key=True,
     ),
@@ -113,41 +113,41 @@ entity_access_tags = Table(
         "tag_id",
         Integer,
         ForeignKey(
-            "access_tags.id", name="fk_entity_access_tags_tag", ondelete="CASCADE"
+            "access_tags.id", name="fk_entity_access_tags_association_tag", ondelete="CASCADE"
         ),
         primary_key=True,
     ),
-    Index("idx_entity_access_tags_tag_id_entity_id", "tag_id", "entity_id"),
+    Index("ix_entity_access_tags_association_tag_id_entity_id", "tag_id", "entity_id"),
 )
 
-link_access_tags = Table(
-    "link_access_tags",
+link_access_tags_association = Table(
+    "link_access_tags_association",
     metadata,
     Column(
         "link_id",
         String,
-        ForeignKey("links.id", name="fk_link_access_tags_link", ondelete="CASCADE"),
+        ForeignKey("links.id", name="fk_link_access_tags_association_link", ondelete="CASCADE"),
         primary_key=True,
     ),
     Column(
         "tag_id",
         Integer,
         ForeignKey(
-            "access_tags.id", name="fk_link_access_tags_tag", ondelete="CASCADE"
+            "access_tags.id", name="fk_link_access_tags_association_tag", ondelete="CASCADE"
         ),
         primary_key=True,
     ),
-    Index("idx_link_access_tags_tag_id_link_id", "tag_id", "link_id"),
+    Index("ix_link_access_tags_association_tag_id_link_id", "tag_id", "link_id"),
 )
 
 
-@event.listens_for(entity_access_tags, "after_create")
+@event.listens_for(entity_access_tags_association, "after_create")
 def _create_entities_node_access_tags_triggers(target, connection, **kw):
     """
     Enforce, at the database level, that an entity pointing to a catalog
     node (node_id set) does not also carry its own access tags. Two paths
     could violate this: an UPDATE that sets node_id on an entity that has
-    tag associations, and an INSERT/UPDATE on entity_access_tags that
+    tag associations, and an INSERT/UPDATE on entity_access_tags_association that
     references a node-backed entity.
     """
     if connection.engine.dialect.name == "sqlite":
@@ -157,7 +157,7 @@ def _create_entities_node_access_tags_triggers(target, connection, **kw):
 CREATE TRIGGER IF NOT EXISTS entities_node_access_tags_update
 BEFORE UPDATE OF node_id ON entities
 WHEN (NEW.node_id IS NOT NULL AND EXISTS (
-    SELECT 1 FROM entity_access_tags WHERE entity_id = NEW.id
+    SELECT 1 FROM entity_access_tags_association WHERE entity_id = NEW.id
 ))
 BEGIN
     SELECT RAISE(ABORT, '{ENTITY_NODE_ACCESS_TAGS_ERROR}');
@@ -168,8 +168,9 @@ END"""
             connection.execute(
                 text(
                     f"""
-CREATE TRIGGER IF NOT EXISTS entity_access_tags_{operation.split()[0].lower()}_reject_node_backed_entity
-BEFORE {operation} ON entity_access_tags
+CREATE TRIGGER IF NOT EXISTS
+entity_access_tags_association_{operation.split()[0].lower()}_reject_node_backed_entity
+BEFORE {operation} ON entity_access_tags_association
 WHEN EXISTS (SELECT 1 FROM entities WHERE id = NEW.entity_id AND node_id IS NOT NULL)
 BEGIN
     SELECT RAISE(ABORT, '{ENTITY_NODE_ACCESS_TAGS_ERROR}');
@@ -188,7 +189,7 @@ CREATE OR REPLACE FUNCTION entities_reject_node_access_tags()
 RETURNS TRIGGER AS $$
 BEGIN
     IF EXISTS (
-        SELECT 1 FROM entity_access_tags WHERE entity_id = NEW.id
+        SELECT 1 FROM entity_access_tags_association WHERE entity_id = NEW.id
     ) THEN
         RAISE EXCEPTION '{ENTITY_NODE_ACCESS_TAGS_ERROR}'
             USING ERRCODE = '23514';
@@ -213,7 +214,7 @@ EXECUTE FUNCTION entities_reject_node_access_tags();"""
         connection.execute(
             text(
                 f"""
-CREATE OR REPLACE FUNCTION entity_access_tags_reject_node_backed_entity()
+CREATE OR REPLACE FUNCTION entity_access_tags_association_reject_node_backed_entity()
 RETURNS TRIGGER AS $$
 BEGIN
     IF EXISTS (SELECT 1 FROM entities WHERE id = NEW.entity_id AND node_id IS NOT NULL) THEN
@@ -228,9 +229,9 @@ $$ LANGUAGE plpgsql;"""
         connection.execute(
             text(
                 """
-CREATE OR REPLACE TRIGGER entity_access_tags_reject_node_backed_entity
-BEFORE INSERT OR UPDATE OF entity_id ON entity_access_tags
-FOR EACH ROW EXECUTE FUNCTION entity_access_tags_reject_node_backed_entity();"""
+CREATE OR REPLACE TRIGGER entity_access_tags_association_reject_node_backed_entity
+BEFORE INSERT OR UPDATE OF entity_id ON entity_access_tags_association
+FOR EACH ROW EXECUTE FUNCTION entity_access_tags_association_reject_node_backed_entity();"""
             )
         )
 

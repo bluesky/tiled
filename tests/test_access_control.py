@@ -536,7 +536,7 @@ def _principal_has_scope_on_access_tag(
     """
     sql = (
         "SELECT 1 "
-        "FROM access_tag_principal_scopes aps "
+        "FROM access_tag_principal_scopes_association aps "
         "JOIN access_tags t ON t.id = aps.tag_id "
         "JOIN access_tags_principals p ON p.id = aps.principal_id "
     )
@@ -572,7 +572,7 @@ def _set_node_access_tags(catalog_uri, node_key, access_tag_names):
     # Clear existing tag associations for this node.
     statements.append(
         (
-            "DELETE FROM node_access_tags WHERE node_id = "
+            "DELETE FROM node_access_tags_association WHERE node_id = "
             "(SELECT id FROM nodes WHERE key = :k)",
             {"k": node_key},
         )
@@ -581,7 +581,7 @@ def _set_node_access_tags(catalog_uri, node_key, access_tag_names):
     for name in access_tag_names:
         statements.append(
             (
-                "INSERT INTO node_access_tags (node_id, tag_id) "
+                "INSERT INTO node_access_tags_association (node_id, tag_id) "
                 "SELECT (SELECT id FROM nodes WHERE key = :k), "
                 "(SELECT id FROM access_tags WHERE name = :n)",
                 {"k": node_key, "n": name},
@@ -593,14 +593,14 @@ def _set_node_access_tags(catalog_uri, node_key, access_tag_names):
 def _delete_node_access_tags(catalog_uri, node_key):
     """
     Surgically remove ALL access-tag rows for the node with key ``node_key``,
-    leaving a node with zero ``node_access_tags`` entries. In the access-tags
+    leaving a node with zero ``node_access_tags_association`` entries. In the access-tags
     model such a node is admin-only (no tag grants any principal access).
     """
     catalog_db_execute(
         catalog_uri,
         [
             (
-                "DELETE FROM node_access_tags WHERE node_id = "
+                "DELETE FROM node_access_tags_association WHERE node_id = "
                 "(SELECT id FROM nodes WHERE key = :k)",
                 {"k": node_key},
             )
@@ -613,7 +613,7 @@ def _principal_owns_access_tag(catalog_uri, access_tag_name, principal=None):
     Whether ``access_tag_name`` has any owner (or specifically ``principal`` as owner).
     """
     sql = (
-        "SELECT 1 " "FROM access_tag_owners o " "JOIN access_tags t ON t.id = o.tag_id "
+        "SELECT 1 " "FROM access_tag_owners_association o " "JOIN access_tags t ON t.id = o.tag_id "
     )
     params = {"t": access_tag_name}
     if principal is not None:
@@ -629,7 +629,7 @@ def _principal_owns_access_tag(catalog_uri, access_tag_name, principal=None):
 def _node_has_access_tag(catalog_uri, node_key, access_tag_name):
     """
     Whether the catalog node with key ``node_key`` is still assigned
-    ``access_tag_name`` in the ``node_access_tags`` junction (joined through
+    ``access_tag_name`` in the ``node_access_tags_association`` junction (joined through
     ``access_tags`` and ``nodes``). Used to confirm the compiler never deletes
     an in-use node<->tag assignment even when the tag is dropped from config.
     """
@@ -638,7 +638,7 @@ def _node_has_access_tag(catalog_uri, node_key, access_tag_name):
         [
             (
                 "SELECT 1 "
-                "FROM node_access_tags nat "
+                "FROM node_access_tags_association nat "
                 "JOIN access_tags t ON t.id = nat.tag_id "
                 "JOIN nodes n ON n.id = nat.node_id "
                 "WHERE n.key = :k AND t.name = :t",
@@ -705,7 +705,7 @@ async def test_catalog_rejects_an_invalid_scope(
             async with engine.begin() as conn:
                 await conn.execute(
                     text(
-                        "INSERT INTO access_tag_principal_scopes "
+                        "INSERT INTO access_tag_principal_scopes_association "
                         "(tag_id, principal_id, scope) "
                         "VALUES (:t, :p, 'not:a:real:scope')"
                     ),
@@ -1403,9 +1403,9 @@ def test_in_use_tag_retained_on_recompile(
     the compiler must NOT delete the node<->tag assignment.
 
     The compiler retains the ``access_tags`` row (stripped of grants and forced
-    non-public) so the cascade never destroys the ``node_access_tags`` row,
+    non-public) so the cascade never destroys the ``node_access_tags_association`` row,
     warning that the tag was retained with grants revoked. This test asserts:
-      - the node<->tag assignment in ``node_access_tags`` survives the recompile
+      - the node<->tag assignment in ``node_access_tags_association`` survives the recompile
       - the ``access_tags`` row survives but is no longer public and has no grants
       - a warning naming the retained tag is emitted
     """
@@ -1440,7 +1440,7 @@ def test_in_use_tag_retained_on_recompile(
     # The access_tags row is retained (not deleted, since it is still in use).
     assert _access_tag_exists(catalog_uri, "physicists_tag")
     # The node<->tag assignment is preserved: the compiler never deletes
-    # node_access_tags rows for an in-use tag.
+    # node_access_tags_association rows for an in-use tag.
     assert _node_has_access_tag(catalog_uri, node_key, "physicists_tag")
     # The retained tag row is forced non-public and stripped of all grants
     # (confers no access).
