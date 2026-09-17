@@ -14,7 +14,7 @@ class AccessPolicy(ABC):
         authn_access_tags: Optional[AccessTags],
         authn_scopes: Scopes,
         access_blob: Optional[AccessBlob] = None,
-    ) -> Tuple[bool, Optional[AccessBlob]]:
+    ) -> Tuple[bool, AccessBlob]:
         pass
 
     async def modify_node(
@@ -24,8 +24,8 @@ class AccessPolicy(ABC):
         authn_access_tags: Optional[AccessTags],
         authn_scopes: Scopes,
         access_blob: Optional[AccessBlob],
-    ) -> Tuple[bool, Optional[AccessBlob]]:
-        return (False, access_blob)
+    ) -> Tuple[bool, AccessBlob]:
+        return (False, access_blob or AccessBlob(tags=[]))
 
     @abstractmethod
     async def allowed_scopes(

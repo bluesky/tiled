@@ -37,6 +37,7 @@ from strawberry.types.unset import UNSET, UnsetType
 
 from tiled.access_control.access_policies import NO_ACCESS
 from tiled.queries import AccessBlobFilter
+from tiled.type_aliases import AccessBlob
 
 from .curie import compact_term, compact_value, expand_term, expand_value
 from .orm import ENTITY_NODE_ACCESS_BLOB_ERROR
@@ -92,11 +93,13 @@ async def _resolve_node_binding(
 
 
 class _PolicyNode:
-    def __init__(self, access_blob: Optional[dict]):
-        self.access_blob = access_blob or {}
+    def __init__(self, access_blob: Optional[AccessBlob]):
+        self.access_blob = access_blob or AccessBlob(tags=[])
 
 
-async def _is_allowed(info: Info, access_blob: Optional[dict], scope: str) -> bool:
+async def _is_allowed(
+    info: Info, access_blob: Optional[AccessBlob], scope: str
+) -> bool:
     authn_scopes = info.context["authn_scopes"]
     if scope not in authn_scopes:
         return False
@@ -112,12 +115,14 @@ async def _is_allowed(info: Info, access_blob: Optional[dict], scope: str) -> bo
     return scope in allowed
 
 
-async def _assert_allowed(info: Info, access_blob: Optional[dict], scope: str) -> None:
+async def _assert_allowed(
+    info: Info, access_blob: Optional[AccessBlob], scope: str
+) -> None:
     if not await _is_allowed(info, access_blob, scope):
         raise GraphQLError("Not permitted")
 
 
-async def _effective_access_blob(info: Info, record: EntityRecord) -> Optional[dict]:
+async def _effective_access_blob(info: Info, record: EntityRecord) -> AccessBlob:
     """
     An entity that points to a catalog node (node_id set) delegates its
     access control to that node, rather than carrying its own access_blob
@@ -125,8 +130,10 @@ async def _effective_access_blob(info: Info, record: EntityRecord) -> Optional[d
     trigger in tiled.graph.store). Resolve whichever one is authoritative.
     """
     if record.node_id is not None:
-        return await _store(info).get_node_access_blob(record.node_id)
-    return record.access_blob
+        return await _store(info).get_node_access_blob(record.node_id) or AccessBlob(
+            tags=[]
+        )
+    return record.access_blob or AccessBlob(tags=[])
 
 
 def _assert_authn_scope(info: Info, scope: str) -> None:
@@ -148,7 +155,7 @@ async def _policy_access_filters(info: Info, scope: str) -> object:
         return []
 
     queries = await policy.filters(
-        _PolicyNode({}),
+        _PolicyNode(AccessBlob(tags=[])),
         info.context["principal"],
         info.context["authn_access_tags"],
         info.context["authn_scopes"],
@@ -164,7 +171,21 @@ async def _policy_access_filters(info: Info, scope: str) -> object:
     return queries
 
 
-async def _init_access_blob(info: Info, access_blob: Optional[dict]) -> dict:
+def _access_blob_from_input(access_blob: dict) -> AccessBlob:
+    if "user" in access_blob and set(access_blob) == {"user"}:
+        return AccessBlob(username=access_blob["user"])
+    if set(access_blob) <= {"tags"}:
+        return AccessBlob(tags=access_blob.get("tags", []))
+    raise GraphQLError(
+        'access_blob must be either {"user": <username>} or '
+        '{"tags": [<tag>, ...]}. '
+        f"Received {access_blob!r}"
+    )
+
+
+async def _init_access_blob(
+    info: Info, access_blob: Optional[AccessBlob]
+) -> AccessBlob:
     policy = info.context.get("access_policy")
     if policy is not None and hasattr(policy, "init_node"):
         try:
@@ -176,13 +197,17 @@ async def _init_access_blob(info: Info, access_blob: Optional[dict]) -> dict:
             )
         except ValueError as exc:
             raise GraphQLError(f"Access policy rejects access blob: {exc}") from exc
+        if not isinstance(new_access_blob, AccessBlob):
+            raise TypeError("access policy must return an AccessBlob")
         return new_access_blob
-    return access_blob or {}
+    return access_blob or AccessBlob(tags=[])
 
 
 async def _modify_access_blob(
-    info: Info, current_access_blob: Optional[dict], requested_access_blob: dict
-) -> dict:
+    info: Info,
+    current_access_blob: Optional[AccessBlob],
+    requested_access_blob: Optional[AccessBlob],
+) -> AccessBlob:
     policy = info.context.get("access_policy")
     if policy is not None and hasattr(policy, "modify_node"):
         try:
@@ -195,8 +220,10 @@ async def _modify_access_blob(
             )
         except ValueError as exc:
             raise GraphQLError(f"Access policy rejects access blob: {exc}") from exc
+        if not isinstance(new_access_blob, AccessBlob):
+            raise TypeError("access policy must return an AccessBlob")
         return new_access_blob
-    return current_access_blob
+    return current_access_blob or AccessBlob(tags=[])
 
 
 # ---------------------------------------------------------------------------
@@ -318,13 +345,18 @@ def _entity_from_record(r: EntityRecord, namespaces: dict[str, str]) -> Entity:
 
 def _link_from_record(r: LinkRecord, namespaces: dict[str, str]) -> Link:
     properties = compact_value(r.properties, namespaces) if r.properties else None
+    access_blob = (
+        {"user": r.access_blob.username}
+        if r.access_blob.username is not None
+        else {"tags": r.access_blob.tags or []}
+    )
     return Link(
         id=strawberry.ID(r.id),
         subject_id=strawberry.ID(r.subject_id),
         predicate=compact_term(r.predicate, namespaces),
         object_id=strawberry.ID(r.object_id),
         properties=properties,
-        access_blob=r.access_blob if r.access_blob else None,
+        access_blob=access_blob,
         created_at=r.created_at.isoformat(),
     )
 
@@ -477,7 +509,14 @@ class Mutation:
                 raise GraphQLError(ENTITY_NODE_ACCESS_BLOB_ERROR)
             access_blob = None
         else:
-            access_blob = await _init_access_blob(info, input.access_blob)
+            access_blob = await _init_access_blob(
+                info,
+                (
+                    _access_blob_from_input(input.access_blob)
+                    if input.access_blob is not None
+                    else None
+                ),
+            )
         record = await _store(info).create_entity(
             entity_type=input.entity_type,
             name=input.name,
@@ -510,7 +549,14 @@ class Mutation:
         await _assert_allowed(
             info, await _effective_access_blob(info, object_), "write:metadata"
         )
-        access_blob = await _init_access_blob(info, input.access_blob)
+        access_blob = await _init_access_blob(
+            info,
+            (
+                _access_blob_from_input(input.access_blob)
+                if input.access_blob is not None
+                else None
+            ),
+        )
         record = await _store(info).create_link(
             subject_id=str(input.subject_id),
             predicate=expand_term(input.predicate, namespaces),
@@ -569,9 +615,15 @@ class Mutation:
                 raise GraphQLError(ENTITY_NODE_ACCESS_BLOB_ERROR)
             access_blob = None
         elif input.access_blob is not UNSET:
-            requested_access_blob = input.access_blob or {}
+            requested_access_blob = (
+                _access_blob_from_input(input.access_blob)
+                if input.access_blob is not None
+                else None
+            )
             access_blob = await _modify_access_blob(
-                info, current.access_blob, requested_access_blob
+                info,
+                current.access_blob,
+                requested_access_blob,
             )
         elif node_binding_changed and current.access_blob is None:
             # Detaching from a node (node_path_parts set to null) with no
@@ -613,7 +665,11 @@ class Mutation:
         namespaces = await _namespaces(info)
         access_blob = UNSET
         if input.access_blob is not UNSET:
-            requested_access_blob = input.access_blob or {}
+            requested_access_blob = (
+                _access_blob_from_input(input.access_blob)
+                if input.access_blob is not None
+                else None
+            )
             access_blob = await _modify_access_blob(
                 info, current.access_blob, requested_access_blob
             )
