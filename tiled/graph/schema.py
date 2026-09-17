@@ -41,8 +41,9 @@ from strawberry.types import Info
 from strawberry.types.unset import UNSET, UnsetType
 
 from tiled.access_control.access_policies import NO_ACCESS
-from tiled.access_control.protocols import AccessTags
+from tiled.access_control.protocols import normalize_access_tags
 from tiled.queries import AccessTagsFilter
+from tiled.type_aliases import AccessTags
 
 from .curie import compact_term, compact_value, expand_term, expand_value
 from .orm import ENTITY_NODE_ACCESS_TAGS_ERROR
@@ -99,7 +100,7 @@ async def _resolve_node_binding(
 
 class _PolicyNode:
     def __init__(self, access_tags: Optional[AccessTags]):
-        self.access_tags = AccessTags(access_tags or ())
+        self.access_tags = normalize_access_tags(access_tags or ())
 
 
 async def _is_allowed(
@@ -136,8 +137,8 @@ async def _effective_access_tags(info: Info, record: EntityRecord) -> AccessTags
     """
     if record.node_id is not None:
         node_tags = await _store(info).get_node_access_tags(record.node_id)
-        return AccessTags(node_tags or ())
-    return AccessTags(record.access_tags or ())
+        return normalize_access_tags(node_tags or ())
+    return normalize_access_tags(record.access_tags or ())
 
 
 def _assert_authn_scope(info: Info, scope: str) -> None:
@@ -159,7 +160,7 @@ async def _policy_access_filters(info: Info, scope: str) -> object:
         return []
 
     queries = await policy.filters(
-        _PolicyNode(AccessTags()),
+        _PolicyNode(normalize_access_tags()),
         info.context["principal"],
         info.context["authn_access_tags"],
         info.context["authn_scopes"],
@@ -177,7 +178,7 @@ async def _policy_access_filters(info: Info, scope: str) -> object:
 
 def _access_tags_from_input(access_tags: list[str]) -> AccessTags:
     try:
-        return AccessTags(access_tags)
+        return normalize_access_tags(access_tags)
     except TypeError as exc:
         raise GraphQLError(
             "accessTags must be a list of tag names, e.g. "
@@ -199,10 +200,10 @@ async def _init_access_tags(
             )
         except ValueError as exc:
             raise GraphQLError(f"Access policy rejects access tags: {exc}") from exc
-        if not isinstance(new_access_tags, AccessTags):
-            raise TypeError("access policy must return an AccessTags")
+        if not isinstance(new_access_tags, frozenset):
+            raise TypeError("access policy must return a frozenset of access tags")
         return new_access_tags
-    return access_tags if access_tags is not None else AccessTags()
+    return access_tags if access_tags is not None else normalize_access_tags()
 
 
 async def _modify_access_tags(
@@ -222,12 +223,12 @@ async def _modify_access_tags(
             )
         except ValueError as exc:
             raise GraphQLError(f"Access policy rejects access tags: {exc}") from exc
-        if not isinstance(new_access_tags, AccessTags):
-            raise TypeError("access policy must return an AccessTags")
+        if not isinstance(new_access_tags, frozenset):
+            raise TypeError("access policy must return a frozenset of access tags")
         return new_access_tags
     if requested_access_tags is not None:
         return requested_access_tags
-    return AccessTags(current_access_tags or ())
+    return normalize_access_tags(current_access_tags or ())
 
 
 # ---------------------------------------------------------------------------
@@ -454,7 +455,7 @@ class Query:
     async def link(self, info: Info, id: strawberry.ID) -> Optional[Link]:
         record = await _store(info).get_link(str(id))
         if not record or not await _is_allowed(
-            info, AccessTags(record.access_tags), "read:metadata"
+            info, normalize_access_tags(record.access_tags), "read:metadata"
         ):
             return None
         return _link_from_record(record, await _namespaces(info))
@@ -622,7 +623,7 @@ class Mutation:
             access_tags = await _modify_access_tags(
                 info,
                 (
-                    AccessTags(current.access_tags)
+                    normalize_access_tags(current.access_tags)
                     if current.access_tags is not None
                     else None
                 ),
@@ -651,7 +652,7 @@ class Mutation:
         record = await _store(info).get_link(str(id))
         if not record:
             return False
-        await _assert_allowed(info, AccessTags(record.access_tags), "write:metadata")
+        await _assert_allowed(info, normalize_access_tags(record.access_tags), "write:metadata")
         deleted = await _store(info).delete_link(str(id))
         if deleted:
             logger.info("Deleted link id=%s", id)
@@ -664,7 +665,7 @@ class Mutation:
         current = await _store(info).get_link(str(id))
         if current is None:
             return None
-        await _assert_allowed(info, AccessTags(current.access_tags), "write:metadata")
+        await _assert_allowed(info, normalize_access_tags(current.access_tags), "write:metadata")
         namespaces = await _namespaces(info)
         access_tags = UNSET
         if input.access_tags is not UNSET:
@@ -674,7 +675,7 @@ class Mutation:
                 else None
             )
             access_tags = await _modify_access_tags(
-                info, AccessTags(current.access_tags), requested_access_tags
+                info, normalize_access_tags(current.access_tags), requested_access_tags
             )
         predicate = (
             STORE_UNSET

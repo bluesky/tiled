@@ -4,9 +4,8 @@ from typing import Optional
 from pydantic import HttpUrl
 
 from tiled.access_control.access_policies import ExternalPolicyDecisionPoint
-from tiled.access_control.protocols import AccessTags
 from tiled.server.schemas import Principal
-from tiled.type_aliases import Scopes
+from tiled.type_aliases import AccessTags, Scopes
 
 
 class ExampleAuthorizationPolicy(ExternalPolicyDecisionPoint):

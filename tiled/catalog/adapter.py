@@ -72,7 +72,7 @@ from tiled.queries import (
     StructureFamilyQuery,
 )
 
-from ..access_control.protocols import AccessTags
+from ..access_control.protocols import normalize_access_tags
 from ..adapters.utils import DataNotReadyError, IncompatibleShapeError
 from ..mimetypes import (
     APACHE_ARROW_FILE_MIME_TYPE,
@@ -208,7 +208,7 @@ class RootNode:
         self.key = ""
         self.data_sources = None
 
-        self.access_tags = AccessTags(top_level_access_tags or [])
+        self.access_tags = normalize_access_tags(top_level_access_tags or [])
 
 
 async def _resolve_access_tags(db, access_tag_names):
@@ -404,7 +404,7 @@ class CatalogNodeAdapter:
             # Configured at server startup, not stored in the database;
             # already an AccessTags frozenset of names.
             return self.node.access_tags
-        return AccessTags(tag.name for tag in self.node.access_tags)
+        return normalize_access_tags(tag.name for tag in self.node.access_tags)
 
     def metadata(self):
         return self.node.metadata_
@@ -968,7 +968,7 @@ class CatalogNodeAdapter:
         data_sources=None,
         access_tags=None,
     ):
-        access_tags = AccessTags(access_tags or [])
+        access_tags = normalize_access_tags(access_tags or [])
         key = key or self.context.key_maker()
         data_sources = data_sources or []
 
@@ -1574,7 +1574,7 @@ class CatalogNodeAdapter:
                         orm.NodeAccessTagAssociation.node_id == self.node.id
                     )
                 )
-                for tag in await _resolve_access_tags(db, AccessTags(access_tags)):
+                for tag in await _resolve_access_tags(db, normalize_access_tags(access_tags)):
                     db.add(
                         orm.NodeAccessTagAssociation(
                             node_id=self.node.id, tag_id=tag.id
@@ -2591,7 +2591,7 @@ async def _create_mount_node_segments(engine, mount_path, specs=None, access_tag
     from sqlalchemy import insert
 
     specs = specs or []
-    access_tags = AccessTags(access_tags or [])
+    access_tags = normalize_access_tags(access_tags or [])
     async with engine.begin() as conn:
         parent_id = 0  # root node id
         for i, segment in enumerate(mount_path):
@@ -2616,7 +2616,7 @@ async def _create_mount_node_segments(engine, mount_path, specs=None, access_tag
                 )
                 node_id = result.inserted_primary_key[0]
                 node_access_tags_association = (
-                    access_tags if is_leaf else AccessTags([])
+                    access_tags if is_leaf else normalize_access_tags([])
                 )
                 if node_access_tags_association:
                     # Resolve tag names to ids; raise on any undefined tag.

@@ -53,7 +53,7 @@ with warnings.catch_warnings():
 
 from pydantic import BaseModel
 
-from ..access_control.protocols import AccessTags
+from ..access_control.protocols import normalize_access_tags
 from ..authn_database import orm
 from ..authn_database.core import (
     create_service,
@@ -65,6 +65,7 @@ from ..authn_database.core import (
     lookup_valid_pending_session_by_user_code,
     lookup_valid_session,
 )
+from ..type_aliases import AccessTags
 from ..utils import SHARE_TILED_PATH, SingleUserPrincipal
 from . import schemas
 from .connection_pool import get_database_session_factory
@@ -259,7 +260,7 @@ async def get_access_tags_from_api_key(
         return None
     else:
         if (access_tags := api_key_orm.access_tags) is not None:
-            access_tags = AccessTags(access_tags)
+            access_tags = normalize_access_tags(access_tags)
         return access_tags
 
 

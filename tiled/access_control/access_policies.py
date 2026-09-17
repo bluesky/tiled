@@ -9,9 +9,9 @@ from pydantic import BaseModel, HttpUrl, TypeAdapter, ValidationError
 from ..adapters.protocols import BaseAdapter
 from ..queries import AccessTagsFilter
 from ..server.schemas import Principal
-from ..type_aliases import Filters, Scopes
+from ..type_aliases import AccessTags, Filters, Scopes
 from ..utils import Sentinel, import_object
-from .protocols import AccessPolicy, AccessTags
+from .protocols import AccessPolicy, normalize_access_tags
 from .scopes import ALL_SCOPES, NO_SCOPES, PUBLIC_SCOPES, validate_scopes
 
 ALL_ACCESS = []
@@ -39,7 +39,7 @@ class DummyAccessPolicy(AccessPolicy):
         access_tags: Optional[AccessTags] = None,
     ) -> Tuple[bool, AccessTags]:
         "Do nothing; there is no persistent state to initialize."
-        return (False, access_tags or AccessTags())
+        return (False, access_tags or normalize_access_tags())
 
     async def allowed_scopes(
         self,
@@ -130,7 +130,7 @@ class TagBasedAccessPolicy(AccessPolicy):
 
         if access_tags is not None:
             try:
-                access_tags = AccessTags(access_tags)
+                access_tags = normalize_access_tags(access_tags)
             except TypeError as exc:
                 raise ValueError(
                     "access_tags must be an iterable of tags, "
@@ -181,7 +181,7 @@ class TagBasedAccessPolicy(AccessPolicy):
             if include_public_tag:
                 access_tags_from_policy.add(self.public_tag)
 
-            access_tags_from_policy = AccessTags(access_tags_from_policy)
+            access_tags_from_policy = normalize_access_tags(access_tags_from_policy)
             access_tags_modified = access_tags != access_tags_from_policy
 
             # admin principals are not subject to scope reduction restriction
@@ -206,7 +206,7 @@ class TagBasedAccessPolicy(AccessPolicy):
                     f"Current API key does not permit action on user-owned nodes.\n"
                     f"Please provide only tags allowed by this API key: {authn_access_tags}"
                 )
-            access_tags_from_policy = AccessTags(
+            access_tags_from_policy = normalize_access_tags(
                 [f"{principal.type.value}:{identifier}"]
             )
             access_tags_modified = True
@@ -234,7 +234,7 @@ class TagBasedAccessPolicy(AccessPolicy):
             logger.info("Node access_tags not modified; no access_tags provided.")
             return False, node.access_tags
         try:
-            access_tags = AccessTags(access_tags)
+            access_tags = normalize_access_tags(access_tags)
         except TypeError as exc:
             raise ValueError(
                 "access_tags must be an iterable of tags, "
@@ -326,7 +326,7 @@ class TagBasedAccessPolicy(AccessPolicy):
                     f"Cannot remove tag from node: '{tag}' is not a valid tag name."
                 )
 
-        access_tags_from_policy = AccessTags(access_tags_from_policy)
+        access_tags_from_policy = normalize_access_tags(access_tags_from_policy)
         access_tags_modified = access_tags != access_tags_from_policy
 
         # admin principals are not subject to scope reduction restriction
@@ -449,7 +449,7 @@ class TagBasedAccessPolicy(AccessPolicy):
         if authn_access_tags is not None:
             tag_list.intersection_update(authn_access_tags)
 
-        return [AccessTagsFilter(AccessTags(tag_list))]
+        return [AccessTagsFilter(normalize_access_tags(tag_list))]
 
 
 T = TypeVar("T")
@@ -539,14 +539,14 @@ class ExternalPolicyDecisionPoint(AccessPolicy, ABC):
         access_tags: Optional[AccessTags] = None,
     ) -> Tuple[bool, AccessTags]:
         if access_tags is None and self._empty_access_tags_public is not None:
-            return self._empty_access_tags_public, AccessTags()
+            return self._empty_access_tags_public, normalize_access_tags()
         decision = await self._get_external_decision(
             self._create_node,
             self.build_input(principal, authn_access_tags, authn_scopes, access_tags),
             ResultHolder[bool],
         )
         if decision:
-            return (decision.result, access_tags or AccessTags())
+            return (decision.result, access_tags or normalize_access_tags())
         raise ValueError("Permission denied not able to add the node")
 
     async def modify_node(
@@ -569,7 +569,7 @@ class ExternalPolicyDecisionPoint(AccessPolicy, ABC):
             ResultHolder[bool],
         )
         if decision:
-            return (decision.result, access_tags or AccessTags())
+            return (decision.result, access_tags or normalize_access_tags())
         raise ValueError("Permission denied not able to add the node")
 
     async def filters(
@@ -586,7 +586,7 @@ class ExternalPolicyDecisionPoint(AccessPolicy, ABC):
             ResultHolder[list[str]],
         )
         if access_tags_decision is not None:
-            return [AccessTagsFilter(AccessTags(access_tags_decision.result))]
+            return [AccessTagsFilter(normalize_access_tags(access_tags_decision.result))]
         else:
             return NO_ACCESS
 

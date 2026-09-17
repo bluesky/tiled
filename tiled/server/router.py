@@ -49,12 +49,12 @@ from tiled.server.protocols import ExternalAuthenticator, InternalAuthenticator
 from tiled.server.schemas import Principal
 
 from .. import __version__
-from ..access_control.protocols import AccessTags
+from ..access_control.protocols import normalize_access_tags
 from ..links import links_for_node
 from ..ndslice import NDBlock, NDSlice
 from ..stream_messages import ArrayPatch
 from ..structures.core import Spec, StructureFamily
-from ..type_aliases import Scopes
+from ..type_aliases import AccessTags, Scopes
 from ..utils import BrokenLink, ensure_awaitable, patch_mimetypes, path_from_uri
 from ..validation_registration import ValidationError, ValidationRegistry
 from . import schemas
@@ -1890,7 +1890,7 @@ def get_router(
             body.metadata,
             body.structure_family,
             body.specs,
-            AccessTags(body.access_tags) if body.access_tags is not None else None,
+            normalize_access_tags(body.access_tags) if body.access_tags is not None else None,
         )
         if structure_family == StructureFamily.container:
             structure = None
@@ -1925,8 +1925,8 @@ def get_router(
                     detail=f"Access policy rejects the provided access tags.\n{e}",
                 )
         else:
-            access_tags_modified = access_tags != AccessTags()
-            access_tags = AccessTags()
+            access_tags_modified = access_tags != normalize_access_tags()
+            access_tags = normalize_access_tags()
 
         node = await entry.create_node(
             metadata=body.metadata,
@@ -2407,7 +2407,7 @@ def get_router(
         if isinstance(access_tags, list) and all(
             isinstance(tag, str) for tag in access_tags
         ):
-            access_tags = AccessTags(access_tags)
+            access_tags = normalize_access_tags(access_tags)
         else:
             raise HTTPException(
                 status_code=HTTP_422_UNPROCESSABLE_CONTENT,
@@ -2501,7 +2501,7 @@ def get_router(
         metadata, specs, access_tags = (
             body.metadata if body.metadata is not None else entry.metadata(),
             body.specs if body.specs is not None else entry.specs,
-            AccessTags(body.access_tags)
+            normalize_access_tags(body.access_tags)
             if body.access_tags is not None
             else entry.access_tags,
         )

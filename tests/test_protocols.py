@@ -10,7 +10,7 @@ from numpy.typing import NDArray
 from pytest_mock import MockFixture
 
 from tiled.access_control.access_policies import ALL_ACCESS
-from tiled.access_control.protocols import AccessPolicy, AccessTags
+from tiled.access_control.protocols import AccessPolicy, normalize_access_tags
 from tiled.access_control.scopes import ALL_SCOPES
 from tiled.adapters.protocols import (
     ArrayAdapter,
@@ -31,7 +31,7 @@ from tiled.structures.core import Spec, StructureFamily
 from tiled.structures.ragged import RaggedStructure
 from tiled.structures.sparse import COOStructure
 from tiled.structures.table import TableStructure
-from tiled.type_aliases import JSON, Filters, Scopes
+from tiled.type_aliases import JSON, AccessTags, Filters, Scopes
 
 
 class CustomArrayAdapter:
@@ -494,7 +494,7 @@ class CustomAccessPolicy(AccessPolicy):
         authn_scopes: Scopes,
         access_tags: Optional[AccessTags] = None,
     ) -> Tuple[bool, AccessTags]:
-        return (False, access_tags or AccessTags())
+        return (False, access_tags or normalize_access_tags())
 
     async def modify_node(
         self,
@@ -504,7 +504,7 @@ class CustomAccessPolicy(AccessPolicy):
         authn_scopes: Scopes,
         access_tags: Optional[AccessTags],
     ) -> Tuple[bool, AccessTags]:
-        return (False, access_tags or AccessTags())
+        return (False, access_tags or normalize_access_tags())
 
     async def allowed_scopes(
         self,
@@ -556,7 +556,7 @@ async def test_accesspolicy_protocol(mocker: MockFixture) -> None:
     principal = Principal(
         uuid="12345678124123412345678123456781", type=PrincipalType.user
     )
-    authn_access_tags = AccessTags({"qux", "quux"})
+    authn_access_tags = normalize_access_tags({"qux", "quux"})
     authn_scopes = {"abc", "baz"}
     scopes = {"abc"}
 
