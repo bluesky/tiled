@@ -190,7 +190,8 @@ BEGIN
     IF EXISTS (
         SELECT 1 FROM entity_access_tags WHERE entity_id = NEW.id
     ) THEN
-        RAISE EXCEPTION '{ENTITY_NODE_ACCESS_TAGS_ERROR}';
+        RAISE EXCEPTION '{ENTITY_NODE_ACCESS_TAGS_ERROR}'
+            USING ERRCODE = '23514';
     END IF;
     RETURN NEW;
 END;
@@ -216,7 +217,8 @@ CREATE OR REPLACE FUNCTION entity_access_tags_reject_node_backed_entity()
 RETURNS TRIGGER AS $$
 BEGIN
     IF EXISTS (SELECT 1 FROM entities WHERE id = NEW.entity_id AND node_id IS NOT NULL) THEN
-        RAISE EXCEPTION '{ENTITY_NODE_ACCESS_TAGS_ERROR}';
+        RAISE EXCEPTION '{ENTITY_NODE_ACCESS_TAGS_ERROR}'
+            USING ERRCODE = '23514';
     END IF;
     RETURN NEW;
 END;
