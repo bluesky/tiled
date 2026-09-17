@@ -266,6 +266,7 @@ xarray = [
 [dependency-groups]
 test = [
     "aiohttp",
+    "boto3",
     "coverage",
     "flake8",
     "hypothesis",
@@ -273,7 +274,7 @@ test = [
     "ipython",
     "ldap3",
     "locust",
-    "minio",
+    "moto[s3,server]",
     "pre-commit",
     "pytest",
     "pytest-asyncio",

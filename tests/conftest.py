@@ -4,7 +4,6 @@ import sys
 import tempfile
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
 
 import asyncpg
 import pytest
@@ -29,6 +28,40 @@ from .utils import temp_postgres
 def deactivate_retries():
     "Deactivate HTTP retries."
     stamina.set_active(False)
+
+
+@pytest.fixture(autouse=True, scope="session")
+def s3_bucket_uri():
+    """Provide an S3 endpoint for object-storage tests via TILED_TEST_BUCKET.
+
+    If TILED_TEST_BUCKET is already set (e.g. pointing at a real MinIO/S3),
+    respect it. Otherwise, start an in-process ``moto`` S3 server for the
+    duration of the test session and point TILED_TEST_BUCKET at it, so the
+    object-storage tests run without any external service. If ``moto`` is not
+    installed, leave TILED_TEST_BUCKET unset and those tests will skip.
+
+    An ephemeral port (``port=0``) is used so each pytest-xdist worker gets its
+    own server without collisions.
+    """
+    if os.getenv("TILED_TEST_BUCKET"):
+        yield
+        return
+    try:
+        from moto.server import ThreadedMotoServer
+    except ImportError:
+        yield
+        return
+
+    server = ThreadedMotoServer(ip_address="127.0.0.1", port=0)
+    server.start()
+    host, port = server.get_host_and_port()
+    # moto accepts any credentials; use placeholder values.
+    os.environ["TILED_TEST_BUCKET"] = f"http://bucketadmin:bucketadmin@{host}:{port}/buck"
+    try:
+        yield
+    finally:
+        del os.environ["TILED_TEST_BUCKET"]
+        server.stop()
 
 
 @pytest.fixture(autouse=True, scope="module")
@@ -328,42 +361,6 @@ def redis_uri():
         client.flushdb()
     else:
         raise pytest.skip("No TILED_TEST_REDIS configured")
-
-
-@pytest.fixture
-def minio_uri():
-    if uri := os.getenv("TILED_TEST_BUCKET"):
-        from minio import Minio
-        from minio.deleteobjects import DeleteObject
-
-        # For convenience, we split the bucket from a string
-        url = urlparse(uri)
-        bucket_name = url.path.lstrip("/")
-        uri = url._replace(netloc="{}:{}".format(url.hostname, url.port), path="")
-
-        client = Minio(
-            endpoint=uri.geturl(),
-            access_key=url.username,
-            secret_key=url.password,
-            secure=False,
-        )
-
-        # Reset the state of the bucket after each test.
-        if client.bucket_exists(bucket_name=bucket_name):
-            delete_object_list = map(
-                lambda x: DeleteObject(object_name=x.object_name),
-                client.list_objects(bucket_name=bucket_name, recursive=True),
-            )
-            errors = client.remove_objects(
-                bucket_name=bucket_name, delete_object_list=delete_object_list
-            )
-            for error in errors:
-                print("error occurred when deleting object", error)
-        else:
-            client.make_bucket(bucket_name=bucket_name)
-
-    else:
-        raise pytest.skip("No TILED_TEST_BUCKET configured")
 
 
 # Shared authentication config for tests that need multi-user JWT auth.
