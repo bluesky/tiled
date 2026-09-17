@@ -14,6 +14,19 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Fixed
 
+- Accept OIDC access tokens on WebSocket connections. The handshake rejected
+  any `Authorization` header that was not `Apikey SECRET` with a 400, so no
+  externally-authenticated client could open a stream. The header is now
+  dispatched on its scheme, matching the HTTP routes: `Bearer TOKEN` is read as
+  an access token, `Apikey SECRET` as an API key. The `access_token` query
+  parameter still works, for browsers that cannot set headers.
+- Return 401 rather than 500 for a malformed access token when a proxied OIDC
+  authenticator is configured.
+- Fix construction of the `Principal` for externally-authenticated WebSocket
+  connections, which raised `AttributeError` and surfaced as a 500.
+- Fix the client's WebSocket auth header for API-key sessions, which raised
+  `UnboundLocalError`, and ensure the short-lived API key minted for a
+  connection is revoked afterwards.
 - Extend to zarr routes the previous fix for reads of array data whose
   on-disk shape has diverged from the shape recorded in the catalog
   structure, which can happen while an array is being extended
