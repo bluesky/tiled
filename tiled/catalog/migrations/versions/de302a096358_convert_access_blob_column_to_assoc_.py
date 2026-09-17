@@ -33,6 +33,56 @@ def _analyze(connection, *tables):
         connection.execute(sa.text(f"ANALYZE {table}"))
 
 
+def _preserved_triggers(connection, table):
+    """
+    Capture the DDL of a SQLite table's triggers so it can be replayed.
+
+    ``batch_alter_table`` implements ALTER on SQLite by rebuilding the table.
+    Alembic recreates the indexes and constraints but not the triggers, which
+    are therefore dropped along with the old table. Nothing reports this: the
+    migration succeeds and the triggers are simply gone.
+
+    Returns an empty list on other dialects, where ALTER is done in place.
+    """
+    if connection.engine.dialect.name != "sqlite":
+        return []
+    return list(
+        connection.execute(
+            sa.text(
+                "SELECT name, sql FROM sqlite_master "
+                "WHERE type = 'trigger' AND tbl_name = :table AND sql IS NOT NULL"
+            ),
+            {"table": table},
+        )
+    )
+
+
+def _restore_triggers(connection, table, captured):
+    """
+    Recreate whichever triggers captured by :func:`_preserved_triggers` are
+    now missing.
+
+    Alembic only rebuilds the table when SQLite cannot perform the ALTER
+    natively: dropping a column forces a rebuild, adding one does not. Rather
+    than depend on which branch it took, restore only what actually went away.
+    """
+    if not captured:
+        return
+    surviving = {
+        row[0]
+        for row in connection.execute(
+            sa.text(
+                "SELECT name FROM sqlite_master "
+                "WHERE type = 'trigger' AND tbl_name = :table"
+            ),
+            {"table": table},
+        )
+    }
+    for name, statement in captured:
+        if name not in surviving:
+            connection.execute(sa.text(statement))
+
+
 def _copy_access_blobs(
     connection, source_table, association_table, owner_column, where=""
 ):
@@ -562,8 +612,14 @@ def upgrade():
         batch_op.drop_column("access_blob")
 
     op.drop_index("top_level_metadata", table_name="nodes")
+    # nodes carries the full-text-search sync triggers (ed3a4223a600) and the
+    # closure-table trigger (e05e918092c3); none of them reference access_blob,
+    # so they can be replayed verbatim after the rebuild. The other tables
+    # altered here have no triggers at this point to preserve.
+    nodes_triggers = _preserved_triggers(connection, "nodes")
     with op.batch_alter_table("nodes") as batch_op:
         batch_op.drop_column("access_blob")
+    _restore_triggers(connection, "nodes", nodes_triggers)
     with op.batch_alter_table("entities") as batch_op:
         batch_op.drop_column("access_blob")
     # The Revision model no longer tracks access_blob; drop the column so that
@@ -602,8 +658,12 @@ def downgrade():
             sa.Column("access_blob", JSONVariant, nullable=False, server_default="{}")
         )
 
+    # Plain JSON, not JSONVariant: c31f6a1d7e20 created entities.access_blob and
+    # links.access_blob as json, unlike nodes/revisions which are jsonb. Using
+    # JSONVariant here would restore them as jsonb and leave the downgraded
+    # database subtly different from the original.
     with op.batch_alter_table("entities") as batch_op:
-        batch_op.add_column(sa.Column("access_blob", JSONVariant, nullable=True))
+        batch_op.add_column(sa.Column("access_blob", sa.JSON(), nullable=True))
     _restore_access_blobs(
         dialect_name,
         "entity_access_blobs",
@@ -654,20 +714,28 @@ EXECUTE FUNCTION entities_reject_node_access_blob();"""
             )
         )
 
+    # Plain JSON, not JSONVariant, for the reason given above on entities.
     with op.batch_alter_table("links") as batch_op:
         batch_op.add_column(
-            sa.Column("access_blob", JSONVariant, nullable=False, server_default="{}")
+            sa.Column("access_blob", sa.JSON(), nullable=False, server_default="{}")
         )
+    # The server_default only exists to satisfy NOT NULL while backfilling
+    # existing rows. c31f6a1d7e20 declared no default, so drop it again.
+    with op.batch_alter_table("links") as batch_op:
+        batch_op.alter_column("access_blob", server_default=None)
 
     _restore_access_blobs(dialect_name, "link_access_blobs", "link_id", "links")
 
     op.drop_table("link_access_blobs")
 
     op.drop_index("top_level_metadata", table_name="nodes")
+    # Preserve the nodes triggers across the rebuild, as on upgrade.
+    nodes_triggers = _preserved_triggers(connection, "nodes")
     with op.batch_alter_table("nodes") as batch_op:
         batch_op.add_column(
             sa.Column("access_blob", JSONVariant, nullable=False, server_default="{}")
         )
+    _restore_triggers(connection, "nodes", nodes_triggers)
     op.create_index(
         "top_level_metadata",
         "nodes",
