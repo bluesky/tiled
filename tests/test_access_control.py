@@ -541,12 +541,10 @@ def _principal_has_scope_on_access_tag(
         "JOIN access_tags_principals p ON p.id = aps.principal_id "
     )
     params = {"t": access_tag_name, "p": principal}
-    if scope_name is not None:
-        sql += "JOIN scopes s ON s.id = aps.scope_id "
-        params["s"] = scope_name
     sql += "WHERE t.name = :t AND p.name = :p"
     if scope_name is not None:
-        sql += " AND s.name = :s"
+        params["s"] = scope_name
+        sql += " AND aps.scope = :s"
     rows = catalog_db_execute(catalog_uri, [(sql, params)])
     return bool(rows)
 
@@ -649,6 +647,77 @@ def _node_has_access_tag(catalog_uri, node_key, access_tag_name):
         ],
     )
     return bool(rows)
+
+
+@pytest.mark.asyncio
+async def test_catalog_enforces_exactly_the_known_scopes(
+    compile_access_tags_tables_with_reset, catalog_uri
+):
+    """
+    get_enforced_scopes reads back the scope set as declared in the schema..
+    Test to ensure this function properly retrieves the scope set.
+    """
+    from tiled.access_control.access_tags import AccessTagsParser
+    from tiled.access_control.scopes import ScopeName
+
+    engine = create_async_engine(ensure_specified_sql_driver(catalog_uri))
+    try:
+        enforced_scopes = await AccessTagsParser(engine=engine).get_enforced_scopes()
+    finally:
+        await engine.dispose()
+
+    known_scopes = {scope.value for scope in ScopeName}
+    assert enforced_scopes, "catalog does not constrain the scope column at all"
+    assert enforced_scopes == known_scopes, (
+        f"catalog scope set has diverged from ScopeName. "
+        f"Only in database: {sorted(enforced_scopes - known_scopes)}. "
+        f"Only in code: {sorted(known_scopes - enforced_scopes)}. "
+        f"A ScopeName change needs a migration altering the scope_name enum."
+    )
+
+
+@pytest.mark.asyncio
+async def test_catalog_rejects_an_invalid_scope(
+    compile_access_tags_tables_with_reset, catalog_uri
+):
+    """
+    The database, not just the application, must reject an out-of-enum scope.
+    On PostgreSQL this is the native enum type; on SQLite it is the column's
+    CHECK constraint. Without the latter an invalid scope would insert
+    silently and then raise LookupError on every subsequent read.
+    """
+    engine = create_async_engine(ensure_specified_sql_driver(catalog_uri))
+    try:
+        async with engine.begin() as conn:
+            tag_id = (
+                await conn.execute(
+                    text("SELECT id FROM access_tags ORDER BY id LIMIT 1")
+                )
+            ).scalar()
+            principal_id = (
+                await conn.execute(
+                    text("SELECT id FROM access_tags_principals ORDER BY id LIMIT 1")
+                )
+            ).scalar()
+        assert tag_id is not None and principal_id is not None
+
+        with pytest.raises(Exception) as info:
+            async with engine.begin() as conn:
+                await conn.execute(
+                    text(
+                        "INSERT INTO access_tag_principal_scopes "
+                        "(tag_id, principal_id, scope) "
+                        "VALUES (:t, :p, 'not:a:real:scope')"
+                    ),
+                    {"t": tag_id, "p": principal_id},
+                )
+        # asyncpg raises DBAPIError for the enum; SQLite raises IntegrityError
+        # for the CHECK. Both are SQLAlchemy DBAPI errors.
+        assert "not:a:real:scope" in str(info.value) or "CHECK" in str(
+            info.value
+        ) or "constraint" in str(info.value).lower()
+    finally:
+        await engine.dispose()
 
 
 def test_access_tag_compiler(compile_access_tags_tables_with_reset, catalog_uri):

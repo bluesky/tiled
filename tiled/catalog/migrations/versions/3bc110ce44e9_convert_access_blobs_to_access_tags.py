@@ -26,9 +26,11 @@ named, deduplicated access tags:
   no tags: they assume the access tags of the referenced node. Database
   triggers enforcing that invariant are recreated in tag form.
 * The supporting tables for tag definitions -- ``access_tags_principals``,
-  ``scopes``, ``access_tag_principal_scopes``, ``access_tag_owners`` -- are
-  created empty. They are populated for the first time by the access tags
-  compiler, not by this migration.
+  ``access_tag_principal_scopes``, ``access_tag_owners`` -- are created empty.
+  They are populated for the first time by the access tags compiler, not by
+  this migration. Scopes are stored inline on
+  ``access_tag_principal_scopes.scope`` as a native enum, so there is no
+  ``scopes`` lookup table.
 
 The downgrade reconstructs one blob per owner from its tags before dropping
 the tag tables: an owner whose only tag is a principal tag (``user:<name>``
@@ -44,10 +46,11 @@ down_revision = "de302a096358"
 branch_labels = None
 depends_on = None
 
-# The scopes.name column is a native enum (scope_name on PostgreSQL). The
-# values are frozen here at this revision's authorship; the live set of valid
-# scopes is the ScopeName enum in tiled.access_control.scopes, but migrations
-# must not import application code that may change out from under them.
+# The access_tag_principal_scopes.scope column is a native enum (scope_name on
+# PostgreSQL). The values are frozen here at this revision's authorship; the
+# live set of valid scopes is the ScopeName enum in
+# tiled.access_control.scopes, but migrations must not import application code
+# that may change out from under them.
 SCOPE_NAME_ENUM = sa.Enum(
     "read:metadata",
     "read:data",
@@ -66,6 +69,9 @@ SCOPE_NAME_ENUM = sa.Enum(
     "read:webhooks",
     "write:webhooks",
     name="scope_name",
+    # Enforce the closed set on SQLite too, where the column is a plain
+    # VARCHAR. No effect on PostgreSQL, which uses the native enum type.
+    create_constraint=True,
 )
 
 ENTITY_NODE_ACCESS_TAGS_ERROR = (
@@ -200,11 +206,6 @@ def _create_tag_tables():
         sa.Column("time_updated", sa.DateTime(), server_default=sa.func.now()),
     )
     op.create_table(
-        "scopes",
-        sa.Column("id", sa.Integer(), primary_key=True, autoincrement=True),
-        sa.Column("name", SCOPE_NAME_ENUM, nullable=False, unique=True),
-    )
-    op.create_table(
         "access_tag_principal_scopes",
         sa.Column(
             "tag_id",
@@ -226,32 +227,18 @@ def _create_tag_tables():
             ),
             nullable=False,
         ),
-        sa.Column(
-            "scope_id",
-            sa.Integer(),
-            sa.ForeignKey(
-                "scopes.id",
-                name="fk_access_tag_principal_scopes_scope",
-                ondelete="CASCADE",
-            ),
-            nullable=False,
-        ),
+        sa.Column("scope", SCOPE_NAME_ENUM, nullable=False),
         sa.PrimaryKeyConstraint(
             "tag_id",
             "principal_id",
-            "scope_id",
+            "scope",
             name="access_tag_principal_scopes_pkey",
         ),
     )
     op.create_index(
         "idx_access_tag_principal_scopes_principal_scope",
         "access_tag_principal_scopes",
-        ["principal_id", "scope_id", "tag_id"],
-    )
-    op.create_index(
-        "idx_access_tag_principal_scopes_scope_id",
-        "access_tag_principal_scopes",
-        ["scope_id"],
+        ["principal_id", "scope", "tag_id"],
     )
     op.create_table(
         "access_tag_owners",
@@ -291,7 +278,6 @@ def _drop_tag_tables():
     op.drop_table("access_tag_principal_scopes")
     op.drop_table("access_tag_owners")
     op.drop_table("access_tags_principals")
-    op.drop_table("scopes")
     op.drop_table("node_access_tags")
     op.drop_table("entity_access_tags")
     op.drop_table("link_access_tags")

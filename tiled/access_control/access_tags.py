@@ -14,24 +14,23 @@ from ..server.connection_pool import get_database_engine
 from ..server.schemas import PrincipalType
 from ..utils import InterningLoader
 from .protocols import PRINCIPAL_TAG_PREFIXES
+from .scopes import validate_scopes
+
+# Name of the scope enum, shared by the PostgreSQL enum type and the SQLite
+# CHECK constraint that stands in for it. Taken from the ORM so that the two
+# cannot drift.
+SCOPE_ENUM_NAME = orm.AccessTagPrincipalScope.__table__.c.scope.type.name
 
 # The access_tag_principal_scopes junction table, joined to the tables its
-# three foreign keys reference so that it can be queried by name. Shared by
-# the lookups in both directions: (tag, principal) -> scopes and
-# (principal, scope) -> tags.
-access_tag_principal_scopes_named = (
-    orm.AccessTagPrincipalScope.__table__.join(
-        orm.AccessTag.__table__,
-        orm.AccessTag.id == orm.AccessTagPrincipalScope.tag_id,
-    )
-    .join(
-        orm.AccessTagsPrincipal.__table__,
-        orm.AccessTagsPrincipal.id == orm.AccessTagPrincipalScope.principal_id,
-    )
-    .join(
-        orm.Scope.__table__,
-        orm.Scope.id == orm.AccessTagPrincipalScope.scope_id,
-    )
+# two foreign keys reference so that it can be queried by name. The scope is
+# stored inline on the junction and needs no join. Shared by the lookups in
+# both directions: (tag, principal) -> scopes and (principal, scope) -> tags.
+access_tag_principal_scopes_named = orm.AccessTagPrincipalScope.__table__.join(
+    orm.AccessTag.__table__,
+    orm.AccessTag.id == orm.AccessTagPrincipalScope.tag_id,
+).join(
+    orm.AccessTagsPrincipal.__table__,
+    orm.AccessTagsPrincipal.id == orm.AccessTagPrincipalScope.principal_id,
 )
 
 
@@ -67,15 +66,38 @@ class AccessTagsParser:
             public_tags = set((await conn.execute(statement)).scalars())
         return public_tags
 
-    async def get_defined_scopes(self):
-        statement = select(orm.Scope.name)
+    async def get_enforced_scopes(self):
+        """
+        The scope values that the catalog database will actually accept,
+        read from its schema definition.
+        """
         async with self._engine.connect() as conn:
-            defined_scopes = set((await conn.execute(statement)).scalars())
-        return defined_scopes
+            if conn.dialect.name == "postgresql":
+                enums = await conn.run_sync(lambda sync: inspect(sync).get_enums())
+                for enum in enums:
+                    if enum["name"] == SCOPE_ENUM_NAME:
+                        return set(enum["labels"])
+            else:
+                constraints = await conn.run_sync(
+                    lambda sync: inspect(sync).get_check_constraints(
+                        orm.AccessTagPrincipalScope.__tablename__
+                    )
+                )
+                for constraint in constraints:
+                    if constraint.get("name") == SCOPE_ENUM_NAME:
+                        # SQLite exposes no structured form of a CHECK
+                        # constraint, only its SQL text:
+                        #     scope IN ('read:data', 'write:data')
+                        # Take what is inside the parentheses and split it on
+                        # the comma separating the values.
+                        sqltext = constraint["sqltext"]
+                        values = sqltext.split("(", 1)[1].rsplit(")", 1)[0]
+                        return {value.strip(" '") for value in values.split(",")}
+        return set()
 
     async def get_scopes_from_tag(self, tagname, username):
         statement = (
-            select(orm.Scope.name)
+            select(orm.AccessTagPrincipalScope.scope)
             .select_from(access_tag_principal_scopes_named)
             .where(
                 orm.AccessTag.name == tagname,
@@ -116,7 +138,7 @@ class AccessTagsParser:
             select(orm.AccessTag.name)
             .select_from(access_tag_principal_scopes_named)
             .where(
-                orm.Scope.name == scope,
+                orm.AccessTagPrincipalScope.scope == scope,
                 orm.AccessTagsPrincipal.name == username,
             )
         )
@@ -134,7 +156,6 @@ class AccessTagsParser:
 ACCESS_TAGS_TABLES = [
     orm.AccessTag.__table__,
     orm.AccessTagsPrincipal.__table__,
-    orm.Scope.__table__,
     orm.AccessTagPrincipalScope.__table__,
     orm.AccessTagOwner.__table__,
 ]
@@ -175,21 +196,26 @@ async def create_access_tags_tables(engine):
         )
 
 
-async def update_access_tags_tables(engine, scopes, tags, owners, public_tags):
+async def update_access_tags_tables(engine, tags, owners, public_tags):
     """
     Synchronize the access tag tables with the compiled tag state.
 
     Names are upserted, so existing rows -- and therefore their ids, which the
     node_access_tags association table references -- are preserved across
     recompilations. Definitions absent from the compiled state are deleted;
-    deleting a definition cascades to the rows that reference it, including
-    node_access_tags rows for a deleted tag. The whole update is a single
-    transaction.
+    deleting a tag or principal cascades to the rows that reference it,
+    including node_access_tags rows for a deleted tag. The whole update is a
+    single transaction.
+
+    Scopes are not staged: they are stored inline on the junction rows, so
+    there is no lookup table to populate or prune and no cascade to trigger.
+    A grant is removed only by the stale-grant diff below, which deletes any
+    (tag, principal, scope) triple absent from the newly compiled state --
+    whatever the reason for its absence.
     """
     upsert = _upsert(engine)
     tags_table = orm.AccessTag.__table__
     users_table = orm.AccessTagsPrincipal.__table__
-    scopes_table = orm.Scope.__table__
     tags_users_scopes_table = orm.AccessTagPrincipalScope.__table__
     tag_owners_table = orm.AccessTagOwner.__table__
 
@@ -198,7 +224,6 @@ async def update_access_tags_tables(engine, scopes, tags, owners, public_tags):
     all_tags = {name: (name in public_tags) for name in (*tags, *owners)}
     all_users = {user for users in tags.values() for user in users}
     all_users.update(user for users in owners.values() for user in users)
-    all_scopes = set(scopes)
 
     async with engine.begin() as connection:
         if engine.dialect.name == "postgresql":
@@ -227,12 +252,6 @@ async def update_access_tags_tables(engine, scopes, tags, owners, public_tags):
             await connection.execute(
                 upsert(users_table)
                 .values([{"name": name} for name in all_users])
-                .on_conflict_do_nothing(index_elements=["name"])
-            )
-        if all_scopes:
-            await connection.execute(
-                upsert(scopes_table)
-                .values([{"name": name} for name in all_scopes])
                 .on_conflict_do_nothing(index_elements=["name"])
             )
 
@@ -303,9 +322,6 @@ async def update_access_tags_tables(engine, scopes, tags, owners, public_tags):
         await connection.execute(
             delete(users_table).where(users_table.c.name.not_in(list(all_users)))
         )
-        await connection.execute(
-            delete(scopes_table).where(scopes_table.c.name.not_in(list(all_scopes)))
-        )
 
         # load db IDs for items into memory
         tags_to_id = {
@@ -320,18 +336,9 @@ async def update_access_tags_tables(engine, scopes, tags, owners, public_tags):
                 select(users_table.c.id, users_table.c.name)
             )
         }
-        scopes_to_id = {
-            # name is a ScopeName enum member; key by its interned string
-            # value (not str(member), which is e.g. "ScopeName.read_data")
-            intern(name.value): scope_id
-            for scope_id, name in await connection.execute(
-                select(scopes_table.c.id, scopes_table.c.name)
-            )
-        }
-
-        # flatten relationships and diff against current table contents
+        # flatten relationships and diff against current table contents.
         tags_users_scopes = {
-            (tags_to_id[tag], users_to_id[user], scopes_to_id[scope])
+            (tags_to_id[tag], users_to_id[user], scope)
             for tag, users in tags.items()
             for user, user_scopes in users.items()
             for scope in user_scopes
@@ -347,7 +354,7 @@ async def update_access_tags_tables(engine, scopes, tags, owners, public_tags):
                 select(
                     tags_users_scopes_table.c.tag_id,
                     tags_users_scopes_table.c.principal_id,
-                    tags_users_scopes_table.c.scope_id,
+                    tags_users_scopes_table.c.scope,
                 )
             )
         }
@@ -364,8 +371,8 @@ async def update_access_tags_tables(engine, scopes, tags, owners, public_tags):
             await connection.execute(
                 insert(tags_users_scopes_table),
                 [
-                    {"tag_id": tag_id, "principal_id": user_id, "scope_id": scope_id}
-                    for tag_id, user_id, scope_id in new_tags_users_scopes
+                    {"tag_id": tag_id, "principal_id": user_id, "scope": scope}
+                    for tag_id, user_id, scope in new_tags_users_scopes
                 ],
             )
         stale_tags_users_scopes = existing_tags_users_scopes - tags_users_scopes
@@ -375,7 +382,7 @@ async def update_access_tags_tables(engine, scopes, tags, owners, public_tags):
                     tuple_(
                         tags_users_scopes_table.c.tag_id,
                         tags_users_scopes_table.c.principal_id,
-                        tags_users_scopes_table.c.scope_id,
+                        tags_users_scopes_table.c.scope,
                     ).in_(list(stale_tags_users_scopes))
                 )
             )
@@ -413,6 +420,10 @@ class AccessTagsCompiler:
         provider=None,
     ):
         self.scopes = scopes or {}
+        # Checking here keeps a bad name from reaching the database, where it
+        # would surface as an enum constraint violation that points at the
+        # schema rather than at the configuration that caused it,
+        validate_scopes(self.scopes, "AccessTagsCompiler 'scopes'")
         self.tag_config = tag_config
         # Reuse the pooled engine keyed by these settings; when the compiler
         # runs inside a tiled server, the pool is shared with the catalog
@@ -772,7 +783,6 @@ class AccessTagsCompiler:
 
         await update_access_tags_tables(
             self._engine,
-            self.scopes,
             self.compiled_tags,
             self.compiled_tag_owners,
             self.compiled_public,

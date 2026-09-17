@@ -38,6 +38,7 @@ from starlette.status import (
 )
 
 from ..access_control.protocols import AccessPolicy
+from ..access_control.scopes import ScopeName
 from ..authenticators import ProxiedOIDCAuthenticator
 from ..catalog.adapter import WouldDeleteData
 from ..config import (
@@ -772,21 +773,53 @@ def build_app(
                 await app.state.access_policy.access_tags_parser.connect(
                     access_tags_catalog_context.database_settings
                 )
-                # The scopes in the catalog database (written there by the
-                # access tags compiler) should be a subset of the scopes that
-                # the server's access policy is configured with.
-                defined_scopes = (
-                    await app.state.access_policy.access_tags_parser.get_defined_scopes()
+                # The scope set the catalog database enforces should match the
+                # ScopeName enum this server is running. A disagreement here
+                # points at a schema that was changed outside of a migration.
+                enforced_scopes = (
+                    await app.state.access_policy.access_tags_parser.get_enforced_scopes()
                 )
-                unknown_scopes = defined_scopes - set(app.state.access_policy.scopes)
-                if unknown_scopes:
-                    logger.warning(
-                        f"The catalog database contains scopes that the access "
-                        f"policy is not configured with: {sorted(unknown_scopes)}. "
-                        f"This suggests the access tags were compiled with a "
-                        f"different scope list than the access policy's. Tag "
-                        f"grants holding these scopes may be restricted."
-                    )
+                # An empty set means the constraint could not be read at all,
+                # which says nothing about what the catalog accepts. Comparing
+                # against it would report every scope as a disagreement.
+                if enforced_scopes:
+                    unknown_scopes = enforced_scopes - {
+                        scope.value for scope in ScopeName
+                    }
+                    if unknown_scopes:
+                        logger.warning(
+                            f"The catalog database accepts scopes that this "
+                            f"version of Tiled does not define: "
+                            f"{sorted(unknown_scopes)}. If any access tag "
+                            f"grants one of these, Tiled cannot read that tag "
+                            f"at all: every permission the tag grants is lost, "
+                            f"and requests for data carrying it fail with an "
+                            f"error rather than being denied. The catalog's "
+                            f"scope constraint appears to have been altered "
+                            f"outside of a migration. The catalog schema and "
+                            f"the running version of Tiled need to be "
+                            f"reconciled."
+                        )
+                    # The opposite direction. Only scopes that the policy is
+                    # actually configured with are reported.
+                    configured_scopes = {
+                        getattr(scope, "value", scope)
+                        for scope in getattr(app.state.access_policy, "scopes", ())
+                    }
+                    unstorable_scopes = configured_scopes - enforced_scopes
+                    if unstorable_scopes:
+                        logger.warning(
+                            f"The catalog database cannot store scopes that "
+                            f"this access policy is configured to grant: "
+                            f"{sorted(unstorable_scopes)}. As a result, no "
+                            f"access tag can grant them, so every operation "
+                            f"that requires one is refused, and tag "
+                            f"definitions may fail to compile. The catalog's "
+                            f"scope constraint appears to have been altered "
+                            f"outside of a migration. The catalog schema and "
+                            f"the running version of Tiled need to be "
+                            f"reconciled."
+                        )
 
             async def purge_expired_sessions_and_api_keys():
                 PURGE_INTERVAL = 600  # seconds

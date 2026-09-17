@@ -78,3 +78,16 @@ SINGLE_USER_SCOPES: frozenset[ScopeName] = frozenset(
     )
 )
 NO_SCOPES: frozenset[ScopeName] = frozenset()
+
+
+def validate_scopes(scopes, description):
+    """
+    Raise ValueError if any of `scopes` is not a member of ScopeName.
+    """
+    known = {scope.value for scope in ScopeName}
+    unknown = {getattr(scope, "value", scope) for scope in scopes} - known
+    if unknown:
+        raise ValueError(
+            f"{description} contains {sorted(unknown)}, which are not scopes. "
+            f"Valid scopes are {sorted(known)}."
+        )
