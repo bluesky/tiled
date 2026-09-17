@@ -17,6 +17,22 @@ branch_labels = None
 depends_on = None
 
 
+def _analyze(connection, *tables):
+    """
+    Refresh planner statistics for tables this migration bulk-loaded.
+
+    PostgreSQL commits a freshly populated table with no statistics, so until
+    autovacuum happens to reach it the planner is estimating from defaults on
+    tables the server queries on every request. ANALYZE is cheap next to the
+    load itself. SQLite's ANALYZE is a different, much heavier operation whose
+    results are only consulted when a query is ambiguous, so it is skipped.
+    """
+    if connection.engine.dialect.name != "postgresql":
+        return
+    for table in tables:
+        connection.execute(sa.text(f"ANALYZE {table}"))
+
+
 def _copy_access_blobs(
     connection, source_table, association_table, owner_column, where=""
 ):
@@ -441,18 +457,11 @@ def upgrade():
             name="ck_access_blob_user_xor_tags",
         ),
     )
-    op.create_index(
-        "ix_access_blobs_username_user",
-        "access_blobs",
-        ["username"],
-        sqlite_where=sa.text("kind = 'user' AND username IS NOT NULL"),
-        postgresql_where=sa.text("kind = 'user' AND username IS NOT NULL"),
-    )
-    op.create_index(
-        "ix_access_blobs_kind_id",
-        "access_blobs",
-        ["kind", "id"],
-    )
+    # The indexes on access_blobs are created after the rows are copied in, at
+    # the end of this function. None of them is a constraint and none is used
+    # by the copy itself, which reads the owner tables and correlates through
+    # _migrate_owner; building them once over the finished table is cheaper
+    # than maintaining them row by row during the insert.
 
     op.create_table(
         "node_access_blobs",
@@ -505,14 +514,6 @@ def upgrade():
             unique=True,
         ),
     )
-    if dialect_name == "postgresql":
-        op.create_index(
-            "ix_access_blobs_tags_gin",
-            "access_blobs",
-            ["tags"],
-            postgresql_using="gin",
-            postgresql_where=sa.text("kind = 'tags' AND tags IS NOT NULL"),
-        )
     _copy_access_blobs(connection, "nodes", "node_access_blobs", "node_id")
     _copy_access_blobs(connection, "links", "link_access_blobs", "link_id")
     _copy_access_blobs(
@@ -522,6 +523,30 @@ def upgrade():
         "entity_id",
         "WHERE access_blob IS NOT NULL",
     )
+
+    # access_blobs is fully populated; build its indexes now. The GIN index in
+    # particular is far cheaper to build in bulk than to maintain during the
+    # inserts above.
+    op.create_index(
+        "ix_access_blobs_username_user",
+        "access_blobs",
+        ["username"],
+        sqlite_where=sa.text("kind = 'user' AND username IS NOT NULL"),
+        postgresql_where=sa.text("kind = 'user' AND username IS NOT NULL"),
+    )
+    op.create_index(
+        "ix_access_blobs_kind_id",
+        "access_blobs",
+        ["kind", "id"],
+    )
+    if dialect_name == "postgresql":
+        op.create_index(
+            "ix_access_blobs_tags_gin",
+            "access_blobs",
+            ["tags"],
+            postgresql_using="gin",
+            postgresql_where=sa.text("kind = 'tags' AND tags IS NOT NULL"),
+        )
 
     # Replace c31's JSON-column delegation checks before dropping that column.
     if dialect_name == "sqlite":
@@ -553,6 +578,13 @@ def upgrade():
         postgresql_using="gin",
     )
     _create_association_triggers(connection)
+    _analyze(
+        connection,
+        "access_blobs",
+        "node_access_blobs",
+        "link_access_blobs",
+        "entity_access_blobs",
+    )
 
 
 def downgrade():
