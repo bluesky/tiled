@@ -1,7 +1,7 @@
 import copy
 from collections.abc import Set
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Tuple, Union
+from typing import Any, Dict, Iterable, Iterator, List, Optional, Tuple, Union
 from urllib.parse import quote_plus
 
 import dask.dataframe
@@ -222,22 +222,24 @@ class CSVAdapter(Adapter[TableStructure]):
     def generate_data_sources(
         self,
         mimetype: str,
-        dict_or_none: Callable[[TableStructure], Dict[str, str]],
         item: Union[str, Path],
         is_directory: bool,
+        size: Optional[int] = None,
+        parameters: Optional[Dict[str, Any]] = None,
     ) -> List[DataSource[TableStructure]]:
         return [
             DataSource(
                 structure_family=StructureFamily.table,
                 mimetype=mimetype,
                 structure=self.structure(),
-                parameters={},
+                parameters=parameters or {},
                 management=Management.external,
                 assets=[
                     Asset(
                         data_uri=ensure_uri(item),
                         is_directory=is_directory,
                         parameter="data_uris",  # <-- PLURAL!
+                        size=size,
                         num=0,  # <-- denoting that the Adapter expects a list, and this is the first element
                     )
                 ],

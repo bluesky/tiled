@@ -7,6 +7,7 @@ import itertools
 import time
 import warnings
 from dataclasses import asdict
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterable, Optional, Union
 from urllib.parse import parse_qs, urlparse
 
@@ -18,13 +19,14 @@ from packaging.version import Version
 from ..iterviews import ItemsView, KeysView, ValuesView
 from ..queries import KeyLookup
 from ..query_registration import default_query_registry
-from ..structures.core import StructureFamily
+from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import DataSource
 from ..utils import (
     UNCHANGED,
     IndexersMixin,
     OneShotCachedMap,
     Sentinel,
+    ensure_uri,
     node_repr,
     safe_json_dump,
 )
@@ -496,11 +498,14 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             if direction < 0:
                 items = list(reversed(items))
             for key, item in items[start:stop]:
-                yield key, client_for_item(
-                    self.context,
-                    self.structure_clients,
-                    item,
-                    include_data_sources=self._include_data_sources,
+                yield (
+                    key,
+                    client_for_item(
+                        self.context,
+                        self.structure_clients,
+                        item,
+                        include_data_sources=self._include_data_sources,
+                    ),
                 )
             return
         if direction > 0:
@@ -536,11 +541,14 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             )
             for item in content["data"]:
                 key = item["id"]
-                yield key, client_for_item(
-                    self.context,
-                    self.structure_clients,
-                    item,
-                    include_data_sources=self._include_data_sources,
+                yield (
+                    key,
+                    client_for_item(
+                        self.context,
+                        self.structure_clients,
+                        item,
+                        include_data_sources=self._include_data_sources,
+                    ),
                 )
                 if stop is not None and next(item_counter) == stop - 1:
                     return
@@ -728,7 +736,6 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         if key is not None:
             body["id"] = key
 
-        # if check:
         if any(data_source.assets for data_source in data_sources):
             endpoint = self.uri.replace("/metadata/", "/register/", 1)
         else:
@@ -1321,6 +1328,170 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             self.path_parts,
             executor,
             self.structure_clients,
+        )
+
+    def register(
+        self,
+        *uris: Union[str, Path],
+        key: Optional[str] = None,
+        structure: Optional[Any] = None,
+        mimetype: Optional[str] = None,
+        parameters: Optional[dict[str, Any]] = None,
+        metadata: Optional[dict[str, Any]] = None,
+        specs: Optional[list[Spec]] = None,
+        access_tags: Optional[list[str]] = None,
+    ):
+        """Register externally-managed file(s) as a single dataset in this Container.
+
+        This method registers exactly the URIs (or file paths) provided as a
+        single node (array, table, etc.) -- it does not walk the subdirectories, if
+        any, and never creates a container of sub-nodes.
+
+        Multiple URIs are treated as a single dataset assembled from several files
+        (for example, a stack of TIFF images). A single URI pointing at a
+        directory (for example, a Zarr store) is registered as one dataset
+        backed by that directory.
+
+        It is assumed that the URIs are accessible from both the client (to
+        infer the structure) and the server (to serve the data).
+
+        Parameters
+        ----------
+        *uris : str or Path
+            One or more URIs or file paths. Multiple files are combined into a
+            single dataset (e.g. an image stack).
+        key : str, optional
+            The key (name) for the new node. If not provided, the server
+            assigns a random key (consistent with `write_array`,
+            `write_table`, etc.), avoiding collisions with existing nodes.
+        structure : optional
+            Override the structure inferred from the file(s). For example,
+            provide an `ArrayStructure` with a different shape to have the
+            server reshape the data when it is served. The override is checked
+            for compatibility with the file(s) (matching dtype and element
+            count for arrays; matching column count and dtypes for tables) and
+            a `ValueError` is raised if it cannot be used.
+        mimetype : str, optional
+            Override the mimetype. By default it is inferred from the file extension.
+        parameters : dict, optional
+            Extra keyword arguments for opening the file(s), forwarded to the
+            adapter both when inferring the structure client-side and when the
+            server re-opens the file(s) to serve the data. For example,
+            `parameters={"sep": ";"}` for a semicolon-delimited CSV.
+        metadata : dict, optional
+            Metadata for the node. Merged on top of any metadata read from the
+            file(s), with these values taking precedence.
+        specs : list, optional
+            Specs to assign to the new node.
+        access_tags : list, optional
+            Access tags to apply to the new node.
+
+        Returns
+        -------
+        The client for the newly-registered node.
+        """
+        from ..mimetypes import DEFAULT_REGISTRATION_ADAPTERS_BY_MIMETYPE
+        from ..storage import stat_uri
+        from ..structures.data_source import Asset, Management
+        from .register import resolve_mimetype_for_uris
+
+        if not uris:
+            raise ValueError("Provide at least one URI or file path to register.")
+        uris = [ensure_uri(uri) for uri in uris]
+
+        # Resolve the mimetype (extension-based) unless explicitly provided.
+        mimetype = mimetype or resolve_mimetype_for_uris(uris)
+
+        try:
+            adapter_class = DEFAULT_REGISTRATION_ADAPTERS_BY_MIMETYPE[mimetype]
+        except KeyError:
+            raise ValueError(f"No adapter is registered for mimetype {mimetype!r}.")
+
+        # Open the file(s) client-side to infer structure, metadata, and specs.
+        parameters = parameters or {}
+        adapter = adapter_class.from_uris(*uris, **parameters)
+
+        # Optionally override the inferred structure (e.g. to reshape on read),
+        # first checking that the provided structure can actually serve the data.
+        properties = {}
+        if structure is not None:
+            if isinstance(structure, dict):
+                structure = STRUCTURE_TYPES[adapter.structure_family].from_json(
+                    structure
+                )
+            inferred = adapter.structure()
+            if not structure.is_compatible(inferred):
+                raise ValueError(
+                    "The provided structure is not compatible with the structure "
+                    f"read from the file(s).\n  provided: {structure!r}\n  "
+                    f"inferred: {inferred!r}"
+                )
+            # When an array is reshaped/rechunked on read, record the original
+            # on-disk chunking so the server can read the file(s) correctly.
+            if (
+                adapter.structure_family == StructureFamily.array
+                and structure.chunks != inferred.chunks
+            ):
+                properties = {"chunks": inferred.chunks}
+        else:
+            structure = adapter.structure()
+
+        # Build the single DataSource describing this dataset from a list of Assets.
+        if len(uris) > 1:
+            # Multiple files form one stacked dataset: one Asset per file, all
+            # bound to the plural 'data_uris' parameter and ordered by 'num'.
+            assets = []
+            for i, uri in enumerate(uris):
+                is_directory, size = stat_uri(uri)
+                assets.append(
+                    Asset(
+                        data_uri=uri,
+                        is_directory=is_directory,
+                        size=size,
+                        parameter="data_uris",
+                        num=i,
+                    )
+                )
+        else:
+            is_directory, size = stat_uri(uris[0])
+            if hasattr(adapter, "generate_data_sources"):
+                # Let the adapter describe its own DataSource (e.g. CSV, Arrow). Only keep
+                # assets, because we may need to overwrite the structure.
+                # TODO: Drop `generate_data_sources` and unify asset parameterization (`data_uri` vs `data_uris`)
+                data_sources = adapter.generate_data_sources(
+                    mimetype,
+                    uris[0],
+                    is_directory=is_directory,
+                    size=size,
+                    parameters=parameters,
+                )
+                assets = data_sources[0].assets
+            else:
+                assets = [
+                    Asset(
+                        data_uri=uris[0],
+                        is_directory=is_directory,
+                        size=size,
+                        parameter="data_uri",
+                    )
+                ]
+        data_source = DataSource(
+            structure_family=adapter.structure_family,
+            mimetype=mimetype,
+            structure=structure,
+            parameters=parameters,
+            properties=properties,
+            management=Management.external,
+            assets=assets,
+        )
+
+        return self.new(
+            data_source.structure_family,
+            [data_source],
+            key=key,
+            metadata={**adapter.metadata(), **(metadata or {})},
+            specs=specs,
+            access_tags=access_tags,
         )
 
 

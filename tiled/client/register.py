@@ -16,7 +16,7 @@ from ..mimetypes import (
 )
 from ..structures.core import StructureFamily
 from ..structures.data_source import Asset, DataSource, Management
-from ..utils import ensure_uri, import_object
+from ..utils import ensure_uri, import_object, path_from_uri
 from .utils import ClientError
 
 logger = logging.getLogger(__name__)
@@ -323,8 +323,9 @@ async def register_single_item(
     key = settings.key_from_filename(item.name)
     if hasattr(adapter, "generate_data_sources"):
         # Let the Adapter describe the DataSouce(s).
+        size = item.stat().st_size if not is_directory else None
         data_sources = adapter.generate_data_sources(
-            mimetype, dict_or_none, item, is_directory
+            mimetype, item, is_directory, size=size
         )
     else:
         # Back-compat: Assume one Asset passed as a
@@ -370,10 +371,48 @@ IMG_SEQUENCE_EMPTY_NAME_ROOT = "_unnamed"
 IMG_SEQUENCE_MIMETYPES = {
     ".tif": "multipart/related;type=image/tiff",
     ".tiff": "multipart/related;type=image/tiff",
-    ".jpg": "multipart/related;type=image/npy",
+    ".jpg": "multipart/related;type=image/jpeg",
     ".jpeg": "multipart/related;type=image/jpeg",
     ".npy": "multipart/related;type=application/x-npy",
 }
+
+
+def resolve_mimetype_for_uris(uris, mimetypes_by_file_ext=None):
+    """Infer a single mimetype for one or more URIs from their file extensions.
+
+    All URIs must resolve to the same mimetype. For a stack of multiple image
+    files, the corresponding 'multipart/related' sequence mimetype is returned
+    (whose adapter accepts multiple URIs) rather than the single-file mimetype
+    implied by the extension.
+
+    Raises `ValueError` if a single mimetype cannot be determined.
+    """
+    mimetypes_by_file_ext = mimetypes_by_file_ext or DEFAULT_MIMETYPES_BY_FILE_EXT
+    # A Path built from each URI, used only for inspecting file extensions and
+    # names (not for filesystem access).
+    ext_paths = [path_from_uri(uri) for uri in uris]
+    mimetypes_found = {
+        resolve_mimetype(path, mimetypes_by_file_ext) for path in ext_paths
+    }
+    if len(mimetypes_found) > 1:
+        raise ValueError(
+            "Could not infer a single mimetype for the provided URIs "
+            f"(found {sorted(m for m in mimetypes_found if m)}). "
+            "Please pass the `mimetype=...` argument explicitly."
+        )
+    (mimetype,) = mimetypes_found
+    if mimetype is None:
+        raise ValueError(
+            "Could not infer a mimetype from the file extension(s). "
+            "Please pass the `mimetype=...` argument explicitly."
+        )
+    # A stack of image files is served by a distinct 'multipart/related'
+    # mimetype whose adapter accepts multiple URIs.
+    if len(uris) > 1:
+        ext = ext_paths[0].suffixes[-1] if ext_paths[0].suffixes else None
+        if ext in IMG_SEQUENCE_MIMETYPES:
+            mimetype = IMG_SEQUENCE_MIMETYPES[ext]
+    return mimetype
 
 
 async def group_image_sequences(
