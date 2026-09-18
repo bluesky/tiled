@@ -12,7 +12,7 @@ from ..server.schemas import Principal
 from ..type_aliases import AccessTags, Filters, Scopes
 from ..utils import Sentinel, import_object
 from .protocols import AccessPolicy, normalize_access_tags
-from .scopes import ALL_SCOPES, NO_SCOPES, PUBLIC_SCOPES, validate_scopes
+from .scopes import ALL_SCOPES, NO_SCOPES, PUBLIC_SCOPES, ScopeName, validate_scopes
 
 ALL_ACCESS = []
 NO_ACCESS = Sentinel("NO_ACCESS")
@@ -86,11 +86,11 @@ class TagBasedAccessPolicy(AccessPolicy):
         self.is_tag_public = self.access_tags_parser.is_tag_public
         self.get_tags_from_scope = self.access_tags_parser.get_tags_from_scope
 
-        self.read_scopes = PUBLIC_SCOPES
-        self.unremovable_scopes = ["read:metadata", "write:metadata"]
-        self.admin_scopes = ["admin:apikeys"]
+        self.read_scopes = set(PUBLIC_SCOPES)
+        self.unremovable_scopes = {ScopeName.read_metadata, ScopeName.write_metadata}
+        self.admin_scopes = {ScopeName.admin_apikeys}
         self.public_tag = "public".casefold()
-        self.invalid_tag_names = [name.casefold() for name in []]
+        self.invalid_tag_names = {name.casefold() for name in []}
 
     def _get_id(self, principal):
         for identity in principal.identities:
@@ -156,7 +156,11 @@ class TagBasedAccessPolicy(AccessPolicy):
                         raise ValueError(
                             f"Cannot apply tag to node: API key is restricted to access tags: {authn_access_tags}."
                         )
-                if tag.casefold() == self.public_tag:
+                if tag.casefold() in self.invalid_tag_names:
+                    raise ValueError(
+                        f"Cannot apply tag to node: '{tag}' is not a valid tag name."
+                    )
+                elif tag.casefold() == self.public_tag:
                     include_public_tag = True
                     if not self._is_admin(authn_scopes):
                         raise ValueError(
@@ -170,10 +174,6 @@ class TagBasedAccessPolicy(AccessPolicy):
                         raise ValueError(
                             f"Cannot apply tag to node: user='{identifier}' is not an owner of {tag=}"
                         )
-                elif tag.casefold() in self.invalid_tag_names:
-                    raise ValueError(
-                        f"Cannot apply tag to node: '{tag}' is not a valid tag name."
-                    )
 
             access_tags_from_policy = {
                 tag for tag in access_tags if tag.casefold() != self.public_tag
@@ -194,7 +194,8 @@ class TagBasedAccessPolicy(AccessPolicy):
                     raise ValueError(
                         f"Cannot init node with tags: operation does not grant necessary scopes.\n"
                         f"The resulting access_tags would be: {access_tags_from_policy}\n"
-                        f"These access tags do not confer the minimum scopes: {self.unremovable_scopes}"
+                        f"These access tags do not confer the minimum scopes: "
+                        f"{sorted(scope.value for scope in self.unremovable_scopes)}"
                     )
         else:
             if (
@@ -272,6 +273,10 @@ class TagBasedAccessPolicy(AccessPolicy):
                     tag.casefold() == self.public_tag
                 )
                 continue
+            elif tag.casefold() in self.invalid_tag_names:
+                raise ValueError(
+                    f"Cannot apply tag to node: '{tag}' is not a valid tag name."
+                )
             elif tag.casefold() == self.public_tag:
                 include_public_tag = True
                 if not self._is_admin(authn_scopes):
@@ -286,10 +291,6 @@ class TagBasedAccessPolicy(AccessPolicy):
                     raise ValueError(
                         f"Cannot apply tag to node: user='{identifier}' is not an owner of {tag=}"
                     )
-            elif tag.casefold() in self.invalid_tag_names:
-                raise ValueError(
-                    f"Cannot apply tag to node: '{tag}' is not a valid tag name."
-                )
 
         access_tags_from_policy = {
             tag for tag in access_tags if tag.casefold() != self.public_tag
@@ -308,7 +309,11 @@ class TagBasedAccessPolicy(AccessPolicy):
             if tag in self._get_principal_tag(principal.type, identifier):
                 # A principal intrinsically owns its own principal tag
                 continue
-            if tag == self.public_tag:
+            if tag.casefold() in self.invalid_tag_names:
+                raise ValueError(
+                    f"Cannot remove tag from node: '{tag}' is not a valid tag name."
+                )
+            elif tag == self.public_tag:
                 if not self._is_admin(authn_scopes):
                     raise ValueError(
                         "Cannot remove 'public' tag from node: only Tiled admins can remove the 'public' tag."
@@ -321,10 +326,6 @@ class TagBasedAccessPolicy(AccessPolicy):
                     raise ValueError(
                         f"Cannot remove tag from node: user='{identifier}' is not an owner of {tag=}"
                     )
-            elif tag.casefold() in self.invalid_tag_names:
-                raise ValueError(
-                    f"Cannot remove tag from node: '{tag}' is not a valid tag name."
-                )
 
         access_tags_from_policy = normalize_access_tags(access_tags_from_policy)
         access_tags_modified = access_tags != access_tags_from_policy
@@ -342,7 +343,8 @@ class TagBasedAccessPolicy(AccessPolicy):
                     f"Cannot modify tags on node: operation removes unremovable scopes.\n"
                     f"The current access tags on this Node are: {node.access_tags}\n"
                     f"The new access_tags would be: {access_tags_from_policy}\n"
-                    f"These scopes cannot be self-removed: {self.unremovable_scopes}"
+                    f"These scopes cannot be self-removed: "
+                    f"{sorted(scope.value for scope in self.unremovable_scopes)}"
                 )
 
         logger.info(
