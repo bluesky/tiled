@@ -147,6 +147,18 @@
 #   secret_keys:
 #     - ${TILED_WEBHOOK_SECRET_KEY}
 #
+#   # Networks to which webhooks must not be delivered. The entire list already
+#   # includes host ranges that are typically blocked.
+#   # Env: TILED_WEBHOOKS_BLOCKED_NETWORKS
+#   # blocked_networks:
+#   #   - "a.b.c.d/16"
+#
+#   # Webhooks must be delivered to these hosts, whether they are in the
+#   # ranges of the blocked_networks list or not.
+#   # Env: TILED_WEBHOOKS_ALLOW_DELIVERY_HOSTS
+#   # allow_delivery_hosts:
+#   #  - myhost.nsls2.bnl.gov
+#
 #   # Allow webhook URLs to use plain HTTP instead of HTTPS.
 #   # Default: false.  Enable for containerized / local development setups.
 #   # Env: TILED_WEBHOOKS_ALLOW_HTTP

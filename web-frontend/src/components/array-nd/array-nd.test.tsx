@@ -26,12 +26,14 @@ const mockObjectUrl = "blob:http://localhost/fake";
 globalThis.URL.createObjectURL = vi.fn().mockReturnValue(mockObjectUrl);
 globalThis.URL.revokeObjectURL = vi.fn();
 
-// Mock HTMLCanvasElement.getContext so canvas rendering doesn't throw in jsdom
+// Mock HTMLCanvasElement.getContext so canvas rendering doesn't throw in jsdom.
+// we add putImageData to check if rendering happened
+const putImageData = vi.fn();
 HTMLCanvasElement.prototype.getContext = vi.fn(() => ({
   createImageData: (w: number, h: number) => ({
     data: new Uint8ClampedArray(w * h * 4),
   }),
-  putImageData: vi.fn(),
+  putImageData,
 })) as any;
 
 const fakeBlob = new Blob(["fake-image"], { type: "image/png" });
@@ -40,6 +42,7 @@ const fakeBuffer = new Float32Array([0, 0.5, 1]).buffer;
 describe("ArrayND", () => {
   beforeEach(() => {
     mockGet.mockClear();
+    putImageData.mockClear();
     // Return PNG blob for image/png requests, ArrayBuffer for octet-stream
     mockGet.mockImplementation((url: string) => {
       if (url.includes("format=image/png")) {
@@ -208,5 +211,58 @@ describe("ArrayND", () => {
     render(<ArrayND {...props} />);
     expect(screen.queryByLabelText(/colormap/i)).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/log scale/i)).not.toBeInTheDocument();
+  });
+
+  // -------------------------------------------------------------------------
+  // NaN handling
+  // -------------------------------------------------------------------------
+
+  // A 2-D float slice, so `n` matches W * H exactly and no sliders appear.
+  const props2d = (values: number[]) => {
+    mockGet.mockImplementation(() =>
+      Promise.resolve({ data: new Float32Array(values).buffer }),
+    );
+    return {
+      ...baseProps,
+      structure: { ...baseProps.structure, shape: [2, 2] },
+    };
+  };
+
+  it("draws a slice that contains NaN", async () => {
+    render(<ArrayND {...props2d([0, NaN, 2, 3])} />);
+    await waitFor(() => expect(putImageData).toHaveBeenCalled());
+  });
+
+  it("renders NaN as a transparent pixel and finite values as opaque", async () => {
+    render(<ArrayND {...props2d([0, NaN, 2, 3])} />);
+    await waitFor(() => expect(putImageData).toHaveBeenCalled());
+    const px = putImageData.mock.calls[0][0].data as Uint8ClampedArray;
+    expect(px[0 * 4 + 3]).toBe(255); // 0   -> opaque
+    expect(px[1 * 4 + 3]).toBe(0); //   NaN -> transparent
+    expect(px[2 * 4 + 3]).toBe(255); // 2   -> opaque
+    expect(px[3 * 4 + 3]).toBe(255); // 3   -> opaque
+  });
+
+  it("draws an all-NaN slice without crashing", async () => {
+    render(<ArrayND {...props2d([NaN, NaN, NaN, NaN])} />);
+    await waitFor(() => expect(putImageData).toHaveBeenCalled());
+    const px = putImageData.mock.calls[0][0].data as Uint8ClampedArray;
+    for (let i = 0; i < 4; i++) {
+      expect(px[i * 4 + 3]).toBe(0);
+    }
+  });
+
+  it("clamps infinities to the ends of the colormap", async () => {
+    render(<ArrayND {...props2d([-Infinity, 0, 1, Infinity])} />);
+    await waitFor(() => expect(putImageData).toHaveBeenCalled());
+    const px = putImageData.mock.calls.at(-1)![0].data as Uint8ClampedArray;
+    // Infinities are clamped, not treated as missing data.
+    for (let i = 0; i < 4; i++) {
+      expect(px[i * 4 + 3]).toBe(255);
+    }
+    // -Infinity gets the same color as the minimum (0), +Infinity the same as
+    // the maximum (1). Holds under both linear and log scaling.
+    expect([px[0], px[1], px[2]]).toEqual([px[4], px[5], px[6]]);
+    expect([px[12], px[13], px[14]]).toEqual([px[8], px[9], px[10]]);
   });
 });

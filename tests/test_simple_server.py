@@ -10,6 +10,7 @@ from pathlib import Path
 import httpx
 import pyarrow
 import pytest
+from websockets.frames import CloseCode
 
 from tiled.client import SERVERS, from_uri, simple
 from tiled.client.register import register
@@ -222,3 +223,54 @@ def test_whoami_failing_gracefully(capsys):
         ):
             client = from_uri(server.uri)
             client.context.whoami()
+
+
+@pytest.mark.parametrize("disconnect_first", [False, True])
+def test_close_with_open_streaming_subscription_does_not_hang(
+    tmp_path: Path, disconnect_first: bool
+):
+    """With a streaming subscription, server.close() should not hang, whether or
+    not the client disconnects the subscription before the server closes."""
+
+    server = SimpleTiledServer(directory=tmp_path)
+    client = from_uri(server.uri)
+    node = client.write_array([1, 2, 3], key="x")
+
+    subscription = node.subscribe().start_in_thread(max_size=10_000_000)
+    # Hold a reference to the live underlying connection. The Subscription would
+    # otherwise auto-reconnect on the 1012 close and replace it, hiding the code.
+    underlying = subscription._websocket._websocket
+    # Give the websocket a moment to finish connecting on the server side.
+    time.sleep(1.0)
+
+    if disconnect_first:
+        subscription.disconnect()
+
+    # Close on a watchdog thread so a hang surfaces as a test failure rather
+    # than blocking the entire test suite indefinitely.
+    closed = threading.Event()
+
+    def _close():
+        server.close()
+        closed.set()
+
+    closer = threading.Thread(target=_close, daemon=True)
+    closer.start()
+    try:
+        assert closed.wait(
+            timeout=30
+        ), "server.close() hung with a streaming subscription"
+        if not disconnect_first:
+            # With the subscription still open, uvicorn closes the websocket with
+            # SERVICE_RESTART (1012) on shutdown. Wait for the closing handshake
+            # to be recorded on the connection.
+            wait_until = time.monotonic() + 10
+            while underlying.close_code is None and time.monotonic() < wait_until:
+                time.sleep(0.05)
+            assert underlying.close_code == CloseCode.SERVICE_RESTART
+    finally:
+        try:
+            subscription.disconnect()
+        except Exception:
+            pass
+        closer.join(timeout=5)

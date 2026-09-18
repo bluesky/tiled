@@ -168,8 +168,13 @@ async def _execute(query, context, variables=None):
     return result
 
 
-async def _insert_node(store, node_id, access_blob, key="node", parent=None):
-    """Insert a synthetic catalog node row for entity/node delegation tests."""
+async def _insert_node(store, node_id, access_blob, key="node", parent=0):
+    """Insert a synthetic catalog node row for entity/node delegation tests.
+
+    Nodes are placed under the catalog root (parent=0) so that they are
+    reachable by path via the store's `resolve_node_id`, matching how real
+    catalog nodes are laid out.
+    """
     async with store._engine.begin() as conn:
         await conn.execute(
             sa_insert(_nodes).values(
@@ -521,7 +526,7 @@ async def test_create_entity_rejects_node_id_with_access_blob(store, policy):
             "input": {
                 "entityType": "sample",
                 "name": "bad",
-                "nodeId": 1,
+                "nodePathParts": ["node"],
                 "accessBlob": {"tags": ["team"]},
             }
         },
@@ -540,7 +545,13 @@ async def test_update_entity_rejects_setting_access_blob_on_node_linked_entity(
     created = await _execute(
         CREATE_ENTITY_MUTATION,
         alice_ctx,
-        {"input": {"entityType": "sample", "name": "linked", "nodeId": 1}},
+        {
+            "input": {
+                "entityType": "sample",
+                "name": "linked",
+                "nodePathParts": ["node"],
+            }
+        },
     )
     assert created.errors is None
     entity_id = created.data["createEntity"]["id"]
@@ -562,8 +573,8 @@ async def test_update_entity_rejects_setting_access_blob_on_node_linked_entity(
 @pytest.mark.asyncio
 async def test_update_entity_detaching_node_reinitializes_access_blob(store, policy):
     """
-    Detaching node_id (setting it to null) with no access_blob supplied in
-    the same call must not leave the entity with node_id=None AND
+    Detaching a node binding (setting node_path_parts to null) with no access_blob
+    supplied in the same call must not leave the entity with node_id=None AND
     access_blob=None -- that would make it invisible to everyone.
     """
     await _insert_node(store, 1, {"tags": ["team"]})
@@ -572,7 +583,13 @@ async def test_update_entity_detaching_node_reinitializes_access_blob(store, pol
     created = await _execute(
         CREATE_ENTITY_MUTATION,
         alice_ctx,
-        {"input": {"entityType": "sample", "name": "linked", "nodeId": 1}},
+        {
+            "input": {
+                "entityType": "sample",
+                "name": "linked",
+                "nodePathParts": ["node"],
+            }
+        },
     )
     assert created.errors is None
     entity_id = created.data["createEntity"]["id"]
@@ -583,7 +600,7 @@ async def test_update_entity_detaching_node_reinitializes_access_blob(store, pol
     }
     """
     detached = await _execute(
-        update_mutation, alice_ctx, {"id": entity_id, "input": {"nodeId": None}}
+        update_mutation, alice_ctx, {"id": entity_id, "input": {"nodePathParts": None}}
     )
     assert detached.errors is None
 

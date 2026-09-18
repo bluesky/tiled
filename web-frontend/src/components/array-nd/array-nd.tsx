@@ -235,7 +235,11 @@ const PngImageDisplay: React.FunctionComponent<PngImageDisplayProps> = (
         objectUrl = URL.createObjectURL(resp.data);
         setBlobUrl(objectUrl);
       })
-      .catch(() => {});
+      .catch((err) => {
+        if (!controller.signal.aborted) {
+          console.error("Failed to render array as PNG:", err);
+        }
+      });
     return () => {
       controller.abort();
       if (objectUrl) URL.revokeObjectURL(objectUrl);
@@ -308,6 +312,43 @@ function suggestSettings(raw: ArrayLike<number>): { logScale: boolean; colormap:
   const logScale = hiS > 10 * (p99S + 1e-6);
   const colormap: ColormapName = logScale ? "viridis" : "gray";
   return { logScale, colormap };
+}
+
+/**
+ * Min/max over the finite entries of `raw`, adjusted so that (hi - lo) is
+ * always a usable positive span:
+ *
+ *   - nothing finite (e.g. an all-NaN slice)  ->  [0, 1]
+ *   - constant slice                          ->  [lo, lo + 1]
+ */
+function finiteRange(raw: ArrayLike<number>): [number, number] {
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (let i = 0; i < raw.length; i++) {
+    const v = raw[i];
+    if (isFinite(v)) {
+      if (v < lo) lo = v;
+      if (v > hi) hi = v;
+    }
+  }
+  if (!isFinite(lo)) return [0, 1];
+  if (lo === hi) return [lo, lo + 1];
+  return [lo, hi];
+}
+
+/**
+ * Normalise `v` against [lo, hi] and map it to a colormap index in [0, 255].
+ * Callers must screen out NaN first; ±Infinity clamps to the ends.
+ */
+function lutIndex(v: number, lo: number, hi: number, logScale: boolean): number {
+  // Shift to positive before log: log1p(v - lo) / log1p(hi - lo)
+  const t = logScale
+    ? Math.log1p(v - lo) / Math.log1p(hi - lo)
+    : (v - lo) / (hi - lo);
+  // log1p is NaN below -1, so v === -Infinity lands here under log scale.
+  // Math.min/max would propagate that NaN, so fold it to the low end.
+  if (Number.isNaN(t)) return 0;
+  return Math.min(255, Math.max(0, Math.round(t * 255)));
 }
 
 /**
@@ -388,17 +429,7 @@ const GrayscaleImageDisplay: React.FunctionComponent<
         }
 
         // --- Normalise to [0, 255] ----------------------------------------
-        // Find finite min/max (skip NaN/Inf for float arrays)
-        let lo = Infinity;
-        let hi = -Infinity;
-        for (let i = 0; i < n; i++) {
-          const v = raw[i];
-          if (isFinite(v)) {
-            if (v < lo) lo = v;
-            if (v > hi) hi = v;
-          }
-        }
-        if (lo === hi) hi = lo + 1; // avoid divide-by-zero for constant arrays
+        const [lo, hi] = finiteRange(raw);
 
         const lut = COLORMAPS[colormap];
 
@@ -418,16 +449,12 @@ const GrayscaleImageDisplay: React.FunctionComponent<
         const px = imgData.data; // Uint8ClampedArray, 4 bytes per pixel (RGBA)
 
         for (let i = 0; i < n; i++) {
-          let v = raw[i];
-          if (logScale) {
-            // Shift to positive before log: log1p(v - lo) / log1p(hi - lo)
-            v = Math.log1p(v - lo) / Math.log1p(hi - lo);
-          } else {
-            v = (v - lo) / (hi - lo);
-          }
-          // Clamp and map to [0, 255]
-          const idx = Math.min(255, Math.max(0, Math.round(v * 255)));
-          const [r, g, b] = lut[idx];
+          const v = raw[i];
+          // NaN means missing data. createImageData zero-fills, i.e. every
+          // pixel starts out transparent, so skipping the write leaves a hole
+          // rather than a real value at one end of the colormap.
+          if (Number.isNaN(v)) continue;
+          const [r, g, b] = lut[lutIndex(v, lo, hi, logScale)];
           const p = i * 4;
           px[p] = r;
           px[p + 1] = g;
@@ -436,7 +463,11 @@ const GrayscaleImageDisplay: React.FunctionComponent<
         }
         ctx.putImageData(imgData, 0, 0);
       })
-      .catch(() => {});
+      .catch((err) => {
+        if (!controller.signal.aborted) {
+          console.error("Failed to render array to canvas:", err);
+        }
+      });
     return () => controller.abort();
   }, [url, colormap, logScale, dataType?.kind, dataType?.itemsize, stride, structure]);
 

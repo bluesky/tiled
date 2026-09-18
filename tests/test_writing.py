@@ -6,6 +6,7 @@ Persistent stores are being developed externally to the tiled package.
 
 import base64
 import collections
+import json
 import math
 import os
 import pathlib
@@ -15,6 +16,7 @@ from datetime import datetime
 from urllib.parse import urljoin, urlparse
 
 import awkward
+import boto3
 import dask.dataframe
 import numpy
 import pandas
@@ -22,8 +24,7 @@ import pandas.testing
 import pyarrow
 import pytest
 import sparse
-from minio import Minio
-from minio.error import S3Error
+from botocore.exceptions import ClientError as BotoClientError
 from pandas.testing import assert_frame_equal
 from starlette.status import (
     HTTP_404_NOT_FOUND,
@@ -54,34 +55,36 @@ validation_registry.register("SomeSpec", lambda *args, **kwargs: None)
 
 
 @pytest.fixture
-def tmp_minio_bucket():
-    """Create a temporary MinIO bucket and clean it up after tests."""
+def tmp_s3_bucket():
+    """Create a temporary S3 bucket and clean it up after tests."""
     if uri := os.getenv("TILED_TEST_BUCKET"):
         clean_uri, username, password = sanitize_uri(uri)
-        minio_client = Minio(
-            endpoint=urlparse(clean_uri).netloc,  # e.g. only "localhost:9000"
-            access_key=username or "minioadmin",
-            secret_key=password or "minioadmin",
-            secure=False,
+        parsed = urlparse(clean_uri)
+        s3 = boto3.client(
+            "s3",
+            endpoint_url=f"{parsed.scheme}://{parsed.netloc}",
+            aws_access_key_id=username or "bucketadmin",
+            aws_secret_access_key=password or "bucketadmin",
+            region_name="us-east-1",
         )
 
         bucket_name = f"test-{uuid.uuid4().hex}"
-        minio_client.make_bucket(bucket_name=bucket_name)
+        s3.create_bucket(Bucket=bucket_name)
 
         try:
             yield urljoin(uri, "/" + bucket_name)  # full URI with credentials
         finally:
             # Cleanup: remove all objects and delete the bucket
             try:
-                objects = minio_client.list_objects(
-                    bucket_name=bucket_name, recursive=True
-                )
-                for obj in objects:
-                    minio_client.remove_object(
-                        bucket_name=bucket_name, object_name=obj.object_name
-                    )
-                minio_client.remove_bucket(bucket_name=bucket_name)
-            except S3Error as e:
+                paginator = s3.get_paginator("list_objects_v2")
+                for page in paginator.paginate(Bucket=bucket_name):
+                    objects = [{"Key": o["Key"]} for o in page.get("Contents", [])]
+                    if objects:
+                        s3.delete_objects(
+                            Bucket=bucket_name, Delete={"Objects": objects}
+                        )
+                s3.delete_bucket(Bucket=bucket_name)
+            except BotoClientError as e:
                 print(f"Warning: failed to delete test bucket {bucket_name}: {e}")
 
     else:
@@ -89,14 +92,14 @@ def tmp_minio_bucket():
 
 
 @pytest.fixture
-def tree(tmpdir, tmp_minio_bucket):
+def tree(tmpdir, tmp_s3_bucket):
     writable_storage = [f"duckdb:///{tmpdir / 'data.duckdb'}"]
 
-    if tmp_minio_bucket:
+    if tmp_s3_bucket:
         writable_storage.append(
             {
                 "provider": "s3",
-                "uri": tmp_minio_bucket,
+                "uri": tmp_s3_bucket,
                 "config": {
                     "virtual_hosted_style_request": False,
                     "client_options": {"allow_http": True},
@@ -832,6 +835,30 @@ async def test_container_export(tree, buffer):
         a = client.create_container("a")
         a.write_array([1, 2, 3], key="b")
         client.export(buffer, format="application/json")
+
+
+@pytest.mark.parametrize("media_type", ["application/json", "application/json-seq"])
+def test_table_bytes_column_json_export(tree, buffer, media_type):
+    "Binary columns are decoded to text so they can be JSON-serialized."
+    # b"\xff\xfe" is not valid UTF-8; it exercises the latin-1 fallback.
+    df = pandas.DataFrame(
+        {
+            "label": [b"abc", "café".encode(), b"\xff\xfe"],
+            "n": [1, 2, 3],
+        }
+    )
+    expected = ["abc", "café", b"\xff\xfe".decode("latin-1")]
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        client.write_table(df, key="t")
+        client["t"].export(buffer, format=media_type)
+        payload = buffer.getvalue().decode("utf-8")
+
+    if media_type == "application/json":
+        assert json.loads(payload)["label"] == expected
+    else:
+        rows = [json.loads(line) for line in payload.splitlines()]
+        assert [row["label"] for row in rows] == expected
 
 
 def test_write_with_specified_mimetype(tree):

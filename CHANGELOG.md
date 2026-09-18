@@ -11,8 +11,46 @@ Write the date in place of the "Unreleased" in the case a new version is release
   server-accessible files as a single dataset (array, table, etc.).
 - Add registration support for Parquet files.
 
+### Changed
+
+- Object-storage (S3) tests now run against an in-process `moto` S3 server
+  started automatically by the test suite, instead of requiring a MinIO
+  container (whose image was removed from Docker Hub). Set `TILED_TEST_BUCKET`
+  to point the tests at a real MinIO/S3 endpoint instead.
+
 ### Fixed
 
+- Extend to zarr routes the previous fix for reads of array data whose
+  on-disk shape has diverged from the shape recorded in the catalog
+  structure, which can happen while an array is being extended
+  (e.g. streaming appends).
+
+## v0.2.18 (2026-09-02)
+
+### Changed
+
+- Refactor the experimental graph API to tie entities to catalog nodes by
+  `nodePathParts` (a list of key segments) instead of by the internal `nodeId`.
+  Internal catalog node ids are no longer exposed to clients: `createEntity`
+  and `updateEntity` take a `nodePathParts` and the server resolves it to the
+  node's id, the `catalogNodeId` query is removed, and an entity now reports a
+  read-only boolean `isNodeBound` in place of `nodeId`. Passing a
+  `nodePathParts` that names no existing node raises an error.
+
+### Fixed
+
+- Fix `TypeError: Type is not JSON serializable: bytes` when serializing a
+  table with a bytes-dtype (numpy `S`) column to `application/json` or
+  `application/json-seq`. Such values are now decoded to strings.
+- Fix reads of array data whose on-disk shape has diverged from the shape
+  recorded in the catalog structure, which can happen while an array is being
+  extended (e.g. streaming appends).
+- Fix a regression where opening a URL with an `?api_key=...` query parameter
+  in the web UI redirected to the login page instead of authenticating. This
+  now also works in single-user (`--api-key`) mode, where the server exposes no
+  `/auth` routes: the web UI detects the API-key cookie session by probing a
+  protected endpoint rather than `/auth/whoami`.
+- Reading of individual partitions of multi-partitioned tables.
 - Fix the client showing a spurious "Retrying…" indicator (and a misleading
   "Retry scheduled" debug log) when a request failed with a *non-retryable*
   error, such as a 4xx response or `CannotRefreshAuthentication` during a normal
@@ -20,6 +58,21 @@ Write the date in place of the "Unreleased" in the case a new version is release
   exception before deciding whether to retry, so the indicator was being driven
   off exception capture rather than an actual retry. The indicator now appears
   only when a retry genuinely occurs.
+- Render `NaN` as transparent pixels.
+- Fix client-side reading of reversed array slices that reach the start of an
+  axis (e.g. `arr[::-1]`) when the selection is large enough to be fetched in
+  multiple requests.
+- Fixed regression in configuration parser, which had mistyped the catalog
+  configuration `adapter_by_mimetype` resulting in a spurious error.
+- Resolve issue where creating a streaming subscription would cause the server
+  to hang indefinitely on close. Added an additional asyncio task that watches
+  for disconnects and breaks out of the `buffer_live_events` loop when the
+  connection is closed. Also added a test to verify that `server.close()` does
+  not hang with an open streaming subscription.
+
+## v0.2.17 (2026-08-25)
+
+### Fixed
 
 - Fix the client ignoring the `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY`
   environment variables. Because Tiled supplies a custom `httpx` transport (to
@@ -30,7 +83,6 @@ Write the date in place of the "Unreleased" in the case a new version is release
   `from_uri`. As part of this fix, the client's `verify` setting is now applied
   to the underlying transport (previously it was silently ignored when the
   custom transport was in use).
-
 - Fix `check_scopes` incorrectly requiring every request under a
   `ProxiedOIDCAuthenticator` (e.g. `EntraAuthenticator`) to carry the full set
   of scopes known to the authenticator (the union of all scopes in
@@ -84,6 +136,9 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Fixed
 
+- Improve webhook handling to enable adding additional blocked networks and
+  allow specification of hostnames that are allowed to receive webhooks despite being
+  on a blocked network.
 - Fix the `raw_export` download progress bar, which showed a wrong total (e.g.
   `1,257,333,024/100 bytes`) and did not advance during the transfer. The bar
   now seeds each task's total from the known asset size, and raw-asset downloads
