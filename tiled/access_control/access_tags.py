@@ -453,7 +453,7 @@ class AccessTagsCompiler:
 
         self.max_tag_nesting = max(self._MAX_TAG_NESTING, 0)
         self.public_tag = intern("public".casefold())
-        self.invalid_tag_names = [name.casefold() for name in []]
+        self.invalid_tag_names = {name.casefold() for name in []}
 
         self.roles = {}
         self.config_tags = {}
@@ -483,11 +483,15 @@ class AccessTagsCompiler:
             self.config_tags.update(tag_definitions["tags"])
             self.tag_owners.update(tag_definitions.get("tag_owners", {}))
 
-    def _dfs(self, current_tag, tags, seen_tags, nested_level=0):
+    def _dfs(self, current_tag, tags, seen_tags, nested_level=0, path=()):
         if current_tag in self.compiled_tags:
             return self.compiled_tags[current_tag], current_tag in self.compiled_public
         if current_tag in seen_tags:
-            return {}, False
+            # seen_tags only ever holds tags still on the stack: anything that
+            # finished is in compiled_tags and returns above. So this is a cycle.
+            cycle_start = path.index(current_tag)
+            cycle = " -> ".join(path[cycle_start:] + (current_tag,))
+            raise ValueError(f"Cycle detected in auto_tags: {cycle}")
         if nested_level > self.max_tag_nesting:
             raise RecursionError(
                 f"Exceeded maximum tag nesting of {self.max_tag_nesting} levels"
@@ -502,10 +506,12 @@ class AccessTagsCompiler:
                 continue
             try:
                 child_users, child_public = self._dfs(
-                    tag, tags, seen_tags, nested_level + 1
+                    tag, tags, seen_tags, nested_level + 1, path + (current_tag,)
                 )
                 public_auto_tag = public_auto_tag or child_public
-                users.update(child_users)
+                # Construct fresh set object from cache entry
+                for child_username, child_scopes in child_users.items():
+                    users.setdefault(child_username, set()).update(child_scopes)
             except (RecursionError, ValueError) as e:
                 raise RuntimeError(
                     f"Tag compilation failed at tag: {current_tag}"
@@ -526,11 +532,14 @@ class AccessTagsCompiler:
                         f"Must define either 'scopes' or 'role' for a user. {username=}"
                     )
 
-                user_scopes = set(
-                    self.roles[user["role"]]["scopes"]
-                    if ("role" in user) and (user["role"] in self.roles)
-                    else user.get("scopes", [])
-                )
+                if "role" in user:
+                    if user["role"] not in self.roles:
+                        raise ValueError(
+                            f"Role is not defined. {username=} role={user['role']!r}"
+                        )
+                    user_scopes = set(self.roles[user["role"]]["scopes"])
+                else:
+                    user_scopes = set(user["scopes"] or [])
                 if not user_scopes:
                     raise ValueError(f"Scopes must not be empty. {username=}")
                 if not user_scopes.issubset(self.scopes):
@@ -553,11 +562,14 @@ class AccessTagsCompiler:
                         f"Must define either 'scopes' or 'role' for a group. {groupname=}"
                     )
 
-                group_scopes = set(
-                    self.roles[group["role"]]["scopes"]
-                    if ("role" in group) and (group["role"] in self.roles)
-                    else group.get("scopes", [])
-                )
+                if "role" in group:
+                    if group["role"] not in self.roles:
+                        raise ValueError(
+                            f"Role is not defined. {groupname=} role={group['role']!r}"
+                        )
+                    group_scopes = set(self.roles[group["role"]]["scopes"])
+                else:
+                    group_scopes = set(group["scopes"] or [])
                 if not group_scopes:
                     raise ValueError(f"Scopes must not be empty. {groupname=}")
                 if not group_scopes.issubset(self.scopes):
@@ -580,8 +592,12 @@ class AccessTagsCompiler:
                         users.setdefault(username, set())
                         users[username].update(group_scopes)
 
-        self.compiled_tags[current_tag] = users
-        return users, public_auto_tag
+        # Freeze the scope sets before publishing them to the cache.
+        frozen_users = {
+            username: frozenset(scopes) for username, scopes in users.items()
+        }
+        self.compiled_tags[current_tag] = frozen_users
+        return frozen_users, public_auto_tag
 
     async def load_principal_tags(self):
         """
@@ -767,7 +783,7 @@ class AccessTagsCompiler:
                 )
             if tag.casefold() in self.invalid_tag_names:
                 raise ValueError(
-                    f"Tag 'tag' is an invalid tag name.\n"
+                    f"Tag '{tag}' is an invalid tag name.\n"
                     f"The invalid tag names are: {self.invalid_tag_names}"
                 )
             adjacent_tags[tag] = set()

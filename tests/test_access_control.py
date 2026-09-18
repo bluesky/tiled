@@ -868,6 +868,116 @@ def test_access_tag_compiler(compile_access_tags_tables_with_reset, catalog_uri)
     assert not _principal_has_scope_on_access_tag(catalog_uri, "chemists_tag", "kate")
 
 
+def _compile_in_memory_sqlite(tag_config):
+    """
+    Compile a tag config into a private in-memory catalog database and hand
+    back the compiler, whose engine stays open for the test to query.
+
+    These tests exercise the compiler alone, so they skip _compiler_run's
+    fresh-engine-per-call dance, which is there for the app-backed tests.
+    """
+    settings = DatabaseSettings(uri="sqlite+aiosqlite:///:memory:")
+    # Callers would share a cached engine, so drop the one an
+    # earlier test left behind and start from an empty database.
+    asyncio.run(close_database_connection_pool(settings))
+    compiler = AccessTagsCompiler(ALL_SCOPES, tag_config, settings, group_parser)
+    compiler.load_tag_config()
+    asyncio.run(compiler.compile())
+    return compiler
+
+
+def test_auto_tag_does_not_leak_scopes_to_inherited_tag():
+    """A tag must not gain scopes granted by tags that inherit it.
+
+    'proposal_processed' elevates sue to facility_admin. That must not
+    reach back into 'beamline_staff', which grants sue read-only, nor
+    sideways into 'proposal_raw', which merely inherits 'beamline_staff'.
+    """
+    tag_config = {
+        "roles": {
+            "facility_user": {"scopes": ["read:data", "read:metadata"]},
+            "facility_admin": {
+                "scopes": ["read:data", "read:metadata", "write:data", "delete:node"]
+            },
+        },
+        "tags": {
+            "beamline_staff": {"users": [{"name": "sue", "role": "facility_user"}]},
+            "proposal_raw": {"auto_tags": [{"name": "beamline_staff"}]},
+            "proposal_processed": {
+                "auto_tags": [{"name": "beamline_staff"}],
+                "users": [{"name": "sue", "role": "facility_admin"}],
+            },
+        },
+    }
+    compiler = _compile_in_memory_sqlite(tag_config)
+
+    read_only = {"read:data", "read:metadata"}
+    assert compiler.compiled_tags["beamline_staff"]["sue"] == read_only
+    assert compiler.compiled_tags["proposal_raw"]["sue"] == read_only
+    assert compiler.compiled_tags["proposal_processed"]["sue"] == {
+        "read:data",
+        "read:metadata",
+        "write:data",
+        "delete:node",
+    }
+
+    # The elevated scopes must not be persisted for the inherited tags either.
+    async def _tags_granting_sue_delete():
+        async with compiler._engine.begin() as connection:
+            result = await connection.execute(
+                text(
+                    "SELECT t.name "
+                    "FROM access_tag_principal_scopes_association aps "
+                    "JOIN access_tags t ON t.id = aps.tag_id "
+                    "JOIN access_tags_principals p ON p.id = aps.principal_id "
+                    "WHERE p.name = :p AND aps.scope = :s"
+                ),
+                {"p": "sue", "s": "delete:node"},
+            )
+            return {name for (name,) in result.all()}
+
+    assert asyncio.run(_tags_granting_sue_delete()) == {"proposal_processed"}
+
+
+def test_auto_tags_union_scopes_from_sibling_tags():
+    """A tag inheriting two tags must receive the union of their scopes."""
+    tag_config = {
+        "tags": {
+            "readers": {"users": [{"name": "alice", "scopes": ["read:data"]}]},
+            "writers": {"users": [{"name": "alice", "scopes": ["write:data"]}]},
+            "both": {
+                "auto_tags": [{"name": "readers"}, {"name": "writers"}],
+            },
+        },
+    }
+    compiler = _compile_in_memory_sqlite(tag_config)
+
+    assert compiler.compiled_tags["both"]["alice"] == {"read:data", "write:data"}
+    # The contributing tags keep exactly what they declared.
+    assert compiler.compiled_tags["readers"]["alice"] == {"read:data"}
+    assert compiler.compiled_tags["writers"]["alice"] == {"write:data"}
+
+
+def test_compiled_tag_scopes_are_immutable():
+    """Cached scope sets are handed out by reference, so they must be frozen.
+
+    This is the guard that turns any future re-introduction of cross-tag
+    aliasing into an immediate error rather than silent privilege escalation.
+    """
+    tag_config = {
+        "tags": {
+            "base": {"users": [{"name": "alice", "scopes": ["read:data"]}]},
+            "derived": {"auto_tags": [{"name": "base"}]},
+        },
+    }
+    compiler = _compile_in_memory_sqlite(tag_config)
+
+    scopes = compiler.compiled_tags["base"]["alice"]
+    assert isinstance(scopes, frozenset)
+    with pytest.raises(AttributeError):
+        scopes.add("delete:node")
+
+
 def test_basic_access_control(access_control_test_context_factory):
     """
     Test that basic access control and tag compilation are working.
