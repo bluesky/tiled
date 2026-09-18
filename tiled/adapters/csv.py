@@ -23,6 +23,51 @@ from .array import ArrayAdapter
 from .utils import init_adapter_from_catalog
 
 
+def get_csv_metadata(
+    file_path: Union[str, Path],
+    comment: Optional[str] = None,
+    skiprows: Optional[Any] = None,
+    encoding: Optional[str] = None,
+    **kwargs: Any,
+) -> Dict[str, Any]:
+    """Best-effort extraction of a metadata preamble from a CSV file.
+
+    Reads the leading "header" lines of the file -- those marked as comments
+    (via the pandas `comment` character) or skipped (via an integer
+    `skiprows`) -- stores them verbatim as a list under a ``"header"`` key, and
+    additionally parses any ``key: value`` line into a top-level metadata entry.
+
+    Returns an empty dict when no such preamble can be identified (e.g. a plain
+    CSV whose first line is already the data or column header). Only the
+    ``comment`` and integer ``skiprows`` read_csv options drive the extraction;
+    any other keyword arguments are ignored.
+    """
+    n_skip = skiprows if isinstance(skiprows, int) else 0
+    header_lines: List[str] = []
+    with open(file_path, "r", encoding=encoding) as file:
+        for i, raw in enumerate(file):
+            line = raw.rstrip("\n").rstrip("\r")
+            is_comment = comment and line.lstrip().startswith(comment)
+            if not (i < n_skip or is_comment):
+                break
+            header_lines.append(line)
+
+    if not header_lines:
+        return {}
+
+    metadata: Dict[str, Any] = {}
+    for line in header_lines:
+        text = line.lstrip()
+        if comment:
+            text = text.removeprefix(comment)
+        key, sep, value = text.strip().partition(":")
+        if sep and key.strip():
+            metadata[key.strip()] = value.strip()
+    # Keep the raw preamble verbatim; this wins over any parsed "header" key.
+    metadata["header"] = header_lines
+    return metadata
+
+
 class CSVAdapter(Adapter[TableStructure]):
     """Adapter for tabular data stored as partitioned text (csv) files"""
 
@@ -77,7 +122,8 @@ class CSVAdapter(Adapter[TableStructure]):
         *data_uris: str,
         **kwargs: Optional[Any],
     ) -> "CSVAdapter":
-        return cls(data_uris, **kwargs)
+        file_metadata = get_csv_metadata(path_from_uri(data_uris[0]), **kwargs)
+        return cls(data_uris, metadata=file_metadata, **kwargs)
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}({self._structure.columns!r})"
@@ -402,4 +448,9 @@ class CSVArrayAdapter(ArrayAdapter):
             data_type=true_dtype, shape=true_shape, chunks=true_chunks
         )
 
-        return cls(array, structure)
+        # Surface any metadata preamble from the file.
+        file_metadata = get_csv_metadata(
+            path_from_uri(data_uris[0]), **{"header": None, **kwargs}
+        )
+
+        return cls(array, structure, metadata=file_metadata)

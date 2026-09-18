@@ -38,7 +38,12 @@ def example_file(tmp_path_factory):
         b = a.create_group("b")
         c = b.create_group("c")
         c.create_dataset("d", data=numpy.arange(9, dtype="int64").reshape((3, 3)))
-        c.create_dataset("e", data=numpy.arange(12, dtype="int64").reshape((3, 4)))
+        e = c.create_dataset("e", data=numpy.arange(12, dtype="int64").reshape((3, 4)))
+        # File attributes surfaced as node metadata (see the metadata tests below).
+        e.attrs["source"] = "file"
+        e.attrs["instrument"] = "beamline-X"
+        # Stored as bytes to exercise the bytes->str decode in get_hdf5_attrs.
+        e.attrs["units"] = numpy.bytes_(b"counts")
 
     yield ensure_uri(file_path)
 
@@ -668,6 +673,48 @@ def test_adapter_from_catalog(example_file, shape, error):
             adp.read()
     else:
         assert adp.read().shape == shape
+
+
+def _array_adapter_from_catalog(data_uri, dataset_path, node):
+    """Build an HDF5ArrayAdapter for a single-file dataset via the catalog path."""
+    data_source = DataSource(
+        mimetype="application/x-hdf5",
+        assets=[
+            Asset(
+                data_uri=data_uri,
+                is_directory=False,
+                parameter="data_uris",
+                num=0,
+            )
+        ],
+        structure_family=StructureFamily.array,
+        structure=ArrayStructure(
+            shape=(3, 4),
+            chunks=((3,), (4,)),
+            data_type=BuiltinDtype.from_numpy_dtype(numpy.dtype("int64")),
+        ),
+        parameters={"dataset": dataset_path},
+        management=Management.external,
+    )
+    return HDF5ArrayAdapter.from_catalog(data_source, node, **data_source.parameters)
+
+
+def test_array_from_uris_surfaces_file_attrs(example_file):
+    # from_uris presents the dataset's own HDF5 attributes as metadata
+    # (bytes values decoded to str).
+    adapter = HDF5ArrayAdapter.from_uris(example_file, dataset="a/b/c/e")
+    metadata = adapter.metadata()
+    assert metadata["source"] == "file"
+    assert metadata["instrument"] == "beamline-X"
+    assert metadata["units"] == "counts"
+
+
+def test_array_from_catalog_uses_catalog_metadata_only(example_file):
+    # from_catalog uses the catalog metadata verbatim and does not re-read the
+    # file's attributes (those are copied into the catalog at registration time).
+    node = SimpleNamespace(metadata_={"source": "catalog"}, specs=[])
+    adapter = _array_adapter_from_catalog(example_file, "a/b/c/e", node)
+    assert adapter.metadata() == {"source": "catalog"}
 
 
 @pytest.mark.parametrize("num_files", [1, 3])
