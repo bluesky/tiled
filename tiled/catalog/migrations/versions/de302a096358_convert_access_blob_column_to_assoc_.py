@@ -4,6 +4,12 @@ Revision ID: de302a096358
 Revises: c31f6a1d7e20
 Create Date: 2026-07-03 14:27:39.197261
 
+This revision is meant to be transitory, not an end state. It drops the
+`top_level_metadata` index without rebuilding it (see `upgrade`), so a catalog
+stopped here has no index over `nodes.metadata`, while one built by
+`create_all` from the ORM -- which still declares it -- does. A follow-on
+migration, released and deployed together with this one, puts a replacement
+index in place and reconciles the two.
 """
 import sqlalchemy as sa
 from alembic import op
@@ -627,12 +633,12 @@ def upgrade():
     # NOT NULL constraint now that the ORM stops populating it.
     with op.batch_alter_table("revisions") as batch_op:
         batch_op.drop_column("access_blob")
-    op.create_index(
-        "top_level_metadata",
-        "nodes",
-        ["parent", "time_created", "id", "metadata"],
-        postgresql_using="gin",
-    )
+    # `top_level_metadata` is deliberately NOT rebuilt here.
+    # A follow-on migration deployed alongside this one will create an
+    # improved metadata index to replace it.
+    # This existing index is believed to currently be broken and largely
+    # unused in practice, yet rebuilding it can take substantial time (hours).
+    # `downgrade` still recreates it for integrity with the prior version.
     _create_association_triggers(connection)
     _analyze(
         connection,
@@ -728,7 +734,10 @@ EXECUTE FUNCTION entities_reject_node_access_blob();"""
 
     op.drop_table("link_access_blobs")
 
-    op.drop_index("top_level_metadata", table_name="nodes")
+    # `upgrade` leaves no `top_level_metadata` behind, but a catalog created by
+    # `create_all` from the ORM (which still declares it) does have one, so at
+    # the current revision the index may or may not exist.
+    op.drop_index("top_level_metadata", table_name="nodes", if_exists=True)
     # Preserve the nodes triggers across the rebuild, as on upgrade.
     nodes_triggers = _preserved_triggers(connection, "nodes")
     with op.batch_alter_table("nodes") as batch_op:
