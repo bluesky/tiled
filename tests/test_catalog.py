@@ -1,12 +1,15 @@
 import asyncio
+import os
 import random
 import string
+import time
 from contextlib import closing
 from dataclasses import asdict
 from pathlib import Path
 from typing import cast
 
 import dask.array
+import h5py
 import numpy
 import pandas
 import pandas.testing
@@ -25,6 +28,7 @@ from sqlalchemy.pool import AsyncAdaptedQueuePool, QueuePool, StaticPool
 from tiled.adapters.csv import CSVAdapter
 from tiled.adapters.dataframe import ArrayAdapter
 from tiled.adapters.tiff import TiffAdapter
+from tiled.adapters.utils import DataNotReadyError, IncompatibleShapeError
 from tiled.catalog import in_memory
 from tiled.catalog.adapter import WouldDeleteData
 from tiled.catalog.explain import record_explanations
@@ -441,6 +445,86 @@ async def test_lazy_sequence_tolerates_num_offset(tmpdir, num_offset):
 
         result = await x.read(slice=slice_input)
         numpy.testing.assert_array_equal(result, reference)
+    finally:
+        await adapter.shutdown()
+
+
+async def _register_ahead_hdf5(adapter, tmpdir, *, file_frames=3, ahead_frames=5):
+    """Register an external HDF5 array whose catalog structure is ahead of the file.
+
+    The backing file holds `file_frames` frames of shape `(rows, cols)`, but the
+    catalog structure advertises `ahead_frames`, mimicking a streaming append
+    where the catalog shape ran ahead of this reader's view of the file. Returns
+    the backing file path.
+    """
+    rows, cols = 2, 4
+    filepath = Path(tmpdir) / "streaming.h5"
+    with h5py.File(filepath, "w", libver="latest") as f:
+        f.create_dataset(
+            "data",
+            data=numpy.ones((file_frames, rows, cols)),
+            maxshape=(None, rows, cols),
+        )
+    ahead_structure = ArrayStructure(
+        shape=(ahead_frames, rows, cols),
+        chunks=((ahead_frames,), (rows,), (cols,)),
+        data_type=BuiltinDtype.from_numpy_dtype(numpy.dtype("float64")),
+    )
+    await adapter.create_node(
+        key="streaming",
+        structure_family=StructureFamily.array,
+        metadata={},
+        data_sources=[
+            DataSource(
+                structure_family="array",
+                mimetype="application/x-hdf5",
+                structure=asdict(ahead_structure),
+                parameters={"dataset": "data"},
+                management="external",
+                assets=[
+                    Asset(
+                        parameter="data_uris",
+                        num=0,
+                        data_uri=ensure_uri(str(filepath)),
+                        is_directory=False,
+                    )
+                ],
+            )
+        ],
+    )
+    return filepath
+
+
+@pytest.mark.asyncio
+async def test_structure_ahead_of_recently_modified_file_is_transient(tmpdir):
+    # The catalog structure is ahead of the data on disk and the backing file
+    # was just written, so a streaming append is plausibly in progress. The
+    # read raises the transient `DataNotReadyError`.
+    adapter = in_memory(readable_storage=[tmpdir])
+    await adapter.startup()
+    try:
+        await _register_ahead_hdf5(adapter, tmpdir)
+        x = await adapter.lookup_adapter(["streaming"])
+        with pytest.raises(DataNotReadyError):
+            await x.read()
+    finally:
+        await adapter.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_structure_ahead_of_stale_file_is_permanent(tmpdir):
+    # The catalog structure is ahead of the data on disk but the backing file
+    # has not been touched for a long time, so the data is at rest and will not
+    # catch up. The read is downgraded to a permanent `IncompatibleShapeError`.
+    adapter = in_memory(readable_storage=[tmpdir])
+    await adapter.startup()
+    try:
+        filepath = await _register_ahead_hdf5(adapter, tmpdir)
+        stale = time.time() - 3600
+        os.utime(filepath, (stale, stale))
+        x = await adapter.lookup_adapter(["streaming"])
+        with pytest.raises(IncompatibleShapeError):
+            await x.read()
     finally:
         await adapter.shutdown()
 

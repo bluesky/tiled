@@ -1,4 +1,5 @@
 import json
+import os
 import re
 from typing import Optional, Tuple, Union
 
@@ -7,8 +8,14 @@ import orjson
 import pydantic_settings
 from fastapi import APIRouter, Depends, HTTPException, Request
 from starlette.responses import Response
-from starlette.status import HTTP_400_BAD_REQUEST, HTTP_500_INTERNAL_SERVER_ERROR
+from starlette.status import (
+    HTTP_400_BAD_REQUEST,
+    HTTP_422_UNPROCESSABLE_CONTENT,
+    HTTP_500_INTERNAL_SERVER_ERROR,
+    HTTP_503_SERVICE_UNAVAILABLE,
+)
 
+from ..adapters.utils import DataNotReadyError, ShapeMismatchError
 from ..structures.core import StructureFamily
 from ..type_aliases import AccessTags, Scopes
 from ..utils import ensure_awaitable
@@ -33,6 +40,11 @@ ZARR_CODEC_SPEC = {
 }
 
 zarr_codec = numcodecs.get_codec(ZARR_CODEC_SPEC)
+
+# When an array read fails because the catalog structure is ahead of the data
+# actually present on disk (a streaming append in progress), the client is told
+# to retry after this many seconds.
+ARRAY_RETRY_AFTER_SECONDS = int(os.getenv("TILED_ARRAY_RETRY_AFTER", "1"))
 
 
 def convert_chunks_for_zarr(tiled_chunks: Tuple[Tuple[int]]):
@@ -244,6 +256,16 @@ def get_zarr_router_v2() -> APIRouter:
                         status_code=HTTP_400_BAD_REQUEST,
                         detail=f"Index of zarr block {zarr_block_indx} is out of range.",
                     )
+                except DataNotReadyError as err:
+                    raise HTTPException(
+                        status_code=HTTP_503_SERVICE_UNAVAILABLE,
+                        detail=str(err),
+                        headers={"Retry-After": str(ARRAY_RETRY_AFTER_SECONDS)},
+                    )
+                except ShapeMismatchError as err:
+                    raise HTTPException(
+                        status_code=HTTP_422_UNPROCESSABLE_CONTENT, detail=str(err)
+                    )
 
                 if isinstance(array, SparseArray):
                     array = array.todense()
@@ -425,6 +447,16 @@ def get_zarr_router_v3() -> APIRouter:
                 raise HTTPException(
                     status_code=HTTP_400_BAD_REQUEST,
                     detail=f"Index of zarr block {zarr_block_indx} is out of range.",
+                )
+            except DataNotReadyError as err:
+                raise HTTPException(
+                    status_code=HTTP_503_SERVICE_UNAVAILABLE,
+                    detail=str(err),
+                    headers={"Retry-After": str(ARRAY_RETRY_AFTER_SECONDS)},
+                )
+            except ShapeMismatchError as err:
+                raise HTTPException(
+                    status_code=HTTP_422_UNPROCESSABLE_CONTENT, detail=str(err)
                 )
 
             if isinstance(array, SparseArray):

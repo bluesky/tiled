@@ -8,6 +8,7 @@ import operator
 import os
 import shutil
 import sys
+import time
 import uuid
 from contextlib import closing
 from datetime import datetime, timezone
@@ -67,6 +68,7 @@ from tiled.queries import (
     StructureFamilyQuery,
 )
 
+from ..adapters.utils import DataNotReadyError, IncompatibleShapeError
 from ..mimetypes import (
     APACHE_ARROW_FILE_MIME_TYPE,
     AWKWARD_BUFFERS_MIMETYPE,
@@ -102,6 +104,7 @@ from ..storage import (
     ObjectStorage,
     SQLStorage,
     get_storage,
+    mtime_from_uri,
     parse_storage,
     register_storage,
 )
@@ -126,6 +129,13 @@ if TYPE_CHECKING:
     from ..ndslice import NDBlock
 
 logger = logging.getLogger(__name__)
+
+# When a read fails because the catalog structure shape is ahead of the data
+# actually present in storage, treat it as a transient "not ready"
+# condition (rather than a permanent error) only if the backing file was
+# modified within this many seconds. This distinguishes an in-progress
+# streaming append from a write that was aborted and left at rest.
+ARRAY_NOT_READY_WINDOW = float(os.getenv("TILED_ARRAY_NOT_READY_WINDOW", "10.0"))
 
 # When data is uploaded, how is it saved?
 # TODO: Make this configurable at Catalog construction time.
@@ -1818,6 +1828,33 @@ class CatalogContainerAdapter(CatalogNodeAdapter):
 
 
 class CatalogArrayAdapter(CatalogNodeAdapter):
+    async def _assets_recently_modified(self) -> Optional[bool]:
+        """Report whether a backing asset was modified within the freshness window.
+
+        Returns `True` if at least one backing asset was modified within
+        `ARRAY_NOT_READY_WINDOW` seconds (an append is likely in progress),
+        `False` if backing assets exist but none were recently modified (the
+        data appears to be at rest), or `None` if freshness cannot be
+        determined for any asset (for example, an unsupported URI scheme or an
+        asset that cannot be stat'd).
+        """
+        try:
+            data_sources = await self.data_sources(include_assets=True)
+        except Exception:
+            return None
+        now = time.time()
+        found = False
+        for data_source in data_sources:
+            for asset in data_source.assets:
+                try:
+                    mtime = mtime_from_uri(asset.data_uri)
+                except (OSError, ValueError):
+                    continue
+                found = True
+                if now - mtime < ARRAY_NOT_READY_WINDOW:
+                    return True
+        return False if found else None
+
     async def read(self, *args, **kwargs):
         if not self.node.data_sources:
             fields = kwargs.get("fields")
@@ -1826,22 +1863,34 @@ class CatalogArrayAdapter(CatalogNodeAdapter):
             return self
         # Try lazy per-frame resolution for a plain slice read (no field
         # selection). Falls back to the full adapter build if not applicable.
-        if "fields" not in kwargs:
-            slice_ = args[0] if args else kwargs.get("slice", ...)
-            adapter = await self._get_lazy_adapter(slice=slice_)
-            if adapter is not None:
-                return await ensure_awaitable(adapter.read, *args, **kwargs)
-        return await ensure_awaitable((await self.get_adapter()).read, *args, **kwargs)
+        try:
+            if "fields" not in kwargs:
+                slice_ = args[0] if args else kwargs.get("slice", ...)
+                adapter = await self._get_lazy_adapter(slice=slice_)
+                if adapter is not None:
+                    return await ensure_awaitable(adapter.read, *args, **kwargs)
+            return await ensure_awaitable(
+                (await self.get_adapter()).read, *args, **kwargs
+            )
+        except DataNotReadyError as err:
+            if (await self._assets_recently_modified()) is False:
+                raise IncompatibleShapeError(str(err)) from err
+            raise
 
     async def read_block(self, *args, **kwargs):
-        block = args[0] if args else kwargs.get("block")
-        if block is not None:
-            adapter = await self._get_lazy_adapter(block=block)
-            if adapter is not None:
-                return await ensure_awaitable(adapter.read_block, *args, **kwargs)
-        return await ensure_awaitable(
-            (await self.get_adapter()).read_block, *args, **kwargs
-        )
+        try:
+            block = args[0] if args else kwargs.get("block")
+            if block is not None:
+                adapter = await self._get_lazy_adapter(block=block)
+                if adapter is not None:
+                    return await ensure_awaitable(adapter.read_block, *args, **kwargs)
+            return await ensure_awaitable(
+                (await self.get_adapter()).read_block, *args, **kwargs
+            )
+        except DataNotReadyError as err:
+            if (await self._assets_recently_modified()) is False:
+                raise IncompatibleShapeError(str(err)) from err
+            raise
 
     async def _stream(self, media_type, entry, body, shape, block=None, offset=None):
         sequence = await self.context.streaming_cache.incr_seq(self.node.id)

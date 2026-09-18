@@ -70,6 +70,27 @@ async def _namespaces(info: Info) -> dict[str, str]:
     return await _store(info).list_namespaces()
 
 
+async def _resolve_node_binding(
+    info: Info,
+    node_path_parts: Optional[list[str]],
+) -> Optional[int]:
+    """Resolve the catalog node (ID) an entity should bind to given node path
+
+    The provided node path is resolved to the id of an internal node in the catalog
+    (so clients never handle catalog integer ids). Returns None when node_path_parts
+    is None (an unbound, external entity). Raises if the path names no existing node.
+    """
+    if node_path_parts is None:
+        return None
+    resolved = await _store(info).resolve_node_id(node_path_parts)
+    if resolved is None:
+        raise GraphQLError(
+            f"No catalog node found at path {node_path_parts!r}.",
+            extensions={"code": "NODE_NOT_FOUND"},
+        )
+    return resolved
+
+
 class _PolicyNode:
     def __init__(self, access_blob: Optional[dict]):
         self.access_blob = access_blob or {}
@@ -186,7 +207,7 @@ async def _modify_access_blob(
 @strawberry.type
 class Entity:
     id: strawberry.ID
-    node_id: Optional[int]
+    is_node_bound: bool
     entity_type: str
     name: str
     uri: Optional[str]
@@ -286,7 +307,7 @@ def _entity_from_record(r: EntityRecord, namespaces: dict[str, str]) -> Entity:
     properties = compact_value(r.properties, namespaces) if r.properties else None
     return Entity(
         id=strawberry.ID(r.id),
-        node_id=r.node_id,
+        is_node_bound=r.node_id is not None,
         entity_type=r.entity_type,
         name=r.name,
         uri=r.uri,
@@ -316,7 +337,9 @@ def _link_from_record(r: LinkRecord, namespaces: dict[str, str]) -> Link:
 @strawberry.input
 class UpdateEntityInput:
     name: Optional[str] = None
-    node_id: Optional[int] | UnsetType = UNSET
+    # Re-bind to a catalog node by path (list of key segments), detach with an
+    # explicit null, or leave the current binding unchanged by omitting it.
+    node_path_parts: Optional[list[str]] | UnsetType = UNSET
     uri: Optional[str] | UnsetType = UNSET
     entity_type: Optional[str] = None
     access_blob: Optional[JSON] | UnsetType = UNSET  # type: ignore[valid-type]
@@ -332,7 +355,11 @@ class UpdateLinkInput:
 class CreateEntityInput:
     entity_type: str
     name: str
-    node_id: Optional[int] = None
+    # Bind this entity to a catalog node by its path of key segments
+    # (e.g. ["a", "b"]). Resolved to the internal node id server-side, so
+    # clients never handle the catalog's integer ids. Omit for an entity that
+    # is not tied to a node in this server's catalog.
+    node_path_parts: Optional[list[str]] = None
     uri: Optional[str] = None
     properties: Optional[JSON] = None  # type: ignore[valid-type]
     access_blob: Optional[JSON] = None  # type: ignore[valid-type]
@@ -369,31 +396,28 @@ class Query:
         self,
         info: Info,
         entity_type: Optional[str] = None,
+        node_path_parts: Optional[list[str]] = None,
         limit: int = 100,
         offset: int = 0,
     ) -> list[Entity]:
         access_filters = await _policy_access_filters(info, "read:metadata")
         if access_filters is NO_ACCESS:
             return []
+        node_id = None
+        if node_path_parts is not None:
+            node_id = await _store(info).resolve_node_id(node_path_parts)
+            if node_id is None:
+                # No such catalog node -> it can have no bound entities.
+                return []
         records = await _store(info).list_entities(
             entity_type=entity_type,
+            node_id=node_id,
             limit=limit,
             offset=offset,
             access_filters=access_filters or None,
         )
         namespaces = await _namespaces(info)
         return [_entity_from_record(r, namespaces) for r in records]
-
-    @strawberry.field(
-        description=(
-            "Resolve the internal catalog node id for a path of key "
-            "segments (e.g. ['raw_dataset']), for use as CreateEntityInput's "
-            "nodeId. Returns null if no such catalog node exists."
-        )
-    )
-    async def catalog_node_id(self, info: Info, path: list[str]) -> Optional[int]:
-        _assert_authn_scope(info, "read:metadata")
-        return await _store(info).resolve_node_id(path)
 
     @strawberry.field
     async def link(self, info: Info, id: strawberry.ID) -> Optional[Link]:
@@ -447,7 +471,8 @@ class Mutation:
     async def create_entity(self, info: Info, input: CreateEntityInput) -> Entity:
         _assert_authn_scope(info, "write:metadata")
         namespaces = await _namespaces(info)
-        if input.node_id is not None:
+        node_id = await _resolve_node_binding(info, input.node_path_parts)
+        if node_id is not None:
             if input.access_blob:
                 raise GraphQLError(ENTITY_NODE_ACCESS_BLOB_ERROR)
             access_blob = None
@@ -456,7 +481,7 @@ class Mutation:
         record = await _store(info).create_entity(
             entity_type=input.entity_type,
             name=input.name,
-            node_id=input.node_id,
+            node_id=node_id,
             uri=input.uri,
             properties=expand_value(input.properties or {}, namespaces),
             access_blob=access_blob,
@@ -527,7 +552,17 @@ class Mutation:
         await _assert_allowed(
             info, await _effective_access_blob(info, current), "write:metadata"
         )
-        effective_node_id = current.node_id if input.node_id is UNSET else input.node_id
+        # Resolve the requested node binding into a tri-state on the internal
+        # node id: UNSET (leave), None (detach), or an int (bind).
+        # node_path_parts is resolved to the id, so the store never sees a path.
+        if input.node_path_parts is UNSET:
+            node_id = STORE_UNSET
+        elif input.node_path_parts is None:
+            node_id = None
+        else:
+            node_id = await _resolve_node_binding(info, input.node_path_parts)
+        node_binding_changed = node_id is not STORE_UNSET
+        effective_node_id = current.node_id if node_id is STORE_UNSET else node_id
         access_blob = UNSET
         if effective_node_id is not None:
             if input.access_blob is not UNSET and (input.access_blob or {}):
@@ -538,12 +573,11 @@ class Mutation:
             access_blob = await _modify_access_blob(
                 info, current.access_blob, requested_access_blob
             )
-        elif input.node_id is not UNSET and current.access_blob is None:
-            # Detaching from a node (node_id set to null) with no
+        elif node_binding_changed and current.access_blob is None:
+            # Detaching from a node (node_path_parts set to null) with no
             # access_blob supplied in the same call: the entity needs its
             # own access_blob now that it no longer delegates to a node.
             access_blob = await _init_access_blob(info, None)
-        node_id = STORE_UNSET if input.node_id is UNSET else input.node_id
         uri = STORE_UNSET if input.uri is UNSET else input.uri
         record = await _store(info).update_entity(
             str(id),
