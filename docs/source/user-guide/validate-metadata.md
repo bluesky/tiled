@@ -120,7 +120,7 @@ see {doc}`../reference/service-configuration` for more detail.
 ## When validation runs
 
 Validators run when a node is created and when its metadata is replaced or
-patched. When a node carries multiple specs they are validated strting from 
+patched. When a node carries multiple specs they are validated strting from
 least specific first (the reverse of the list order), so that a broad spec
 can normalize the metadata before a narrower one inspects it. When declaring multiple
 specs, please ensure that their validators do not make conflicting modifications;
