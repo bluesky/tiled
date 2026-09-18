@@ -431,9 +431,7 @@ class AccessTagsCompiler:
         # schema rather than at the configuration that caused it,
         validate_scopes(self.scopes, "AccessTagsCompiler 'scopes'")
         self.tag_config = tag_config
-        # Reuse the pooled engine keyed by these settings; when the compiler
-        # runs inside a tiled server, the pool is shared with the catalog
-        # adapter connected to the same database.
+        # Reuse the pooled engine keyed by these settings
         self._engine = get_database_engine(database_settings)
         self._tables_created = False
         self.group_parser = group_parser
@@ -458,6 +456,9 @@ class AccessTagsCompiler:
         self.invalid_tag_names = [name.casefold() for name in []]
 
         self.roles = {}
+        self.config_tags = {}
+        self.principal_tags = {}
+        # compile() builds this by merging the two. Not an input.
         self.tags = {}
         self.tag_owners = {}
         self.compiled_tags = {self.public_tag: {}}
@@ -470,7 +471,7 @@ class AccessTagsCompiler:
                 with open(Path(self.tag_config)) as tag_config_file:
                     tag_definitions = yaml.load(tag_config_file, Loader=InterningLoader)
                     self.roles.update(tag_definitions.get("roles", {}))
-                    self.tags.update(tag_definitions["tags"])
+                    self.config_tags.update(tag_definitions["tags"])
                     self.tag_owners.update(tag_definitions.get("tag_owners", {}))
             except FileNotFoundError as e:
                 raise ValueError(
@@ -479,7 +480,7 @@ class AccessTagsCompiler:
         elif isinstance(self.tag_config, dict):
             tag_definitions = self.tag_config
             self.roles.update(tag_definitions.get("roles", {}))
-            self.tags.update(tag_definitions["tags"])
+            self.config_tags.update(tag_definitions["tags"])
             self.tag_owners.update(tag_definitions.get("tag_owners", {}))
 
     def _dfs(self, current_tag, tags, seen_tags, nested_level=0):
@@ -698,18 +699,23 @@ class AccessTagsCompiler:
             tag_scopes.setdefault(f"service:{identifier}", set()).update(granted)
             tag_scopes.setdefault(f"user:{identifier}", set()).update(granted)
 
+        principal_tags = {}
         for tag_name, granted_scopes in tag_scopes.items():
-            # Merge with (do not overwrite) a definition that the tag config
-            # may provide for this tag; compilation unions the grants. A
-            # principal whose roles grant nothing gets a definition with no
-            # 'users' entry: _dfs rejects a user entry with empty scopes, and
-            # an empty definition compiles to an empty grant set.
+            # A principal whose roles grant nothing still gets a definition,
+            # just an empty one: _dfs rejects a user entry with empty scopes,
+            # and an empty definition compiles to an empty grant set. compile()
+            # unions these with whatever the tag config declares for the same
+            # tag, so nothing needs to be reconciled here.
             identifier = tag_name.partition(":")[2]
-            definition = self.tags.setdefault(intern(tag_name), {})
-            if granted_scopes:
-                definition.setdefault("users", []).append(
-                    {"name": identifier, "scopes": granted_scopes}
-                )
+            principal_tags[intern(tag_name)] = (
+                {"users": [{"name": identifier, "scopes": granted_scopes}]}
+                if granted_scopes
+                else {}
+            )
+        # Swapped in only now that the load has fully succeeded, so a failure
+        # part way through leaves the previous definitions in place rather
+        # than a half-built set.
+        self.principal_tags = principal_tags
 
     async def compile(self):
         if not self._tables_created:
@@ -735,6 +741,23 @@ class AccessTagsCompiler:
                     f"Principal tags cannot have owners: they are never "
                     f"applied to nodes manually, only by the access policy."
                 )
+
+        # Merge the two tag sources (config + principal tags)
+        self.tags = dict(self.config_tags)
+        for tag_name, from_authn in self.principal_tags.items():
+            from_config = self.tags.get(tag_name)
+            if from_config is None:
+                self.tags[tag_name] = from_authn
+            else:
+                # Both contributions stay separate entries; _dfs unions the
+                # scopes of entries that share a name.
+                self.tags[tag_name] = {
+                    **from_config,
+                    "users": [
+                        *from_config.get("users", ()),
+                        *from_authn.get("users", ()),
+                    ],
+                }
 
         adjacent_tags = {}
         for tag, members in self.tags.items():
@@ -796,6 +819,8 @@ class AccessTagsCompiler:
 
     def clear_raw_tags(self):
         self.roles = {}
+        self.config_tags = {}
+        self.principal_tags = {}
         self.tags = {}
         self.tag_owners = {}
 
