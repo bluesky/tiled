@@ -126,18 +126,21 @@ def _find_catalog_context(tree):
     The access tags parser needs the catalog's database settings (the URI) to
     read tag definitions. The served tree may be a single catalog adapter, or a
     MapAdapter nesting several catalog mounts (e.g. /foo, /bar mounted from the
-    same catalog database). Walk the tree and return the first catalog context
-    found (any one suffices: access tags are a single shared namespace written
-    to one catalog database).
+    same catalog database). Walk only the already-materialized, dict-backed
+    mount structure and return the first catalog context found (any one
+    suffices: access tags are a single shared namespace written to one catalog
+    database). In particular, do not use MapAdapter.values(): a MapAdapter may
+    wrap a lazy mapping whose values are data adapters, and inspecting them
+    would construct catalog data during application startup.
 
     Returns the context, or None if the tree contains no catalog adapter.
     """
     context = getattr(tree, "context", None)
     if context is not None:
         return context
-    values = getattr(tree, "values", None)
-    if callable(values):
-        for child in values():
+    mapping = getattr(tree, "_mapping", None)
+    if isinstance(mapping, dict):
+        for child in mapping.values():
             found = _find_catalog_context(child)
             if found is not None:
                 return found
