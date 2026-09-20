@@ -1574,7 +1574,9 @@ class CatalogNodeAdapter:
                         orm.NodeAccessTagAssociation.node_id == self.node.id
                     )
                 )
-                for tag in await _resolve_access_tags(db, normalize_access_tags(access_tags)):
+                for tag in await _resolve_access_tags(
+                    db, normalize_access_tags(access_tags)
+                ):
                     db.add(
                         orm.NodeAccessTagAssociation(
                             node_id=self.node.id, tag_id=tag.id

@@ -588,7 +588,9 @@ class ExternalPolicyDecisionPoint(AccessPolicy, ABC):
             ResultHolder[list[str]],
         )
         if access_tags_decision is not None:
-            return [AccessTagsFilter(normalize_access_tags(access_tags_decision.result))]
+            return [
+                AccessTagsFilter(normalize_access_tags(access_tags_decision.result))
+            ]
         else:
             return NO_ACCESS
 

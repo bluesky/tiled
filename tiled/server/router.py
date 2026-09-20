@@ -1896,7 +1896,9 @@ def get_router(
             body.metadata,
             body.structure_family,
             body.specs,
-            normalize_access_tags(body.access_tags) if body.access_tags is not None else None,
+            normalize_access_tags(body.access_tags)
+            if body.access_tags is not None
+            else None,
         )
         # BACK-COMPAT: a client older than v0.2.19 spells this `access_blob`.
         # Remove with the helpers in _backcompat.py.

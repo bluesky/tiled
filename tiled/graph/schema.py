@@ -652,7 +652,9 @@ class Mutation:
         record = await _store(info).get_link(str(id))
         if not record:
             return False
-        await _assert_allowed(info, normalize_access_tags(record.access_tags), "write:metadata")
+        await _assert_allowed(
+            info, normalize_access_tags(record.access_tags), "write:metadata"
+        )
         deleted = await _store(info).delete_link(str(id))
         if deleted:
             logger.info("Deleted link id=%s", id)
@@ -665,7 +667,9 @@ class Mutation:
         current = await _store(info).get_link(str(id))
         if current is None:
             return None
-        await _assert_allowed(info, normalize_access_tags(current.access_tags), "write:metadata")
+        await _assert_allowed(
+            info, normalize_access_tags(current.access_tags), "write:metadata"
+        )
         namespaces = await _namespaces(info)
         access_tags = UNSET
         if input.access_tags is not UNSET:
