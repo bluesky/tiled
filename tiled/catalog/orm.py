@@ -217,6 +217,11 @@ class NodeAccessTagAssociation(Base):
         ),
         nullable=False,
     )
+    # Denormalized from Node.parent so access-tag queries can restrict the
+    # association scan to one container. Database triggers maintain this for
+    # relationship-generated inserts and any future node moves. The root
+    # node's association legitimately has a NULL parent_id.
+    parent_id = Column(Integer, nullable=True)
 
     __table_args__ = (
         PrimaryKeyConstraint(
@@ -224,7 +229,102 @@ class NodeAccessTagAssociation(Base):
         ),
         # Covering index for the reverse (tag -> nodes) direction.
         Index("ix_node_access_tags_association_tag_id_node_id", "tag_id", "node_id"),
+        # Parent-scoped reverse lookup for authorization queries.
+        Index(
+            "ix_node_access_tags_association_parent_id_tag_id_node_id",
+            "parent_id",
+            "tag_id",
+            "node_id",
+        ),
     )
+
+
+@event.listens_for(NodeAccessTagAssociation.__table__, "after_create")
+def create_node_access_tag_parent_triggers(target, connection, **kw):
+    if connection.engine.dialect.name == "sqlite":
+        connection.execute(
+            text(
+                """
+CREATE TRIGGER node_access_tags_set_parent_after_insert
+AFTER INSERT ON node_access_tags_association
+BEGIN
+    UPDATE node_access_tags_association
+    SET parent_id = (SELECT parent FROM nodes WHERE id = NEW.node_id)
+    WHERE node_id = NEW.node_id AND tag_id = NEW.tag_id;
+END"""
+            )
+        )
+        connection.execute(
+            text(
+                """
+CREATE TRIGGER node_access_tags_set_parent_after_update
+AFTER UPDATE OF node_id ON node_access_tags_association
+BEGIN
+    UPDATE node_access_tags_association
+    SET parent_id = (SELECT parent FROM nodes WHERE id = NEW.node_id)
+    WHERE node_id = NEW.node_id AND tag_id = NEW.tag_id;
+END"""
+            )
+        )
+        connection.execute(
+            text(
+                """
+CREATE TRIGGER node_access_tags_sync_parent_after_node_update
+AFTER UPDATE OF parent ON nodes
+WHEN NEW.parent IS NOT OLD.parent
+BEGIN
+    UPDATE node_access_tags_association
+    SET parent_id = NEW.parent
+    WHERE node_id = NEW.id;
+END"""
+            )
+        )
+    elif connection.engine.dialect.name == "postgresql":
+        connection.execute(
+            text(
+                """
+CREATE OR REPLACE FUNCTION node_access_tags_set_parent()
+RETURNS TRIGGER AS $$
+BEGIN
+    SELECT parent INTO NEW.parent_id FROM nodes WHERE id = NEW.node_id;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql"""
+            )
+        )
+        connection.execute(
+            text(
+                """
+CREATE TRIGGER node_access_tags_set_parent
+BEFORE INSERT OR UPDATE OF node_id ON node_access_tags_association
+FOR EACH ROW
+EXECUTE FUNCTION node_access_tags_set_parent()"""
+            )
+        )
+        connection.execute(
+            text(
+                """
+CREATE OR REPLACE FUNCTION node_access_tags_sync_parent_after_node_update()
+RETURNS TRIGGER AS $$
+BEGIN
+    UPDATE node_access_tags_association
+    SET parent_id = NEW.parent
+    WHERE node_id = NEW.id;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql"""
+            )
+        )
+        connection.execute(
+            text(
+                """
+CREATE TRIGGER node_access_tags_sync_parent_after_node_update
+AFTER UPDATE OF parent ON nodes
+FOR EACH ROW
+WHEN (NEW.parent IS DISTINCT FROM OLD.parent)
+EXECUTE FUNCTION node_access_tags_sync_parent_after_node_update()"""
+            )
+        )
 
 
 class AccessTagsPrincipal(Timestamped, Base):

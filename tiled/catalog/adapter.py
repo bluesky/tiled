@@ -2443,6 +2443,7 @@ def access_tags_filter(query, tree):
                 orm.AccessTag, orm.AccessTag.id == orm.NodeAccessTagAssociation.tag_id
             )
             .where(orm.NodeAccessTagAssociation.node_id == orm.Node.id)
+            .where(orm.NodeAccessTagAssociation.parent_id == tree.node.id)
             .where(orm.AccessTag.name.in_(query.tags))
             .exists()
         )
