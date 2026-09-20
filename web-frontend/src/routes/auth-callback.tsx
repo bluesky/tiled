@@ -27,16 +27,21 @@ export default function AuthCallback() {
 
       if (state) {
         try {
-          const url = new URL(decodeURIComponent(state));
-          // Strip the router basename to avoid double-prefix (e.g. /ui/ui/browse/)
-          const base = import.meta.env.BASE_URL.replace(/\/$/, "");
-          const path = url.pathname.startsWith(base)
-            ? url.pathname.slice(base.length) || "/"
-            : url.pathname;
-          navigate(path + url.search, { replace: true });
+          const redirectUrl = new URL(state);
+
+          // Preserve callback params so a listener from that origin can see them and save them for future use
+          // refresh_token, identity.*, principal, etc.
+          for (const [key, value] of params.entries()) {
+            // Don't forward state itself unless the receiving app needs it.
+            if (key !== "state") {
+              redirectUrl.searchParams.set(key, value);
+            }
+          }
+
+          window.location.replace(redirectUrl.toString());
           return;
         } catch {
-          // invalid URL in state, fall through
+          // Invalid state URL; fall through to the normal Tiled UI.
         }
       }
       navigate("/browse/", { replace: true });
