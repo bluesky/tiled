@@ -56,7 +56,7 @@ Specs are given as a list, and by convention are ordered **from most to least sp
 Depending on the circumstances, this ordering is resolved in two opposite directions:
 
 - **Client recognition** walks the list front-to-back and uses the first (i.e. most specific) spec
-  it recognizes, falling back to the structure family if it recognizes none. As the result,
+  it recognizes, falling back to the structure family if it recognizes none. As a result,
   the most finely-tuned client is chosen.
 - **Server validation** runs the validators back-to-front, i.e.
   least specific first, so that a broad spec can normalize the metadata
