@@ -31,7 +31,7 @@ The following types are additionally supported:
 
 ## Specs
 
-Every Tiled node has exactly one *structure family* (`container`, `array`,
+Every Tiled node belongs to exactly one *structure family* (`container`, `array`,
 `table`, etc.). It's useful to think of the structure family as a coarse,
 lowest-common-denominator description of how to query and interpret the data.
 
