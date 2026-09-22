@@ -8,7 +8,7 @@ The are encoded into and decoded from URL query parameters.
 import enum
 import json
 from dataclasses import dataclass
-from typing import Any, List, Optional
+from typing import Any, List
 
 from .query_registration import register
 from .structures.core import StructureFamily as StructureFamilyEnum
@@ -512,46 +512,40 @@ def SpecQuery(spec):
     return SpecsQuery([spec])
 
 
-@register(name="access_blob_filter")
+@register(name="access_tags_filter")
 @dataclass
-class AccessBlobFilter:
+class AccessTagsFilter:
     """
-    Perform a query against the access_blob with two conditions.
-    1. Query for a user id (i.e. username) match against the "user" field
-    2. Query for if any tag in a list of tags is present in the "tags" field
-    The values for these conditions are independent.
+    Perform a query against node access tags.
+    Match nodes that carry at least one tag in the given list of tags.
 
     Parameters
     ----------
-    user_id : str
-        e.g. "bill", "amanda"
-    tags : List[JSONSerializable]
+    tags : List[str]
         e.g. ["tag_for_bill", "amanda_only"]
 
 
     Examples
     --------
 
-    Search for user "bill", as well as tags in ["tag_for_bill", "useful_data"]
+    Search for tags in ["tag_for_bill", "useful_data"]
 
-    >>> c.search(AccessBlobFilter("bill", ["tag_for_bill", "useful_data"]))
+    >>> c.search(AccessTagsFilter(["tag_for_bill", "useful_data"]))
     """
 
-    user_id: Optional[str]
     tags: List[str]
 
+    def __post_init__(self):
+        if isinstance(self.tags, str):
+            raise TypeError("tags must be a list not a str")
+        self.tags = list(self.tags)
+
     def encode(self):
-        return {
-            "user_id": self.user_id,
-            "tags": self.tags,
-        }
+        return {"tags": json.dumps(self.tags)}
 
     @classmethod
-    def decode(cls, *, user_id, tags):
-        return cls(
-            user_id=user_id,
-            tags=tags,
-        )
+    def decode(cls, *, tags):
+        return cls(tags=json.loads(tags))
 
 
 @register(name="structure_family")

@@ -82,7 +82,7 @@
 #   # Metadata the root node of the catalog
 #   metadata: {}
 #   specs: []
-#   top_level_access_blob: null
+#   top_level_access_tags: null
 #
 #   # Database connection pool tuning
 #   catalog_pool_size: 5

@@ -22,6 +22,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.schema import PrimaryKeyConstraint, UniqueConstraint
 from sqlalchemy.sql import func
 
+from ..access_control.scopes import ScopeName
 from ..server.schemas import Management
 from ..structures.core import StructureFamily
 from .base import Base
@@ -76,7 +77,6 @@ class Node(Timestamped, Base):
     structure_family = Column(Enum(StructureFamily), nullable=False)
     metadata_ = Column("metadata", JSONVariant, nullable=False)
     specs = Column(JSONVariant, nullable=False)
-    access_blob = Column("access_blob", JSONVariant, nullable=False)
 
     data_sources = relationship(
         "DataSource",
@@ -88,6 +88,16 @@ class Node(Timestamped, Base):
     revisions = relationship(
         "Revision",
         backref="node",
+        passive_deletes=True,
+    )
+    # Many-to-many relationship to AccessTag through the node_access_tags_association
+    # association table. Writable: assigning/appending AccessTag objects
+    # inserts/deletes rows in node_access_tags_association (never in access_tags itself).
+    # passive_deletes defers cleanup of association rows to the DB-level
+    # ON DELETE CASCADE when a node is deleted.
+    access_tags: Mapped[List["AccessTag"]] = relationship(
+        secondary="node_access_tags_association",
+        lazy="selectin",
         passive_deletes=True,
     )
 
@@ -107,7 +117,6 @@ class Node(Timestamped, Base):
             "time_created",
             "id",
             "metadata",
-            "access_blob",
             postgresql_using="gin",
         ),
         # B-tree index supporting cursor-based pagination (WHERE parent = ?
@@ -134,6 +143,327 @@ class NodesClosure(Base):
     __table_args__ = (
         Index("idx_nodes_closure_ancestor", "ancestor"),
         Index("idx_nodes_closure_descendant", "descendant"),
+    )
+
+
+class AccessTag(Timestamped, Base):
+    """
+    A named access tag.
+
+    AccessTags are the unit of access control: nodes carry a set of tags, and
+    principals are granted access by being associated with one or more tags.
+    The allowed operations for a principal on a node are determined by the
+    scopes bound to their AccessTagPrincipalScopeAssociation rows.
+
+    A tag with is_public=True grants read access to unauthenticated requests.
+
+    Ownership is tracked via AccessTagOwnerAssociation rows; tag owners may apply tags
+    without being a server administrator.
+    """
+
+    __tablename__ = "access_tags"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(Unicode(255), nullable=False, unique=True)
+    is_public = Column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
+
+    principal_scopes: Mapped[List["AccessTagPrincipalScopeAssociation"]] = relationship(
+        back_populates="tag",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    owners: Mapped[List["AccessTagOwnerAssociation"]] = relationship(
+        back_populates="tag",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+    __table_args__ = (
+        # Partial index for public tags only, covering name-only queries
+        Index(
+            "ix_access_tags_is_public",
+            "name",
+            postgresql_where=text("is_public"),
+            sqlite_where=text("is_public"),
+        ),
+    )
+
+
+class NodeAccessTagAssociation(Base):
+    """
+    Association table mapping Nodes to Access Tags (many-to-many).
+    Used to perform lookups in both directions, i.e.:
+        - Which tags are on this node? (served by the primary key)
+        - Which nodes have this tag? (served by the secondary index)
+    """
+
+    __tablename__ = "node_access_tags_association"
+
+    node_id = Column(
+        Integer,
+        ForeignKey(
+            "nodes.id", name="fk_node_access_tags_association_node", ondelete="CASCADE"
+        ),
+        nullable=False,
+    )
+    tag_id = Column(
+        Integer,
+        ForeignKey(
+            "access_tags.id",
+            name="fk_node_access_tags_association_tag",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+    )
+    # Denormalized from Node.parent so access-tag queries can restrict the
+    # association scan to one container. Database triggers maintain this for
+    # relationship-generated inserts and any future node moves. The root
+    # node's association legitimately has a NULL parent_id.
+    parent_id = Column(Integer, nullable=True)
+
+    __table_args__ = (
+        PrimaryKeyConstraint(
+            "node_id", "tag_id", name="node_access_tags_association_pkey"
+        ),
+        # Covering index for the reverse (tag -> nodes) direction.
+        Index("ix_node_access_tags_association_tag_id_node_id", "tag_id", "node_id"),
+        # Parent-scoped reverse lookup for authorization queries.
+        Index(
+            "ix_node_access_tags_association_parent_id_tag_id_node_id",
+            "parent_id",
+            "tag_id",
+            "node_id",
+        ),
+    )
+
+
+@event.listens_for(NodeAccessTagAssociation.__table__, "after_create")
+def create_node_access_tag_parent_triggers(target, connection, **kw):
+    if connection.engine.dialect.name == "sqlite":
+        connection.execute(
+            text(
+                """
+CREATE TRIGGER node_access_tags_set_parent_after_insert
+AFTER INSERT ON node_access_tags_association
+BEGIN
+    UPDATE node_access_tags_association
+    SET parent_id = (SELECT parent FROM nodes WHERE id = NEW.node_id)
+    WHERE node_id = NEW.node_id AND tag_id = NEW.tag_id;
+END"""
+            )
+        )
+        connection.execute(
+            text(
+                """
+CREATE TRIGGER node_access_tags_set_parent_after_update
+AFTER UPDATE OF node_id ON node_access_tags_association
+BEGIN
+    UPDATE node_access_tags_association
+    SET parent_id = (SELECT parent FROM nodes WHERE id = NEW.node_id)
+    WHERE node_id = NEW.node_id AND tag_id = NEW.tag_id;
+END"""
+            )
+        )
+        connection.execute(
+            text(
+                """
+CREATE TRIGGER node_access_tags_sync_parent_after_node_update
+AFTER UPDATE OF parent ON nodes
+WHEN NEW.parent IS NOT OLD.parent
+BEGIN
+    UPDATE node_access_tags_association
+    SET parent_id = NEW.parent
+    WHERE node_id = NEW.id;
+END"""
+            )
+        )
+    elif connection.engine.dialect.name == "postgresql":
+        connection.execute(
+            text(
+                """
+CREATE OR REPLACE FUNCTION node_access_tags_set_parent()
+RETURNS TRIGGER AS $$
+BEGIN
+    SELECT parent INTO NEW.parent_id FROM nodes WHERE id = NEW.node_id;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql"""
+            )
+        )
+        connection.execute(
+            text(
+                """
+CREATE TRIGGER node_access_tags_set_parent
+BEFORE INSERT OR UPDATE OF node_id ON node_access_tags_association
+FOR EACH ROW
+EXECUTE FUNCTION node_access_tags_set_parent()"""
+            )
+        )
+        connection.execute(
+            text(
+                """
+CREATE OR REPLACE FUNCTION node_access_tags_sync_parent_after_node_update()
+RETURNS TRIGGER AS $$
+BEGIN
+    UPDATE node_access_tags_association
+    SET parent_id = NEW.parent
+    WHERE node_id = NEW.id;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql"""
+            )
+        )
+        connection.execute(
+            text(
+                """
+CREATE TRIGGER node_access_tags_sync_parent_after_node_update
+AFTER UPDATE OF parent ON nodes
+FOR EACH ROW
+WHEN (NEW.parent IS DISTINCT FROM OLD.parent)
+EXECUTE FUNCTION node_access_tags_sync_parent_after_node_update()"""
+            )
+        )
+
+
+class AccessTagsPrincipal(Timestamped, Base):
+    """
+    A principal (human user or service account) that can be granted access
+    via AccessTags.
+
+    The name is the canonical identifier used in authentication tokens and group
+    memberships.  Scopes granted to this principal for a given tag are stored in
+    AccessTagPrincipalScopeAssociation rows; ownership of a tag is stored in AccessTagOwnerAssociation
+    rows.
+    """
+
+    __tablename__ = "access_tags_principals"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(Unicode(255), nullable=False, unique=True)
+
+    tag_scopes: Mapped[List["AccessTagPrincipalScopeAssociation"]] = relationship(
+        back_populates="principal",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    owned_tags: Mapped[List["AccessTagOwnerAssociation"]] = relationship(
+        back_populates="principal",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+
+class AccessTagPrincipalScopeAssociation(Base):
+    """
+    Junction (association table) between AccessTag and AccessTagsPrincipal,
+    with one row per granted scope: a Principal is granted a scope on all
+    nodes carrying an AccessTag. Only tag_id and principal_id are foreign
+    keys; the scope is stored inline as the closed ScopeName enum and is part
+    of the primary key.
+
+    Used to check:
+        - What scopes does a principal have on a given node per the node's tags?
+        - What tags does a principal have a given scope on, and thus how should
+          nodes be filtered for that principal?
+    """
+
+    __tablename__ = "access_tag_principal_scopes_association"
+
+    tag_id = Column(
+        Integer,
+        ForeignKey(
+            "access_tags.id",
+            name="fk_access_tag_principal_scopes_association_access_tag",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+    )
+    principal_id = Column(
+        Integer,
+        ForeignKey(
+            "access_tags_principals.id",
+            name="fk_access_tag_principal_scopes_association_principal",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+    )
+    scope = Column(
+        Enum(
+            ScopeName,
+            name="scope_name",
+            # PostgreSQL enforces the closed set with a native enum type. On
+            # SQLite the column is a plain VARCHAR, so without this an invalid
+            # scope would insert silently and then raise LookupError on every
+            # subsequent read. Emits a CHECK on SQLite; no-op on PostgreSQL.
+            create_constraint=True,
+            values_callable=lambda enum: [member.value for member in enum],
+        ),
+        nullable=False,
+    )
+
+    tag: Mapped["AccessTag"] = relationship(back_populates="principal_scopes")
+    principal: Mapped["AccessTagsPrincipal"] = relationship(back_populates="tag_scopes")
+
+    __table_args__ = (
+        # Serves '(tag, principal) -> scopes' probes, e.g. checking scopes on a
+        # node given its tags.
+        PrimaryKeyConstraint(
+            "tag_id",
+            "principal_id",
+            "scope",
+            name="access_tag_principal_scopes_association_pkey",
+        ),
+        # Covering index serving '(principal, scope) -> tags' lookups, used to
+        # filter nodes visible to a principal.
+        Index(
+            "ix_access_tag_principal_scopes_association_principal_scope",
+            "principal_id",
+            "scope",
+            "tag_id",
+        ),
+    )
+
+
+class AccessTagOwnerAssociation(Base):
+    """
+    Association table which records that a Principal owns an AccessTag and may
+    apply that tag to a node (if scopes permit).
+    """
+
+    __tablename__ = "access_tag_owners_association"
+
+    tag_id = Column(
+        Integer,
+        ForeignKey(
+            "access_tags.id",
+            name="fk_access_tag_owners_association_access_tag",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+    )
+    principal_id = Column(
+        Integer,
+        ForeignKey(
+            "access_tags_principals.id",
+            name="fk_access_tag_owners_association_principal",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+    )
+
+    tag: Mapped["AccessTag"] = relationship(back_populates="owners")
+    principal: Mapped["AccessTagsPrincipal"] = relationship(back_populates="owned_tags")
+
+    __table_args__ = (
+        # Serves 'owners of a tag' and exact (tag, principal) membership probes.
+        PrimaryKeyConstraint(
+            "tag_id", "principal_id", name="access_tag_owners_association_pkey"
+        ),
+        # Serves 'tags owned by a principal' lookups and FK cascade on
+        # principal deletion.
+        Index("ix_access_tag_owners_association_principal_id", "principal_id"),
     )
 
 
@@ -373,8 +703,8 @@ EXECUTE FUNCTION update_closure_table_when_inserting();
     connection.execute(
         text(
             """
-INSERT INTO nodes(id, key, parent, structure_family, metadata, specs, access_blob)
-SELECT 0, '', NULL, 'container', '{}', '[]', '{}';
+INSERT INTO nodes(id, key, parent, structure_family, metadata, specs)
+SELECT 0, '', NULL, 'container', '{}', '[]';
 """
         )
     )
@@ -551,7 +881,7 @@ class Asset(Timestamped, Base):
 
 class Revision(Timestamped, Base):
     """
-    This tracks history of metadata, specs, and access_blob supporting 'undo' functionality.
+    This tracks history of metadata and specs supporting 'undo' functionality.
     """
 
     __tablename__ = "revisions"
@@ -567,7 +897,6 @@ class Revision(Timestamped, Base):
 
     metadata_ = Column("metadata", JSONVariant, nullable=False)
     specs = Column(JSONVariant, nullable=False)
-    access_blob = Column("access_blob", JSONVariant, nullable=False)
 
     __table_args__ = (
         UniqueConstraint(

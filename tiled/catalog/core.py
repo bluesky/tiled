@@ -1,4 +1,4 @@
-from sqlalchemy import text
+from sqlalchemy import literal, select, text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from ..alembic_utils import DatabaseUpgradeNeeded, UninitializedDatabase, check_database
@@ -6,6 +6,9 @@ from .base import Base
 
 # This is list of all valid revisions (from current to oldest).
 ALL_REVISIONS = [
+    "0d4e1f2a3b4c",
+    "3bc110ce44e9",
+    "de302a096358",
     "c31f6a1d7e20",
     "9bc9b57294b9",
     "b93c79d197f4",
@@ -34,11 +37,6 @@ REQUIRED_REVISION = ALL_REVISIONS[0]
 
 
 async def initialize_database(engine: AsyncEngine):
-    # The definitions in .orm alter Base.metadata.
-    # The graph (splash-links) tables also live in the catalog database and
-    # attach to Base.metadata, so importing them here ensures create_all
-    # provisions them on fresh databases (existing databases get them via the
-    # Alembic migration c31f6a1d7e20).
     from ..graph import orm as graph_orm  # noqa: F401
     from . import orm  # noqa: F401
 
@@ -48,12 +46,74 @@ async def initialize_database(engine: AsyncEngine):
             await connection.execute(text("create extension btree_gin;"))
         # Create all tables.
         await connection.run_sync(Base.metadata.create_all)
+        # The persisted catalog root node (nodes.id = 0, inserted by the
+        # nodes_closure DDL listener) is always tagged 'public': under
+        # tag-based access control, a node with no tags is inaccessible, and
+        # the root must never block traversal to its children. The
+        # association requires the 'public' tag row to exist (foreign key),
+        # so it is created here if missing. Besides the access tags compiler,
+        # tag rows are inserted only here and by the storage layers'
+        # auto-registration of principal tags (register_principal_tag_rows).
+        # On a server without an access policy, tags are ignored and
+        # these rows are inert.
+        if engine.dialect.name == "postgresql":
+            from sqlalchemy.dialects.postgresql import insert as upsert
+        else:
+            from sqlalchemy.dialects.sqlite import insert as upsert
+
+        await connection.execute(
+            upsert(orm.AccessTag.__table__)
+            .values(name="public", is_public=True)
+            .on_conflict_do_nothing(index_elements=["name"])
+        )
+        # The tag id is resolved in SQL, so no round-trip is needed and the
+        # statement is a no-op when the association already exists.
+        await connection.execute(
+            upsert(orm.NodeAccessTagAssociation.__table__)
+            .from_select(
+                ["node_id", "tag_id"],
+                select(literal(0), orm.AccessTag.id).where(
+                    orm.AccessTag.name == "public"
+                ),
+            )
+            .on_conflict_do_nothing(index_elements=["node_id", "tag_id"])
+        )
         if engine.dialect.name == "sqlite":
             # Use write-ahead log mode. This persists across all future connections
             # until/unless manually switched.
             # https://www.sqlite.org/wal.html
             await connection.execute(text("PRAGMA journal_mode=WAL;"))
         await connection.commit()
+
+
+async def register_principal_tag_rows(connection, access_tag_names):
+    """
+    Auto-register bare access tag rows for any principal tags in
+    access_tag_names. Principal tags need to exist at write, possibly before
+    the access tags compiler has been able to create them.
+
+    Call this on the same connection/transaction as the tag assignment, so
+    that the row is never observed unassigned and the compiler's retention
+    rules will never delete it. (An AsyncSession caller can pass
+    `await session.connection()`.)
+    """
+    from ..access_control.protocols import PRINCIPAL_TAG_PREFIXES
+    from . import orm
+
+    principal_tags = {
+        name for name in access_tag_names if name.startswith(PRINCIPAL_TAG_PREFIXES)
+    }
+    if not principal_tags:
+        return
+    if connection.dialect.name == "postgresql":
+        from sqlalchemy.dialects.postgresql import insert as upsert
+    else:
+        from sqlalchemy.dialects.sqlite import insert as upsert
+    await connection.execute(
+        upsert(orm.AccessTag.__table__)
+        .values([{"name": name, "is_public": False} for name in sorted(principal_tags)])
+        .on_conflict_do_nothing(index_elements=["name"])
+    )
 
 
 async def check_catalog_database(engine: AsyncEngine):
