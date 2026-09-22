@@ -21,7 +21,7 @@ became on SQLite is simply dropped.
 See https://github.com/bluesky/tiled/issues/1320
 
 Revision ID: 3e87cbeb195b
-Revises: c31f6a1d7e20
+Revises: 0d4e1f2a3b4c
 Create Date: 2026-09-16 00:00:00.000000
 
 """
@@ -30,13 +30,9 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = "3e87cbeb195b"
-down_revision = "c31f6a1d7e20"
+down_revision = "0d4e1f2a3b4c"
 branch_labels = None
 depends_on = None
-
-# The combined GIN as it existed before this revision (created by
-# e05e918092c3_add_closure_table). Used to restore prior state on downgrade.
-_OLD_INDEX_COLUMNS = ["parent", "time_created", "id", "metadata", "access_blob"]
 
 
 def upgrade():
@@ -78,19 +74,3 @@ def downgrade():
                 postgresql_concurrently=True,
                 if_exists=True,
             )
-            op.create_index(
-                "top_level_metadata",
-                "nodes",
-                _OLD_INDEX_COLUMNS,
-                unique=False,
-                postgresql_using="gin",
-                postgresql_concurrently=True,
-                if_not_exists=True,
-            )
-    else:
-        op.create_index(
-            "top_level_metadata",
-            "nodes",
-            _OLD_INDEX_COLUMNS,
-            unique=False,
-        )
