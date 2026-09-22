@@ -67,11 +67,15 @@ Tags can also inherit the ACLs of other tags, using the `auto_tags` field. There
 Lastly, only "owners" of a tag can apply that tag to a node. Tag owners are defined in
 this same tag definitions file, under the `tag_owners` key.
 
+The compiler writes the compiled tag definitions into the catalog database itself,
+where the tiled server reads them. Compile the tags before writing tagged data:
+tags must be defined before they can be applied to nodes.
+
 To try out this access control configuration, an example server can be prepped and launched:
 ```
-# prep the access tags and catalog databases
+# compile the access tags into the catalog database, then populate the catalog
 python example_configs/access_tags/compile_tags.py
 python example_configs/catalog/create_catalog.py
-# launch the example server, which loads these databases
+# launch the example server, which loads this database
 ALICE_PASSWORD=secret1 BOB_PASSWORD=secret2 CARA_PASSWORD=secret3 tiled serve config example_configs/toy_authentication.yml
 ```

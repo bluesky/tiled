@@ -690,7 +690,7 @@ class LiveChildCreated(ChildCreated):
                 "structure_family": self.structure_family,
                 "specs": normalize_specs(self.specs or []),
                 "data_sources": self.data_sources,
-                "access_blob": self.access_blob,
+                "access_tags": self.access_tags,
             },
         }
         if self.structure_family == StructureFamily.container:

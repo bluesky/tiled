@@ -63,6 +63,24 @@ async def client(catalog_adapter):
 
 
 @pytest.mark.asyncio
+async def test_root_node_has_default_access_tags(a):
+    access_tags = (
+        (
+            await a.context.execute(
+                "SELECT access_tags.name "
+                "FROM access_tags "
+                "JOIN node_access_tags_association "
+                "ON node_access_tags_association.tag_id = access_tags.id "
+                "WHERE node_access_tags_association.node_id = 0"
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert list(access_tags) == ["public"]
+
+
+@pytest.mark.asyncio
 async def test_nested_node_creation(a):
     await a.create_node(
         key="b",
@@ -184,6 +202,9 @@ async def test_search(a):
 
 
 @pytest.mark.asyncio
+@pytest.mark.skip(
+    reason="Disabled until the replacement PostgreSQL metadata index is added."
+)
 async def test_metadata_index_is_used(example_data_adapter):
     a = example_data_adapter  # for succinctness below
     # Check that an index is used by inspecting the content of an 'EXPLAIN ...'

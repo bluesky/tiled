@@ -141,8 +141,8 @@ def main() -> None:
             }
             if node_path_parts is not None:
                 entity_input["nodePathParts"] = node_path_parts
-            if "accessBlob" in item:
-                entity_input["accessBlob"] = item["accessBlob"]
+            if "accessTags" in item:
+                entity_input["accessTags"] = item["accessTags"]
 
             entities[name] = entity_input
             item_id = item.get("@id")
@@ -167,8 +167,8 @@ def main() -> None:
                 "object": _resolve_entity_name(object_, entities_by_id),
                 "properties": item.get("properties") or {},
             }
-            if "accessBlob" in item:
-                link_input["accessBlob"] = item["accessBlob"]
+            if "accessTags" in item:
+                link_input["accessTags"] = item["accessTags"]
             links.append(link_input)
 
     with httpx.Client(base_url=base_url, headers=headers, timeout=30.0) as client:
@@ -239,8 +239,8 @@ def main() -> None:
                         "objectId": entity_ids[object_name],
                         "properties": link["properties"],
                         **(
-                            {"accessBlob": link["accessBlob"]}
-                            if "accessBlob" in link
+                            {"accessTags": link["accessTags"]}
+                            if "accessTags" in link
                             else {}
                         ),
                     }
