@@ -5,6 +5,11 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## Unreleased
 
+### Added
+
+- Documentation: a user-guide page on validating metadata against custom specs
+  via server configuration.
+
 ### Changed
 
 - Replace catalog `access_blob` column with a normalized `access_tags` table.
