@@ -107,18 +107,18 @@ class Node(Timestamped, Base):
 
     __table_args__ = (
         UniqueConstraint("key", "parent", name="key_parent_unique_constraint"),
-        # This index supports comparison operations (==, <, ...).
-        # For key-existence operations we will need a GIN index additionally.
+        # PostgreSQL-only GIN index for metadata containment queries
+        # (metadata @> {...}), which is what the server emits for metadata
+        # equality filters (see tiled.catalog.adapter.binary_op).
+        # Pagination is served by ix_nodes_parent_id below and parent filtering
+        # by the ix_nodes_parent index on the `parent` column. On SQLite there is
+        # no GIN and metadata search uses json_each/FTS5.
         Index(
-            "top_level_metadata",
-            "parent",
-            # include 'time_created' and 'id' so the planner can satisfy an
-            # ORDER BY id without a separate sort step (index-only scan path).
-            "time_created",
-            "id",
+            "ix_nodes_metadata",
             "metadata",
             postgresql_using="gin",
-        ),
+            postgresql_ops={"metadata": "jsonb_path_ops"},
+        ).ddl_if(dialect="postgresql"),
         # B-tree index supporting cursor-based pagination (WHERE parent = ?
         # AND id > cursor ORDER BY id) and cursor_for_offset (OFFSET N LIMIT 1
         # ORDER BY id). Serves both SQLite and PostgreSQL efficiently.
