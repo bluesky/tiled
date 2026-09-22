@@ -202,9 +202,6 @@ async def test_search(a):
 
 
 @pytest.mark.asyncio
-@pytest.mark.skip(
-    reason="Disabled until the replacement PostgreSQL metadata index is added."
-)
 async def test_metadata_index_is_used(example_data_adapter):
     a = example_data_adapter  # for succinctness below
     # Check that an index is used by inspecting the content of an 'EXPLAIN ...'

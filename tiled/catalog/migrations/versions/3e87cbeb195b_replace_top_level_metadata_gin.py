@@ -21,7 +21,7 @@ became on SQLite is simply dropped.
 See https://github.com/bluesky/tiled/issues/1320
 
 Revision ID: 3e87cbeb195b
-Revises: c31f6a1d7e20
+Revises: 0d4e1f2a3b4c
 Create Date: 2026-09-16 00:00:00.000000
 
 """
@@ -30,7 +30,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = "3e87cbeb195b"
-down_revision = "c31f6a1d7e20"
+down_revision = "0d4e1f2a3b4c"
 branch_labels = None
 depends_on = None
 
