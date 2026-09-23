@@ -421,7 +421,9 @@ def build_app(
         )
 
     @app.exception_handler(UndefinedAccessTags)
-    async def undefined_tags_handler(request: Request, exc: UndefinedAccessTags):
+    async def undefined_tags_handler(
+        request: Request, exc: UndefinedAccessTags
+    ) -> JSONResponse:
         # The same status as an access policy rejecting the tags.
         return JSONResponse(
             status_code=HTTP_403_FORBIDDEN,

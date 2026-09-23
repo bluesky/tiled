@@ -19,6 +19,7 @@ from typing import (
     Any,
     Callable,
     Dict,
+    Iterable,
     List,
     Literal,
     Optional,
@@ -45,7 +46,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, REGCONFIG, TEXT
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 from sqlalchemy.orm import aliased, selectinload
 from sqlalchemy.sql.expression import cast as sql_cast
 from sqlalchemy.sql.sqltypes import MatchType
@@ -925,13 +926,13 @@ class CatalogNodeAdapter:
 
     async def create_node(
         self,
-        structure_family,
-        metadata,
-        key=None,
-        specs=None,
-        data_sources=None,
-        access_tags=None,
-    ):
+        structure_family: StructureFamily,
+        metadata: dict[str, Any],
+        key: Optional[str] = None,
+        specs: Optional[list[Spec]] = None,
+        data_sources: Optional[list[DataSource[Any]]] = None,
+        access_tags: Optional[Iterable[str]] = None,
+    ) -> "CatalogNodeAdapter":
         access_tags = normalize_access_tags(access_tags or [])
         key = key or self.context.key_maker()
         data_sources = data_sources or []
@@ -1498,9 +1499,14 @@ class CatalogNodeAdapter:
             await db.commit()
 
     async def replace_metadata(
-        self, metadata=None, specs=None, access_tags=None, *, drop_revision=False
-    ):
-        values = {}
+        self,
+        metadata: Optional[dict[str, Any]] = None,
+        specs: Optional[list[Spec]] = None,
+        access_tags: Optional[Iterable[str]] = None,
+        *,
+        drop_revision: bool = False,
+    ) -> None:
+        values: dict[str, Any] = {}
         if metadata is not None:
             # Trailing underscore in 'metadata_' avoids collision with
             # SQLAlchemy reserved word 'metadata'.
@@ -2554,7 +2560,12 @@ def in_memory(
     )
 
 
-async def _create_mount_node_segments(engine, mount_path, specs=None, access_tags=None):
+async def _create_mount_node_segments(
+    engine: AsyncEngine,
+    mount_path: list[str],
+    specs: Optional[list[dict[str, Any]]] = None,
+    access_tags: Optional[Iterable[str]] = None,
+) -> None:
     """Create missing intermediate container nodes for a mount path.
 
     Walks the path segments, creating any that don't exist yet.

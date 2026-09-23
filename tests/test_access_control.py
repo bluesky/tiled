@@ -1847,7 +1847,7 @@ def test_service_principal_access_control(
         sp_client[top][data]
 
 
-def test_new_tags_get_rows():
+def test_new_tags_get_rows() -> None:
     "Tags a policy approves apply without a pre-existing tag row."
     app = build_app(catalog_in_memory(), access_policy=DummyAccessPolicy())
 

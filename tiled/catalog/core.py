@@ -1,7 +1,11 @@
-from sqlalchemy import literal, select, text
+from typing import Callable, Collection, Iterable, Union, cast
+
+from sqlalchemy import String, Table, literal, select, text
+from sqlalchemy.dialects.postgresql import Insert as PostgresqlInsert
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
+from sqlalchemy.dialects.sqlite import Insert as SqliteInsert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
-from sqlalchemy.ext.asyncio import AsyncEngine
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from ..access_control.protocols import normalize_access_tags
 from ..alembic_utils import DatabaseUpgradeNeeded, UninitializedDatabase, check_database
@@ -88,7 +92,9 @@ async def initialize_database(engine: AsyncEngine):
         await connection.commit()
 
 
-def dialect_insert(bind):
+def dialect_insert(
+    bind: Union[AsyncEngine, AsyncConnection],
+) -> Callable[[Table], Union[PostgresqlInsert, SqliteInsert]]:
     """
     Return the dialect's INSERT construct, e.g. postgresql.insert.
 
@@ -100,16 +106,18 @@ def dialect_insert(bind):
     return sqlite_insert
 
 
-async def _find_tag_ids(connection, names):
+async def _find_tag_ids(
+    connection: AsyncConnection, names: Collection[str]
+) -> dict[str, int]:
     "Map each of names that has an access_tags row to the row's id."
     if not names:
         return {}
-    tags = orm.AccessTag.__table__
+    tags = cast(Table, orm.AccessTag.__table__)
     statement = select(tags.c.name, tags.c.id).where(tags.c.name.in_(names))
-    return dict((await connection.execute(statement)).all())
+    return dict((await connection.execute(statement)).tuples().all())
 
 
-def _raise_if_undefined(names, found):
+def _raise_if_undefined(names: frozenset[str], found: dict[str, int]) -> None:
     undefined = names - found.keys()
     if undefined:
         raise UndefinedAccessTags(
@@ -117,7 +125,9 @@ def _raise_if_undefined(names, found):
         )
 
 
-async def get_tag_ids(connection, access_tag_names):
+async def get_tag_ids(
+    connection: AsyncConnection, access_tag_names: Iterable[str]
+) -> list[int]:
     """
     Resolve access tag names to access_tags ids, e.g. ["public"] -> [1].
 
@@ -129,7 +139,9 @@ async def get_tag_ids(connection, access_tag_names):
     return list(found.values())
 
 
-async def get_or_create_tag_ids(connection, access_tag_names):
+async def get_or_create_tag_ids(
+    connection: AsyncConnection, access_tag_names: Iterable[str]
+) -> list[int]:
     """
     Like get_tag_ids, but first create rows for tags that have none.
 
@@ -155,9 +167,11 @@ async def get_or_create_tag_ids(connection, access_tag_names):
     if not missing:
         return list(found.values())
 
-    tags = orm.AccessTag.__table__
-    max_length = tags.c.name.type.length
-    too_long = [name for name in missing if len(name) > max_length]
+    tags = cast(Table, orm.AccessTag.__table__)
+    max_length = cast(String, tags.c.name.type).length  # None: unlimited
+    too_long = [
+        name for name in missing if max_length is not None and len(name) > max_length
+    ]
     if too_long:
         raise UndefinedAccessTags(
             f"Access tag names longer than {max_length} characters: {too_long}"

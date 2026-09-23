@@ -26,9 +26,9 @@ from datetime import datetime, timezone
 from typing import Iterable, Optional
 
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy import and_, delete, false, insert, or_, select, update
+from sqlalchemy import Table, and_, delete, false, insert, or_, select, update
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncEngine
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from ..catalog.core import get_or_create_tag_ids
 from ..catalog.orm import AccessTag, Node, NodeAccessTagAssociation
@@ -240,7 +240,12 @@ class GraphSQLAlchemyStore:
         return self._to_link(row, access_tags)
 
     async def _set_access_tags(
-        self, conn, assoc_table, assoc_id_column_name: str, id: str, access_tag_names
+        self,
+        conn: AsyncConnection,
+        assoc_table: Table,
+        assoc_id_column_name: str,
+        id: str,
+        access_tag_names: Iterable[str],
     ) -> None:
         """Replace the access tag associations of an entity or link."""
         access_tag_ids = await get_or_create_tag_ids(conn, access_tag_names)
