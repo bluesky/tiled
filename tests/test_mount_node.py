@@ -1,4 +1,5 @@
 import asyncio
+from pathlib import Path
 
 import numpy
 import pytest
@@ -309,7 +310,7 @@ def test_create_mount_nodes_partial(sqlite_or_postgres_uri, tmpdir):
         assert list(client["A"]["B"]["C"].access_tags) == ["_LEAF"]
 
 
-def test_mount_undefined_tag(sqlite_or_postgres_uri, tmpdir):
+def test_mount_undefined_tag(sqlite_or_postgres_uri: str, tmp_path: Path) -> None:
     "Mount node tags come from config, so an undefined one fails startup."
     mount_config = {
         "create_mount_nodes_if_not_exist": True,
@@ -320,7 +321,7 @@ def test_mount_undefined_tag(sqlite_or_postgres_uri, tmpdir):
                 "args": {
                     "uri": sqlite_or_postgres_uri,
                     "init_if_not_exists": True,
-                    "writable_storage": [tmpdir / "data"],
+                    "writable_storage": [tmp_path / "data"],
                     "mount_node": "/A",
                     "top_level_access_tags": ["undefined"],
                 },
