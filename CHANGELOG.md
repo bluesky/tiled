@@ -38,6 +38,11 @@ Write the date in place of the "Unreleased" in the case a new version is release
   on-disk shape has diverged from the shape recorded in the catalog
   structure, which can happen while an array is being extended
   (e.g. streaming appends).
+- Treat an empty-string environment variable for a list/dict configuration
+  field (e.g. `TILED_WEBHOOKS_SECRET_KEYS=`) as unset, falling back to the
+  field default instead of failing to start. This avoids startup errors when
+  such variables are populated by Docker Compose interpolation like
+  `${VAR:-}`.
 
 ## v0.2.18 (2026-09-02)
 

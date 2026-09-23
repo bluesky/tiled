@@ -13,6 +13,7 @@ from typing import Annotated, Any, Iterator, Optional, Union
 from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
 from pydantic_settings import (
     BaseSettings,
+    EnvSettingsSource,
     PydanticBaseSettingsSource,
     SettingsConfigDict,
 )
@@ -44,6 +45,29 @@ def sub_paths(segments: tuple[str, ...]) -> Iterator[tuple[str, ...]]:
         yield segments[:i]
 
 
+class EmptyAwareEnvSettingsSource(EnvSettingsSource):
+    """Env source that treats an empty string for a complex field as unset.
+
+    pydantic-settings JSON-decodes environment values for complex fields
+    (lists, dicts). An empty string is not valid JSON, so a variable such as
+    ``TILED_WEBHOOKS_SECRET_KEYS=`` would raise a parsing error at startup.
+    Environments that interpolate unset variables to empty strings (for
+    example Docker Compose's ``${VAR:-}``) hit this easily. Treat an empty
+    value for a complex field as absent so the field's default is used.
+    """
+
+    def prepare_field_value(
+        self, field_name: str, field: Any, value: Any, value_is_complex: bool
+    ) -> Any:
+        is_complex, _ = self._field_is_complex(field)
+        if (is_complex or value_is_complex) and value == "":
+            # Skip this field so its default (not an invalid empty string) wins.
+            return None
+        return super().prepare_field_value(
+            field_name, field, value, value_is_complex
+        )
+
+
 def settings_customise_sources(
     # Give env vars priority over config file.
     # https://docs.pydantic.dev/latest/concepts/pydantic_settings/#changing-priority
@@ -54,7 +78,11 @@ def settings_customise_sources(
     dotenv_settings: PydanticBaseSettingsSource,
     file_secret_settings: PydanticBaseSettingsSource,
 ) -> tuple[PydanticBaseSettingsSource, ...]:
-    return env_settings, init_settings, file_secret_settings
+    return (
+        EmptyAwareEnvSettingsSource(settings_cls),
+        init_settings,
+        file_secret_settings,
+    )
 
 
 class CatalogConfig(BaseSettings):
