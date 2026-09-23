@@ -653,6 +653,10 @@ class UnsafeIdentifier(ValueError):
     pass
 
 
+class UndefinedAccessTags(ValueError):
+    "Prompts the server to send 403 Forbidden with message, e.g. a typo in config"
+
+
 # Arrow obtained an official MIME type 2021-06-23.
 # https://www.iana.org/assignments/media-types/application/vnd.apache.arrow.file
 APACHE_ARROW_FILE_MIME_TYPE = "application/vnd.apache.arrow.file"
