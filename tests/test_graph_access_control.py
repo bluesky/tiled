@@ -361,7 +361,7 @@ async def test_deleting_link_removes_tag_associations_but_not_tag(store):
 
 
 @pytest.mark.asyncio
-async def test_entity_new_tag_gets_row(store):
+async def test_entity_new_tag_gets_row(store: GraphSQLAlchemyStore) -> None:
     "A tag with no row yet gets one on first use, as for nodes."
     entity = await store.create_entity(
         entity_type="sample", name="entity", access_tags=["new:1"]
@@ -370,7 +370,7 @@ async def test_entity_new_tag_gets_row(store):
 
 
 @pytest.mark.asyncio
-async def test_bare_string_tags_fail(store):
+async def test_bare_string_tags_fail(store: GraphSQLAlchemyStore) -> None:
     "A bare string is not split into one tag per character."
     with pytest.raises(TypeError):
         await store.create_entity(
