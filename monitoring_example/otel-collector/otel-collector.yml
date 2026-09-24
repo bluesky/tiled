@@ -1,0 +1,67 @@
+# OpenTelemetry Collector configuration.
+#
+# Traces:   tiled --OTLP--> otel-collector --OTLP--> jaeger
+# Metrics:  otel-collector <--scrape-- tiled:8000/api/v1/metrics
+#           otel-collector --expose--> :8889 (Prometheus format)
+#
+# The collector receives OTLP traces and forwards them to Jaeger. It also
+# scrapes Tiled's Prometheus metrics endpoint and re-exposes those metrics in
+# Prometheus format on port 8889.
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+  # Scrape Tiled's Prometheus metrics endpoint. This is a standard Prometheus
+  # scrape config. The API key must match TILED_SINGLE_USER_API_KEY (or an API
+  # key carrying the "metrics" scope in a multi-user deployment).
+  prometheus:
+    config:
+      scrape_configs:
+        - job_name: tiled
+          metrics_path: /api/v1/metrics
+          scrape_interval: 5s
+          authorization:
+            type: Apikey
+            credentials: secret
+          static_configs:
+            - targets: ['tiled:8000']
+
+processors:
+  batch: {}
+
+exporters:
+  # Forward traces to Jaeger's OTLP gRPC receiver.
+  otlp/jaeger:
+    endpoint: jaeger:4317
+    tls:
+      insecure: true
+  # Forward the same traces to Grafana Tempo's OTLP gRPC receiver.
+  otlp/tempo:
+    endpoint: tempo:4317
+    tls:
+      insecure: true
+  # Re-expose scraped metrics in Prometheus format for Prometheus to scrape.
+  prometheus:
+    endpoint: 0.0.0.0:8889
+  # Log received spans to the collector's stdout (useful for debugging).
+  debug:
+    verbosity: detailed
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp/jaeger, otlp/tempo, debug]
+    metrics:
+      receivers: [prometheus]
+      processors: [batch]
+      exporters: [prometheus]
+  telemetry:
+    logs:
+      level: info

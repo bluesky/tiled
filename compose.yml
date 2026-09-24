@@ -7,6 +7,11 @@ services:
       - TILED_CATALOG_URI=postgresql://tiled:${POSTGRES_PASSWORD}@postgres:5432/tiled_catalog
       - TILED_CATALOG_WRITABLE_STORAGE=["file:///storage", "postgresql://tiled:${POSTGRES_PASSWORD}@postgres:5432/tiled_storage"]
       - TILED_STREAMING_CACHE_URI=redis://:${REDIS_PASSWORD}@redis:6379
+      # Export OpenTelemetry traces to the collector (see compose.monitoring.yml).
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
+      - OTEL_SERVICE_NAME=tiled
+      # Don't trace health checks and metrics scrapes (operational chatter).
+      - OTEL_PYTHON_FASTAPI_EXCLUDED_URLS=healthz,api/v1/metrics
     volumes:
       - tiled_data:/storage
     ports:

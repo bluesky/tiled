@@ -17,14 +17,40 @@ API_KEY_COOKIE_NAME = "tiled_api_key"
 API_KEY_QUERY_PARAMETER = "api_key"
 CSRF_COOKIE_NAME = "tiled_csrf"
 
+try:
+    from opentelemetry import trace
+
+    _tracer = trace.get_tracer("tiled.server")
+except ImportError:
+    # OpenTelemetry is an optional dependency; tracing is simply disabled.
+    _tracer = None
+
+# Human-readable OpenTelemetry span names for the phases timed below.
+_SPAN_NAMES = {
+    "app": "tiled.app",
+    "acl": "tiled.access_control",
+    "read": "tiled.read",
+    "tok": "tiled.tokenize",
+    "pack": "tiled.pack",
+}
+
 
 @contextlib.contextmanager
 def record_timing(metrics: dict[str, Any], key: str) -> Generator[None]:
     """
-    Set timings[key] equal to the run time (in milliseconds) of the context body.
+    Set timings[key] equal to the run time (in seconds) of the context body.
+
+    Also open an OpenTelemetry span around the body so that these phases appear
+    as child spans in a request's trace. If OpenTelemetry is not installed or no
+    tracer provider is configured, the span is a no-op.
     """
+    if _tracer is None:
+        span = contextlib.nullcontext()
+    else:
+        span = _tracer.start_as_current_span(_SPAN_NAMES.get(key, f"tiled.{key}"))
     t0 = time.perf_counter()
-    yield
+    with span:
+        yield
     metrics[key]["dur"] += time.perf_counter() - t0  # Units: seconds
 
 
