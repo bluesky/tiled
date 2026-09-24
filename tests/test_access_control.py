@@ -11,10 +11,13 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 from starlette.status import HTTP_403_FORBIDDEN
 
+from tiled.access_control.access_policies import DummyAccessPolicy
 from tiled.access_control.access_tags import AccessTagsCompiler
 from tiled.access_control.scopes import ALL_SCOPES
+from tiled.catalog import in_memory as catalog_in_memory
+from tiled.catalog.orm import AccessTag
 from tiled.client import Context, from_context
-from tiled.server.app import build_app_from_config
+from tiled.server.app import build_app, build_app_from_config
 from tiled.server.connection_pool import close_database_connection_pool
 from tiled.server.settings import DatabaseSettings
 from tiled.utils import ensure_specified_sql_driver
@@ -1842,3 +1845,24 @@ def test_service_principal_access_control(
         sp_client[top].write_array(arr, key=data, access_tags=["physicists_tag"])
         assert data in sp_client[top]
         sp_client[top][data]
+
+
+def test_new_tags_get_rows():
+    "Tags a policy approves apply without a pre-existing tag row."
+    app = build_app(catalog_in_memory(), access_policy=DummyAccessPolicy())
+
+    with Context.from_app(app) as context:
+        client = from_context(context)
+
+        # First use of a tag creates its row; later uses find it.
+        node = client.create_container("x", access_tags=["a:1"])
+        assert node.access_tags == ["a:1"]
+        assert client.create_container("y", access_tags=["a:1"]).access_tags == ["a:1"]
+
+        node.replace_metadata(access_tags=["b:2"])
+        assert client["x"].access_tags == ["b:2"]
+
+        # A name the tag column cannot hold is rejected, not a database error.
+        too_long = "x" * (AccessTag.__table__.c.name.type.length + 1)
+        with fail_with_status_code(HTTP_403_FORBIDDEN):
+            client.create_container("z", access_tags=[too_long])
