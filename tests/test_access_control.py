@@ -9,7 +9,7 @@ import pytest
 import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
-from starlette.status import HTTP_403_FORBIDDEN
+from starlette.status import HTTP_403_FORBIDDEN, HTTP_422_UNPROCESSABLE_CONTENT
 
 from tiled.access_control.access_policies import DummyAccessPolicy
 from tiled.access_control.access_tags import AccessTagsCompiler
@@ -1862,7 +1862,7 @@ def test_new_tags_get_rows() -> None:
         node.replace_metadata(access_tags=["b:2"])
         assert client["x"].access_tags == ["b:2"]
 
-        # A name the tag column cannot hold is rejected, not a database error.
+        # A name the tag column cannot hold is invalid input, not a database error.
         too_long = "x" * (AccessTag.__table__.c.name.type.length + 1)
-        with fail_with_status_code(HTTP_403_FORBIDDEN):
+        with fail_with_status_code(HTTP_422_UNPROCESSABLE_CONTENT):
             client.create_container("z", access_tags=[too_long])

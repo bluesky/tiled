@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from ..access_control.protocols import normalize_access_tags
 from ..alembic_utils import DatabaseUpgradeNeeded, UninitializedDatabase, check_database
-from ..utils import UndefinedAccessTags
+from ..utils import AccessTagNameTooLong, UndefinedAccessTags
 from . import orm
 from .base import Base
 
@@ -157,8 +157,7 @@ async def get_or_create_tag_ids(
     rules will never delete it. (An AsyncSession caller can pass
     `await session.connection()`.)
 
-    Raises UndefinedAccessTags for names longer than the column, which can
-    never have a row.
+    Raises AccessTagNameTooLong for names longer than the column.
     """
     # Rejects a bare string, which set() would split into one tag per letter.
     names = normalize_access_tags(access_tag_names)
@@ -173,7 +172,7 @@ async def get_or_create_tag_ids(
         name for name in missing if max_length is not None and len(name) > max_length
     ]
     if too_long:
-        raise UndefinedAccessTags(
+        raise AccessTagNameTooLong(
             f"Access tag names longer than {max_length} characters: {too_long}"
         )
 
