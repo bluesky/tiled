@@ -8,12 +8,54 @@ particular request was slow.
 
 Traces are exported using the OpenTelemetry Protocol (OTLP) to an
 [OpenTelemetry Collector](https://opentelemetry.io/docs/collector/), which
-forwards them to a tracing backend such as
-[Jaeger](https://www.jaegertracing.io/) for storage and visualization.
+forwards them to one or more tracing backends for storage and visualization,
+such as [Jaeger](https://www.jaegertracing.io/) or
+[Grafana Tempo](https://grafana.com/oss/tempo/).
 
+```{mermaid}
+flowchart LR
+    tiled["Tiled server"]
+    collector["OpenTelemetry<br/>Collector"]
+
+    subgraph backends["Storage backends"]
+        direction TB
+        jaeger["Jaeger"]
+        tempo["Grafana Tempo"]
+        prometheus["Prometheus"]
+        loki["Loki"]
+    end
+
+    subgraph viz["Visualization"]
+        direction TB
+        jaegerui["Jaeger UI"]
+        grafana["Grafana"]
+    end
+
+    %% Configured in the example
+    tiled -->|"traces (OTLP)"| collector
+    collector -->|OTLP| jaeger
+    collector -->|OTLP| tempo
+    tiled -->|"metrics (scrape)"| prometheus
+
+    %% Visualization
+    jaeger --> jaegerui
+    tempo --> grafana
+    prometheus --> grafana
+
+    %% Metrics and logs over OTLP: possible extension, not enabled
+    tiled -.->|"metrics (OTLP)"| collector
+    tiled -.->|"logs (OTLP)"| collector
+    collector -.->|metrics| prometheus
+    collector -.->|logs| loki
+    loki -.-> grafana
 ```
-tiled  --OTLP-->  OpenTelemetry Collector  --OTLP-->  Jaeger
-```
+
+Solid arrows are what the example configures today: Tiled pushes **traces** over
+OTLP to the Collector, which fans them out to Jaeger and Grafana Tempo, while
+Prometheus scrapes Tiled's metrics endpoint. Dashed arrows show how the same
+Collector could also carry OpenTelemetry's other two signals — **metrics** and
+**logs** — over OTLP to backends such as Prometheus and Loki. Those paths are
+not currently enabled.
 
 ## Enabling tracing
 
@@ -37,8 +79,9 @@ directly). Related environment variables:
 
 2. Spans are exported over OTLP to the OpenTelemetry Collector.
 
-3. The Collector forwards traces to Jaeger, which stores them and serves the UI
-   used to search and visualize them.
+3. The Collector forwards traces to one or more backends (Jaeger and Grafana
+   Tempo in the example stack), which store them and make them available to
+   search and visualize.
 
 
 ## Try it with the example stack
@@ -65,9 +108,15 @@ c.create_container('test')
 list(c)
 ```
 
-Then open the Jaeger UI at
-[http://localhost:16686](http://localhost:16686), select the **tiled** service,
-and click **Find Traces**. Click any trace to see its span waterfall.
+The example forwards traces to two backends so you can compare their functionality:
+
+- **Jaeger:** open [http://localhost:16686](http://localhost:16686), select the
+  **tiled** service, and click **Find Traces**. Click a trace to see its span
+  waterfall.
+- **Grafana Tempo:** open [http://localhost:3000](http://localhost:3000), go to
+  **Explore**, select the **Tempo** data source, and search using
+  [TraceQL](https://grafana.com/docs/tempo/latest/traceql/), for example
+  `{ resource.service.name = "tiled" }`.
 
 ```{note}
 The bundled Collector also scrapes Tiled's `/api/v1/metrics` endpoint and
