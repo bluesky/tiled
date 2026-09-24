@@ -33,5 +33,37 @@ services:
       GF_AUTH_DISABLE_SIGNOUT_MENU: "true"
       GF_AUTH_DISABLE_LOGIN_FORM: "true"
 
+  # OpenTelemetry Collector: receives OTLP telemetry from apps and fans it
+  # out to backends (traces -> Jaeger). It also scrapes Tiled's Prometheus
+  # metrics endpoint and re-exposes it for Prometheus. Apps on the 'backend'
+  # network export to http://otel-collector:4318; apps on the host export to
+  # http://localhost:4318.
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.130.0
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./monitoring_example/otel-collector/otel-collector.yml:/etc/otelcol/config.yaml
+    ports:
+      - 4317:4317   # OTLP gRPC
+      - 4318:4318   # OTLP HTTP
+      - 8889:8889   # Prometheus exporter (re-exposed scraped metrics)
+    depends_on:
+      - jaeger
+    networks:
+      - backend
+    restart: unless-stopped
+
+  # Jaeger all-in-one: trace storage + query UI. In-memory storage (dev
+  # only; traces are lost on restart). Natively accepts OTLP.
+  jaeger:
+    image: jaegertracing/all-in-one:1.62.0
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - 16686:16686   # Jaeger web UI
+    networks:
+      - backend
+    restart: unless-stopped
+
 networks:
   backend: {}
