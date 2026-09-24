@@ -40,6 +40,11 @@ exporters:
     endpoint: jaeger:4317
     tls:
       insecure: true
+  # Forward the same traces to Grafana Tempo's OTLP gRPC receiver.
+  otlp/tempo:
+    endpoint: tempo:4317
+    tls:
+      insecure: true
   # Re-expose scraped metrics in Prometheus format for Prometheus to scrape.
   prometheus:
     endpoint: 0.0.0.0:8889
@@ -52,7 +57,7 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [otlp/jaeger, debug]
+      exporters: [otlp/jaeger, otlp/tempo, debug]
     metrics:
       receivers: [prometheus]
       processors: [batch]

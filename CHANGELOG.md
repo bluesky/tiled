@@ -120,8 +120,9 @@ Write the date in place of the "Unreleased" in the case a new version is release
   server-accessible files as a single dataset (array, table, etc.).
 - Add registration support for Parquet files.
 - OpenTelemetry tracing for the server, exported over OTLP. The example monitoring
-  stack (`compose.monitoring.yml`) now includes an OpenTelemetry Collector and
-  Jaeger, and the Collector also scrapes and re-exposes Tiled's Prometheus metrics.
+  stack (`compose.monitoring.yml`) now includes an OpenTelemetry Collector, Jaeger,
+  and Grafana Tempo (traces are sent to both backends), and the Collector also
+  scrapes and re-exposes Tiled's Prometheus metrics.
 - Documentation: a user-guide page on validating metadata against custom specs
   via server configuration.
 - ACL filtering by access tags ids resolved from access tag names on the server.
