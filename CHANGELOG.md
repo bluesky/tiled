@@ -11,6 +11,9 @@ Write the date in place of the "Unreleased" in the case a new version is release
   stack (`compose.monitoring.yml`) now includes an OpenTelemetry Collector, Jaeger,
   and Grafana Tempo (traces are sent to both backends), and the Collector also
   scrapes and re-exposes Tiled's Prometheus metrics.
+- Emit OpenTelemetry spans for internal request phases (access control, read,
+  tokenize, pack) so they appear as child spans in a request's trace, giving a
+  per-request breakdown of where time is spent.
 - Documentation: a user-guide page on validating metadata against custom specs
   via server configuration.
 
