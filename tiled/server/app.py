@@ -61,6 +61,7 @@ from ..query_registration import QueryRegistry, default_query_registry
 from ..type_aliases import AppTask, TaskMap
 from ..utils import (
     SHARE_TILED_PATH,
+    AccessTagNameTooLong,
     Conflicts,
     UndefinedAccessTags,
     UnsafeIdentifier,
@@ -427,6 +428,15 @@ def build_app(
         # The same status as an access policy rejecting the tags.
         return JSONResponse(
             status_code=HTTP_403_FORBIDDEN,
+            content={"detail": exc.args[0]},
+        )
+
+    @app.exception_handler(AccessTagNameTooLong)
+    async def tag_name_too_long_handler(
+        request: Request, exc: AccessTagNameTooLong
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=HTTP_422_UNPROCESSABLE_CONTENT,
             content={"detail": exc.args[0]},
         )
 
