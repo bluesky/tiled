@@ -657,6 +657,10 @@ class UndefinedAccessTags(ValueError):
     "Prompts the server to send 403 Forbidden with message, e.g. a typo in config"
 
 
+class AccessTagNameTooLong(ValueError):
+    "Prompts the server to send 422 Unprocessable Content with message"
+
+
 # Arrow obtained an official MIME type 2021-06-23.
 # https://www.iana.org/assignments/media-types/application/vnd.apache.arrow.file
 APACHE_ARROW_FILE_MIME_TYPE = "application/vnd.apache.arrow.file"
