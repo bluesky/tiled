@@ -307,3 +307,26 @@ def test_create_mount_nodes_partial(sqlite_or_postgres_uri, tmpdir):
         # Leaf /A/B/C should carry the configured specs.
         assert client["A"]["B"]["C"].specs == [Spec(name="PartialSpec", version="1.0")]
         assert list(client["A"]["B"]["C"].access_tags) == ["_LEAF"]
+
+
+def test_mount_undefined_tag(sqlite_or_postgres_uri, tmpdir):
+    "Mount node tags come from config, so an undefined one fails startup."
+    mount_config = {
+        "create_mount_nodes_if_not_exist": True,
+        "trees": [
+            {
+                "path": "/",
+                "tree": "catalog",
+                "args": {
+                    "uri": sqlite_or_postgres_uri,
+                    "init_if_not_exists": True,
+                    "writable_storage": [tmpdir / "data"],
+                    "mount_node": "/A",
+                    "top_level_access_tags": ["undefined"],
+                },
+            },
+        ],
+    }
+    with pytest.raises(ValueError, match="not defined"):
+        with Context.from_app(build_app_from_config(mount_config)):
+            pass
