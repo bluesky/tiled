@@ -7,6 +7,9 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Added
 
+- OpenTelemetry tracing for the server, exported over OTLP. The example monitoring
+  stack (`compose.monitoring.yml`) now includes an OpenTelemetry Collector and
+  Jaeger, and the Collector also scrapes and re-exposes Tiled's Prometheus metrics.
 - Documentation: a user-guide page on validating metadata against custom specs
   via server configuration.
 
