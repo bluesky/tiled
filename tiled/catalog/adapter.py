@@ -19,6 +19,7 @@ from typing import (
     Any,
     Callable,
     Dict,
+    Iterable,
     List,
     Literal,
     Optional,
@@ -45,15 +46,11 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, REGCONFIG, TEXT
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 from sqlalchemy.orm import aliased, selectinload
 from sqlalchemy.sql.expression import cast as sql_cast
 from sqlalchemy.sql.sqltypes import MatchType
-from starlette.status import (
-    HTTP_403_FORBIDDEN,
-    HTTP_404_NOT_FOUND,
-    HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-)
+from starlette.status import HTTP_404_NOT_FOUND, HTTP_415_UNSUPPORTED_MEDIA_TYPE
 
 from tiled.queries import (
     AccessTagsFilter,
@@ -127,8 +124,9 @@ from ..utils import (
 from . import orm
 from .core import (
     check_catalog_database,
+    get_or_create_tag_ids,
+    get_tag_ids,
     initialize_database,
-    register_principal_tag_rows,
 )
 from .explain import ExplainAsyncSession
 from .utils import compute_structure_id
@@ -209,39 +207,6 @@ class RootNode:
         self.data_sources = None
 
         self.access_tags = normalize_access_tags(top_level_access_tags or [])
-
-
-async def _resolve_access_tags(db, access_tag_names):
-    """
-    Resolve access tag names to orm.AccessTag rows in the given session.
-
-    Fetches only the requested names (an indexed IN lookup, not a scan of
-    the access_tags table). A node cannot be associated with a tag that has
-    no row, so unknown names raise. Normally the access policy has already
-    validated the tags; this fires only for requests that bypassed the
-    policy or raced a tag-definition resync, and it uses the same status
-    code that the policy check produces (403).
-
-    Principal tags are slightly different: these need to exist at write,
-    possibly before the access tags compiler has been able to create them.
-    """
-    await register_principal_tag_rows(await db.connection(), access_tag_names)
-    tag_rows = (
-        (
-            await db.execute(
-                select(orm.AccessTag).where(orm.AccessTag.name.in_(access_tag_names))
-            )
-        )
-        .scalars()
-        .all()
-    )
-    missing = set(access_tag_names) - {tag.name for tag in tag_rows}
-    if missing:
-        raise HTTPException(
-            status_code=HTTP_403_FORBIDDEN,
-            detail=f"Cannot apply access tags that are not defined: {sorted(missing)}",
-        )
-    return list(tag_rows)
 
 
 class Context:
@@ -977,13 +942,13 @@ class CatalogNodeAdapter:
 
     async def create_node(
         self,
-        structure_family,
-        metadata,
-        key=None,
-        specs=None,
-        data_sources=None,
-        access_tags=None,
-    ):
+        structure_family: StructureFamily,
+        metadata: dict[str, Any],
+        key: Optional[str] = None,
+        specs: Optional[list[Spec]] = None,
+        data_sources: Optional[list[DataSource[Any]]] = None,
+        access_tags: Optional[Iterable[str]] = None,
+    ) -> "CatalogNodeAdapter":
         access_tags = normalize_access_tags(access_tags or [])
         key = key or self.context.key_maker()
         data_sources = data_sources or []
@@ -996,15 +961,22 @@ class CatalogNodeAdapter:
             specs=specs or [],
         )
         async with self.context.session() as db:
-            if access_tags:
-                # Assigning AccessTag rows to the (many-to-many) relationship
-                # creates the node_access_tags_association association rows on flush.
-                node.access_tags = await _resolve_access_tags(db, access_tags)
+            tag_ids = await get_or_create_tag_ids(await db.connection(), access_tags)
             # TODO Consider using nested transitions to ensure that
             # both the node is created (name not already taken)
             # and the directory/file is created---or neither are.
             try:
                 db.add(node)
+                # Link tags by id once the node has one. No AccessTag objects
+                # needed: refresh() below reloads node.access_tags, since the
+                # relationship is lazy="selectin" (see orm.Node).
+                await db.flush()
+                db.add_all(
+                    [
+                        orm.NodeAccessTagAssociation(node_id=node.id, tag_id=tag_id)
+                        for tag_id in tag_ids
+                    ]
+                )
                 await db.commit()
             except IntegrityError as exc:
                 UNIQUE_CONSTRAINT_FAILED = "gkpj"
@@ -1543,9 +1515,14 @@ class CatalogNodeAdapter:
             await db.commit()
 
     async def replace_metadata(
-        self, metadata=None, specs=None, access_tags=None, *, drop_revision=False
-    ):
-        values = {}
+        self,
+        metadata: Optional[dict[str, Any]] = None,
+        specs: Optional[list[Spec]] = None,
+        access_tags: Optional[Iterable[str]] = None,
+        *,
+        drop_revision: bool = False,
+    ) -> None:
+        values: dict[str, Any] = {}
         if metadata is not None:
             # Trailing underscore in 'metadata_' avoids collision with
             # SQLAlchemy reserved word 'metadata'.
@@ -1590,12 +1567,12 @@ class CatalogNodeAdapter:
                         orm.NodeAccessTagAssociation.node_id == self.node.id
                     )
                 )
-                for tag in await _resolve_access_tags(
-                    db, normalize_access_tags(access_tags)
+                for tag_id in await get_or_create_tag_ids(
+                    await db.connection(), normalize_access_tags(access_tags)
                 ):
                     db.add(
                         orm.NodeAccessTagAssociation(
-                            node_id=self.node.id, tag_id=tag.id
+                            node_id=self.node.id, tag_id=tag_id
                         )
                     )
             await db.commit()
@@ -2618,7 +2595,12 @@ def in_memory(
     )
 
 
-async def _create_mount_node_segments(engine, mount_path, specs=None, access_tags=None):
+async def _create_mount_node_segments(
+    engine: AsyncEngine,
+    mount_path: list[str],
+    specs: Optional[list[dict[str, Any]]] = None,
+    access_tags: Optional[Iterable[str]] = None,
+) -> None:
     """Create missing intermediate container nodes for a mount path.
 
     Walks the path segments, creating any that don't exist yet.
@@ -2657,27 +2639,13 @@ async def _create_mount_node_segments(engine, mount_path, specs=None, access_tag
                     access_tags if is_leaf else normalize_access_tags([])
                 )
                 if node_access_tags_association:
-                    # Resolve tag names to ids; raise on any undefined tag.
-                    rows = (
-                        await conn.execute(
-                            select(orm.AccessTag.id, orm.AccessTag.name).where(
-                                orm.AccessTag.name.in_(node_access_tags_association)
-                            )
-                        )
-                    ).all()
-                    missing = set(node_access_tags_association) - {
-                        name for _, name in rows
-                    }
-                    if missing:
-                        raise ValueError(
-                            "Cannot apply access tags that are not defined: "
-                            f"{sorted(missing)}"
-                        )
+                    # Tags from config must already exist, so a typo fails.
+                    tag_ids = await get_tag_ids(conn, node_access_tags_association)
                     await conn.execute(
                         insert(orm.NodeAccessTagAssociation).values(
                             [
                                 {"node_id": node_id, "tag_id": tag_id}
-                                for tag_id, _ in rows
+                                for tag_id in tag_ids
                             ]
                         )
                     )

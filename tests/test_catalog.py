@@ -21,7 +21,7 @@ import tifffile
 import xarray
 from hypothesis import given, settings
 from hypothesis import strategies as st
-from sqlalchemy import text
+from sqlalchemy import event, text
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.pool import AsyncAdaptedQueuePool, QueuePool, StaticPool
 
@@ -30,7 +30,7 @@ from tiled.adapters.dataframe import ArrayAdapter
 from tiled.adapters.tiff import TiffAdapter
 from tiled.adapters.utils import DataNotReadyError, IncompatibleShapeError
 from tiled.catalog import in_memory
-from tiled.catalog.adapter import WouldDeleteData
+from tiled.catalog.adapter import CatalogContainerAdapter, WouldDeleteData
 from tiled.catalog.explain import record_explanations
 from tiled.client import Context, from_context
 from tiled.client.register import register
@@ -1393,3 +1393,19 @@ def test_pooling_config(sqlite_or_postgres_uri, sql_storage_uri, desired, expect
         assert storage._connection_pool._max_overflow == expected[3]
 
     storage.dispose()
+
+
+@pytest.mark.asyncio
+async def test_known_tags_no_insert(a: CatalogContainerAdapter) -> None:
+    "Writes with existing tags insert no tag rows (on PostgreSQL, each costs an id)."
+    x = await a.create_node(StructureFamily.container, {}, key="x", access_tags=["a:1"])
+
+    statements: list[str] = []
+    event.listen(
+        a.context.engine.sync_engine,
+        "before_cursor_execute",
+        lambda conn, cursor, statement, *args: statements.append(statement),
+    )
+    await a.create_node(StructureFamily.container, {}, key="y", access_tags=["a:1"])
+    await x.replace_metadata(metadata={"n": 1}, access_tags=["a:1"])
+    assert not [s for s in statements if s.startswith("INSERT INTO access_tags")]

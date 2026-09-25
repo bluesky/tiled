@@ -26,11 +26,11 @@ from datetime import datetime, timezone
 from typing import Iterable, Optional
 
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy import and_, delete, false, insert, or_, select, update
+from sqlalchemy import Table, and_, delete, false, insert, or_, select, update
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncEngine
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from ..catalog.core import register_principal_tag_rows
+from ..catalog.core import get_or_create_tag_ids
 from ..catalog.orm import AccessTag, Node, NodeAccessTagAssociation
 from ..queries import AccessTagsFilter
 from ..server.connection_pool import get_database_engine
@@ -143,35 +143,6 @@ def _access_filters_condition(condition_builder, queries: list[AccessTagsFilter]
     return condition
 
 
-async def _resolve_access_tag_ids(conn, access_tag_names: Iterable[str]) -> list[int]:
-    """
-    Resolve access tag names to access_tags ids. An association cannot
-    reference a tag that has no row, so unknown names raise. Normally the
-    access policy has already validated the tags; this fires only for requests
-    that bypassed the policy or raced a tag-definition resync.
-
-    Principal tags are slightly different: these need to exist at write,
-    possibly before the tags compiler has been able to create them.
-    """
-    names = set(access_tag_names)
-    if not names:
-        return []
-    await register_principal_tag_rows(conn, names)
-    rows = (
-        await conn.execute(
-            select(_access_tags.c.id, _access_tags.c.name).where(
-                _access_tags.c.name.in_(names)
-            )
-        )
-    ).all()
-    missing = names - {row.name for row in rows}
-    if missing:
-        raise ValueError(
-            f"Cannot apply access tags that are not defined: {sorted(missing)}"
-        )
-    return [row.id for row in rows]
-
-
 class GraphSQLAlchemyStore:
     """
     Async SQLAlchemy-backed store that can reuse Tiled's shared DB pool.
@@ -269,10 +240,15 @@ class GraphSQLAlchemyStore:
         return self._to_link(row, access_tags)
 
     async def _set_access_tags(
-        self, conn, assoc_table, assoc_id_column_name: str, id: str, access_tag_names
+        self,
+        conn: AsyncConnection,
+        assoc_table: Table,
+        assoc_id_column_name: str,
+        id: str,
+        access_tag_names: Iterable[str],
     ) -> None:
         """Replace the access tag associations of an entity or link."""
-        access_tag_ids = await _resolve_access_tag_ids(conn, access_tag_names)
+        access_tag_ids = await get_or_create_tag_ids(conn, access_tag_names)
         await conn.execute(
             delete(assoc_table).where(
                 getattr(assoc_table.c, assoc_id_column_name) == id
@@ -313,7 +289,7 @@ class GraphSQLAlchemyStore:
                 )
             )
             if node_id is None and access_tags:
-                access_tag_ids = await _resolve_access_tag_ids(conn, access_tags)
+                access_tag_ids = await get_or_create_tag_ids(conn, access_tags)
                 await conn.execute(
                     insert(_entity_access_tags),
                     [
@@ -475,7 +451,7 @@ class GraphSQLAlchemyStore:
                     )
                 )
                 if access_tags:
-                    access_tag_ids = await _resolve_access_tag_ids(conn, access_tags)
+                    access_tag_ids = await get_or_create_tag_ids(conn, access_tags)
                     await conn.execute(
                         insert(_link_access_tags),
                         [
