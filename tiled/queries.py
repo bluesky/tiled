@@ -8,7 +8,7 @@ The are encoded into and decoded from URL query parameters.
 import enum
 import json
 from dataclasses import dataclass
-from typing import Any, List
+from typing import Any, ClassVar, List, Optional
 
 from .query_registration import register
 from .structures.core import StructureFamily as StructureFamilyEnum
@@ -534,6 +534,16 @@ class AccessTagsFilter:
     """
 
     tags: List[str]
+    # Server-internal (NOT a query parameter, NOT sent over the wire): the tag
+    # ``id``s corresponding to ``tags``, resolved against the ``access_tags``
+    # table on the server side. Declared as a ClassVar so it is excluded from
+    # ``dataclasses.fields()`` -- which the search route uses to build URL query
+    # parameters -- and from equality. It is populated per-instance by
+    # ``tiled.server.utils.filter_for_access``. When set, the catalog query
+    # builder filters on ``tag_id`` literals directly instead of joining
+    # ``access_tags`` by name, so PostgreSQL can use the (parent_id, tag_id)
+    # extended statistics to estimate the ACL subquery correctly.
+    tag_ids: ClassVar[Optional[List[int]]] = None
 
     def __post_init__(self):
         if isinstance(self.tags, str):
