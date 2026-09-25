@@ -31,6 +31,7 @@ from .media_type_registration import (
 )
 from .query_registration import default_query_registry
 from .server.settings import get_settings
+from .server.utils import normalize_root_path
 from .structures.core import Spec
 from .type_aliases import EntryPointString
 from .utils import parse, prepend_to_sys_path
@@ -481,6 +482,14 @@ class Config(BaseSettings):
                     "create_mount_nodes_if_not_exist"
                 ] = self.create_mount_nodes_if_not_exist
         return self
+
+    @field_validator("uvicorn")
+    @classmethod
+    def normalize_uvicorn_root_path(cls, uvicorn: dict[str, Any]) -> dict[str, Any]:
+        """Coerce root_path from a value like "tiled" or "/tiled/" to "/tiled"."""
+        if "root_path" in uvicorn:
+            uvicorn["root_path"] = normalize_root_path(uvicorn["root_path"])
+        return uvicorn
 
     @property
     def root_path(self) -> str:

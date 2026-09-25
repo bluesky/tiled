@@ -19,6 +19,12 @@ API_KEY_QUERY_PARAMETER = "api_key"
 CSRF_COOKIE_NAME = "tiled_csrf"
 
 
+def normalize_root_path(root_path: Optional[str]) -> str:
+    """Coerce a root_path to "" or "/prefix" (no trailing slash)."""
+    stripped = (root_path or "").strip("/")
+    return f"/{stripped}" if stripped else ""
+
+
 @contextlib.contextmanager
 def record_timing(metrics: dict[str, Any], key: str) -> Generator[None]:
     """
@@ -51,6 +57,13 @@ def get_base_url(request: Request) -> str:
     return f"{get_root_url(request)}/api/v1"
 
 
+def get_current_url(request: Request) -> str:
+    """
+    Externally-visible URL of this request, without query params.
+    """
+    return f"{_get_origin(request.headers, request.scope)}{request.url.path}"
+
+
 def get_zarr_url(request, version: Literal["v2", "v3"] = "v2"):
     """
     Base URL for the Zarr API
@@ -62,7 +75,14 @@ def get_root_url_low_level(request_headers: Mapping[str, str], scope: Scope) -> 
     # We want to get the scheme, host, and root_path (if any)
     # *as it appears to the client* for use in assembling links to
     # include in our responses.
-    #
+    root_path = normalize_root_path(scope.get("root_path"))
+    return f"{_get_origin(request_headers, scope)}{root_path}"
+
+
+def _get_origin(request_headers: Mapping[str, str], scope: Scope) -> str:
+    """
+    Scheme and host as they appear to the client, without any root_path.
+    """
     # We need to consider:
     #
     # * FastAPI may be behind a load balancer, such that for a client request
@@ -80,10 +100,7 @@ def get_root_url_low_level(request_headers: Mapping[str, str], scope: Scope) -> 
     #   https://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.23
     host = request_headers.get("x-forwarded-host", request_headers["host"])
     scheme = request_headers.get("x-forwarded-proto", scope["scheme"])
-    root_path = scope.get("root_path", "")
-    if root_path.endswith("/"):
-        root_path = root_path[:-1]
-    return f"{scheme}://{host}{root_path}"
+    return f"{scheme}://{host}"
 
 
 async def filter_for_access(
