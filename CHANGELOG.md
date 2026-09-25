@@ -37,6 +37,9 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Fixed
 
+- Encode `application/json-seq` table exports with the RFC 7464 record
+  separator and line-feed framing, preventing single-row sequences from being
+  mistaken for a single JSON document by browser clients.
 - Extend to zarr routes the previous fix for reads of array data whose
   on-disk shape has diverged from the shape recorded in the catalog
   structure, which can happen while an array is being extended
