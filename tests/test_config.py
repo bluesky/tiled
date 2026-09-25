@@ -10,7 +10,7 @@ from pydantic import ValidationError
 from tiled.adapters.array import ArrayAdapter
 from tiled.adapters.mapping import MapAdapter
 from tiled.client import Context, from_context
-from tiled.config import Config, parse_configs
+from tiled.config import Config, WebhooksConfig, parse_configs
 from tiled.server.app import build_app_from_config
 
 tree = MapAdapter({"example": ArrayAdapter.from_array([1, 2, 3])})
@@ -318,6 +318,25 @@ def test_empty_api_key():
         ValidationError, match=r"should match pattern '\[a-zA-Z0-9\]\+'"
     ):
         Config.model_validate({"authentication": {"single_user_api_key": ""}})
+
+
+def test_empty_env_var_for_list_field_uses_default(monkeypatch):
+    # An empty-string env var for a complex (list) field is treated as unset
+    # so the field default is used, rather than failing to JSON-parse "".
+    # Docker Compose interpolation like ${VAR:-} produces such empty strings.
+    monkeypatch.setenv("TILED_WEBHOOKS_SECRET_KEYS", "")
+    monkeypatch.setenv("TILED_WEBHOOKS_BLOCKED_NETWORKS", "")
+    monkeypatch.setenv("TILED_WEBHOOKS_ALLOW_DELIVERY_HOSTS", "")
+    config = WebhooksConfig()
+    assert config.secret_keys == []
+    assert config.blocked_networks == []
+    assert config.allow_delivery_hosts == []
+
+
+def test_env_var_json_list_field_is_parsed(monkeypatch):
+    # A valid JSON list in an env var is still parsed normally.
+    monkeypatch.setenv("TILED_WEBHOOKS_SECRET_KEYS", '["k1", "k2"]')
+    assert WebhooksConfig().secret_keys == ["k1", "k2"]
 
 
 class Dummy:
