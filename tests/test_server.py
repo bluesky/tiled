@@ -129,3 +129,17 @@ def test_internal_authentication_mode_with_password_clients(multiuser_server):
     response = httpx.get(multiuser_server + "/api/v1/", headers={})
     actual_mode = response.json()["authentication"]["providers"][0]["mode"]
     assert actual_mode == "internal"
+
+
+@pytest.mark.parametrize("root_path", ["", "/tiled"])
+def test_about_reports_api_root_path(tmpdir, root_path):
+    catalog = in_memory(writable_storage=str(tmpdir))
+    app = build_app(catalog, Authentication(single_user_api_key=API_KEY))
+    # uvicorn prepends root_path to the request path, as behind a proxy.
+    config = uvicorn.Config(
+        app, port=0, loop="asyncio", log_config=LOGGING_CONFIG, root_path=root_path
+    )
+    with Server(config).run_in_thread() as url:
+        response = httpx.get(url + "/api/v1/")
+
+    assert response.json()["meta"]["root_path"] == f"{root_path}/api"
