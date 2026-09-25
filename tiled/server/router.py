@@ -170,6 +170,11 @@ def _patch_route_signature(
         # Add a parameter for each field in each type of query.
         for name, query in query_registry.name_to_query_type.items():
             for field in dataclasses.fields(query):
+                # Skip server-internal fields: they are populated on the
+                # server side (not by clients) and must not become URL query
+                # parameters. See e.g. AccessTagsFilter.tag_ids.
+                if field.metadata.get("internal"):
+                    continue
                 # The structured "alias" here is based on
                 # https://mglaman.dev/blog/using-json-router-query-your-search-router-indexes
                 if getattr(field.type, "__origin__", None) is list:

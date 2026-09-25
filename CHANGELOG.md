@@ -9,6 +9,9 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 - Documentation: a user-guide page on validating metadata against custom specs
   via server configuration.
+- ACL filtering by access tags ids resolved from access tag names on the server.
+  The ids are passed as literals in the querries, which allows Postgres to use
+  extended statstics to plan the query.
 
 ### Changed
 
