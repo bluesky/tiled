@@ -40,14 +40,16 @@ def record_timing(metrics: dict[str, Any], key: str) -> Generator[None]:
     """
     Set timings[key] equal to the run time (in seconds) of the context body.
 
-    Also open an OpenTelemetry span around the body so that these phases appear
-    as child spans in a request's trace. If OpenTelemetry is not installed or no
-    tracer provider is configured, the span is a no-op.
+    When there is an active recording trace span (i.e. this request is being
+    traced), also open a child OpenTelemetry span around the body so these
+    phases appear in the request's trace. Outside a traced request (tracing
+    disabled, or an excluded endpoint such as health checks and metrics
+    scrapes) no span is created, avoiding orphaned single-span traces.
     """
-    if _tracer is None:
-        span = contextlib.nullcontext()
-    else:
+    if _tracer is not None and trace.get_current_span().is_recording():
         span = _tracer.start_as_current_span(_SPAN_NAMES.get(key, f"tiled.{key}"))
+    else:
+        span = contextlib.nullcontext()
     t0 = time.perf_counter()
     with span:
         yield
