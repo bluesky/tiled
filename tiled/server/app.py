@@ -286,7 +286,21 @@ def build_app(
         finally:
             await shutdown_event()
 
-    app = FastAPI(lifespan=lifespan, strict_content_type=False)
+    try:
+        # FastAPI >=0.142 ships built-in OpenTelemetry support that, when
+        # `OTEL_EXPORTER_OTLP_ENDPOINT` (or a related variable) is set,
+        # auto-registers its own OTLP export pipeline on the global tracer
+        # provider. Tiled configures and manages its own tracing pipeline (see
+        # `_setup_opentelemetry_tracing`), so FastAPI's auto-configuration
+        # would register a second exporter and emit every span twice. Opt out.
+        app = FastAPI(
+            lifespan=lifespan,
+            strict_content_type=False,
+            telemetry={"auto_configure": False},
+        )
+    except TypeError:
+        # FastAPI <0.142 has no built-in telemetry and no `telemetry` option.
+        app = FastAPI(lifespan=lifespan, strict_content_type=False)
 
     # Healthcheck for deployment to containerized systems, needs to preempt other responses.
     # Standardized for Kubernetes, but also used by other systems.
