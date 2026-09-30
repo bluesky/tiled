@@ -1,5 +1,5 @@
 """In-process tests for the OpenTelemetry request tracing configured by
-``tiled.server.app._setup_opentelemetry_tracing``.
+`tiled.server.app._setup_opentelemetry_tracing`.
 
 These use an in-memory span exporter, so they need no running OpenTelemetry
 Collector, Jaeger, or Tempo. OpenTelemetry's global tracer provider can only be
@@ -9,26 +9,23 @@ the exporter is cleared between tests.
 import os
 
 import pytest
+from opentelemetry import trace
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+from opentelemetry.trace import SpanKind
+
+from tiled.client import Context
+from tiled.server.app import build_app_from_config
 
 pytest.importorskip("opentelemetry.sdk")
 
 # The FastAPI instrumentation reads OTEL_PYTHON_FASTAPI_EXCLUDED_URLS once, at
-# import time, into a module-level default that ``instrument_app`` uses. Set it
+# import time, into a module-level default that `instrument_app` uses. Set it
 # before that module is first imported (which the tracing hook does lazily on
-# the first traced ``build_app``). In deployments this variable is likewise set
+# the first traced `build_app`). In deployments this variable is likewise set
 # in the environment before the process starts.
 os.environ["OTEL_PYTHON_FASTAPI_EXCLUDED_URLS"] = "healthz,api/v1/metrics"
-
-from opentelemetry import trace  # noqa: E402
-from opentelemetry.sdk.trace import TracerProvider  # noqa: E402
-from opentelemetry.sdk.trace.export import SimpleSpanProcessor  # noqa: E402
-from opentelemetry.sdk.trace.export.in_memory_span_exporter import (  # noqa: E402
-    InMemorySpanExporter,
-)
-from opentelemetry.trace import SpanKind  # noqa: E402
-
-from tiled.client import Context, from_context  # noqa: E402
-from tiled.server.app import build_app_from_config  # noqa: E402
 
 CONFIG = {
     "authentication": {"single_user_api_key": "secret"},
@@ -120,9 +117,9 @@ def test_traced_request_emits_server_and_phase_spans(monkeypatch, span_exporter)
     names = {s.name for s in spans}
     assert "tiled.app" in names, "expected the per-request phase span 'tiled.app'"
     app_span = next(s for s in spans if s.name == "tiled.app")
-    assert _is_descendant_of(app_span, roots[0].context.span_id, by_id), (
-        "phase spans should be children of the request's server span"
-    )
+    assert _is_descendant_of(
+        app_span, roots[0].context.span_id, by_id
+    ), "phase spans should be children of the request's server span"
 
 
 def test_excluded_endpoint_emits_no_spans(monkeypatch, span_exporter):
@@ -131,9 +128,9 @@ def test_excluded_endpoint_emits_no_spans(monkeypatch, span_exporter):
         span_exporter.clear()
         response = context.http_client.get("/healthz")
         assert response.status_code == 200
-        assert not span_exporter.get_finished_spans(), (
-            "excluded endpoints must not produce spans (no orphan traces)"
-        )
+        assert (
+            not span_exporter.get_finished_spans()
+        ), "excluded endpoints must not produce spans (no orphan traces)"
 
 
 def test_tracing_disabled_by_default_emits_no_spans(monkeypatch, span_exporter):
@@ -142,9 +139,9 @@ def test_tracing_disabled_by_default_emits_no_spans(monkeypatch, span_exporter):
         span_exporter.clear()
         response = context.http_client.get("/api/v1/metadata/")
         assert response.status_code == 200
-        assert not span_exporter.get_finished_spans(), (
-            "without OTEL_EXPORTER_OTLP_ENDPOINT the app should not be traced"
-        )
+        assert (
+            not span_exporter.get_finished_spans()
+        ), "without OTEL_EXPORTER_OTLP_ENDPOINT the app should not be traced"
 
 
 def test_no_duplicate_export_pipeline(monkeypatch, span_exporter):
