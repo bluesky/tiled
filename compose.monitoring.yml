@@ -1,5 +1,17 @@
 ---
 services:
+  # Turn on OpenTelemetry tracing for the Tiled server (defined in compose.yml
+  # or compose.dev.yml) and point it at the collector below. These variables
+  # live here, alongside the collector, so that running the base compose files
+  # on their own leaves tracing off instead of exporting to a collector that is
+  # not running.
+  tiled:
+    environment:
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
+      - OTEL_SERVICE_NAME=tiled
+      # Don't trace health checks and metrics scrapes (operational chatter).
+      - OTEL_PYTHON_FASTAPI_EXCLUDED_URLS=healthz,api/v1/metrics
+
   prometheus:
     image: docker.io/prom/prometheus:v2.42.0
     volumes:

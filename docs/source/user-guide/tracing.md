@@ -92,11 +92,13 @@ start the server together with the monitoring services:
 
 ```
 TILED_SINGLE_USER_API_KEY=secret \
-  docker compose -f compose.yml -f compose.monitoring.yml up
+  docker compose -f compose.dev.yml -f compose.monitoring.yml up --build
 ```
 
-The `compose.yml` file already sets the `OTEL_*` variables above so that the
-server exports traces to the bundled Collector.
+`compose.dev.yml` builds the Tiled image from this checkout (so it includes the
+tracing support), and `compose.monitoring.yml` sets the `OTEL_*` variables above
+and runs the Collector, so the server exports traces to it. (The published image
+referenced by `compose.yml` may not yet include tracing.)
 
 Generate some activity using the Tiled Python client:
 
