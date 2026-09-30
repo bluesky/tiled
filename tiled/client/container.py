@@ -709,7 +709,6 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
 
         self._cached_len = None
         metadata = metadata or {}
-        access_blob = {"tags": access_tags} if access_tags is not None else {}
 
         # Backompatibility: if the server is older than 0.2.4,
         # it can not accept the "properties" field in the data source.
@@ -729,7 +728,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                 "structure_family": StructureFamily(structure_family),
                 "specs": normalize_specs(specs or []),
                 "data_sources": data_sources_as_dicts,
-                "access_blob": access_blob,
+                "access_tags": access_tags,
             }
         }
         body = dict(item["attributes"])
@@ -785,9 +784,9 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                 ds for ds in document.pop("data_sources")
             ]
 
-        # And for access_blob
-        if "access_blob" in document:
-            item["attributes"]["access_blob"] = document.pop("access_blob")
+        # And for access_tags
+        if "access_tags" in document:
+            item["attributes"]["access_tags"] = document.pop("access_tags")
 
         # Merge in "id" and "links" returned by the server.
         item.update(document)

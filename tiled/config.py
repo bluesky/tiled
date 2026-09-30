@@ -65,7 +65,7 @@ class CatalogConfig(BaseSettings):
     readable_storage: Optional[list[str]] = None
     init_if_not_exists: bool = False
     adapters_by_mimetype: Optional[dict[str, EntryPointString]] = None
-    top_level_access_blob: Optional[dict] = None
+    top_level_access_tags: Optional[list[str]] = None
     mount_node: Optional[Union[str, list[str]]] = None
     catalog_pool_size: int = 5
     storage_pool_size: int = 5

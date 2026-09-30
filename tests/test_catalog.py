@@ -63,6 +63,24 @@ async def client(catalog_adapter):
 
 
 @pytest.mark.asyncio
+async def test_root_node_has_default_access_tags(a):
+    access_tags = (
+        (
+            await a.context.execute(
+                "SELECT access_tags.name "
+                "FROM access_tags "
+                "JOIN node_access_tags_association "
+                "ON node_access_tags_association.tag_id = access_tags.id "
+                "WHERE node_access_tags_association.node_id = 0"
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert list(access_tags) == ["public"]
+
+
+@pytest.mark.asyncio
 async def test_nested_node_creation(a):
     await a.create_node(
         key="b",
@@ -189,11 +207,12 @@ async def test_metadata_index_is_used(example_data_adapter):
     # Check that an index is used by inspecting the content of an 'EXPLAIN ...'
     # query. The exact content is intended for humans and is not an API, but we
     # can coarsely check that the index of interest is mentioned.
-    # The 'top_level_metadata' GIN index is PostgreSQL-only. SQLite uses a
-    # B-tree covering index instead; we just verify any index is used.
+    # On PostgreSQL, metadata equality is compiled to a JSONB containment
+    # (metadata @> {...}) served by the 'ix_nodes_metadata' GIN index. SQLite
+    # has no GIN and uses the B-tree index on 'parent' plus a row filter.
     dialect = a.context.engine.url.get_dialect().name
     if dialect == "postgresql":
-        expected_index = "top_level_metadata"
+        expected_index = "ix_nodes_metadata"
     else:
         expected_index = "nodes_parent"  # B-tree index on parent (name varies by Alembic/SQLite version)
     await a.startup()

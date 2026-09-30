@@ -10,9 +10,29 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - Add `Container.register`, a synchronous client method to register external,
   server-accessible files as a single dataset (array, table, etc.).
 - Add registration support for Parquet files.
+- Documentation: a user-guide page on validating metadata against custom specs
+  via server configuration.
+- ACL filtering by access tags ids resolved from access tag names on the server.
+  The ids are passed as literals in the querries, which allows Postgres to use
+  extended statstics to plan the query.
 
 ### Changed
 
+- Replace catalog `access_blob` column with a normalized `access_tags` table.
+  Tags, grants, tag ownership, and node-tag associations now live in the
+  catalog database; graph entities and links share the same tags table,
+  but have their own association tables. Per-user principal tags replace
+  user-owned blobs and are granted implicitly to their principals.
+- `AccessTagsParser` and `AccessTagsCompiler` now discover and use the catalog
+  database on both SQLite and PostgreSQL. Removed tag definitions retain their
+  node associations but lose their grants, preventing transient configuration
+  failures from erasing access-control information. The server remains
+  compatible with older clients that use `access_blob`.
+- Deployment note: this change includes three sequential catalog migrations
+  (an intermediate blob-association schema, conversion to tags, and a
+  parent-scoped node-tag association). Apply the full migration chain without
+  stopping at an intermediate revision. This also drops the old metadata
+  index; deploy the improved replacement index from #1521 as well.
 - Object-storage (S3) tests now run against an in-process `moto` S3 server
   started automatically by the test suite, instead of requiring a MinIO
   container (whose image was removed from Docker Hub). Set `TILED_TEST_BUCKET`

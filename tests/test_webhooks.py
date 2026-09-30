@@ -853,7 +853,7 @@ def _make_close_stream_adapter(
     mock_node.key = node_key
     mock_node.structure_family = "container"
     mock_node.specs = []
-    mock_node.access_blob = {}
+    mock_node.access_tags = []
 
     adapter = CatalogNodeAdapter(mock_context, mock_node)
     adapter.path_segments = AsyncMock(return_value=[node_key])
