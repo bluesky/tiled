@@ -1,7 +1,7 @@
 import copy
 from collections.abc import Set
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
+from typing import Any, Dict, Iterator, List, Optional, Tuple, Union
 from urllib.parse import quote_plus
 
 import pandas
@@ -100,35 +100,44 @@ class ArrowAdapter(Adapter[TableStructure]):
     def generate_data_sources(
         self,
         mimetype: str,
-        dict_or_none: Callable[[TableStructure], Dict[str, str]],
         item: Union[str, Path],
         is_directory: bool,
+        size: Optional[int] = None,
+        parameters: Optional[Dict[str, Any]] = None,
     ) -> List[DataSource[TableStructure]]:
-        """
+        """Generate data sources for the adapter.
 
         Parameters
         ----------
-        mimetype :
-        dict_or_none :
-        item :
-        is_directory :
+        mimetype : str
+            The MIME type of the data.
+        item : str or Path
+            The path to the data item.
+        is_directory : bool
+            Whether the item is a directory.
+        size : int, optional
+            The size of the data item in bytes.
+        parameters : dict, optional
+            Additional parameters for the data source.
 
         Returns
         -------
-
+        List[DataSource[TableStructure]]
+            A list of data sources for the adapter.
         """
         return [
             DataSource(
                 structure_family=self.structure_family,
                 mimetype=mimetype,
                 structure=self.structure(),
-                parameters={},
+                parameters=parameters or {},
                 management=Management.external,
                 assets=[
                     Asset(
                         data_uri=ensure_uri(item),
                         is_directory=is_directory,
                         parameter="data_uris",  # <-- PLURAL!
+                        size=size,
                         num=0,  # <-- denoting that the Adapter expects a list, and this is the first element
                     )
                 ],
@@ -145,19 +154,6 @@ class ArrowAdapter(Adapter[TableStructure]):
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
     ) -> "ArrowAdapter":
-        """
-
-        Parameters
-        ----------
-        data_uri :
-        structure :
-        metadata :
-        specs :
-
-        Returns
-        -------
-
-        """
         return cls(
             [data_uri],
             structure=structure,
@@ -166,16 +162,6 @@ class ArrowAdapter(Adapter[TableStructure]):
         )
 
     def __getitem__(self, key: str) -> ArrayAdapter:
-        """
-
-        Parameters
-        ----------
-        key :
-
-        Returns
-        -------
-
-        """
         # Must compute to determine shape.
         return ArrayAdapter.from_array(self.read([key])[key].values)
 
