@@ -31,6 +31,7 @@ from .media_type_registration import (
 )
 from .query_registration import default_query_registry
 from .server.settings import get_settings
+from .server.utils import normalize_root_path
 from .structures.core import Spec
 from .type_aliases import EntryPointString
 from .utils import parse, prepend_to_sys_path
@@ -64,8 +65,8 @@ class CatalogConfig(BaseSettings):
     writable_storage: Optional[list[str]] = None
     readable_storage: Optional[list[str]] = None
     init_if_not_exists: bool = False
-    adapters_by_mimetype: Optional[list[EntryPointString]] = None
-    top_level_access_blob: Optional[dict] = None
+    adapters_by_mimetype: Optional[dict[str, EntryPointString]] = None
+    top_level_access_tags: Optional[list[str]] = None
     mount_node: Optional[Union[str, list[str]]] = None
     catalog_pool_size: int = 5
     storage_pool_size: int = 5
@@ -318,6 +319,12 @@ class WebhooksConfig(BaseSettings):
     secret_keys : list of str
         Keys used to encrypt webhook HMAC signing secrets at rest.
         Required; generate one with ``openssl rand -hex 32``.
+    blocked_networks: list of str
+        Range of network addresses to which webhooks cannot be delivered, except
+        for the exceptions that follow.
+    allow_delivery_hosts: list of str
+        List of host names to which webhooks must be delivered, regardless of
+        whether in the `blocked_networks list` or not.
     allow_http : bool
         When ``True``, webhook URLs are allowed to use plain HTTP instead of
         HTTPS.  Default ``False`` (HTTPS is required).
@@ -328,6 +335,8 @@ class WebhooksConfig(BaseSettings):
     """
 
     secret_keys: list[str] = []
+    blocked_networks: list[str] = []
+    allow_delivery_hosts: list[str] = []
     allow_http: bool = False
     allow_private_addresses: bool = False
 
@@ -473,6 +482,14 @@ class Config(BaseSettings):
                     "create_mount_nodes_if_not_exist"
                 ] = self.create_mount_nodes_if_not_exist
         return self
+
+    @field_validator("uvicorn")
+    @classmethod
+    def normalize_uvicorn_root_path(cls, uvicorn: dict[str, Any]) -> dict[str, Any]:
+        """Coerce root_path from a value like "tiled" or "/tiled/" to "/tiled"."""
+        if "root_path" in uvicorn:
+            uvicorn["root_path"] = normalize_root_path(uvicorn["root_path"])
+        return uvicorn
 
     @property
     def root_path(self) -> str:

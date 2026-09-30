@@ -10,7 +10,7 @@ from numpy.typing import NDArray
 from pytest_mock import MockFixture
 
 from tiled.access_control.access_policies import ALL_ACCESS
-from tiled.access_control.protocols import AccessPolicy
+from tiled.access_control.protocols import AccessPolicy, normalize_access_tags
 from tiled.access_control.scopes import ALL_SCOPES
 from tiled.adapters.protocols import (
     ArrayAdapter,
@@ -31,7 +31,7 @@ from tiled.structures.core import Spec, StructureFamily
 from tiled.structures.ragged import RaggedStructure
 from tiled.structures.sparse import COOStructure
 from tiled.structures.table import TableStructure
-from tiled.type_aliases import JSON, AccessBlob, AccessTags, Filters, Scopes
+from tiled.type_aliases import JSON, AccessTags, Filters, Scopes
 
 
 class CustomArrayAdapter:
@@ -482,7 +482,7 @@ def test_tableadapter_protocol(mocker: MockFixture) -> None:
 
 class CustomAccessPolicy(AccessPolicy):
     def __init__(self, scopes: Optional[Scopes] = None) -> None:
-        self.scopes = scopes if (scopes is not None) else ALL_SCOPES
+        self.scopes: Scopes = scopes if (scopes is not None) else set(ALL_SCOPES)
 
     def _get_id(self, principal: Principal) -> None:
         return None
@@ -492,9 +492,9 @@ class CustomAccessPolicy(AccessPolicy):
         principal: Principal,
         authn_access_tags: Optional[AccessTags],
         authn_scopes: Scopes,
-        access_blob: Optional[AccessBlob] = None,
-    ) -> Tuple[bool, Optional[AccessBlob]]:
-        return (False, access_blob)
+        access_tags: Optional[AccessTags] = None,
+    ) -> Tuple[bool, AccessTags]:
+        return (False, access_tags or normalize_access_tags())
 
     async def modify_node(
         self,
@@ -502,9 +502,9 @@ class CustomAccessPolicy(AccessPolicy):
         principal: Principal,
         authn_access_tags: Optional[AccessTags],
         authn_scopes: Scopes,
-        access_blob: Optional[AccessBlob] = None,
-    ) -> Tuple[bool, Optional[AccessBlob]]:
-        return (False, access_blob)
+        access_tags: Optional[AccessTags],
+    ) -> Tuple[bool, AccessTags]:
+        return (False, access_tags or normalize_access_tags())
 
     async def allowed_scopes(
         self,
@@ -556,7 +556,7 @@ async def test_accesspolicy_protocol(mocker: MockFixture) -> None:
     principal = Principal(
         uuid="12345678124123412345678123456781", type=PrincipalType.user
     )
-    authn_access_tags = {"qux", "quux"}
+    authn_access_tags = normalize_access_tags({"qux", "quux"})
     authn_scopes = {"abc", "baz"}
     scopes = {"abc"}
 

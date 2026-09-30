@@ -495,8 +495,13 @@ async def construct_resource(
             }
         else:
             attributes["metadata"] = entry.metadata()
-    if schemas.EntryFields.access_blob in fields and hasattr(entry, "access_blob"):
-        attributes["access_blob"] = entry.access_blob
+    if schemas.EntryFields.access_tags in fields and hasattr(entry, "access_tags"):
+        access_tags = entry.access_tags
+        # Serialize the AccessTags frozenset in a deterministic order so that
+        # clients see a stable list (e.g. for building JSON patches).
+        attributes["access_tags"] = (
+            sorted(access_tags) if access_tags is not None else None
+        )
     if schemas.EntryFields.specs in fields:
         attributes["specs"] = []
         for spec in getattr(entry, "specs", []):

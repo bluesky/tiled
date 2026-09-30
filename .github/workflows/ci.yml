@@ -68,13 +68,6 @@ jobs:
       shell: bash -l {0}
       run: source continuous_integration/scripts/start_redis.sh
 
-    - name: Start Minio service in container.
-      #TODO: This product is leaving open-source container distribution
-      # Find a new image or product to use
-      # https://github.com/minio/minio/issues/21647#issuecomment-3418675115
-      shell: bash -l {0}
-      run: source continuous_integration/scripts/start_minio.sh
-
     - name: Ensure example data is migrated to current catalog database schema.
       # The example data is expected to be kept up to date to the latest Tiled
       # release, but this CI run may include some unreleased schema changes,
@@ -94,7 +87,10 @@ jobs:
         # Provide test suite with PostgreSQL and Redis databases to use.
         TILED_TEST_POSTGRESQL_URI: postgresql://postgres:secret@localhost:5432
         TILED_TEST_REDIS: redis://localhost:6379
-        TILED_TEST_BUCKET: http://minioadmin:minioadmin@localhost:9000/buck
+        # Object-storage tests use an in-process `moto` S3 server started by the
+        # test suite (see the `s3_bucket_uri` fixture), so no external service
+        # is needed. Set TILED_TEST_BUCKET to point the tests at a real
+        # MinIO/S3 instead.
         # TODO Reinstate after finding a new image to use
         # https://github.com/bluesky/tiled/issues/1109
         # # Opt in to LDAPAuthenticator tests.
@@ -107,6 +103,35 @@ jobs:
         files: cov.xml
       env:
         CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  web_frontend_checks:
+    name: WebUI Type Check, Tests, and Build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web-frontend
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: "20"
+        cache: npm
+        cache-dependency-path: web-frontend/package-lock.json
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Type check
+      run: npm run type-check
+
+    - name: Test
+      run: npm run test:run
+
+    - name: Build
+      run: npm run build
 
   windows_checks:
     name: Test on Windows

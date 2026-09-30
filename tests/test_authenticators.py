@@ -2,7 +2,8 @@ import asyncio
 import logging
 import os
 import time
-from typing import Any, Tuple
+from typing import Any, Optional, Tuple
+from urllib.parse import parse_qs, urlencode
 
 import httpx
 import pytest
@@ -12,7 +13,6 @@ from fastapi.security import SecurityScopes
 from jose import ExpiredSignatureError, jwt
 from jose.backends import RSAKey
 from respx import MockRouter
-from starlette.datastructures import URL, QueryParams
 from starlette.requests import Request
 from starlette.status import HTTP_401_UNAUTHORIZED
 
@@ -232,36 +232,34 @@ async def test_proxied_oidc_token_retrieval(well_known_url: str, mock_oidc_serve
     assert "FOO" == await authenticator.oauth2_schema(test_request)
 
 
-def create_mock_OIDC_request(query_params=None):
+def create_mock_OIDC_request(
+    query_params: Optional[dict[str, str]] = None, root_path: str = ""
+) -> Request:
     """Helper function to create a realistic request object for testing."""
-    if query_params is None:
-        query_params = {}
-
-    class MockRequest:
-        def __init__(self, query_params):
-            self.query_params = QueryParams(query_params)
-            self.scope = {
-                "type": "http",
-                "scheme": "http",
-                "server": ("localhost", 8000),
-                "path": "/api/v1/auth/provider/orcid/code",
-                "headers": []
-            }
-            self.headers = {"host": "localhost:8000"}
-            self.url = URL("http://localhost:8000/api/v1/auth/provider/orcid/code")
-
-    return MockRequest(query_params)
+    # The ASGI server prepends root_path to path, so the request URL contains it.
+    return Request({
+        "type": "http",
+        "scheme": "http",
+        "server": ("localhost", 8000),
+        "path": f"{root_path}/api/v1/auth/provider/orcid/code",
+        "root_path": root_path,
+        "headers": [(b"host", b"localhost:8000")],
+        "query_string": urlencode(query_params or {}).encode(),
+    })
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("root_path", ["", "/tiled"])
 async def test_OIDCAuthenticator_mock(
     mock_oidc_server: MockRouter,
     well_known_url: str,
     well_known_response: dict[str, Any],
-    monkeypatch
+    monkeypatch,
+    root_path: str
 ):
     """
-    Test OIDCAuthenticator with mocked external dependencies using respx.
+    Test OIDCAuthenticator with mocked external dependencies using respx
+    and the impact of root path on the redirect_uri used in the token exchange.
     """
     # Mock JWT token payload
     mock_jwt_payload = {
@@ -274,7 +272,7 @@ async def test_OIDCAuthenticator_mock(
     }
 
     # Add token exchange endpoint to existing mock_oidc_server
-    mock_oidc_server.post(well_known_response["token_endpoint"]).mock(
+    token_route = mock_oidc_server.post(well_known_response["token_endpoint"]).mock(
         return_value=httpx.Response(200, json={
             "access_token": "mock-access-token",
             "id_token": "mock-id-token",
@@ -289,7 +287,9 @@ async def test_OIDCAuthenticator_mock(
         well_known_uri=well_known_url  # Use the fixture
     )
 
-    mock_request = create_mock_OIDC_request({"code": "test-auth-code"})
+    mock_request = create_mock_OIDC_request(
+        {"code": "test-auth-code"}, root_path=root_path
+    )
 
     def mock_jwt_decode(*args, **kwargs):
         return mock_jwt_payload
@@ -307,6 +307,11 @@ async def test_OIDCAuthenticator_mock(
 
     assert user_session is not None
     assert user_session.user_name == "0009-0008-8698-7745"
+
+    form = parse_qs(token_route.calls.last.request.content.decode())
+    assert form["redirect_uri"] == [
+        f"http://localhost:8000{root_path}/api/v1/auth/provider/orcid/code"
+    ]
 
 
 @pytest.mark.asyncio

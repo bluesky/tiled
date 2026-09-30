@@ -1,4 +1,5 @@
 import builtins
+import itertools
 import pathlib
 
 import numpy as np
@@ -16,6 +17,7 @@ from tiled.ndslice import (
     block_for_slice,
     build_nested_grid,
     compose_slices,
+    split_slice,
 )
 from tiled.server.app import build_app
 
@@ -185,7 +187,7 @@ def test_ndslice_conversion(as_string, as_tuple, as_json):
     assert NDSlice.from_json(as_json) == as_tuple_with_ellipsis
 
     # Normalize the string representations before comparing them
-    norm_string = as_string.strip("(][)").replace(" ", "").lstrip("0")
+    norm_string = as_string.strip("(][)").replace(" ", "")
     norm_string = "1:3" if norm_string == "1:3:" else norm_string
     assert NDSlice(*as_tuple).to_numpy_str() == norm_string
 
@@ -426,6 +428,69 @@ def test_block_for_slice_correctness(shape, data):
     # Apply slice_in_block and verify correctness
     result = concatenated[slice_in_block] if slice_in_block else concatenated
     np.testing.assert_array_equal(result, expected)
+
+
+@given(
+    shape=st.lists(st.integers(5, 20), min_size=1, max_size=3),
+    data=st.data(),
+)
+def test_split_slice_correctness(shape, data):
+    """split_slice partitions a slice into sub-slices that reassemble losslessly.
+
+    Mirrors how the array client fetches a large slice in multiple requests:
+    split the (expanded) slice, apply each piece, then reassemble the pieces on
+    the split grid. In particular this covers reversed slices that reach index 0,
+    whose expanded form has a negative canonical stop.
+    """
+    arr = np.arange(np.prod(shape)).reshape(shape)
+    chunks = data.draw(chunks_strategy(shape))
+    test_slice = NDSlice(data.draw(ndslice_strategy(shape)))
+    expanded = test_slice.expand_for_shape(shape) if test_slice else NDSlice()
+    expected = arr[expanded] if expanded else arr
+    assume(expected.size > 0)
+
+    # Draw a per-request size limit that ranges from forcing many splits (1) up
+    # to fetching everything in one piece (the full selection size).
+    max_size = data.draw(st.integers(1, int(expected.size)))
+    chunk_bounds = tuple(
+        tuple(itertools.accumulate(axis_chunks, initial=0)) for axis_chunks in chunks
+    )
+    indexed_slices = split_slice(expanded, max_size=max_size, pref_splits=chunk_bounds)
+
+    # Every sub-slice must be a valid absolute slice (no negative/None-stop
+    # ambiguity) that selects the same elements from the full array as NumPy.
+    keys = sorted(indexed_slices)
+    reassembled = np.block(build_nested_grid(keys, lambda k: arr[indexed_slices[k]]))
+    np.testing.assert_array_equal(reassembled, expected)
+
+
+@pytest.mark.parametrize(
+    "shape, index",
+    [
+        # Reversed slices that reach index 0 expand to a negative canonical stop
+        # (e.g. [::-1] on len 10 -> slice(9, -11, -1)); the split path must not
+        # treat that stop as an absolute coordinate.
+        ((10,), slice(None, None, -1)),
+        ((10,), slice(5, None, -1)),
+        ((10,), slice(9, None, -3)),
+        ((7,), slice(None, None, -2)),  # strided reversal that lands exactly on 0
+        ((8, 6), (slice(None, None, -1), slice(None, None, -1))),
+        ((8, 6), (slice(None), slice(None, None, -1))),
+        # Reversed but stopping above 0 -> positive canonical stop (should be fine)
+        ((10,), slice(8, 1, -1)),
+    ],
+)
+@pytest.mark.parametrize("max_size", [1, 2, 3, 5])
+def test_split_slice_reversed_reaching_zero(shape, index, max_size):
+    # split_slice reassembles reversed slices, including those reaching index 0.
+    arr = np.arange(np.prod(shape)).reshape(shape)
+    expanded = NDSlice(index).expand_for_shape(shape)
+    expected = arr[expanded]
+
+    indexed_slices = split_slice(expanded, max_size=max_size)
+    keys = sorted(indexed_slices)
+    reassembled = np.block(build_nested_grid(keys, lambda k: arr[indexed_slices[k]]))
+    np.testing.assert_array_equal(reassembled, expected)
 
 
 def test_block_for_slice_basic():

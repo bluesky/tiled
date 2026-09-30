@@ -21,6 +21,11 @@ Mutations:
 Property keys and link predicates are expanded against the namespace
 registry when written and compacted back to CURIEs when read, so a
 prefix registered through `upsertNamespace` is resolved consistently.
+
+Access control: entities and links carry access tags (the same tags that
+catalog nodes use). An entity that points to a catalog node (nodeId set)
+carries no tags of its own; it assumes the access tags of the referenced
+node.
 """
 
 from __future__ import annotations
@@ -36,10 +41,12 @@ from strawberry.types import Info
 from strawberry.types.unset import UNSET, UnsetType
 
 from tiled.access_control.access_policies import NO_ACCESS
-from tiled.queries import AccessBlobFilter
+from tiled.access_control.protocols import normalize_access_tags
+from tiled.queries import AccessTagsFilter
+from tiled.type_aliases import AccessTags
 
 from .curie import compact_term, compact_value, expand_term, expand_value
-from .orm import ENTITY_NODE_ACCESS_BLOB_ERROR
+from .orm import ENTITY_NODE_ACCESS_TAGS_ERROR
 from .store import UNSET as STORE_UNSET
 from .store import EntityRecord, GraphSQLAlchemyStore, LinkRecord
 
@@ -70,12 +77,35 @@ async def _namespaces(info: Info) -> dict[str, str]:
     return await _store(info).list_namespaces()
 
 
+async def _resolve_node_binding(
+    info: Info,
+    node_path_parts: Optional[list[str]],
+) -> Optional[int]:
+    """Resolve the catalog node (ID) an entity should bind to given node path
+
+    The provided node path is resolved to the id of an internal node in the catalog
+    (so clients never handle catalog integer ids). Returns None when node_path_parts
+    is None (an unbound, external entity). Raises if the path names no existing node.
+    """
+    if node_path_parts is None:
+        return None
+    resolved = await _store(info).resolve_node_id(node_path_parts)
+    if resolved is None:
+        raise GraphQLError(
+            f"No catalog node found at path {node_path_parts!r}.",
+            extensions={"code": "NODE_NOT_FOUND"},
+        )
+    return resolved
+
+
 class _PolicyNode:
-    def __init__(self, access_blob: Optional[dict]):
-        self.access_blob = access_blob or {}
+    def __init__(self, access_tags: Optional[AccessTags]):
+        self.access_tags = normalize_access_tags(access_tags or ())
 
 
-async def _is_allowed(info: Info, access_blob: Optional[dict], scope: str) -> bool:
+async def _is_allowed(
+    info: Info, access_tags: Optional[AccessTags], scope: str
+) -> bool:
     authn_scopes = info.context["authn_scopes"]
     if scope not in authn_scopes:
         return False
@@ -83,7 +113,7 @@ async def _is_allowed(info: Info, access_blob: Optional[dict], scope: str) -> bo
     if policy is None or not hasattr(policy, "allowed_scopes"):
         return True
     allowed = await policy.allowed_scopes(
-        _PolicyNode(access_blob),
+        _PolicyNode(access_tags),
         info.context["principal"],
         info.context["authn_access_tags"],
         authn_scopes,
@@ -91,21 +121,24 @@ async def _is_allowed(info: Info, access_blob: Optional[dict], scope: str) -> bo
     return scope in allowed
 
 
-async def _assert_allowed(info: Info, access_blob: Optional[dict], scope: str) -> None:
-    if not await _is_allowed(info, access_blob, scope):
+async def _assert_allowed(
+    info: Info, access_tags: Optional[AccessTags], scope: str
+) -> None:
+    if not await _is_allowed(info, access_tags, scope):
         raise GraphQLError("Not permitted")
 
 
-async def _effective_access_blob(info: Info, record: EntityRecord) -> Optional[dict]:
+async def _effective_access_tags(info: Info, record: EntityRecord) -> AccessTags:
     """
     An entity that points to a catalog node (node_id set) delegates its
-    access control to that node, rather than carrying its own access_blob
-    (which is NULL in that case; see the entities_node_access_blob_*
-    trigger in tiled.graph.store). Resolve whichever one is authoritative.
+    access control to that node, rather than carrying its own access tags
+    (it has none in that case; see the entities_node_access_tags_association_* triggers
+    in tiled.graph.orm). Resolve whichever is authoritative.
     """
     if record.node_id is not None:
-        return await _store(info).get_node_access_blob(record.node_id)
-    return record.access_blob
+        node_tags = await _store(info).get_node_access_tags(record.node_id)
+        return normalize_access_tags(node_tags or ())
+    return normalize_access_tags(record.access_tags or ())
 
 
 def _assert_authn_scope(info: Info, scope: str) -> None:
@@ -116,7 +149,7 @@ def _assert_authn_scope(info: Info, scope: str) -> None:
 async def _policy_access_filters(info: Info, scope: str) -> object:
     """
     Return the access-policy filters for a listing query: either a list of
-    AccessBlobFilter (possibly empty, meaning no restriction) or the
+    AccessTagsFilter (possibly empty, meaning no restriction) or the
     NO_ACCESS sentinel. Callers pass the result straight to the store so
     filtering happens in SQL before LIMIT/OFFSET, rather than filtering a
     page of results after the fact (which would return fewer than `limit`
@@ -127,7 +160,7 @@ async def _policy_access_filters(info: Info, scope: str) -> object:
         return []
 
     queries = await policy.filters(
-        _PolicyNode({}),
+        _PolicyNode(normalize_access_tags()),
         info.context["principal"],
         info.context["authn_access_tags"],
         info.context["authn_scopes"],
@@ -136,46 +169,66 @@ async def _policy_access_filters(info: Info, scope: str) -> object:
     if queries is NO_ACCESS:
         return NO_ACCESS
     for query in queries:
-        if not isinstance(query, AccessBlobFilter):
+        if not isinstance(query, AccessTagsFilter):
             raise GraphQLError(
                 f"Unsupported access-policy filter in graph queries: {type(query).__name__}"
             )
     return queries
 
 
-async def _init_access_blob(info: Info, access_blob: Optional[dict]) -> dict:
+def _access_tags_from_input(access_tags: list[str]) -> AccessTags:
+    try:
+        return normalize_access_tags(access_tags)
+    except TypeError as exc:
+        raise GraphQLError(
+            "accessTags must be a list of tag names, e.g. "
+            f'["tag1", "tag2"]. Received {access_tags!r}'
+        ) from exc
+
+
+async def _init_access_tags(
+    info: Info, access_tags: Optional[AccessTags]
+) -> AccessTags:
     policy = info.context.get("access_policy")
     if policy is not None and hasattr(policy, "init_node"):
         try:
-            _, new_access_blob = await policy.init_node(
+            _, new_access_tags = await policy.init_node(
                 info.context["principal"],
                 info.context["authn_access_tags"],
                 info.context["authn_scopes"],
-                access_blob=access_blob,
+                access_tags=access_tags,
             )
         except ValueError as exc:
-            raise GraphQLError(f"Access policy rejects access blob: {exc}") from exc
-        return new_access_blob
-    return access_blob or {}
+            raise GraphQLError(f"Access policy rejects access tags: {exc}") from exc
+        if not isinstance(new_access_tags, frozenset):
+            raise TypeError("access policy must return a frozenset of access tags")
+        return new_access_tags
+    return access_tags if access_tags is not None else normalize_access_tags()
 
 
-async def _modify_access_blob(
-    info: Info, current_access_blob: Optional[dict], requested_access_blob: dict
-) -> dict:
+async def _modify_access_tags(
+    info: Info,
+    current_access_tags: Optional[AccessTags],
+    requested_access_tags: Optional[AccessTags],
+) -> AccessTags:
     policy = info.context.get("access_policy")
     if policy is not None and hasattr(policy, "modify_node"):
         try:
-            _, new_access_blob = await policy.modify_node(
-                _PolicyNode(current_access_blob),
+            _, new_access_tags = await policy.modify_node(
+                _PolicyNode(current_access_tags),
                 info.context["principal"],
                 info.context["authn_access_tags"],
                 info.context["authn_scopes"],
-                requested_access_blob,
+                requested_access_tags,
             )
         except ValueError as exc:
-            raise GraphQLError(f"Access policy rejects access blob: {exc}") from exc
-        return new_access_blob
-    return current_access_blob
+            raise GraphQLError(f"Access policy rejects access tags: {exc}") from exc
+        if not isinstance(new_access_tags, frozenset):
+            raise TypeError("access policy must return a frozenset of access tags")
+        return new_access_tags
+    if requested_access_tags is not None:
+        return requested_access_tags
+    return normalize_access_tags(current_access_tags or ())
 
 
 # ---------------------------------------------------------------------------
@@ -186,7 +239,7 @@ async def _modify_access_blob(
 @strawberry.type
 class Entity:
     id: strawberry.ID
-    node_id: Optional[int]
+    is_node_bound: bool
     entity_type: str
     name: str
     uri: Optional[str]
@@ -245,7 +298,7 @@ class Link:
     predicate: str
     object_id: strawberry.ID
     properties: Optional[JSON]  # type: ignore[valid-type]
-    access_blob: Optional[JSON]  # type: ignore[valid-type]
+    access_tags: list[str]
     created_at: str
 
     @strawberry.field
@@ -253,8 +306,8 @@ class Link:
         record = await _store(info).get_entity(str(self.subject_id))
         if record is None:
             return None
-        access_blob = await _effective_access_blob(info, record)
-        if not await _is_allowed(info, access_blob, "read:metadata"):
+        access_tags = await _effective_access_tags(info, record)
+        if not await _is_allowed(info, access_tags, "read:metadata"):
             return None
         return _entity_from_record(record, await _namespaces(info))
 
@@ -263,8 +316,8 @@ class Link:
         record = await _store(info).get_entity(str(self.object_id))
         if record is None:
             return None
-        access_blob = await _effective_access_blob(info, record)
-        if not await _is_allowed(info, access_blob, "read:metadata"):
+        access_tags = await _effective_access_tags(info, record)
+        if not await _is_allowed(info, access_tags, "read:metadata"):
             return None
         return _entity_from_record(record, await _namespaces(info))
 
@@ -286,7 +339,7 @@ def _entity_from_record(r: EntityRecord, namespaces: dict[str, str]) -> Entity:
     properties = compact_value(r.properties, namespaces) if r.properties else None
     return Entity(
         id=strawberry.ID(r.id),
-        node_id=r.node_id,
+        is_node_bound=r.node_id is not None,
         entity_type=r.entity_type,
         name=r.name,
         uri=r.uri,
@@ -303,7 +356,7 @@ def _link_from_record(r: LinkRecord, namespaces: dict[str, str]) -> Link:
         predicate=compact_term(r.predicate, namespaces),
         object_id=strawberry.ID(r.object_id),
         properties=properties,
-        access_blob=r.access_blob if r.access_blob else None,
+        access_tags=sorted(r.access_tags),
         created_at=r.created_at.isoformat(),
     )
 
@@ -316,26 +369,32 @@ def _link_from_record(r: LinkRecord, namespaces: dict[str, str]) -> Link:
 @strawberry.input
 class UpdateEntityInput:
     name: Optional[str] = None
-    node_id: Optional[int] | UnsetType = UNSET
+    # Re-bind to a catalog node by path (list of key segments), detach with an
+    # explicit null, or leave the current binding unchanged by omitting it.
+    node_path_parts: Optional[list[str]] | UnsetType = UNSET
     uri: Optional[str] | UnsetType = UNSET
     entity_type: Optional[str] = None
-    access_blob: Optional[JSON] | UnsetType = UNSET  # type: ignore[valid-type]
+    access_tags: Optional[list[str]] | UnsetType = UNSET
 
 
 @strawberry.input
 class UpdateLinkInput:
     predicate: Optional[str] | UnsetType = UNSET
-    access_blob: Optional[JSON] | UnsetType = UNSET  # type: ignore[valid-type]
+    access_tags: Optional[list[str]] | UnsetType = UNSET
 
 
 @strawberry.input
 class CreateEntityInput:
     entity_type: str
     name: str
-    node_id: Optional[int] = None
+    # Bind this entity to a catalog node by its path of key segments
+    # (e.g. ["a", "b"]). Resolved to the internal node id server-side, so
+    # clients never handle the catalog's integer ids. Omit for an entity that
+    # is not tied to a node in this server's catalog.
+    node_path_parts: Optional[list[str]] = None
     uri: Optional[str] = None
     properties: Optional[JSON] = None  # type: ignore[valid-type]
-    access_blob: Optional[JSON] = None  # type: ignore[valid-type]
+    access_tags: Optional[list[str]] = None
 
 
 @strawberry.input
@@ -344,7 +403,7 @@ class CreateLinkInput:
     predicate: str
     object_id: strawberry.ID
     properties: Optional[JSON] = None  # type: ignore[valid-type]
-    access_blob: Optional[JSON] = None  # type: ignore[valid-type]
+    access_tags: Optional[list[str]] = None
 
 
 # ---------------------------------------------------------------------------
@@ -359,8 +418,8 @@ class Query:
         record = await _store(info).get_entity(str(id))
         if record is None:
             return None
-        access_blob = await _effective_access_blob(info, record)
-        if not await _is_allowed(info, access_blob, "read:metadata"):
+        access_tags = await _effective_access_tags(info, record)
+        if not await _is_allowed(info, access_tags, "read:metadata"):
             return None
         return _entity_from_record(record, await _namespaces(info))
 
@@ -369,14 +428,22 @@ class Query:
         self,
         info: Info,
         entity_type: Optional[str] = None,
+        node_path_parts: Optional[list[str]] = None,
         limit: int = 100,
         offset: int = 0,
     ) -> list[Entity]:
         access_filters = await _policy_access_filters(info, "read:metadata")
         if access_filters is NO_ACCESS:
             return []
+        node_id = None
+        if node_path_parts is not None:
+            node_id = await _store(info).resolve_node_id(node_path_parts)
+            if node_id is None:
+                # No such catalog node -> it can have no bound entities.
+                return []
         records = await _store(info).list_entities(
             entity_type=entity_type,
+            node_id=node_id,
             limit=limit,
             offset=offset,
             access_filters=access_filters or None,
@@ -384,22 +451,11 @@ class Query:
         namespaces = await _namespaces(info)
         return [_entity_from_record(r, namespaces) for r in records]
 
-    @strawberry.field(
-        description=(
-            "Resolve the internal catalog node id for a path of key "
-            "segments (e.g. ['raw_dataset']), for use as CreateEntityInput's "
-            "nodeId. Returns null if no such catalog node exists."
-        )
-    )
-    async def catalog_node_id(self, info: Info, path: list[str]) -> Optional[int]:
-        _assert_authn_scope(info, "read:metadata")
-        return await _store(info).resolve_node_id(path)
-
     @strawberry.field
     async def link(self, info: Info, id: strawberry.ID) -> Optional[Link]:
         record = await _store(info).get_link(str(id))
         if not record or not await _is_allowed(
-            info, record.access_blob, "read:metadata"
+            info, normalize_access_tags(record.access_tags), "read:metadata"
         ):
             return None
         return _link_from_record(record, await _namespaces(info))
@@ -447,19 +503,27 @@ class Mutation:
     async def create_entity(self, info: Info, input: CreateEntityInput) -> Entity:
         _assert_authn_scope(info, "write:metadata")
         namespaces = await _namespaces(info)
-        if input.node_id is not None:
-            if input.access_blob:
-                raise GraphQLError(ENTITY_NODE_ACCESS_BLOB_ERROR)
-            access_blob = None
+        node_id = await _resolve_node_binding(info, input.node_path_parts)
+        if node_id is not None:
+            if input.access_tags:
+                raise GraphQLError(ENTITY_NODE_ACCESS_TAGS_ERROR)
+            access_tags = None
         else:
-            access_blob = await _init_access_blob(info, input.access_blob)
+            access_tags = await _init_access_tags(
+                info,
+                (
+                    _access_tags_from_input(input.access_tags)
+                    if input.access_tags is not None
+                    else None
+                ),
+            )
         record = await _store(info).create_entity(
             entity_type=input.entity_type,
             name=input.name,
-            node_id=input.node_id,
+            node_id=node_id,
             uri=input.uri,
             properties=expand_value(input.properties or {}, namespaces),
-            access_blob=access_blob,
+            access_tags=access_tags,
         )
         logger.info(
             "Created entity type=%r name=%r id=%s",
@@ -477,21 +541,28 @@ class Mutation:
         if not subject:
             raise GraphQLError(f"Subject entity '{input.subject_id}' not found")
         await _assert_allowed(
-            info, await _effective_access_blob(info, subject), "write:metadata"
+            info, await _effective_access_tags(info, subject), "write:metadata"
         )
         object_ = await _store(info).get_entity(str(input.object_id))
         if not object_:
             raise GraphQLError(f"Object entity '{input.object_id}' not found")
         await _assert_allowed(
-            info, await _effective_access_blob(info, object_), "write:metadata"
+            info, await _effective_access_tags(info, object_), "write:metadata"
         )
-        access_blob = await _init_access_blob(info, input.access_blob)
+        access_tags = await _init_access_tags(
+            info,
+            (
+                _access_tags_from_input(input.access_tags)
+                if input.access_tags is not None
+                else None
+            ),
+        )
         record = await _store(info).create_link(
             subject_id=str(input.subject_id),
             predicate=expand_term(input.predicate, namespaces),
             object_id=str(input.object_id),
             properties=expand_value(input.properties or {}, namespaces),
-            access_blob=access_blob,
+            access_tags=access_tags,
         )
         logger.info(
             "Created link %s -[%s]-> %s id=%s",
@@ -510,7 +581,7 @@ class Mutation:
         if not record:
             return False
         await _assert_allowed(
-            info, await _effective_access_blob(info, record), "write:metadata"
+            info, await _effective_access_tags(info, record), "write:metadata"
         )
         deleted = await _store(info).delete_entity(str(id))
         if deleted:
@@ -525,25 +596,44 @@ class Mutation:
         if current is None:
             return None
         await _assert_allowed(
-            info, await _effective_access_blob(info, current), "write:metadata"
+            info, await _effective_access_tags(info, current), "write:metadata"
         )
-        effective_node_id = current.node_id if input.node_id is UNSET else input.node_id
-        access_blob = UNSET
+        # Resolve the requested node binding into a tri-state on the internal
+        # node id: UNSET (leave), None (detach), or an int (bind).
+        # node_path_parts is resolved to the id, so the store never sees a path.
+        if input.node_path_parts is UNSET:
+            node_id = STORE_UNSET
+        elif input.node_path_parts is None:
+            node_id = None
+        else:
+            node_id = await _resolve_node_binding(info, input.node_path_parts)
+        node_binding_changed = node_id is not STORE_UNSET
+        effective_node_id = current.node_id if node_id is STORE_UNSET else node_id
+        access_tags = UNSET
         if effective_node_id is not None:
-            if input.access_blob is not UNSET and (input.access_blob or {}):
-                raise GraphQLError(ENTITY_NODE_ACCESS_BLOB_ERROR)
-            access_blob = None
-        elif input.access_blob is not UNSET:
-            requested_access_blob = input.access_blob or {}
-            access_blob = await _modify_access_blob(
-                info, current.access_blob, requested_access_blob
+            if input.access_tags is not UNSET and (input.access_tags or []):
+                raise GraphQLError(ENTITY_NODE_ACCESS_TAGS_ERROR)
+            access_tags = None
+        elif input.access_tags is not UNSET:
+            requested_access_tags = (
+                _access_tags_from_input(input.access_tags)
+                if input.access_tags is not None
+                else None
             )
-        elif input.node_id is not UNSET and current.access_blob is None:
-            # Detaching from a node (node_id set to null) with no
-            # access_blob supplied in the same call: the entity needs its
-            # own access_blob now that it no longer delegates to a node.
-            access_blob = await _init_access_blob(info, None)
-        node_id = STORE_UNSET if input.node_id is UNSET else input.node_id
+            access_tags = await _modify_access_tags(
+                info,
+                (
+                    normalize_access_tags(current.access_tags)
+                    if current.access_tags is not None
+                    else None
+                ),
+                requested_access_tags,
+            )
+        elif node_binding_changed and current.access_tags is None:
+            # Detaching from a node (node_path_parts set to null) with no
+            # access tags supplied in the same call: the entity needs its
+            # own access tags now that it no longer delegates to a node.
+            access_tags = await _init_access_tags(info, None)
         uri = STORE_UNSET if input.uri is UNSET else input.uri
         record = await _store(info).update_entity(
             str(id),
@@ -551,7 +641,7 @@ class Mutation:
             node_id=node_id,
             uri=uri,
             entity_type=input.entity_type,
-            access_blob=access_blob,
+            access_tags=STORE_UNSET if access_tags is UNSET else access_tags,
         )
         if record:
             logger.info("Updated entity id=%s", id)
@@ -562,7 +652,9 @@ class Mutation:
         record = await _store(info).get_link(str(id))
         if not record:
             return False
-        await _assert_allowed(info, record.access_blob, "write:metadata")
+        await _assert_allowed(
+            info, normalize_access_tags(record.access_tags), "write:metadata"
+        )
         deleted = await _store(info).delete_link(str(id))
         if deleted:
             logger.info("Deleted link id=%s", id)
@@ -575,13 +667,19 @@ class Mutation:
         current = await _store(info).get_link(str(id))
         if current is None:
             return None
-        await _assert_allowed(info, current.access_blob, "write:metadata")
+        await _assert_allowed(
+            info, normalize_access_tags(current.access_tags), "write:metadata"
+        )
         namespaces = await _namespaces(info)
-        access_blob = UNSET
-        if input.access_blob is not UNSET:
-            requested_access_blob = input.access_blob or {}
-            access_blob = await _modify_access_blob(
-                info, current.access_blob, requested_access_blob
+        access_tags = UNSET
+        if input.access_tags is not UNSET:
+            requested_access_tags = (
+                _access_tags_from_input(input.access_tags)
+                if input.access_tags is not None
+                else None
+            )
+            access_tags = await _modify_access_tags(
+                info, normalize_access_tags(current.access_tags), requested_access_tags
             )
         predicate = (
             STORE_UNSET
@@ -591,7 +689,7 @@ class Mutation:
         record = await _store(info).update_link(
             str(id),
             predicate=predicate,
-            access_blob=access_blob,
+            access_tags=STORE_UNSET if access_tags is UNSET else access_tags,
         )
         if record:
             logger.info("Updated link id=%s predicate=%r", id, input.predicate)

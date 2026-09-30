@@ -1,9 +1,31 @@
+import asyncio
+
 import numpy
 import pytest
+from sqlalchemy import insert
+from sqlalchemy.ext.asyncio import create_async_engine
 
+from tiled.catalog import orm
 from tiled.client import Context, from_context
 from tiled.server.app import build_app_from_config
 from tiled.structures.core import Spec
+from tiled.utils import ensure_specified_sql_driver
+
+
+def define_access_tags(uri, names):
+    """Insert tag definitions into a catalog database (the access tags
+    compiler's job in a real deployment). Nodes may only be associated
+    with tags that are defined."""
+
+    async def _run():
+        engine = create_async_engine(ensure_specified_sql_driver(uri))
+        async with engine.begin() as conn:
+            await conn.execute(
+                insert(orm.AccessTag.__table__), [{"name": name} for name in names]
+            )
+        await engine.dispose()
+
+    asyncio.run(_run())
 
 
 def test_mount_node(sqlite_or_postgres_uri, tmpdir):
@@ -174,6 +196,7 @@ def test_create_mount_nodes_if_not_exist(sqlite_or_postgres_uri, tmpdir):
     # Mount a tree at a nonexistent path with create_mount_nodes_if_not_exist=True.
     # This should auto-create intermediate container nodes /X/Y/Z.
     # The leaf node should receive the configured specs and access_tags.
+    define_access_tags(sqlite_or_postgres_uri, ["_ROOT_NODE"])
     mount_config = {
         "create_mount_nodes_if_not_exist": True,
         "trees": [
@@ -185,7 +208,7 @@ def test_create_mount_nodes_if_not_exist(sqlite_or_postgres_uri, tmpdir):
                     "writable_storage": [tmpdir / "data"],
                     "mount_node": "/X/Y/Z",
                     "specs": [{"name": "MyCustomSpec", "version": "3.0"}],
-                    "top_level_access_blob": {"tags": ["_ROOT_NODE"]},
+                    "top_level_access_tags": ["_ROOT_NODE"],
                 },
             },
         ],
@@ -217,14 +240,14 @@ def test_create_mount_nodes_if_not_exist(sqlite_or_postgres_uri, tmpdir):
         assert "Y" in list(client["X"])
         assert "Z" in list(client["X"]["Y"])
         assert "child" in list(client["X"]["Y"]["Z"])
-        # Intermediate nodes should have empty specs and access_blob.
+        # Intermediate nodes should have empty specs and access_tags.
         assert client["X"].specs == []
         assert client["X"]["Y"].specs == []
-        assert not client["X"].access_blob
-        assert not client["X"]["Y"].access_blob
+        assert list(client["X"].access_tags) == []
+        assert list(client["X"]["Y"].access_tags) == []
         # The leaf (mount node) should carry the configured specs.
         assert client["X"]["Y"]["Z"].specs == [Spec(name="MyCustomSpec", version="3.0")]
-        assert client["X"]["Y"]["Z"].access_blob.get("tags") == ["_ROOT_NODE"]
+        assert list(client["X"]["Y"]["Z"].access_tags) == ["_ROOT_NODE"]
 
 
 def test_create_mount_nodes_partial(sqlite_or_postgres_uri, tmpdir):
@@ -248,6 +271,7 @@ def test_create_mount_nodes_partial(sqlite_or_postgres_uri, tmpdir):
         client.create_container("A")
 
     # Mount at /A/B/C with auto-create. /A exists, /A/B and /A/B/C do not.
+    define_access_tags(sqlite_or_postgres_uri, ["_LEAF"])
     mount_config = {
         "create_mount_nodes_if_not_exist": True,
         "trees": [
@@ -259,7 +283,7 @@ def test_create_mount_nodes_partial(sqlite_or_postgres_uri, tmpdir):
                     "writable_storage": [tmpdir / "data"],
                     "mount_node": "/A/B/C",
                     "specs": [{"name": "PartialSpec", "version": "1.0"}],
-                    "top_level_access_blob": {"tags": ["_LEAF"]},
+                    "top_level_access_tags": ["_LEAF"],
                 },
             },
         ],
@@ -282,4 +306,4 @@ def test_create_mount_nodes_partial(sqlite_or_postgres_uri, tmpdir):
         assert client["A"]["B"].specs == []
         # Leaf /A/B/C should carry the configured specs.
         assert client["A"]["B"]["C"].specs == [Spec(name="PartialSpec", version="1.0")]
-        assert client["A"]["B"]["C"].access_blob.get("tags") == ["_LEAF"]
+        assert list(client["A"]["B"]["C"].access_tags) == ["_LEAF"]
