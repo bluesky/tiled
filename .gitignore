@@ -91,7 +91,9 @@ tiled/_version.py
 venv/
 # pixi environments
 .pixi
-pixi.lock
+# We have a pixi.lock and GHA infrastructure to periodically
+# update it. We should not commit a uv.lock as well unless we
+# likewise set up infrastructure to periodically update it.
 # uv environments
 uv.lock
 .venv
