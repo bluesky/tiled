@@ -4,7 +4,7 @@ import os
 from abc import abstractmethod
 from collections.abc import Mapping
 from pathlib import Path
-from typing import TYPE_CHECKING, Dict, Iterator, Literal, Optional, Union
+from typing import TYPE_CHECKING, Dict, Iterator, Literal, NamedTuple, Optional, Union
 from urllib.parse import urlparse, urlunparse
 
 import sqlalchemy.pool
@@ -418,6 +418,61 @@ def size_from_uri(data_uri: str) -> int:
     raise ValueError(
         f"Cannot stat URI with unsupported scheme {scheme!r}: {data_uri!r}"
     )
+
+
+def mtime_from_uri(data_uri: str) -> float:
+    """Return the last-modified time of the asset at `data_uri`.
+
+    The time is a POSIX timestamp (seconds since the epoch).
+
+    Dispatches on URI scheme: `file://` URIs are stat'd on the local
+    filesystem; object-store URIs (those in `SUPPORTED_OBJECT_URI_SCHEMES`)
+    issue a HEAD via obstore. Raises `ValueError` for any other scheme.
+    Underlying I/O errors (`FileNotFoundError`, network errors, etc.)
+    propagate; callers that want best-effort behavior should catch them at
+    the call site.
+    """
+    scheme = urlparse(data_uri).scheme
+    if scheme == "file":
+        return path_from_uri(data_uri).stat().st_mtime
+    if scheme in SUPPORTED_OBJECT_URI_SCHEMES:
+        storage = get_storage(data_uri)
+        _, _, path = ObjectStorage.parse_blob_uri(data_uri)
+        store = storage.get_obstore_location()
+        return store.head(path)["last_modified"].timestamp()
+    raise ValueError(
+        f"Cannot stat URI with unsupported scheme {scheme!r}: {data_uri!r}"
+    )
+
+
+class UriStat(NamedTuple):
+    """Result of :func:`stat_uri`.
+
+    A `NamedTuple` so callers can unpack it (`is_directory, size = stat_uri(...)`)
+    or access fields by name, while leaving room to add more fields later without
+    breaking existing unpacking.
+    """
+
+    is_directory: bool
+    size: Optional[int]
+
+
+def stat_uri(data_uri: str) -> UriStat:
+    """Best-effort :class:`UriStat` (`is_directory`, `size`) for `data_uri`.
+
+    Populates the advisory `is_directory` and `size` fields of an
+    :class:`~tiled.structures.data_source.Asset`. A `file://` directory reports
+    `(True, None)`; anything else reports `(False, <size>)` using
+    :func:`size_from_uri`. Because these fields are advisory -- and the caller
+    may not even have local access to the asset -- any failure to inspect the
+    asset yields `(False, None)` rather than raising.
+    """
+    try:
+        if urlparse(data_uri).scheme == "file" and path_from_uri(data_uri).is_dir():
+            return UriStat(is_directory=True, size=None)
+        return UriStat(is_directory=False, size=size_from_uri(data_uri))
+    except Exception:
+        return UriStat(is_directory=False, size=None)
 
 
 class DirectoryContainer(Mapping[str, bytes]):

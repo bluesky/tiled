@@ -92,7 +92,7 @@ Valid tags: `["beamline_x_user", "beamline_y_user", "facility_admin", "public"]`
 
 The [example_data.py](example_data.py) script creates sample data with these access levels:
 
-| Data | Access Blob     |
+| Data | Access Tags     |
 |------|-----------------|
 | A    | public          |
 | B    | beamline_x_user |

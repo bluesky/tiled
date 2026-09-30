@@ -33,4 +33,4 @@ trees:
       #
       # separately.
       init_if_not_exists: true
-      top_level_access_blob: {"tags": ["public"]}
+      top_level_access_tags: ["public"]

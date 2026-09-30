@@ -53,6 +53,7 @@ with warnings.catch_warnings():
 
 from pydantic import BaseModel
 
+from ..access_control.protocols import normalize_access_tags
 from ..authn_database import orm
 from ..authn_database.core import (
     create_service,
@@ -259,7 +260,7 @@ async def get_access_tags_from_api_key(
         return None
     else:
         if (access_tags := api_key_orm.access_tags) is not None:
-            access_tags = set(access_tags)
+            access_tags = normalize_access_tags(access_tags)
         return access_tags
 
 

@@ -43,12 +43,6 @@ query($subjectId: ID!, $predicate: String!, $objectId: ID!) {
 }
 """
 
-CATALOG_NODE_ID_QUERY = """
-query($path: [String!]!) {
-    catalogNodeId(path: $path)
-}
-"""
-
 DATASET_NAMES = {dataset["name"] for dataset in DATASETS}
 
 
@@ -127,10 +121,13 @@ def main() -> None:
 
             properties = dict(item.get("properties") or {})
 
+            node_path_parts = item.get("nodePathParts")
             if name in DATASET_NAMES:
-                # Points at data hosted by this server: link to it by its
-                # full Tiled URL rather than an ad hoc relative path.
+                # Points at data hosted by this server: bind the entity to the
+                # catalog node by its path (the server resolves it to the
+                # internal node id) and link to it by its full Tiled URL.
                 uri = f"{base_url}/api/v1/metadata/{name}"
+                node_path_parts = [name]
             else:
                 # Points elsewhere (e.g. a dataset on another Tiled server)
                 # if the input document says so, or nowhere at all otherwise.
@@ -140,11 +137,12 @@ def main() -> None:
                 "entityType": item.get("entityType", "entity"),
                 "name": name,
                 "uri": uri,
-                "nodeId": item.get("nodeId"),
                 "properties": properties,
             }
-            if "accessBlob" in item:
-                entity_input["accessBlob"] = item["accessBlob"]
+            if node_path_parts is not None:
+                entity_input["nodePathParts"] = node_path_parts
+            if "accessTags" in item:
+                entity_input["accessTags"] = item["accessTags"]
 
             entities[name] = entity_input
             item_id = item.get("@id")
@@ -169,8 +167,8 @@ def main() -> None:
                 "object": _resolve_entity_name(object_, entities_by_id),
                 "properties": item.get("properties") or {},
             }
-            if "accessBlob" in item:
-                link_input["accessBlob"] = item["accessBlob"]
+            if "accessTags" in item:
+                link_input["accessTags"] = item["accessTags"]
             links.append(link_input)
 
     with httpx.Client(base_url=base_url, headers=headers, timeout=30.0) as client:
@@ -183,19 +181,6 @@ def main() -> None:
             print(f"Registered namespace: {prefix} -> {uri}")
 
         entity_ids: dict[str, str] = {}
-
-        # For entities that are real catalog datasets, resolve the catalog
-        # node's internal id so it lands in the entity's `nodeId` (and thus
-        # the `node_id` column), instead of being duplicated into `properties`.
-        for name, entity in entities.items():
-            if entity["nodeId"] is None and name in DATASET_NAMES:
-                lookup = _post_graphql(client, CATALOG_NODE_ID_QUERY, {"path": [name]})
-                node_id = lookup["data"]["catalogNodeId"]
-                if node_id is None:
-                    raise RuntimeError(
-                        f"Could not resolve catalog node id for dataset '{name}'."
-                    )
-                entity["nodeId"] = node_id
 
         existing = _post_graphql(client, LIST_ENTITIES_QUERY, {})
         for entity in existing["data"]["entities"]:
@@ -254,8 +239,8 @@ def main() -> None:
                         "objectId": entity_ids[object_name],
                         "properties": link["properties"],
                         **(
-                            {"accessBlob": link["accessBlob"]}
-                            if "accessBlob" in link
+                            {"accessTags": link["accessTags"]}
+                            if "accessTags" in link
                             else {}
                         ),
                     }

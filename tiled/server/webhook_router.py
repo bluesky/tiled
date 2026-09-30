@@ -14,7 +14,9 @@ Both scopes are granted to admin users only.
 """
 
 import asyncio
+import ipaddress
 import logging
+import socket
 from typing import Callable, Coroutine, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Security
@@ -77,6 +79,27 @@ def _build_url_validator(config: WebhooksConfig) -> UrlValidator:
         logger.warning(
             "Webhook SSRF protection is disabled (allow_private_addresses=True)."
         )
+    for hostname in config.allow_delivery_hosts:
+        try:
+            ipaddress.ip_address(hostname)
+        except ValueError:
+            pass
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Allow delivery host {hostname} must be a hostname, not an IP address"
+                ),
+            )
+        try:
+            socket.gethostbyname(hostname)
+        except socket.gaierror as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+    for network in config.blocked_networks:
+        try:
+            ipaddress.ip_network(network)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     async def _url_validator(
         body: WebhookRegistrationRequest,
@@ -88,7 +111,12 @@ def _build_url_validator(config: WebhooksConfig) -> UrlValidator:
                 raise HTTPException(status_code=422, detail=str(exc)) from exc
         if not config.allow_private_addresses:
             try:
-                await asyncio.to_thread(check_url_ssrf_safety, str(body.url))
+                await asyncio.to_thread(
+                    check_url_ssrf_safety,
+                    str(body.url),
+                    config.blocked_networks,
+                    config.allow_delivery_hosts,
+                )
             except ValueError as exc:
                 logger.info("Webhook registration blocked by SSRF check: %s", exc)
                 raise HTTPException(

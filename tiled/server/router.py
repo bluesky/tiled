@@ -3,7 +3,6 @@ import dataclasses
 import inspect
 import os
 import warnings
-from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 from functools import cache, partial
 from pathlib import Path
@@ -37,9 +36,11 @@ from starlette.status import (
     HTTP_410_GONE,
     HTTP_422_UNPROCESSABLE_CONTENT,
     HTTP_500_INTERNAL_SERVER_ERROR,
+    HTTP_503_SERVICE_UNAVAILABLE,
 )
 
 from tiled.adapters.protocols import AnyAdapter
+from tiled.adapters.utils import DataNotReadyError, ShapeMismatchError
 from tiled.authenticators import ProxiedOIDCAuthenticator
 from tiled.media_type_registration import SerializationRegistry
 from tiled.query_registration import QueryRegistry
@@ -48,6 +49,7 @@ from tiled.server.protocols import ExternalAuthenticator, InternalAuthenticator
 from tiled.server.schemas import Principal
 
 from .. import __version__
+from ..access_control.protocols import normalize_access_tags
 from ..links import links_for_node
 from ..ndslice import NDBlock, NDSlice
 from ..stream_messages import ArrayPatch
@@ -57,6 +59,12 @@ from ..utils import BrokenLink, ensure_awaitable, patch_mimetypes, path_from_uri
 from ..validation_registration import ValidationError, ValidationRegistry
 from . import schemas
 from ._backcompat import (
+    access_blob_from_access_tags,
+    access_tags_from_patch_request,
+    access_tags_from_request,
+    client_expects_access_blob,
+    legacy_access_blob,
+    legacy_access_blob_error,
     parse_python_tiled_client_version,
     strip_asset_fields_for_client,
 )
@@ -106,10 +114,16 @@ from .utils import (
     filter_for_access,
     get_base_url,
     get_base_url_websocket,
+    normalize_root_path,
     record_timing,
 )
 
 T = TypeVar("T")
+
+# When an array read fails because the catalog structure is ahead of the data
+# actually present on disk (a streaming append in progress), the client is told
+# to retry after this many seconds.
+ARRAY_RETRY_AFTER_SECONDS = int(os.getenv("TILED_ARRAY_RETRY_AFTER", "1"))
 
 
 def _patch_route_signature(
@@ -157,6 +171,11 @@ def _patch_route_signature(
         # Add a parameter for each field in each type of query.
         for name, query in query_registry.name_to_query_type.items():
             for field in dataclasses.fields(query):
+                # Skip server-internal fields: they are populated on the
+                # server side (not by clients) and must not become URL query
+                # parameters. See e.g. AccessTagsFilter.tag_ids.
+                if field.metadata.get("internal"):
+                    continue
                 # The structured "alias" here is based on
                 # https://mglaman.dev/blog/using-json-router-query-your-search-router-indexes
                 if getattr(field.type, "__origin__", None) is list:
@@ -298,7 +317,10 @@ def get_router(
                     "self": base_url,
                     "documentation": f"{base_url}/docs",
                 },
-                meta={"root_path": request.scope.get("root_path") or "" + "/api"},
+                meta={
+                    "root_path": normalize_root_path(request.scope.get("root_path"))
+                    + "/api"
+                },
             ).model_dump(),
             expires=datetime.now(timezone.utc) + timedelta(seconds=600),
         )
@@ -611,6 +633,16 @@ def get_router(
                     status_code=HTTP_500_INTERNAL_SERVER_ERROR,
                     detail="Block index out of range",
                 )
+            except DataNotReadyError as err:
+                raise HTTPException(
+                    status_code=HTTP_503_SERVICE_UNAVAILABLE,
+                    detail=str(err),
+                    headers={"Retry-After": str(ARRAY_RETRY_AFTER_SECONDS)},
+                )
+            except ShapeMismatchError as err:
+                raise HTTPException(
+                    status_code=HTTP_422_UNPROCESSABLE_CONTENT, detail=str(err)
+                )
             # Something is wrong with the shape of the data vs the value in the structure
             if (expected_shape is not None) and (expected_shape != array.shape):
                 raise HTTPException(
@@ -691,6 +723,16 @@ def get_router(
         except IndexError:
             raise HTTPException(
                 status_code=HTTP_400_BAD_REQUEST, detail="Block index out of range"
+            )
+        except DataNotReadyError as err:
+            raise HTTPException(
+                status_code=HTTP_503_SERVICE_UNAVAILABLE,
+                detail=str(err),
+                headers={"Retry-After": str(ARRAY_RETRY_AFTER_SECONDS)},
+            )
+        except ShapeMismatchError as err:
+            raise HTTPException(
+                status_code=HTTP_422_UNPROCESSABLE_CONTENT, detail=str(err)
             )
         if (expected_shape is not None) and (expected_shape != array.shape):
             raise HTTPException(
@@ -1859,12 +1901,21 @@ def get_router(
         authn_access_tags: Optional[AccessTags],
         authn_scopes: Scopes,
     ):
-        metadata, structure_family, specs, access_blob = (
+        metadata, structure_family, specs, access_tags = (
             body.metadata,
             body.structure_family,
             body.specs,
-            body.access_blob,
+            normalize_access_tags(body.access_tags)
+            if body.access_tags is not None
+            else None,
         )
+        # BACK-COMPAT: a client older than v0.2.19 spells this `access_blob`.
+        # Remove with the helpers in _backcompat.py.
+        if legacy_access_blob(body) is not None:
+            try:
+                access_tags = access_tags_from_request(body)
+            except ValueError as e:
+                raise legacy_access_blob_error(e)
         if structure_family == StructureFamily.container:
             structure = None
         else:
@@ -1887,19 +1938,19 @@ def get_router(
         ):
             try:
                 (
-                    access_blob_modified,
-                    access_blob,
+                    access_tags_modified,
+                    access_tags,
                 ) = await request.app.state.access_policy.init_node(
-                    principal, authn_access_tags, authn_scopes, access_blob=access_blob
+                    principal, authn_access_tags, authn_scopes, access_tags=access_tags
                 )
             except ValueError as e:
                 raise HTTPException(
                     status_code=HTTP_403_FORBIDDEN,
-                    detail=f"Access policy rejects the provided access blob.\n{e}",
+                    detail=f"Access policy rejects the provided access tags.\n{e}",
                 )
         else:
-            access_blob_modified = access_blob != {}
-            access_blob = {}
+            access_tags_modified = access_tags != normalize_access_tags()
+            access_tags = normalize_access_tags()
 
         node = await entry.create_node(
             metadata=body.metadata,
@@ -1907,7 +1958,7 @@ def get_router(
             key=key,
             specs=body.specs,
             data_sources=body.data_sources,
-            access_blob=access_blob,
+            access_tags=access_tags,
         )
         links = links_for_node(
             structure_family, structure, get_base_url(request), path + f"/{node.key}"
@@ -1925,10 +1976,15 @@ def get_router(
         }
         if metadata_modified:
             response_data["metadata"] = metadata
-        if access_blob_modified:
-            response_data["access_blob"] = access_blob
+        if access_tags_modified:
+            response_data["access_tags"] = (
+                sorted(access_tags) if access_tags is not None else None
+            )
 
-        return json_or_msgpack(request, response_data)
+        # NOTE: Back-compatibility for clients older than v0.2.19
+        return json_or_msgpack(
+            request, _write_response_backcompat(request, response_data)
+        )
 
     @router.put("/data_source/{path:path}")
     async def put_data_source(
@@ -2350,7 +2406,11 @@ def get_router(
         if body.content_type == patch_mimetypes.JSON_PATCH:
             metadata = apply_json_patch(entry.metadata(), (body.metadata or []))
             specs = apply_json_patch((entry.specs or []), (body.specs or []))
-            access_blob = apply_json_patch(entry.access_blob, (body.access_blob or []))
+            # Patch against the same deterministic (sorted) list that the
+            # server serves, so that index-based patch operations are stable.
+            access_tags = apply_json_patch(
+                sorted(entry.access_tags), (body.access_tags or [])
+            )
         elif body.content_type == patch_mimetypes.MERGE_PATCH:
             metadata = apply_merge_patch(entry.metadata(), (body.metadata or {}))
             # body.specs = [] clears specs, as per json merge patch specification
@@ -2358,20 +2418,43 @@ def get_router(
             current_specs = entry.specs or []
             target_specs = current_specs if body.specs is None else body.specs
             specs = apply_merge_patch(current_specs, target_specs)
-            # json_merge_patch applies merge in-place, which would
-            # otherwise modify the in-memory node and prevent the
-            # access policy from sanity checking the access blob.
-            # make a copy so we can compare the node against the
-            # proposed new access blob.
-            entry_access_blob_copy = deepcopy(entry.access_blob)
-            access_blob = apply_merge_patch(
-                entry_access_blob_copy, (body.access_blob or [])
+            # sorted() makes a mutable copy, protecting the in-memory node
+            # from in-place modification by json_merge_patch so that the
+            # access policy can compare the node against the proposed tags.
+            access_tags = apply_merge_patch(
+                sorted(entry.access_tags), (body.access_tags or [])
             )
         else:
             raise HTTPException(
                 status_code=HTTP_406_NOT_ACCEPTABLE,
                 detail=f"valid content types: {', '.join(patch_mimetypes)}",
             )
+        # A patch is unconstrained by the request schema, so validate that it
+        # produced a flat list of tag names, and normalize to AccessTags.
+        if isinstance(access_tags, list) and all(
+            isinstance(tag, str) for tag in access_tags
+        ):
+            access_tags = normalize_access_tags(access_tags)
+        else:
+            raise HTTPException(
+                status_code=HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="access_tags patch must produce a list of strings",
+            )
+
+        # BACK-COMPAT: a client older than v0.2.19 patches an `access_blob`
+        # dict rather than a tag list, so its patch has to be applied in that
+        # shape. Remove with the helpers in _backcompat.py.
+        if legacy_access_blob(body) is not None:
+            try:
+                access_tags = access_tags_from_patch_request(
+                    body,
+                    entry.access_tags,
+                    apply_json_patch
+                    if body.content_type == patch_mimetypes.JSON_PATCH
+                    else apply_merge_patch,
+                )
+            except ValueError as e:
+                raise legacy_access_blob_error(e)
 
         # Manually validate limits that bypass pydantic validation via patch
         if len(specs) > schemas.MAX_ALLOWED_SPECS:
@@ -2396,32 +2479,37 @@ def get_router(
             policy, "modify_node"
         ):
             try:
-                (access_blob_modified, access_blob) = await policy.modify_node(
-                    entry, principal, authn_access_tags, authn_scopes, access_blob
+                (access_tags_modified, access_tags) = await policy.modify_node(
+                    entry, principal, authn_access_tags, authn_scopes, access_tags
                 )
             except ValueError as e:
                 raise HTTPException(
                     status_code=HTTP_403_FORBIDDEN,
-                    detail=f"Access policy rejects the provided access blob.\n{e}",
+                    detail=f"Access policy rejects the provided access tags.\n{e}",
                 )
         else:
-            # Cannot modify the access blob if there is no access policy
-            access_blob_modified = access_blob != entry.access_blob
-            access_blob = entry.access_blob
+            # Cannot modify the access tags if there is no access policy
+            access_tags_modified = access_tags != entry.access_tags
+            access_tags = entry.access_tags
 
         await entry.replace_metadata(
             metadata=metadata,
             specs=specs,
-            access_blob=access_blob,
+            access_tags=access_tags,
             drop_revision=drop_revision,
         )
 
         response_data = {"id": entry.node.key}
         if metadata_modified:
             response_data["metadata"] = metadata
-        if access_blob_modified:
-            response_data["access_blob"] = access_blob
-        return json_or_msgpack(request, response_data)
+        if access_tags_modified:
+            response_data["access_tags"] = (
+                sorted(access_tags) if access_tags is not None else None
+            )
+        # NOTE: Back-compatibility for clients older than v0.2.19
+        return json_or_msgpack(
+            request, _write_response_backcompat(request, response_data)
+        )
 
     @router.put("/metadata/{path:path}", response_model=schemas.PutMetadataResponse)
     async def put_metadata(
@@ -2455,11 +2543,22 @@ def get_router(
                 detail="This node does not support update of metadata.",
             )
 
-        metadata, specs, access_blob = (
+        metadata, specs, access_tags = (
             body.metadata if body.metadata is not None else entry.metadata(),
             body.specs if body.specs is not None else entry.specs,
-            body.access_blob if body.access_blob is not None else entry.access_blob,
+            normalize_access_tags(body.access_tags)
+            if body.access_tags is not None
+            else entry.access_tags,
         )
+        # BACK-COMPAT: a client older than v0.2.19 spells this `access_blob`.
+        # Remove with the helpers in _backcompat.py.
+        if legacy_access_blob(body) is not None:
+            try:
+                access_tags = access_tags_from_request(body)
+            except ValueError as e:
+                raise legacy_access_blob_error(e)
+            if access_tags is None:
+                access_tags = entry.access_tags
 
         metadata_modified, metadata = await validate_specs(
             specs=specs,
@@ -2472,32 +2571,37 @@ def get_router(
             policy, "modify_node"
         ):
             try:
-                (access_blob_modified, access_blob) = await policy.modify_node(
-                    entry, principal, authn_access_tags, authn_scopes, access_blob
+                (access_tags_modified, access_tags) = await policy.modify_node(
+                    entry, principal, authn_access_tags, authn_scopes, access_tags
                 )
             except ValueError as e:
                 raise HTTPException(
                     status_code=HTTP_403_FORBIDDEN,
-                    detail=f"Access policy rejects the provided access blob.\n{e}",
+                    detail=f"Access policy rejects the provided access tags.\n{e}",
                 )
         else:
-            # Cannot modify the access blob if there is no access policy
-            access_blob_modified = access_blob != entry.access_blob
-            access_blob = entry.access_blob
+            # Cannot modify the access tags if there is no access policy
+            access_tags_modified = access_tags != entry.access_tags
+            access_tags = entry.access_tags
 
         await entry.replace_metadata(
             metadata=metadata,
             specs=specs,
-            access_blob=access_blob,
+            access_tags=access_tags,
             drop_revision=drop_revision,
         )
 
         response_data = {"id": entry.node.key}
         if metadata_modified:
             response_data["metadata"] = metadata
-        if access_blob_modified:
-            response_data["access_blob"] = access_blob
-        return json_or_msgpack(request, response_data)
+        if access_tags_modified:
+            response_data["access_tags"] = (
+                sorted(access_tags) if access_tags is not None else None
+            )
+        # NOTE: Back-compatibility for clients older than v0.2.19
+        return json_or_msgpack(
+            request, _write_response_backcompat(request, response_data)
+        )
 
     @router.get("/revisions/{path:path}")
     async def get_revisions(
@@ -2871,8 +2975,11 @@ def _model_dump_backcompat(request: Request, response: schemas.Response) -> dict
     - Clients older than v0.2.13 crash on `size` in assets, because their
       `tiled.structures.data_source.Asset` dataclass has no `size` field and
       `DataSource.from_json` unpacks kwargs directly.
+    - Clients older than v0.2.19 expect `access_blob` rather than `access_tags`,
+      and read it unconditionally (`tiled.client.base.BaseClient.metadata_copy`),
+      so they raise KeyError without it.
 
-    To be removed in a future major release.
+    To be removed in a future release.
     """
     response_dict = response.model_dump()
     client_version = parse_python_tiled_client_version(request)
@@ -2889,4 +2996,29 @@ def _model_dump_backcompat(request: Request, response: schemas.Response) -> dict
         for ds in all_data_sources:
             ds.pop("properties", None)
     strip_asset_fields_for_client(all_data_sources, client_version)
+    if client_expects_access_blob(client_version):
+        for resource in resources:
+            attributes = resource.get("attributes") or {}
+            if "access_tags" in attributes:
+                attributes["access_blob"] = access_blob_from_access_tags(
+                    attributes.pop("access_tags")
+                )
     return response_dict
+
+
+def _write_response_backcompat(request: Request, response_data: dict) -> dict:
+    """Adjust a write endpoint's response payload to match older clients.
+
+    The POST/PUT/PATCH metadata endpoints return a bare dict rather than a
+    `schemas.Response`, so they cannot go through `_model_dump_backcompat`.
+
+    To be removed in a future release.
+    """
+    if (
+        client_expects_access_blob(parse_python_tiled_client_version(request))
+        and "access_tags" in response_data
+    ):
+        response_data["access_blob"] = access_blob_from_access_tags(
+            response_data.pop("access_tags")
+        )
+    return response_data

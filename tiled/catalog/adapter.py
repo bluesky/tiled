@@ -8,6 +8,7 @@ import operator
 import os
 import shutil
 import sys
+import time
 import uuid
 from contextlib import closing
 from datetime import datetime, timezone
@@ -48,10 +49,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased, selectinload
 from sqlalchemy.sql.expression import cast as sql_cast
 from sqlalchemy.sql.sqltypes import MatchType
-from starlette.status import HTTP_404_NOT_FOUND, HTTP_415_UNSUPPORTED_MEDIA_TYPE
+from starlette.status import (
+    HTTP_403_FORBIDDEN,
+    HTTP_404_NOT_FOUND,
+    HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+)
 
 from tiled.queries import (
-    AccessBlobFilter,
+    AccessTagsFilter,
     Comparison,
     Contains,
     Eq,
@@ -67,6 +72,8 @@ from tiled.queries import (
     StructureFamilyQuery,
 )
 
+from ..access_control.protocols import normalize_access_tags
+from ..adapters.utils import DataNotReadyError, IncompatibleShapeError
 from ..mimetypes import (
     APACHE_ARROW_FILE_MIME_TYPE,
     AWKWARD_BUFFERS_MIMETYPE,
@@ -102,6 +109,7 @@ from ..storage import (
     ObjectStorage,
     SQLStorage,
     get_storage,
+    mtime_from_uri,
     parse_storage,
     register_storage,
 )
@@ -117,7 +125,11 @@ from ..utils import (
     path_from_uri,
 )
 from . import orm
-from .core import check_catalog_database, initialize_database
+from .core import (
+    check_catalog_database,
+    initialize_database,
+    register_principal_tag_rows,
+)
 from .explain import ExplainAsyncSession
 from .utils import compute_structure_id
 
@@ -126,6 +138,13 @@ if TYPE_CHECKING:
     from ..ndslice import NDBlock
 
 logger = logging.getLogger(__name__)
+
+# When a read fails because the catalog structure shape is ahead of the data
+# actually present in storage, treat it as a transient "not ready"
+# condition (rather than a permanent error) only if the backing file was
+# modified within this many seconds. This distinguishes an in-progress
+# streaming append from a write that was aborted and left at rest.
+ARRAY_NOT_READY_WINDOW = float(os.getenv("TILED_ARRAY_NOT_READY_WINDOW", "10.0"))
 
 # When data is uploaded, how is it saved?
 # TODO: Make this configurable at Catalog construction time.
@@ -181,14 +200,48 @@ class RootNode:
 
     structure_family = StructureFamily.container
 
-    def __init__(self, metadata, specs, top_level_access_blob):
+    def __init__(self, metadata, specs, top_level_access_tags):
         self.id = 0
         self.parent = None
         self.metadata_ = metadata or {}
         self.specs = specs or []
         self.key = ""
         self.data_sources = None
-        self.access_blob = top_level_access_blob or {}
+
+        self.access_tags = normalize_access_tags(top_level_access_tags or [])
+
+
+async def _resolve_access_tags(db, access_tag_names):
+    """
+    Resolve access tag names to orm.AccessTag rows in the given session.
+
+    Fetches only the requested names (an indexed IN lookup, not a scan of
+    the access_tags table). A node cannot be associated with a tag that has
+    no row, so unknown names raise. Normally the access policy has already
+    validated the tags; this fires only for requests that bypassed the
+    policy or raced a tag-definition resync, and it uses the same status
+    code that the policy check produces (403).
+
+    Principal tags are slightly different: these need to exist at write,
+    possibly before the access tags compiler has been able to create them.
+    """
+    await register_principal_tag_rows(await db.connection(), access_tag_names)
+    tag_rows = (
+        (
+            await db.execute(
+                select(orm.AccessTag).where(orm.AccessTag.name.in_(access_tag_names))
+            )
+        )
+        .scalars()
+        .all()
+    )
+    missing = set(access_tag_names) - {tag.name for tag in tag_rows}
+    if missing:
+        raise HTTPException(
+            status_code=HTTP_403_FORBIDDEN,
+            detail=f"Cannot apply access tags that are not defined: {sorted(missing)}",
+        )
+    return list(tag_rows)
 
 
 class Context:
@@ -328,7 +381,7 @@ class CatalogNodeAdapter:
                     mount_path,
                     create_if_not_exist=create_mount_nodes_if_not_exist,
                     specs=node.specs,
-                    access_blob=node.access_blob,
+                    access_tags=node.access_tags,
                 )
             )
         self.shutdown_tasks = [self.shutdown]
@@ -346,8 +399,12 @@ class CatalogNodeAdapter:
             return (await db.execute(statement)).scalars().all()
 
     @property
-    def access_blob(self):
-        return self.node.access_blob
+    def access_tags(self):
+        if isinstance(self.node, RootNode):
+            # Configured at server startup, not stored in the database;
+            # already an AccessTags frozenset of names.
+            return self.node.access_tags
+        return normalize_access_tags(tag.name for tag in self.node.access_tags)
 
     def metadata(self):
         return self.node.metadata_
@@ -361,7 +418,7 @@ class CatalogNodeAdapter:
         *,
         create_if_not_exist=False,
         specs=None,
-        access_blob=None,
+        access_tags=None,
     ):
         statement = node_from_segments(mount_path).with_only_columns(orm.Node.id)
         async with self.context.engine.connect() as conn:
@@ -378,7 +435,7 @@ class CatalogNodeAdapter:
                     self.context.engine,
                     mount_path,
                     specs=specs,
-                    access_blob=access_blob,
+                    access_tags=access_tags,
                 )
                 # Re-query to get the id of the newly created node.
                 async with self.context.engine.connect() as conn:
@@ -493,6 +550,22 @@ class CatalogNodeAdapter:
         for condition in self.conditions:
             statement = statement.filter(condition)
         return statement
+
+    async def resolve_access_tag_ids(self, names):
+        """Resolve access-tag 'names' to their 'access_tags.id' values.
+
+        Returns a list of integer ids for the names that exist (order is not
+        significant; missing names are simply omitted). Used to build ACL
+        filters that reference 'tag_id' literals instead of joining
+        'access_tags' by name -- see 'access_tags_filter'.
+        """
+        if not names:
+            return []
+        async with self.context.session() as db:
+            result = await db.execute(
+                select(orm.AccessTag.id).where(orm.AccessTag.name.in_(list(names)))
+            )
+            return list(result.scalars().all())
 
     async def exact_len(self):
         "Get the exact number of child nodes."
@@ -909,9 +982,9 @@ class CatalogNodeAdapter:
         key=None,
         specs=None,
         data_sources=None,
-        access_blob=None,
+        access_tags=None,
     ):
-        access_blob = access_blob or {}
+        access_tags = normalize_access_tags(access_tags or [])
         key = key or self.context.key_maker()
         data_sources = data_sources or []
 
@@ -921,9 +994,12 @@ class CatalogNodeAdapter:
             metadata_=metadata,
             structure_family=structure_family,
             specs=specs or [],
-            access_blob=access_blob,
         )
         async with self.context.session() as db:
+            if access_tags:
+                # Assigning AccessTag rows to the (many-to-many) relationship
+                # creates the node_access_tags_association association rows on flush.
+                node.access_tags = await _resolve_access_tags(db, access_tags)
             # TODO Consider using nested transitions to ensure that
             # both the node is created (name not already taken)
             # and the directory/file is created---or neither are.
@@ -1057,7 +1133,8 @@ class CatalogNodeAdapter:
                     "specs": [spec.model_dump() for spec in (specs or [])],
                     "metadata": metadata,
                     "data_sources": [d.model_dump() for d in data_sources_with_ids],
-                    "access_blob": refreshed_node.access_blob,
+                    # JSON-serializable list of tag names.
+                    "access_tags": [tag.name for tag in refreshed_node.access_tags],
                 }
 
                 # Cache data in Redis with a TTL, and publish
@@ -1580,7 +1657,7 @@ class CatalogNodeAdapter:
             await db.commit()
 
     async def replace_metadata(
-        self, metadata=None, specs=None, access_blob=None, *, drop_revision=False
+        self, metadata=None, specs=None, access_tags=None, *, drop_revision=False
     ):
         values = {}
         if metadata is not None:
@@ -1589,8 +1666,6 @@ class CatalogNodeAdapter:
             values["metadata_"] = metadata
         if specs is not None:
             values["specs"] = specs
-        if access_blob is not None:
-            values["access_blob"] = access_blob
         async with self.context.session() as db:
             if not drop_revision:
                 current = (
@@ -1613,14 +1688,30 @@ class CatalogNodeAdapter:
                     # SQLAlchemy reserved word 'metadata'.
                     metadata_=current.metadata_,
                     specs=current.specs,
-                    access_blob=current.access_blob,
                     node_id=current.id,
                     revision_number=next_revision_number,
                 )
                 db.add(revision)
-            await db.execute(
-                update(orm.Node).where(orm.Node.id == self.node.id).values(**values)
-            )
+            if values:
+                await db.execute(
+                    update(orm.Node).where(orm.Node.id == self.node.id).values(**values)
+                )
+            if access_tags is not None:
+                # Replace the node's tag set: drop existing association rows
+                # and insert one per (deduplicated) tag name.
+                await db.execute(
+                    delete(orm.NodeAccessTagAssociation).where(
+                        orm.NodeAccessTagAssociation.node_id == self.node.id
+                    )
+                )
+                for tag in await _resolve_access_tags(
+                    db, normalize_access_tags(access_tags)
+                ):
+                    db.add(
+                        orm.NodeAccessTagAssociation(
+                            node_id=self.node.id, tag_id=tag.id
+                        )
+                    )
             await db.commit()
             # Upon successful update, inform websocket subscribers through redis
             if self.context.streaming_cache:
@@ -1932,6 +2023,33 @@ class CatalogContainerAdapter(CatalogNodeAdapter):
 
 
 class CatalogArrayAdapter(CatalogNodeAdapter):
+    async def _assets_recently_modified(self) -> Optional[bool]:
+        """Report whether a backing asset was modified within the freshness window.
+
+        Returns `True` if at least one backing asset was modified within
+        `ARRAY_NOT_READY_WINDOW` seconds (an append is likely in progress),
+        `False` if backing assets exist but none were recently modified (the
+        data appears to be at rest), or `None` if freshness cannot be
+        determined for any asset (for example, an unsupported URI scheme or an
+        asset that cannot be stat'd).
+        """
+        try:
+            data_sources = await self.data_sources(include_assets=True)
+        except Exception:
+            return None
+        now = time.time()
+        found = False
+        for data_source in data_sources:
+            for asset in data_source.assets:
+                try:
+                    mtime = mtime_from_uri(asset.data_uri)
+                except (OSError, ValueError):
+                    continue
+                found = True
+                if now - mtime < ARRAY_NOT_READY_WINDOW:
+                    return True
+        return False if found else None
+
     async def read(self, *args, **kwargs):
         if not self.node.data_sources:
             fields = kwargs.get("fields")
@@ -1940,22 +2058,34 @@ class CatalogArrayAdapter(CatalogNodeAdapter):
             return self
         # Try lazy per-frame resolution for a plain slice read (no field
         # selection). Falls back to the full adapter build if not applicable.
-        if "fields" not in kwargs:
-            slice_ = args[0] if args else kwargs.get("slice", ...)
-            adapter = await self._get_lazy_adapter(slice=slice_)
-            if adapter is not None:
-                return await ensure_awaitable(adapter.read, *args, **kwargs)
-        return await ensure_awaitable((await self.get_adapter()).read, *args, **kwargs)
+        try:
+            if "fields" not in kwargs:
+                slice_ = args[0] if args else kwargs.get("slice", ...)
+                adapter = await self._get_lazy_adapter(slice=slice_)
+                if adapter is not None:
+                    return await ensure_awaitable(adapter.read, *args, **kwargs)
+            return await ensure_awaitable(
+                (await self.get_adapter()).read, *args, **kwargs
+            )
+        except DataNotReadyError as err:
+            if (await self._assets_recently_modified()) is False:
+                raise IncompatibleShapeError(str(err)) from err
+            raise
 
     async def read_block(self, *args, **kwargs):
-        block = args[0] if args else kwargs.get("block")
-        if block is not None:
-            adapter = await self._get_lazy_adapter(block=block)
-            if adapter is not None:
-                return await ensure_awaitable(adapter.read_block, *args, **kwargs)
-        return await ensure_awaitable(
-            (await self.get_adapter()).read_block, *args, **kwargs
-        )
+        try:
+            block = args[0] if args else kwargs.get("block")
+            if block is not None:
+                adapter = await self._get_lazy_adapter(block=block)
+                if adapter is not None:
+                    return await ensure_awaitable(adapter.read_block, *args, **kwargs)
+            return await ensure_awaitable(
+                (await self.get_adapter()).read_block, *args, **kwargs
+            )
+        except DataNotReadyError as err:
+            if (await self._assets_recently_modified()) is False:
+                raise IncompatibleShapeError(str(err)) from err
+            raise
 
     async def _stream(self, media_type, entry, body, shape, block=None, offset=None):
         sequence = await self.context.streaming_cache.incr_seq(self.node.id)
@@ -2429,37 +2559,45 @@ def specs(query, tree):
     return tree.new_variation(conditions=tree.conditions + conditions)
 
 
-def access_blob_filter(query, tree):
-    dialect_name = tree.context.engine.url.get_dialect().name
-    access_blob = orm.Node.access_blob
-    if not (query.user_id or query.tags):
-        # Results cannot possibly match an empty value or list,
+def access_tags_filter(query, tree):
+    if not query.tags:
+        # Results cannot possibly match an empty list,
         # so put a False condition in the list ensuring that
         # there are no rows returned.
         condition = false()
-    elif dialect_name == "sqlite":
-        attr_id = access_blob["user"]
-        attr_tags = access_blob["tags"]
-        access_tags_json = func.json_each(attr_tags).table_valued("value")
+    elif query.tag_ids is not None:
+        # Fast path (used for server-side ACL filtering): the tag names have
+        # already been resolved to their ``access_tags.id`` values in the
+        # async layer (see ``resolve_access_tag_ids`` /
+        # ``tiled.server.utils.filter_for_access``). Filtering on literal
+        # ``tag_id`` values -- rather than joining ``access_tags`` by name --
+        # lets PostgreSQL apply the (parent_id, tag_id) extended statistics
+        # and estimate this correlated subquery correctly.
+        if not query.tag_ids:
+            # None of the requested tag names exist; match nothing.
+            condition = false()
+        else:
+            condition = (
+                select(orm.NodeAccessTagAssociation.node_id)
+                .where(orm.NodeAccessTagAssociation.node_id == orm.Node.id)
+                .where(orm.NodeAccessTagAssociation.parent_id == tree.node.id)
+                .where(orm.NodeAccessTagAssociation.tag_id.in_(query.tag_ids))
+                .exists()
+            )
+    else:
+        # Nodes carrying at least one of the given access tags.
+        # EXISTS is used (vs IN) as it is much more preformant in SQLite,
+        # though performance in Postgres appears similar for both.
         condition = (
-            select(1)
-            .select_from(access_tags_json)
-            .where(access_tags_json.c.value.in_(query.tags))
+            select(orm.NodeAccessTagAssociation.node_id)
+            .join(
+                orm.AccessTag, orm.AccessTag.id == orm.NodeAccessTagAssociation.tag_id
+            )
+            .where(orm.NodeAccessTagAssociation.node_id == orm.Node.id)
+            .where(orm.NodeAccessTagAssociation.parent_id == tree.node.id)
+            .where(orm.AccessTag.name.in_(query.tags))
             .exists()
         )
-        if query.user_id is not None:
-            user_match = (
-                func.json_extract(func.json_quote(attr_id), "$") == query.user_id
-            )
-            condition = or_(condition, user_match)
-    elif dialect_name == "postgresql":
-        access_blob_jsonb = type_coerce(access_blob, JSONB)
-        condition = access_blob_jsonb["tags"].has_any(sql_cast(query.tags, ARRAY(TEXT)))
-        if query.user_id is not None:
-            user_match = access_blob_jsonb["user"].astext == query.user_id
-            condition = or_(condition, user_match)
-    else:
-        raise UnsupportedQueryType("access_blob_filter")
 
     return tree.new_variation(conditions=tree.conditions + [condition])
 
@@ -2557,7 +2695,7 @@ CatalogNodeAdapter.register_query(KeyPresent, key_present)
 CatalogNodeAdapter.register_query(KeysFilter, keys_filter)
 CatalogNodeAdapter.register_query(StructureFamilyQuery, structure_family)
 CatalogNodeAdapter.register_query(SpecsQuery, specs)
-CatalogNodeAdapter.register_query(AccessBlobFilter, access_blob_filter)
+CatalogNodeAdapter.register_query(AccessTagsFilter, access_tags_filter)
 CatalogNodeAdapter.register_query(FullText, full_text)
 CatalogNodeAdapter.register_query(Like, like)
 
@@ -2570,7 +2708,7 @@ def in_memory(
     writable_storage=None,
     readable_storage=None,
     adapters_by_mimetype=None,
-    top_level_access_blob=None,
+    top_level_access_tags=None,
     cache_config=None,
     webhook_secret_keys: Optional[List[str]] = None,
 ):
@@ -2588,24 +2726,24 @@ def in_memory(
         readable_storage=readable_storage,
         init_if_not_exists=True,
         adapters_by_mimetype=adapters_by_mimetype,
-        top_level_access_blob=top_level_access_blob,
+        top_level_access_tags=top_level_access_tags,
         cache_config=cache_config,
         webhook_secret_keys=webhook_secret_keys,
     )
 
 
-async def _create_mount_node_segments(engine, mount_path, specs=None, access_blob=None):
+async def _create_mount_node_segments(engine, mount_path, specs=None, access_tags=None):
     """Create missing intermediate container nodes for a mount path.
 
     Walks the path segments, creating any that don't exist yet.
     DB triggers automatically maintain the nodes_closure table.
-    The leaf node (last segment) receives the given specs and access_blob;
+    The leaf node (last segment) receives the given specs and access_tags;
     intermediate nodes get empty defaults.
     """
     from sqlalchemy import insert
 
     specs = specs or []
-    access_blob = access_blob or {}
+    access_tags = normalize_access_tags(access_tags or [])
     async with engine.begin() as conn:
         parent_id = 0  # root node id
         for i, segment in enumerate(mount_path):
@@ -2626,10 +2764,37 @@ async def _create_mount_node_segments(engine, mount_path, specs=None, access_blo
                         structure_family=StructureFamily.container,
                         metadata_={},
                         specs=specs if is_leaf else [],
-                        access_blob=access_blob if is_leaf else {},
                     )
                 )
                 node_id = result.inserted_primary_key[0]
+                node_access_tags_association = (
+                    access_tags if is_leaf else normalize_access_tags([])
+                )
+                if node_access_tags_association:
+                    # Resolve tag names to ids; raise on any undefined tag.
+                    rows = (
+                        await conn.execute(
+                            select(orm.AccessTag.id, orm.AccessTag.name).where(
+                                orm.AccessTag.name.in_(node_access_tags_association)
+                            )
+                        )
+                    ).all()
+                    missing = set(node_access_tags_association) - {
+                        name for _, name in rows
+                    }
+                    if missing:
+                        raise ValueError(
+                            "Cannot apply access tags that are not defined: "
+                            f"{sorted(missing)}"
+                        )
+                    await conn.execute(
+                        insert(orm.NodeAccessTagAssociation).values(
+                            [
+                                {"node_id": node_id, "tag_id": tag_id}
+                                for tag_id, _ in rows
+                            ]
+                        )
+                    )
                 logger.info(
                     "Created container node %r (id=%d) under parent_id=%d.",
                     segment,
@@ -2648,7 +2813,7 @@ def from_uri(
     readable_storage=None,
     init_if_not_exists=False,
     adapters_by_mimetype=None,
-    top_level_access_blob=None,
+    top_level_access_tags=None,
     mount_node: Optional[Union[str, List[str]]] = None,
     create_mount_nodes_if_not_exist=False,
     cache_config=None,
@@ -2696,7 +2861,7 @@ def from_uri(
         storage_max_overflow=storage_max_overflow,
         webhook_secret_keys=webhook_secret_keys,
     )
-    node = RootNode(metadata, specs, top_level_access_blob)
+    node = RootNode(metadata, specs, top_level_access_tags)
     mount_path = (
         [segment for segment in mount_node.split("/") if segment]
         if isinstance(mount_node, str)
