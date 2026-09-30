@@ -1089,7 +1089,7 @@ def build_app(
 def _setup_opentelemetry_tracing(app: FastAPI) -> None:
     """Enable OpenTelemetry request tracing when an OTLP endpoint is configured.
 
-    Tracing is activated only when the standard ``OTEL_EXPORTER_OTLP_ENDPOINT``
+    Tracing is activated only when the standard `OTEL_EXPORTER_OTLP_ENDPOINT`
     environment variable is set, so it is off by default and adds no overhead
     unless explicitly enabled. Spans are exported over OTLP/HTTP.
     """
