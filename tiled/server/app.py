@@ -1121,6 +1121,21 @@ def _setup_opentelemetry_tracing(app: FastAPI) -> None:
         trace.set_tracer_provider(provider)
     FastAPIInstrumentor.instrument_app(app)
 
+    # Emit spans for calls to the PostgreSQL driver (asyncpg) and Redis. These
+    # patch the libraries globally, so they are no-ops until a request uses them.
+    try:
+        from opentelemetry.instrumentation.asyncpg import AsyncPGInstrumentor
+    except ImportError:
+        pass
+    else:
+        AsyncPGInstrumentor().instrument()
+    try:
+        from opentelemetry.instrumentation.redis import RedisInstrumentor
+    except ImportError:
+        pass
+    else:
+        RedisInstrumentor().instrument()
+
 
 def build_app_from_config(config: Union[Config, dict[str, Any]], scalable=False):
     """
