@@ -114,6 +114,7 @@ from .utils import (
     filter_for_access,
     get_base_url,
     get_base_url_websocket,
+    normalize_root_path,
     record_timing,
 )
 
@@ -170,6 +171,11 @@ def _patch_route_signature(
         # Add a parameter for each field in each type of query.
         for name, query in query_registry.name_to_query_type.items():
             for field in dataclasses.fields(query):
+                # Skip server-internal fields: they are populated on the
+                # server side (not by clients) and must not become URL query
+                # parameters. See e.g. AccessTagsFilter.tag_ids.
+                if field.metadata.get("internal"):
+                    continue
                 # The structured "alias" here is based on
                 # https://mglaman.dev/blog/using-json-router-query-your-search-router-indexes
                 if getattr(field.type, "__origin__", None) is list:
@@ -311,7 +317,10 @@ def get_router(
                     "self": base_url,
                     "documentation": f"{base_url}/docs",
                 },
-                meta={"root_path": request.scope.get("root_path") or "" + "/api"},
+                meta={
+                    "root_path": normalize_root_path(request.scope.get("root_path"))
+                    + "/api"
+                },
             ).model_dump(),
             expires=datetime.now(timezone.utc) + timedelta(seconds=600),
         )

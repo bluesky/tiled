@@ -551,6 +551,22 @@ class CatalogNodeAdapter:
             statement = statement.filter(condition)
         return statement
 
+    async def resolve_access_tag_ids(self, names):
+        """Resolve access-tag 'names' to their 'access_tags.id' values.
+
+        Returns a list of integer ids for the names that exist (order is not
+        significant; missing names are simply omitted). Used to build ACL
+        filters that reference 'tag_id' literals instead of joining
+        'access_tags' by name -- see 'access_tags_filter'.
+        """
+        if not names:
+            return []
+        async with self.context.session() as db:
+            result = await db.execute(
+                select(orm.AccessTag.id).where(orm.AccessTag.name.in_(list(names)))
+            )
+            return list(result.scalars().all())
+
     async def exact_len(self):
         "Get the exact number of child nodes."
         statement = (
@@ -2435,6 +2451,25 @@ def access_tags_filter(query, tree):
         # so put a False condition in the list ensuring that
         # there are no rows returned.
         condition = false()
+    elif query.tag_ids is not None:
+        # Fast path (used for server-side ACL filtering): the tag names have
+        # already been resolved to their ``access_tags.id`` values in the
+        # async layer (see ``resolve_access_tag_ids`` /
+        # ``tiled.server.utils.filter_for_access``). Filtering on literal
+        # ``tag_id`` values -- rather than joining ``access_tags`` by name --
+        # lets PostgreSQL apply the (parent_id, tag_id) extended statistics
+        # and estimate this correlated subquery correctly.
+        if not query.tag_ids:
+            # None of the requested tag names exist; match nothing.
+            condition = false()
+        else:
+            condition = (
+                select(orm.NodeAccessTagAssociation.node_id)
+                .where(orm.NodeAccessTagAssociation.node_id == orm.Node.id)
+                .where(orm.NodeAccessTagAssociation.parent_id == tree.node.id)
+                .where(orm.NodeAccessTagAssociation.tag_id.in_(query.tag_ids))
+                .exists()
+            )
     else:
         # Nodes carrying at least one of the given access tags.
         # EXISTS is used (vs IN) as it is much more preformant in SQLite,
