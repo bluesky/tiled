@@ -1,12 +1,15 @@
 # OpenTelemetry Collector configuration.
 #
-# Traces:   tiled --OTLP--> otel-collector --OTLP--> jaeger
+# Traces:   tiled --OTLP--> otel-collector --OTLP--> jaeger and tempo
 # Metrics:  otel-collector <--scrape-- tiled:8000/api/v1/metrics
 #           otel-collector --expose--> :8889 (Prometheus format)
 #
-# The collector receives OTLP traces and forwards them to Jaeger. It also
-# scrapes Tiled's Prometheus metrics endpoint and re-exposes those metrics in
-# Prometheus format on port 8889.
+# The collector receives OTLP traces and forwards the same spans to both Jaeger
+# and Grafana Tempo. Database and cache calls stay under the "tiled" service
+# (they are client spans emitted by Tiled) and are identified by their
+# db.system / peer.service attributes; peer.service also lets Tempo draw the
+# service graph. The collector also scrapes Tiled's Prometheus metrics endpoint
+# and re-exposes those metrics on port 8889.
 
 receivers:
   otlp:
@@ -34,6 +37,28 @@ receivers:
 processors:
   batch: {}
 
+  # Drop noisy transaction/session-control statements so traces show the
+  # queries that matter, not every BEGIN/COMMIT/ROLLBACK.
+  filter/db_noise:
+    error_mode: ignore
+    traces:
+      span:
+        - 'attributes["db.system"] != nil and IsMatch(name, "^(BEGIN|COMMIT|ROLLBACK|SET|SHOW)")'
+
+  # Set peer.service on database/cache client spans so Tempo's service graph
+  # names the dependency nodes. Postgres spans use the database name, so the
+  # catalog, storage, and authn databases appear as separate nodes; other
+  # datastores (e.g. Redis) fall back to db.system.
+  transform/peer_service:
+    error_mode: ignore
+    trace_statements:
+      - context: span
+        statements:
+          - set(attributes["peer.service"], attributes["db.name"])
+            where attributes["db.system"] == "postgresql" and attributes["db.name"] != nil
+          - set(attributes["peer.service"], attributes["db.system"])
+            where attributes["peer.service"] == nil and attributes["db.system"] != nil
+
 exporters:
   # Forward traces to Jaeger's OTLP gRPC receiver.
   otlp/jaeger:
@@ -56,7 +81,7 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [batch]
+      processors: [filter/db_noise, transform/peer_service, batch]
       exporters: [otlp/jaeger, otlp/tempo, debug]
     metrics:
       receivers: [prometheus]

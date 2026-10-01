@@ -5,3 +5,6 @@ datasources:
   type: tempo
   url: http://tempo:3200
   uid: tempo
+  jsonData:
+    serviceMap:
+      datasourceUid: prometheus

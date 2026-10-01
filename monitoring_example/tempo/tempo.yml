@@ -31,3 +31,30 @@ storage:
       path: /tmp/tempo/blocks
     wal:
       path: /tmp/tempo/wal
+
+# Generate service-graph and span metrics from incoming traces and remote-write
+# them to Prometheus. Grafana's Tempo "Service Graph" reads these. Client spans
+# to Postgres and Redis (which have no server span) become virtual nodes named
+# from the peer.service attribute the collector sets: the database name for
+# Postgres (e.g. tiled_catalog, tiled_storage) and db.system for others (e.g.
+# redis).
+metrics_generator:
+  registry:
+    external_labels:
+      source: tempo
+  storage:
+    path: /tmp/tempo/generator/wal
+    remote_write:
+      - url: http://prometheus:9090/api/v1/write
+        send_exemplars: true
+  traces_storage:
+    path: /tmp/tempo/generator/traces
+  processor:
+    service_graphs:
+      # Use peer.service (set by the collector) to name dependency nodes.
+      peer_attributes: [peer.service]
+
+overrides:
+  defaults:
+    metrics_generator:
+      processors: [service-graphs, span-metrics]
