@@ -11,6 +11,7 @@ from tiled.catalog.core import initialize_database
 from tiled.config import Database
 from tiled.graph.schema import schema
 from tiled.graph.store import (
+    EntityConflictError,
     GraphSQLAlchemyStore,
     _access_tags,
     _entities,
@@ -736,6 +737,46 @@ async def test_create_entity_rejects_node_id_with_access_tags(store, policy):
     )
     assert result.errors
     assert "access is controlled by the referenced node" in result.errors[0].message
+
+
+@pytest.mark.asyncio
+async def test_create_entity_duplicate_returns_entity_exists(store, policy):
+    """A duplicate node-bound (node, kind, name) surfaces as ENTITY_EXISTS."""
+    await _insert_node(store, 1, ["team"])
+    alice_ctx = _context(store, policy, "alice", {"read:metadata", "write:metadata"})
+
+    first = await _execute(
+        CREATE_ENTITY_MUTATION,
+        alice_ctx,
+        {"input": {"kind": "sample", "name": "dup", "nodePathParts": ["node"]}},
+    )
+    assert first.errors is None
+
+    second = await _execute(
+        CREATE_ENTITY_MUTATION,
+        alice_ctx,
+        {"input": {"kind": "sample", "name": "dup", "nodePathParts": ["node"]}},
+    )
+    assert second.errors
+    assert second.errors[0].extensions["code"] == "ENTITY_EXISTS"
+
+
+@pytest.mark.asyncio
+async def test_duplicate_node_kind_name_conflicts_in_store(store):
+    """The store raises EntityConflictError on a duplicate node-bound entity;
+    free-standing entities (node_id NULL) are left unconstrained."""
+    await _insert_node(store, 1, ["team"])
+
+    await store.create_entity(kind="sample", name="dup", node_id=1)
+    with pytest.raises(EntityConflictError):
+        await store.create_entity(kind="sample", name="dup", node_id=1)
+
+    # A different kind, name, or node is allowed.
+    await store.create_entity(kind="other", name="dup", node_id=1)
+
+    # Free-standing entities (node_id NULL) are not deduplicated.
+    await store.create_entity(kind="sample", name="ext", node_id=None)
+    await store.create_entity(kind="sample", name="ext", node_id=None)
 
 
 @pytest.mark.asyncio

@@ -48,7 +48,12 @@ from tiled.type_aliases import AccessTags
 from .curie import compact_term, compact_value, expand_term, expand_value
 from .orm import ENTITY_NODE_ACCESS_TAGS_ERROR
 from .store import UNSET as STORE_UNSET
-from .store import EntityRecord, GraphSQLAlchemyStore, LinkRecord
+from .store import (
+    EntityConflictError,
+    EntityRecord,
+    GraphSQLAlchemyStore,
+    LinkRecord,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -517,16 +522,19 @@ class Mutation:
                     else None
                 ),
             )
-        record = await _store(info).create_entity(
-            kind=input.kind,
-            name=input.name,
-            node_id=node_id,
-            uri=input.uri,
-            properties=expand_value(input.properties or {}, namespaces),
-            access_tags=access_tags,
-        )
+        try:
+            record = await _store(info).create_entity(
+                kind=input.kind,
+                name=input.name,
+                node_id=node_id,
+                uri=input.uri,
+                properties=expand_value(input.properties or {}, namespaces),
+                access_tags=access_tags,
+            )
+        except EntityConflictError as exc:
+            raise GraphQLError(str(exc), extensions={"code": "ENTITY_EXISTS"})
         logger.info(
-            "Created entity type=%r name=%r id=%s",
+            "Created entity kind=%r name=%r id=%s",
             record.kind,
             record.name,
             record.id,
@@ -635,14 +643,17 @@ class Mutation:
             # own access tags now that it no longer delegates to a node.
             access_tags = await _init_access_tags(info, None)
         uri = STORE_UNSET if input.uri is UNSET else input.uri
-        record = await _store(info).update_entity(
-            str(id),
-            name=input.name,
-            node_id=node_id,
-            uri=uri,
-            kind=input.kind,
-            access_tags=STORE_UNSET if access_tags is UNSET else access_tags,
-        )
+        try:
+            record = await _store(info).update_entity(
+                str(id),
+                name=input.name,
+                node_id=node_id,
+                uri=uri,
+                kind=input.kind,
+                access_tags=STORE_UNSET if access_tags is UNSET else access_tags,
+            )
+        except EntityConflictError as exc:
+            raise GraphQLError(str(exc), extensions={"code": "ENTITY_EXISTS"})
         if record:
             logger.info("Updated entity id=%s", id)
         return _entity_from_record(record, await _namespaces(info)) if record else None

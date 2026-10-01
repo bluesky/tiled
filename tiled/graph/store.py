@@ -54,6 +54,21 @@ _node_access_tags = NodeAccessTagAssociation.__table__
 # ---------------------------------------------------------------------------
 
 
+class EntityConflictError(Exception):
+    "An entity with the same (node_id, kind, name) already exists."
+
+
+def _is_unique_violation(exc: IntegrityError) -> bool:
+    """
+    True if an IntegrityError is a unique-constraint violation (as opposed to
+    one of the store's own sentinel IntegrityErrors for the delegation/clear
+    invariants). SQLite reports "UNIQUE constraint failed: ..."; PostgreSQL
+    reports "duplicate key value violates unique constraint ...".
+    """
+    message = str(getattr(exc, "orig", exc)).lower()
+    return "unique constraint failed" in message or "duplicate key value" in message
+
+
 class EntityRecord(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -300,28 +315,39 @@ class GraphSQLAlchemyStore:
         now = datetime.now(timezone.utc)
         if node_id is not None and access_tags:
             raise IntegrityError("entity node access tags", {}, None)
-        async with self._engine.begin() as conn:
-            await conn.execute(
-                insert(_entities).values(
-                    id=id_,
-                    node_id=node_id,
-                    kind=kind,
-                    name=name,
-                    uri=uri,
-                    properties=properties or {},
-                    created_at=now,
-                )
-            )
-            if node_id is None and access_tags:
-                access_tag_ids = await _resolve_access_tag_ids(conn, access_tags)
+        try:
+            async with self._engine.begin() as conn:
                 await conn.execute(
-                    insert(_entity_access_tags),
-                    [
-                        {"entity_id": id_, "tag_id": access_tag_id}
-                        for access_tag_id in access_tag_ids
-                    ],
+                    insert(_entities).values(
+                        id=id_,
+                        node_id=node_id,
+                        kind=kind,
+                        name=name,
+                        uri=uri,
+                        properties=properties or {},
+                        created_at=now,
+                    )
                 )
-            record = await self._entity_record(conn, id_)
+                if node_id is None and access_tags:
+                    access_tag_ids = await _resolve_access_tag_ids(conn, access_tags)
+                    await conn.execute(
+                        insert(_entity_access_tags),
+                        [
+                            {"entity_id": id_, "tag_id": access_tag_id}
+                            for access_tag_id in access_tag_ids
+                        ],
+                    )
+                record = await self._entity_record(conn, id_)
+        except IntegrityError as exc:
+            # The only user-triggerable unique constraint here is
+            # entities_node_kind_name_uq (the primary key is a fresh UUID).
+            # Other IntegrityErrors (the delegation sentinel above) propagate.
+            if not _is_unique_violation(exc):
+                raise
+            raise EntityConflictError(
+                f"An entity with kind={kind!r} name={name!r} "
+                "already exists for this node."
+            ) from exc
         return record
 
     async def get_entity(self, id: str) -> Optional[EntityRecord]:
@@ -422,9 +448,17 @@ class GraphSQLAlchemyStore:
                     )
                 )
             if values:
-                await conn.execute(
-                    update(_entities).where(_entities.c.id == id).values(**values)
-                )
+                try:
+                    await conn.execute(
+                        update(_entities).where(_entities.c.id == id).values(**values)
+                    )
+                except IntegrityError as exc:
+                    if not _is_unique_violation(exc):
+                        raise
+                    raise EntityConflictError(
+                        "An entity with the same kind and name already exists "
+                        "for this node."
+                    ) from exc
             if access_tags is not UNSET:
                 if access_tags is None:
                     if effective_node_id is None:
