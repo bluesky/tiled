@@ -57,6 +57,11 @@ Collector could also carry OpenTelemetry's other two signals — **metrics** and
 **logs** — over OTLP to backends such as Prometheus and Loki. Those paths are
 not currently enabled.
 
+```{note}
+Database-query spans are emitted only for PostgreSQL (via asyncpg and ADBC);
+tracing with SQLite-backed catalogs is not supported.
+```
+
 ## Enabling tracing
 
 Tracing is **disabled by default**. It is turned on by setting the standard
@@ -69,6 +74,30 @@ directly). Related environment variables:
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP endpoint, e.g. `http://otel-collector:4318`. Tracing is off when this is unset. |
 | `OTEL_SERVICE_NAME` | Name shown for the service in the tracing backend, e.g. `tiled`. |
 | `OTEL_PYTHON_FASTAPI_EXCLUDED_URLS` | Comma-separated URL patterns to exclude from tracing, e.g. `healthz,api/v1/metrics` to skip health checks and metrics scrapes. |
+
+
+## Sampling
+
+By default every request is traced in full. That is convenient for trying it out
+but can be a lot of data in production, especially since each request emits a
+span per database query. Sampling is controlled by the standard OpenTelemetry
+environment variables:
+
+| Variable | Purpose |
+| --- | --- |
+| `OTEL_TRACES_SAMPLER` | Sampling strategy. Default `parentbased_always_on` (trace everything). Use `parentbased_traceidratio` to keep a fraction. |
+| `OTEL_TRACES_SAMPLER_ARG` | Argument for the sampler; for the ratio samplers, the fraction of traces to keep (0.0-1.0). |
+
+For example, to keep 10% of traces:
+
+```
+OTEL_TRACES_SAMPLER=parentbased_traceidratio
+OTEL_TRACES_SAMPLER_ARG=0.1
+```
+
+The `parentbased_*` samplers make the decision once at the start of a trace and
+apply it to all of that trace's spans, so a sampled request keeps its database
+and cache spans together with the rest of the trace.
 
 
 ## How does it work?
@@ -119,6 +148,23 @@ The example forwards traces to two backends so you can compare their functionali
   **Explore**, select the **Tempo** data source, and search using
   [TraceQL](https://grafana.com/docs/tempo/latest/traceql/), for example
   `{ resource.service.name = "tiled" }`.
+
+Each trace also includes spans for the **PostgreSQL** queries (against the
+catalog, storage, and authentication databases), **Redis** commands (for the
+streaming cache), and any **outbound HTTP** calls Tiled makes while serving the
+request (OIDC authentication, webhooks, and external policy servers, via
+httpx). These are client spans emitted by Tiled, so they share the `tiled`
+service, but they carry a `db.system` attribute (`postgresql` or `redis`) — or,
+for HTTP calls, the target host — that distinguishes them from Tiled's own
+`tiled.*` spans. The Collector drops transaction-control statements
+(`BEGIN`/`COMMIT`/`ROLLBACK`) to keep traces concise and readable.
+
+Filter spans by the `db.system` attribute (Grafana's span filters, or Jaeger's
+find-within-trace box) to highlight the database and cache work. Grafana's
+**Service Graph** (Explore → Tempo) also renders Tiled's dependencies as nodes:
+each Postgres database (`tiled_catalog`, `tiled_storage`, authn) by `db.name`,
+`redis`, and outbound HTTP — webhook deliveries grouped under one `webhooks`
+node, other calls (e.g. OIDC) named by host.
 
 ```{note}
 The bundled Collector also scrapes Tiled's `/api/v1/metrics` endpoint and

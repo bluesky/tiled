@@ -18,6 +18,12 @@ Write the date in place of the "Unreleased" in the case a new version is release
   (`telemetry={"auto_configure": False}`) so that, on FastAPI >=0.142, it does
   not register a second OTLP exporter alongside Tiled's own tracing pipeline and
   export every span twice.
+- Emit OpenTelemetry spans for PostgreSQL queries (asyncpg for the catalog and
+  authentication databases, ADBC for the storage database), Redis commands, and
+  outbound HTTP calls (httpx: OIDC, webhooks, external policy servers), so
+  external-service calls appear in traces. The example monitoring stack also
+  generates a service graph viewable in Grafana, with Tiled's separate Postgres
+  databases (catalog, storage, authn) and Redis shown as distinct nodes.
 - Documentation: a user-guide page on validating metadata against custom specs
   via server configuration.
 
