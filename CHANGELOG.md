@@ -7,6 +7,23 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Added
 
+- OpenTelemetry tracing for the server, exported over OTLP. The example monitoring
+  stack (`compose.monitoring.yml`) now includes an OpenTelemetry Collector, Jaeger,
+  and Grafana Tempo (traces are sent to both backends), and the Collector also
+  scrapes and re-exposes Tiled's Prometheus metrics.
+- Emit OpenTelemetry spans for internal request phases (access control, read,
+  tokenize, pack) so they appear as child spans in a request's trace, giving a
+  per-request breakdown of where time is spent.
+- Disable FastAPI's built-in OpenTelemetry auto-configuration
+  (`telemetry={"auto_configure": False}`) so that, on FastAPI >=0.142, it does
+  not register a second OTLP exporter alongside Tiled's own tracing pipeline and
+  export every span twice.
+- Emit OpenTelemetry spans for PostgreSQL queries (asyncpg for the catalog and
+  authentication databases, ADBC for the storage database), Redis commands, and
+  outbound HTTP calls (httpx: OIDC, webhooks, external policy servers), so
+  external-service calls appear in traces. The example monitoring stack also
+  generates a service graph viewable in Grafana, with Tiled's separate Postgres
+  databases (catalog, storage, authn) and Redis shown as distinct nodes.
 - Add a `DELETE /api/v1/asset/{path}?id=N` endpoint to dissociate a single
   asset from a node. If the asset is no longer referenced by any other data
   source, its catalog record is deleted; and, when it is internally managed,
