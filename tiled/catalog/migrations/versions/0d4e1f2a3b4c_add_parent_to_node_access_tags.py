@@ -20,6 +20,13 @@ depends_on = None
 
 INDEX_NAME = "ix_node_access_tags_association_parent_id_tag_id_node_id"
 
+# Tune these for the database host running the migration. These settings apply
+# only to this migration's PostgreSQL connection. work_mem may be consumed by
+# each eligible operation or parallel worker. If database system resources
+# permit, 8GB for both settings may offer a considerable speed-up.
+POSTGRES_BACKFILL_WORK_MEM = "256MB"
+POSTGRES_INDEX_MAINTENANCE_WORK_MEM = "1GB"
+
 
 def _create_triggers(connection):
     if connection.dialect.name == "sqlite":
@@ -134,6 +141,10 @@ def upgrade():
     _create_triggers(connection)
 
     if dialect_name == "postgresql":
+        # This backfill joins two large tables. Give its hash/sort operations
+        # enough memory to avoid spilling to disk without changing settings for
+        # any other database connection. SET LOCAL resets at transaction end.
+        op.execute(f"SET LOCAL work_mem = '{POSTGRES_BACKFILL_WORK_MEM}'")
         op.execute(
             """
 UPDATE node_access_tags_association AS assignment
@@ -143,15 +154,17 @@ WHERE node.id = assignment.node_id
   AND assignment.parent_id IS DISTINCT FROM node.parent
 """
         )
-        # Avoid blocking reads and writes for the duration of an index build
-        # over a potentially very large association table.
-        with op.get_context().autocommit_block():
-            op.create_index(
-                INDEX_NAME,
-                "node_access_tags_association",
-                ["parent_id", "tag_id", "node_id"],
-                postgresql_concurrently=True,
-            )
+        # CREATE INDEX uses maintenance_work_mem rather than work_mem. SET
+        # LOCAL keeps this setting scoped to the migration transaction.
+        op.execute(
+            "SET LOCAL maintenance_work_mem = "
+            f"'{POSTGRES_INDEX_MAINTENANCE_WORK_MEM}'"
+        )
+        op.create_index(
+            INDEX_NAME,
+            "node_access_tags_association",
+            ["parent_id", "tag_id", "node_id"],
+        )
         op.execute("ANALYZE node_access_tags_association")
     else:
         op.execute(
@@ -176,12 +189,10 @@ def downgrade():
 
     _drop_triggers(connection)
     if dialect_name == "postgresql":
-        with op.get_context().autocommit_block():
-            op.drop_index(
-                INDEX_NAME,
-                table_name="node_access_tags_association",
-                postgresql_concurrently=True,
-            )
+        op.drop_index(
+            INDEX_NAME,
+            table_name="node_access_tags_association",
+        )
         op.drop_column("node_access_tags_association", "parent_id")
     else:
         op.drop_index(INDEX_NAME, table_name="node_access_tags_association")

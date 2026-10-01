@@ -551,6 +551,22 @@ class CatalogNodeAdapter:
             statement = statement.filter(condition)
         return statement
 
+    async def resolve_access_tag_ids(self, names):
+        """Resolve access-tag 'names' to their 'access_tags.id' values.
+
+        Returns a list of integer ids for the names that exist (order is not
+        significant; missing names are simply omitted). Used to build ACL
+        filters that reference 'tag_id' literals instead of joining
+        'access_tags' by name -- see 'access_tags_filter'.
+        """
+        if not names:
+            return []
+        async with self.context.session() as db:
+            result = await db.execute(
+                select(orm.AccessTag.id).where(orm.AccessTag.name.in_(list(names)))
+            )
+            return list(result.scalars().all())
+
     async def exact_len(self):
         "Get the exact number of child nodes."
         statement = (
@@ -1508,6 +1524,120 @@ class CatalogNodeAdapter:
 
         return len(set(record[0] for record in deleted_asset_records))
 
+    async def delete_asset(self, asset_id, external_only=True):
+        """Dissociate a single Asset from this Node and delete it if unreferenced.
+
+        The association(s) between this Node's DataSource(s) and the Asset with
+        the given `asset_id` are removed. If, afterward, the Asset is no longer
+        referenced by any DataSource (belonging to any Node), the Asset record
+        is deleted; and, if it is internally managed, the underlying data (file,
+        directory, object, or storage-database rows) is deleted as well.
+
+        If the Asset is still referenced by other Nodes/DataSources, only the
+        association with this Node is removed; the Asset record and its
+        underlying data are retained.
+
+        Externally managed Assets are never physically deleted, even if unreferenced.
+
+        Parameters
+        ----------
+        asset_id : int
+            The id of the Asset to dissociate/delete.
+        external_only : bool, optional
+            Safety check: if True (the default), refuse to delete an
+            internally-managed Asset (raises `WouldDeleteData`). Pass False to
+            allow deletion of the underlying data.
+
+        Returns
+        -------
+        dict or None
+            None if this Node has no Asset with the given id. Otherwise a
+            summary dict with keys `asset_deleted` and `data_deleted` (bools).
+        """
+        async with self.context.session() as db:
+            info_stmt = (
+                select(
+                    orm.DataSourceAssetAssociation.data_source_id,
+                    orm.DataSource.management,
+                    # keep only table_name and dataset_id from parameters
+                    orm.DataSource.parameters["table_name"].label("table_name"),
+                    orm.DataSource.parameters["dataset_id"].label("dataset_id"),
+                )
+                .select_from(orm.DataSourceAssetAssociation)
+                .join(
+                    orm.DataSource,
+                    orm.DataSource.id == orm.DataSourceAssetAssociation.data_source_id,
+                )
+                .where(orm.DataSource.node_id == self.node.id)
+                .where(orm.DataSourceAssetAssociation.asset_id == asset_id)
+            )
+            rows = (await db.execute(info_stmt)).all()
+            if not rows:
+                return None  # This Node has no such Asset.
+            table_name, dataset_id = rows[0].table_name, rows[0].dataset_id
+
+            # Safety check: refuse to delete internally-managed data unless the
+            # caller explicitly opts in. Treat the Asset as internally managed
+            # if ANY DataSource on this Node that references it is internally managed.
+            is_internal = any(row.management != Management.external for row in rows)
+            if external_only and is_internal:
+                raise WouldDeleteData(
+                    "This asset is internally managed. Deleting it would also "
+                    "delete the underlying data. If you want to delete it, pass "
+                    "external_only=False."
+                )
+
+            # Dissociate: remove the association(s) to this Node's DataSource(s).
+            data_source_ids = {row.data_source_id for row in rows}
+            await db.execute(
+                delete(orm.DataSourceAssetAssociation)
+                .where(orm.DataSourceAssetAssociation.asset_id == asset_id)
+                .where(
+                    orm.DataSourceAssetAssociation.data_source_id.in_(data_source_ids)
+                )
+            )
+
+            # Delete the Asset record only if it is no longer referenced by any
+            # DataSource (belonging to any Node). The existence check is folded
+            # into the DELETE, so this is a single round-trip instead of an
+            # EXISTS query followed by a DELETE. RETURNING yields the
+            # physical-location fields only when the row is actually deleted.
+            deleted = (
+                await db.execute(
+                    delete(orm.Asset)
+                    .where(orm.Asset.id == asset_id)
+                    .where(
+                        ~exists(
+                            select(1)
+                            .select_from(orm.DataSourceAssetAssociation)
+                            .where(orm.DataSourceAssetAssociation.asset_id == asset_id)
+                        )
+                    )
+                    .returning(orm.Asset.data_uri, orm.Asset.is_directory)
+                )
+            ).first()
+            asset_deleted = deleted is not None
+
+            await db.commit()
+
+        # Delete the underlying data only if the Asset record was removed AND it
+        # is internally managed. (Externally managed data is never deleted).
+        data_deleted = False
+        if asset_deleted and is_internal:
+            data_uri, is_directory = deleted
+            await anyio.to_thread.run_sync(
+                partial(
+                    delete_physical_asset,
+                    data_uri,
+                    is_directory=is_directory,
+                    table_name=table_name,
+                    dataset_id=dataset_id,
+                )
+            )
+            data_deleted = True
+
+        return {"asset_deleted": asset_deleted, "data_deleted": data_deleted}
+
     async def delete_revision(self, number):
         async with self.context.session() as db:
             result = await db.execute(
@@ -2435,6 +2565,25 @@ def access_tags_filter(query, tree):
         # so put a False condition in the list ensuring that
         # there are no rows returned.
         condition = false()
+    elif query.tag_ids is not None:
+        # Fast path (used for server-side ACL filtering): the tag names have
+        # already been resolved to their ``access_tags.id`` values in the
+        # async layer (see ``resolve_access_tag_ids`` /
+        # ``tiled.server.utils.filter_for_access``). Filtering on literal
+        # ``tag_id`` values -- rather than joining ``access_tags`` by name --
+        # lets PostgreSQL apply the (parent_id, tag_id) extended statistics
+        # and estimate this correlated subquery correctly.
+        if not query.tag_ids:
+            # None of the requested tag names exist; match nothing.
+            condition = false()
+        else:
+            condition = (
+                select(orm.NodeAccessTagAssociation.node_id)
+                .where(orm.NodeAccessTagAssociation.node_id == orm.Node.id)
+                .where(orm.NodeAccessTagAssociation.parent_id == tree.node.id)
+                .where(orm.NodeAccessTagAssociation.tag_id.in_(query.tag_ids))
+                .exists()
+            )
     else:
         # Nodes carrying at least one of the given access tags.
         # EXISTS is used (vs IN) as it is much more preformant in SQLite,

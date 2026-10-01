@@ -34,30 +34,36 @@ down_revision = "0d4e1f2a3b4c"
 branch_labels = None
 depends_on = None
 
+# Tune for the database host running the migration. This setting only
+# applies to this migration's PostgreSQL connection.
+# If database system resources permit, 8GB may be a good setting.
+POSTGRES_INDEX_MAINTENANCE_WORK_MEM = "1GB"
+
 
 def upgrade():
     connection = op.get_bind()
     dialect_name = connection.engine.dialect.name
     if dialect_name == "postgresql":
-        # CONCURRENTLY avoids an exclusive lock on a large, actively-written
-        # nodes table, so it must run outside the migration's transaction.
-        with op.get_context().autocommit_block():
-            op.drop_index(
-                "top_level_metadata",
-                table_name="nodes",
-                postgresql_concurrently=True,
-                if_exists=True,
-            )
-            op.create_index(
-                "ix_nodes_metadata",
-                "nodes",
-                ["metadata"],
-                unique=False,
-                postgresql_using="gin",
-                postgresql_ops={"metadata": "jsonb_path_ops"},
-                postgresql_concurrently=True,
-                if_not_exists=True,
-            )
+        op.drop_index(
+            "top_level_metadata",
+            table_name="nodes",
+            if_exists=True,
+        )
+        # GIN index construction uses maintenance_work_mem. Keep the increased
+        # setting local to this migration transaction.
+        op.execute(
+            "SET LOCAL maintenance_work_mem = "
+            f"'{POSTGRES_INDEX_MAINTENANCE_WORK_MEM}'"
+        )
+        op.create_index(
+            "ix_nodes_metadata",
+            "nodes",
+            ["metadata"],
+            unique=False,
+            postgresql_using="gin",
+            postgresql_ops={"metadata": "jsonb_path_ops"},
+            if_not_exists=True,
+        )
     else:
         op.drop_index("top_level_metadata", table_name="nodes", if_exists=True)
 
@@ -66,11 +72,9 @@ def downgrade():
     connection = op.get_bind()
     dialect_name = connection.engine.dialect.name
     if dialect_name == "postgresql":
-        with op.get_context().autocommit_block():
-            op.execute(sa.text("CREATE EXTENSION IF NOT EXISTS btree_gin"))
-            op.drop_index(
-                "ix_nodes_metadata",
-                table_name="nodes",
-                postgresql_concurrently=True,
-                if_exists=True,
-            )
+        op.execute(sa.text("CREATE EXTENSION IF NOT EXISTS btree_gin"))
+        op.drop_index(
+            "ix_nodes_metadata",
+            table_name="nodes",
+            if_exists=True,
+        )
