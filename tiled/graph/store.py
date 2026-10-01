@@ -59,7 +59,7 @@ class EntityRecord(BaseModel):
 
     id: str
     node_id: Optional[int] = None
-    entity_type: str
+    kind: str
     name: str
     uri: Optional[str]
     properties: dict
@@ -199,7 +199,7 @@ class GraphSQLAlchemyStore:
         return EntityRecord(
             id=row.id,
             node_id=row.node_id,
-            entity_type=row.entity_type,
+            kind=row.kind,
             name=row.name,
             uri=row.uri,
             properties=row.properties or {},
@@ -289,7 +289,7 @@ class GraphSQLAlchemyStore:
 
     async def create_entity(
         self,
-        entity_type: str,
+        kind: str,
         name: str,
         node_id: Optional[int] = None,
         uri: Optional[str] = None,
@@ -305,7 +305,7 @@ class GraphSQLAlchemyStore:
                 insert(_entities).values(
                     id=id_,
                     node_id=node_id,
-                    entity_type=entity_type,
+                    kind=kind,
                     name=name,
                     uri=uri,
                     properties=properties or {},
@@ -356,15 +356,15 @@ class GraphSQLAlchemyStore:
 
     async def list_entities(
         self,
-        entity_type: Optional[str] = None,
+        kind: Optional[str] = None,
         node_id: Optional[int] = None,
         limit: int = 100,
         offset: int = 0,
         access_filters: Optional[list[AccessTagsFilter]] = None,
     ) -> list[EntityRecord]:
         stmt = select(_entities).order_by(_entities.c.created_at)
-        if entity_type is not None:
-            stmt = stmt.where(_entities.c.entity_type == entity_type)
+        if kind is not None:
+            stmt = stmt.where(_entities.c.kind == kind)
         if node_id is not None:
             stmt = stmt.where(_entities.c.node_id == node_id)
         if access_filters:
@@ -390,7 +390,7 @@ class GraphSQLAlchemyStore:
         name: Optional[str] = None,
         node_id: object = UNSET,
         uri: object = UNSET,
-        entity_type: Optional[str] = None,
+        kind: Optional[str] = None,
         access_tags: object = UNSET,
     ) -> Optional[EntityRecord]:
         values: dict = {}
@@ -400,8 +400,8 @@ class GraphSQLAlchemyStore:
             values["node_id"] = node_id
         if uri is not UNSET:
             values["uri"] = uri
-        if entity_type is not None:
-            values["entity_type"] = entity_type
+        if kind is not None:
+            values["kind"] = kind
         async with self._engine.begin() as conn:
             existing = await self._entity_record(conn, id)
             if existing is None:

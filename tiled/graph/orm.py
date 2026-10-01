@@ -51,13 +51,13 @@ entities = Table(
         ForeignKey("nodes.id", ondelete="CASCADE"),
         nullable=True,
     ),
-    Column("entity_type", String, nullable=False),
+    Column("kind", String, nullable=False),
     Column("name", String, nullable=False),
     Column("uri", String, nullable=True),
     Column("properties", JSON, nullable=False),
     Column("created_at", DateTime(timezone=True), nullable=False),
     Index("entities_node_id_idx", "node_id"),
-    Index("entities_type_created_idx", "entity_type", "created_at"),
+    Index("entities_kind_created_idx", "kind", "created_at"),
     Index("entities_uri_idx", "uri"),
 )
 
@@ -159,9 +159,7 @@ def _create_entities_node_access_tags_triggers(target, connection, **kw):
     references a node-backed entity.
     """
     if connection.engine.dialect.name == "sqlite":
-        connection.execute(
-            text(
-                f"""
+        connection.execute(text(f"""
 CREATE TRIGGER IF NOT EXISTS entities_node_access_tags_update
 BEFORE UPDATE OF node_id ON entities
 WHEN (NEW.node_id IS NOT NULL AND EXISTS (
@@ -169,30 +167,22 @@ WHEN (NEW.node_id IS NOT NULL AND EXISTS (
 ))
 BEGIN
     SELECT RAISE(ABORT, '{ENTITY_NODE_ACCESS_TAGS_ERROR}');
-END"""
-            )
-        )
+END"""))
         for operation in ("INSERT", "UPDATE OF entity_id"):
-            connection.execute(
-                text(
-                    f"""
+            connection.execute(text(f"""
 CREATE TRIGGER IF NOT EXISTS
 entity_access_tags_association_{operation.split()[0].lower()}_reject_node_backed_entity
 BEFORE {operation} ON entity_access_tags_association
 WHEN EXISTS (SELECT 1 FROM entities WHERE id = NEW.entity_id AND node_id IS NOT NULL)
 BEGIN
     SELECT RAISE(ABORT, '{ENTITY_NODE_ACCESS_TAGS_ERROR}');
-END"""
-                )
-            )
+END"""))
     elif connection.engine.dialect.name == "postgresql":
         # PostgreSQL does not allow subqueries in a trigger WHEN clause
         # ("cannot use subquery in trigger WHEN condition"), so the EXISTS
         # checks live in the function bodies; the trigger WHEN clause keeps
         # only the cheap scalar column test.
-        connection.execute(
-            text(
-                f"""
+        connection.execute(text(f"""
 CREATE OR REPLACE FUNCTION entities_reject_node_access_tags()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -204,24 +194,16 @@ BEGIN
     END IF;
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;"""
-            )
-        )
+$$ LANGUAGE plpgsql;"""))
         # OR REPLACE keeps this belt-and-suspenders idempotent even though the
         # table-level listener already fires only once (PostgreSQL 14+).
-        connection.execute(
-            text(
-                """
+        connection.execute(text("""
 CREATE OR REPLACE TRIGGER entities_node_access_tags_check
 BEFORE UPDATE OF node_id ON entities
 FOR EACH ROW
 WHEN (NEW.node_id IS NOT NULL)
-EXECUTE FUNCTION entities_reject_node_access_tags();"""
-            )
-        )
-        connection.execute(
-            text(
-                f"""
+EXECUTE FUNCTION entities_reject_node_access_tags();"""))
+        connection.execute(text(f"""
 CREATE OR REPLACE FUNCTION entity_access_tags_association_reject_node_backed_entity()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -231,9 +213,7 @@ BEGIN
     END IF;
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;"""
-            )
-        )
+$$ LANGUAGE plpgsql;"""))
         connection.execute(
             text(
                 """

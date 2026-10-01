@@ -240,7 +240,7 @@ async def _modify_access_tags(
 class Entity:
     id: strawberry.ID
     is_node_bound: bool
-    entity_type: str
+    kind: str
     name: str
     uri: Optional[str]
     properties: Optional[JSON]  # type: ignore[valid-type]
@@ -340,7 +340,7 @@ def _entity_from_record(r: EntityRecord, namespaces: dict[str, str]) -> Entity:
     return Entity(
         id=strawberry.ID(r.id),
         is_node_bound=r.node_id is not None,
-        entity_type=r.entity_type,
+        kind=r.kind,
         name=r.name,
         uri=r.uri,
         properties=properties,
@@ -373,7 +373,7 @@ class UpdateEntityInput:
     # explicit null, or leave the current binding unchanged by omitting it.
     node_path_parts: Optional[list[str]] | UnsetType = UNSET
     uri: Optional[str] | UnsetType = UNSET
-    entity_type: Optional[str] = None
+    kind: Optional[str] = None
     access_tags: Optional[list[str]] | UnsetType = UNSET
 
 
@@ -385,7 +385,7 @@ class UpdateLinkInput:
 
 @strawberry.input
 class CreateEntityInput:
-    entity_type: str
+    kind: str
     name: str
     # Bind this entity to a catalog node by its path of key segments
     # (e.g. ["a", "b"]). Resolved to the internal node id server-side, so
@@ -427,7 +427,7 @@ class Query:
     async def entities(
         self,
         info: Info,
-        entity_type: Optional[str] = None,
+        kind: Optional[str] = None,
         node_path_parts: Optional[list[str]] = None,
         limit: int = 100,
         offset: int = 0,
@@ -442,7 +442,7 @@ class Query:
                 # No such catalog node -> it can have no bound entities.
                 return []
         records = await _store(info).list_entities(
-            entity_type=entity_type,
+            kind=kind,
             node_id=node_id,
             limit=limit,
             offset=offset,
@@ -518,7 +518,7 @@ class Mutation:
                 ),
             )
         record = await _store(info).create_entity(
-            entity_type=input.entity_type,
+            kind=input.kind,
             name=input.name,
             node_id=node_id,
             uri=input.uri,
@@ -527,7 +527,7 @@ class Mutation:
         )
         logger.info(
             "Created entity type=%r name=%r id=%s",
-            record.entity_type,
+            record.kind,
             record.name,
             record.id,
         )
@@ -588,7 +588,7 @@ class Mutation:
             logger.info("Deleted entity id=%s", id)
         return deleted
 
-    @strawberry.mutation(description="Update an entity's name, uri, or entity_type.")
+    @strawberry.mutation(description="Update an entity's name, uri, or kind.")
     async def update_entity(
         self, info: Info, id: strawberry.ID, input: UpdateEntityInput
     ) -> Optional[Entity]:
@@ -640,7 +640,7 @@ class Mutation:
             name=input.name,
             node_id=node_id,
             uri=uri,
-            entity_type=input.entity_type,
+            kind=input.kind,
             access_tags=STORE_UNSET if access_tags is UNSET else access_tags,
         )
         if record:
