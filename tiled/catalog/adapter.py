@@ -931,6 +931,10 @@ class CatalogNodeAdapter:
         principal. The stricter alternative -- requiring every ancestor on
         the path to also satisfy the access policy -- is not implemented.
         """
+        if self.node.data_sources:
+            raise NotImplementedError(
+                "Deep search is not supported inside data-source-backed nodes."
+            )
         return self.new_variation(recursive=True, max_depth=max_depth)
 
     def _scope_statement(self, statement):

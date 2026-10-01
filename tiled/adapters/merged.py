@@ -36,6 +36,7 @@ class MergedDeepSearchAdapter:
         self._mounts = list(mounts)
         self._metadata = metadata or {}
         self._specs = specs or []
+        self._mount_lens: Dict[int, int] = {}
 
     def metadata(self) -> JSON:
         return self._metadata
@@ -73,10 +74,14 @@ class MergedDeepSearchAdapter:
         ]
         return self.new_variation(flat=dict(local.items()), mounts=new_mounts)
 
-    async def _mount_len(self, subtree: Any) -> int:
-        if hasattr(subtree, "exact_len"):
-            return int(await subtree.exact_len())
-        return len(subtree)
+    async def _mount_len(self, index: int, subtree: Any) -> int:
+        # Cached: this adapter is immutable, and a COUNT per page is expensive.
+        if index not in self._mount_lens:
+            if hasattr(subtree, "exact_len"):
+                self._mount_lens[index] = int(await subtree.exact_len())
+            else:
+                self._mount_lens[index] = len(subtree)
+        return self._mount_lens[index]
 
     async def _mount_keys(
         self, subtree: Any, offset: int, limit: Optional[int]
@@ -119,13 +124,15 @@ class MergedDeepSearchAdapter:
         else:
             remaining_offset -= len(local_items)
 
-        for prefix, subtree in self._mounts:
+        for index, (prefix, subtree) in enumerate(self._mounts):
             if remaining_limit is not None and remaining_limit <= 0:
                 break
-            sub_len = await self._mount_len(subtree)
-            if remaining_offset >= sub_len:
-                remaining_offset -= sub_len
-                continue
+            # With no offset left to consume, the mount's length is not needed.
+            if remaining_offset:
+                sub_len = await self._mount_len(index, subtree)
+                if remaining_offset >= sub_len:
+                    remaining_offset -= sub_len
+                    continue
             if keys_only:
                 sub_keys = await self._mount_keys(
                     subtree, remaining_offset, remaining_limit
@@ -150,8 +157,8 @@ class MergedDeepSearchAdapter:
 
     async def exact_len(self) -> int:
         total = len(self._flat)
-        for _, subtree in self._mounts:
-            total += await self._mount_len(subtree)
+        for index, (_, subtree) in enumerate(self._mounts):
+            total += await self._mount_len(index, subtree)
         return total
 
     async def cursor_for_offset(self, offset: int) -> Optional[int]:

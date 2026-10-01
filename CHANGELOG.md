@@ -29,7 +29,12 @@ Write the date in place of the "Unreleased" in the case a new version is release
   returned as a `DeepSearchResults` mapping keyed by path tuples relative
   to the search root. Supported by both the SQL catalog and `MapAdapter`,
   including `MapAdapter` trees with a catalog (or other container adapter)
-  mounted at a sub-path, e.g. via `trees` configuration. See
+  mounted at a sub-path, e.g. via `trees` configuration. Results are in default
+  (database) order; sorting is not supported. Looking up a single result with
+  `results[key]` scans the results and is linear in their number.
+  Limitation: deep search has not yet been validated against access policies,
+  and it does not check that the containers above a match are visible to the
+  requesting user. Do not rely on it for access-controlled data yet. See
   [#1368](https://github.com/bluesky/tiled/issues/1368).
 
 ### Changed

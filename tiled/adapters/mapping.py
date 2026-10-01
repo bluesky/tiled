@@ -322,7 +322,7 @@ class MapAdapter(Generic[A], ContainerAdapter[A], IndexersMixin):
         Container children that are not themselves `MapAdapter`s (e.g. a
         `CatalogNodeAdapter` mounted at a sub-path) but do support
         `search_deep` are delegated to and their results merged in,
-        via `MergedDeepAdapter`, so mounted subtrees are still searched.
+        via `MergedDeepSearchAdapter`, so mounted subtrees are still searched.
         """
         flat: Dict[str, A] = {}
         mounts: List[Tuple[str, Any]] = []
@@ -331,6 +331,10 @@ class MapAdapter(Generic[A], ContainerAdapter[A], IndexersMixin):
             mapping: Mapping[str, A], prefix: Tuple[str, ...], depth: int
         ) -> None:
             for key, value in mapping.items():
+                if "/" in key:
+                    raise ValueError(
+                        f"Cannot deep-search a key containing '/': {key!r}"
+                    )
                 path = prefix + (key,)
                 flat["/".join(path)] = value
                 if max_depth is not None and depth + 1 >= max_depth:

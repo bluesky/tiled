@@ -8,6 +8,8 @@ https://github.com/bluesky/tiled/issues/1368#issuecomment-5284649768
 
 import subprocess
 import sys
+import uuid
+from pathlib import Path
 
 import numpy
 import pytest
@@ -15,10 +17,13 @@ import pytest_asyncio
 
 from tiled.adapters.array import ArrayAdapter
 from tiled.adapters.mapping import MapAdapter
+from tiled.adapters.merged import MergedDeepSearchAdapter
 from tiled.catalog import from_uri, in_memory
 from tiled.client import Context, from_context, record_history
+from tiled.client.register import register
 from tiled.queries import Key
 from tiled.server.app import build_app
+from tiled.server.schemas import ContainerLinks
 
 from .conftest import TILED_TEST_POSTGRESQL_URI
 from .utils import temp_postgres
@@ -411,3 +416,114 @@ async def test_search_deep_mounted_subtree_http_response_shape(mixed_client):
         item["id"]: item["attributes"]["ancestors"] for item in content["data"]
     }
     assert ["mounted", "nested", "images"] in ancestors_by_id.values()
+
+
+_SAMPLE_ID_PARAMS = {
+    "filter[eq][condition][key]": "sample_id",
+    "filter[eq][condition][value]": '"abc123"',
+}
+
+
+@pytest.mark.parametrize("page_size", [1, 2, 3])
+def test_search_deep_pagination_across_mount_boundary(mixed_client, page_size):
+    "Pages ending in, starting in, or spanning the local/mount boundary drop and repeat nothing."
+    results = mixed_client.search_deep(Key("sample_id") == "abc123")
+    keys = [key for key, _ in results.items().page_size(page_size)]
+    assert len(keys) == len(set(keys)) == 4
+    # The map-native entry comes first, then the mounted catalog's entries.
+    assert keys[0] == ("map_top",)
+    assert all(key[0] == "mounted" for key in keys[1:])
+    assert set(keys) == set(results.keys())
+
+
+@pytest.mark.asyncio(loop_scope="module")
+async def test_search_deep_max_depth_bounds(client):
+    "max_depth must be between 1 and 64."
+    link = client.item["links"]["search_deep"]
+    for max_depth, expected_status in [(0, 422), (-1, 422), (65, 422), (64, 200)]:
+        response = client.context.http_client.get(
+            link, params={**_SAMPLE_ID_PARAMS, "max_depth": max_depth}
+        )
+        assert response.status_code == expected_status, max_depth
+
+
+def test_search_deep_unsupported_server_link_is_not_implemented(client, monkeypatch):
+    "A server that does not advertise the link gives a clear client-side error."
+    nested = client["nested"]
+    monkeypatch.delitem(nested.item["links"], "search_deep")
+    with pytest.raises(NotImplementedError):
+        nested.search_deep(Key("sample_id") == "abc123")
+
+
+def test_container_links_search_deep_is_optional():
+    "Servers that predate deep search omit the link; the schema must still validate."
+    links = ContainerLinks(self="s", search="q", full="f")
+    assert links.search_deep is None
+
+
+class _CountingSubtree:
+    "Stand-in for a mounted catalog that records how often its length is requested."
+
+    def __init__(self, keys):
+        self._keys = keys
+        self.len_calls = 0
+
+    async def exact_len(self):
+        self.len_calls += 1
+        return len(self._keys)
+
+    async def keys_range(self, offset=0, limit=None):
+        stop = None if limit is None else offset + limit
+        return self._keys[offset:stop]
+
+
+async def test_merged_deep_search_adapter_mount_length_is_lazy_and_cached():
+    subtree = _CountingSubtree(["x", "y", "z"])
+    adapter = MergedDeepSearchAdapter({"a": object()}, [("m", subtree)])
+
+    assert await adapter.keys_range(0, None) == ["a", "m/x", "m/y", "m/z"]
+    # No offset reached the mount, so its length was never needed.
+    assert subtree.len_calls == 0
+
+    assert await adapter.keys_range(2, 2) == ["m/y", "m/z"]
+    assert await adapter.keys_range(3, 1) == ["m/z"]
+    assert await adapter.exact_len() == 4
+    assert subtree.len_calls == 1
+
+
+def test_map_adapter_search_deep_rejects_slash_in_key():
+    "Keys are joined with '/', so a key containing one would be ambiguous."
+    leaf = ArrayAdapter.from_array(numpy.ones(3))
+    with pytest.raises(ValueError, match="a/b"):
+        MapAdapter({"a/b": leaf}).search_deep()
+    with pytest.raises(ValueError, match="a/b"):
+        MapAdapter({"outer": MapAdapter({"a/b": leaf})}).search_deep()
+
+
+def test_search_deep_slash_in_map_key_is_a_400():
+    tree = MapAdapter({"a/b": ArrayAdapter.from_array(numpy.ones(3))})
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        response = context.http_client.get(
+            client.item["links"]["search_deep"], params=_SAMPLE_ID_PARAMS
+        )
+    assert response.status_code == 400
+
+
+async def test_search_deep_on_data_source_backed_node_is_a_400(tmpdir):
+    "Deep search does not descend into the contents of a registered file."
+    h5py = pytest.importorskip("h5py")
+    with h5py.File(Path(tmpdir, "data.h5"), "w") as file:
+        file.create_group("g").create_dataset("d", data=numpy.ones(3))
+    # Plain in_memory() catalogs share one database per process, so the
+    # module-scoped fixtures above would be visible (and overwritten) here.
+    catalog = in_memory(
+        writable_storage=str(tmpdir), named_memory=f"deep_search_{uuid.uuid4().hex}"
+    )
+    with Context.from_app(build_app(catalog)) as context:
+        client = from_context(context)
+        await register(client, tmpdir)
+        response = context.http_client.get(
+            client["data"].item["links"]["search_deep"], params=_SAMPLE_ID_PARAMS
+        )
+    assert response.status_code == 400

@@ -438,6 +438,7 @@ def get_router(
         max_depth: Optional[int] = Query(
             None,
             ge=1,
+            le=64,
             description="Maximum number of levels below `path` to search.",
         ),
         omit_links: bool = Query(False),
@@ -473,7 +474,10 @@ def get_router(
                 status_code=HTTP_400_BAD_REQUEST,
                 detail="This Tree does not support deep search.",
             )
-        entry = entry.search_deep(max_depth=max_depth)
+        try:
+            entry = entry.search_deep(max_depth=max_depth)
+        except (NotImplementedError, ValueError) as err:
+            raise HTTPException(status_code=HTTP_400_BAD_REQUEST, detail=str(err))
         request.state.endpoint = "search"
         try:
             (
