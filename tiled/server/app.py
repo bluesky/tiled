@@ -286,7 +286,21 @@ def build_app(
         finally:
             await shutdown_event()
 
-    app = FastAPI(lifespan=lifespan, strict_content_type=False)
+    try:
+        # FastAPI >=0.142 ships built-in OpenTelemetry support that, when
+        # `OTEL_EXPORTER_OTLP_ENDPOINT` (or a related variable) is set,
+        # auto-registers its own OTLP export pipeline on the global tracer
+        # provider. Tiled configures and manages its own tracing pipeline (see
+        # `_setup_opentelemetry_tracing`), so FastAPI's auto-configuration
+        # would register a second exporter and emit every span twice. Opt out.
+        app = FastAPI(
+            lifespan=lifespan,
+            strict_content_type=False,
+            telemetry={"auto_configure": False},
+        )
+    except TypeError:
+        # FastAPI <0.142 has no built-in telemetry and no `telemetry` option.
+        app = FastAPI(lifespan=lifespan, strict_content_type=False)
 
     # Healthcheck for deployment to containerized systems, needs to preempt other responses.
     # Standardized for Kubernetes, but also used by other systems.
@@ -1067,7 +1081,45 @@ def build_app(
         generator=lambda: secrets.token_hex(8),
     )
 
+    _setup_opentelemetry_tracing(app)
+
     return app
+
+
+def _setup_opentelemetry_tracing(app: FastAPI) -> None:
+    """Enable OpenTelemetry request tracing when an OTLP endpoint is configured.
+
+    Tracing is activated only when the standard `OTEL_EXPORTER_OTLP_ENDPOINT`
+    environment variable is set, so it is off by default and adds no overhead
+    unless explicitly enabled. Spans are exported over OTLP/HTTP.
+    """
+    if not os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT"):
+        return
+    try:
+        from opentelemetry import trace
+        from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
+            OTLPSpanExporter,
+        )
+        from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+        from opentelemetry.sdk.resources import Resource
+        from opentelemetry.sdk.trace import TracerProvider
+        from opentelemetry.sdk.trace.export import BatchSpanProcessor
+    except ImportError:
+        logger.warning(
+            "OTEL_EXPORTER_OTLP_ENDPOINT is set but the OpenTelemetry packages "
+            "are not installed; tracing is disabled."
+        )
+        return
+
+    # Configure the global tracer provider once per process.
+    if not isinstance(trace.get_tracer_provider(), TracerProvider):
+        resource = Resource.create(
+            {"service.name": os.getenv("OTEL_SERVICE_NAME", "tiled")}
+        )
+        provider = TracerProvider(resource=resource)
+        provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter()))
+        trace.set_tracer_provider(provider)
+    FastAPIInstrumentor.instrument_app(app)
 
 
 def build_app_from_config(config: Union[Config, dict[str, Any]], scalable=False):

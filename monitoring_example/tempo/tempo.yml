@@ -1,0 +1,33 @@
+# Grafana Tempo configuration (single binary, for the example stack).
+#
+# Tempo receives traces over OTLP from the OpenTelemetry Collector and stores
+# them on the local filesystem. This example writes to /tmp (ephemeral, lost on
+# restart) so it needs no volume or permission setup. Traces are queried from
+# Grafana via the Tempo datasource.
+
+server:
+  http_listen_port: 3200
+
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+        http:
+          endpoint: 0.0.0.0:4318
+
+ingester:
+  max_block_duration: 5m
+
+compactor:
+  compaction:
+    block_retention: 1h
+
+storage:
+  trace:
+    backend: local
+    local:
+      path: /tmp/tempo/blocks
+    wal:
+      path: /tmp/tempo/wal
