@@ -228,10 +228,10 @@ async def construct_entries_response(
     exact_count_limit,
     recursive: bool = False,
 ):
-    """Construct a response for the `/search` (or `/search-recursive`) endpoint.
+    """Construct a response for the `/search` (or `/search-deep`) endpoint.
 
     When `recursive` is True, `tree` is expected to be in "recursive mode"
-    (see `CatalogNodeAdapter.search_recursive` / `MapAdapter.search_recursive`):
+    (see `CatalogNodeAdapter.search_deep` / `MapAdapter.search_deep`):
     keys yielded by `tree` are "/"-joined paths relative to `tree`, not bare
     child keys, since matches at different depths may share a local key.
     """

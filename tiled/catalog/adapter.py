@@ -374,7 +374,7 @@ class CatalogNodeAdapter:
         self.conditions = conditions or []
         self.queries = queries or []
         # When True, listing/counting methods below scope to ALL descendants
-        # (via nodes_closure) rather than just direct children. See search_recursive().
+        # (via nodes_closure) rather than just direct children. See search_deep().
         self.recursive = recursive
         self.max_depth = max_depth
         self.structure_family = node.structure_family
@@ -917,7 +917,7 @@ class CatalogNodeAdapter:
             return self
         return self.query_registry(query, self)
 
-    def search_recursive(self, max_depth=None):
+    def search_deep(self, max_depth=None):
         """Return a variation of this node that searches ALL descendants.
 
         Subsequent `.search(query)` calls (and the access-policy conditions

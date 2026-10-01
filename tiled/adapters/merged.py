@@ -1,12 +1,12 @@
 """
-Adapter returned by `MapAdapter.search_recursive()` when the tree contains
+Adapter returned by `MapAdapter.search_deep()` when the tree contains
 mounted subtrees (e.g. a `CatalogNodeAdapter` mounted at a sub-path by
 `tiled.config.Config.merged_trees`) that are not themselves `MapAdapter`s.
 
-`MapAdapter.search_recursive()` can only flatten descendants reachable by
+`MapAdapter.search_deep()` can only flatten descendants reachable by
 walking plain mappings. Any non-`MapAdapter` container child that supports
-`search_recursive()` is instead placed in `mounts` and queried through its
-own recursive-search interface; this adapter merges the flattened local
+`search_deep()` is instead placed in `mounts` and queried through its
+own deep-search interface; this adapter merges the flattened local
 entries with the mounted subtrees' entries into a single logical sequence,
 implementing the same duck-typed paging protocol as `CatalogNodeAdapter`
 (see `tiled.server.core.construct_entries_response`).
@@ -19,7 +19,7 @@ from ..type_aliases import JSON
 from ..utils import UNCHANGED
 
 
-class MergedRecursiveAdapter:
+class MergedDeepSearchAdapter:
     """Merge flattened map-native entries with one or more mounted subtrees."""
 
     structure_family = StructureFamily.container
@@ -51,7 +51,7 @@ class MergedRecursiveAdapter:
         mounts: Any = UNCHANGED,
         metadata: Any = UNCHANGED,
         specs: Any = UNCHANGED,
-    ) -> "MergedRecursiveAdapter":
+    ) -> "MergedDeepSearchAdapter":
         if flat is UNCHANGED:
             flat = self._flat
         if mounts is UNCHANGED:
@@ -62,9 +62,9 @@ class MergedRecursiveAdapter:
             specs = self._specs
         return type(self)(flat, mounts, metadata=metadata, specs=specs)
 
-    def search(self, query: Any) -> "MergedRecursiveAdapter":
+    def search(self, query: Any) -> "MergedDeepSearchAdapter":
         # Deferred import to avoid a module-level circular import: mapping.py
-        # imports this module (inside search_recursive) to build the result.
+        # imports this module (inside search_deep) to build the result.
         from .mapping import MapAdapter
 
         local = MapAdapter(self._flat).search(query)

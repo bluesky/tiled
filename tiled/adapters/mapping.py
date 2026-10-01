@@ -22,8 +22,7 @@ from tiled.structures.container import ContainerStructure
 
 if TYPE_CHECKING:
     from fastapi import APIRouter
-
-    from .merged import MergedRecursiveAdapter
+    from .merged import MergedDeepSearchAdapter
 
 from collections.abc import Iterable, Mapping
 
@@ -310,9 +309,9 @@ class MapAdapter(Generic[A], ContainerAdapter[A], IndexersMixin):
         """
         return self.query_registry(query, self)
 
-    def search_recursive(
+    def search_deep(
         self, max_depth: Optional[int] = None
-    ) -> Union["MapAdapter[A]", "MergedRecursiveAdapter"]:
+    ) -> Union["MapAdapter[A]", "MergedDeepSearchAdapter"]:
         """Return an adapter over ALL descendants of this node (any depth).
 
         The returned adapter's keys are "/"-joined paths relative to this
@@ -322,8 +321,8 @@ class MapAdapter(Generic[A], ContainerAdapter[A], IndexersMixin):
 
         Container children that are not themselves `MapAdapter`s (e.g. a
         `CatalogNodeAdapter` mounted at a sub-path) but do support
-        `search_recursive` are delegated to and their results merged in,
-        via `MergedRecursiveAdapter`, so mounted subtrees are still searched.
+        `search_deep` are delegated to and their results merged in,
+        via `MergedDeepAdapter`, so mounted subtrees are still searched.
         """
         flat: Dict[str, A] = {}
         mounts: List[Tuple[str, Any]] = []
@@ -338,7 +337,7 @@ class MapAdapter(Generic[A], ContainerAdapter[A], IndexersMixin):
                     continue
                 if isinstance(value, MapAdapter):
                     _walk(value._mapping, path, depth + 1)
-                elif hasattr(value, "search_recursive") and (
+                elif hasattr(value, "search_deep") and (
                     getattr(value, "structure_family", None)
                     == StructureFamily.container
                 ):
@@ -348,16 +347,16 @@ class MapAdapter(Generic[A], ContainerAdapter[A], IndexersMixin):
                     mounts.append(
                         (
                             "/".join(path),
-                            value.search_recursive(max_depth=remaining_depth),
+                            value.search_deep(max_depth=remaining_depth),
                         )
                     )
 
         _walk(self._mapping, (), 0)
         if not mounts:
             return self.new_variation(mapping=flat)
-        from .merged import MergedRecursiveAdapter
+        from .merged import MergedDeepSearchAdapter
 
-        return MergedRecursiveAdapter(
+        return MergedDeepSearchAdapter(
             flat, mounts, metadata=self._metadata, specs=self.specs
         )
 

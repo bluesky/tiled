@@ -22,11 +22,11 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - ACL filtering by access tags ids resolved from access tag names on the server.
   The ids are passed as literals in the querries, which allows Postgres to use
   extended statstics to plan the query.
-- `Container.search_recursive(*queries, max_depth=None)` and the corresponding
-  `GET /api/v1/search-recursive/{path}` HTTP endpoint, which search all
+- `Container.search_deep(*queries, max_depth=None)` and the corresponding
+  `GET /api/v1/search-deep/{path}` HTTP endpoint, which search all
   descendants of a node (at any depth), not just direct children. Multiple
   queries are combined with logical AND. Results are
-  returned as a `RecursiveSearchResults` mapping keyed by path tuples relative
+  returned as a `DeepSearchResults` mapping keyed by path tuples relative
   to the search root. Supported by both the SQL catalog and `MapAdapter`,
   including `MapAdapter` trees with a catalog (or other container adapter)
   mounted at a sub-path, e.g. via `trees` configuration. See

@@ -421,7 +421,7 @@ def get_router(
             )
 
     @router.get(
-        "/search-recursive/{path:path}",
+        "/search-deep/{path:path}",
         response_model=schemas.Response[
             List[schemas.Resource[schemas.NodeAttributes, dict, dict]],
             schemas.PaginationLinks,
@@ -429,7 +429,7 @@ def get_router(
         ],
     )
     @_patch_route_signature(query_registry)
-    async def search_recursive(
+    async def search_deep(
         request: Request,
         path: str,
         fields: Optional[List[schemas.EntryFields]] = Query(list(schemas.EntryFields)),
@@ -468,12 +468,12 @@ def get_router(
             {StructureFamily.container},
             getattr(request.app.state, "access_policy", None),
         )
-        if not hasattr(entry, "search_recursive"):
+        if not hasattr(entry, "search_deep"):
             raise HTTPException(
                 status_code=HTTP_400_BAD_REQUEST,
-                detail="This Tree does not support recursive search.",
+                detail="This Tree does not support deep search.",
             )
-        entry = entry.search_recursive(max_depth=max_depth)
+        entry = entry.search_deep(max_depth=max_depth)
         request.state.endpoint = "search"
         try:
             (
@@ -483,7 +483,7 @@ def get_router(
             ) = await construct_entries_response(
                 query_registry,
                 entry,
-                "/search-recursive",
+                "/search-deep",
                 path,
                 page,
                 fields,
@@ -491,7 +491,7 @@ def get_router(
                 omit_links,
                 include_data_sources,
                 filters,
-                None,  # Sorting is not yet supported for recursive search.
+                None,  # Sorting is not yet supported for deep search.
                 get_base_url(request),
                 resolve_media_type(request),
                 max_depth=None,

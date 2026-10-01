@@ -1,6 +1,6 @@
 """
-Tests for recursive search: `Container.search_recursive(...)` (Python) and
-`GET /api/v1/search-recursive/{path}` (HTTP).
+Tests for deep search: `Container.search_deep(...)` (Python) and
+`GET /api/v1/search-deep/{path}` (HTTP).
 
 These tests are written based on discussion in issue #1368:
 https://github.com/bluesky/tiled/issues/1368#issuecomment-5284649768
@@ -143,7 +143,7 @@ async def mixed_client(tmpdir_module):
 
     This mirrors what `tiled.config.Config.merged_trees` produces when a
     'trees' config mounts a catalog at a path other than '/' (see issue
-    https://github.com/bluesky/tiled/issues/1368). `search_recursive` from
+    https://github.com/bluesky/tiled/issues/1368). `search_deep` from
     the root must descend into the mounted catalog, not just the map-native
     part of the tree.
     """
@@ -171,24 +171,24 @@ async def mixed_client(tmpdir_module):
         yield client
 
 
-def test_search_recursive_finds_matches_at_all_depths(client):
+def test_search_deep_finds_matches_at_all_depths(client):
     "Matches at depth 1, 2, and 3 are all found from the root."
-    results = client.search_recursive(Key("sample_id") == "abc123")
+    results = client.search_deep(Key("sample_id") == "abc123")
     assert len(results) == 3
     found_keys = {path[-1] for path in results.keys()}
     assert found_keys == {"top_level_match", "sample_042", "sample_099"}
 
 
-def test_search_recursive_no_matches(client):
+def test_search_deep_no_matches(client):
     "An unmatched query returns an empty Mapping, not an error."
-    results = client.search_recursive(Key("sample_id") == "does-not-exist")
+    results = client.search_deep(Key("sample_id") == "does-not-exist")
     assert len(results) == 0
     assert list(results) == []
 
 
-def test_search_recursive_mapping_protocol(client):
-    "RecursiveSearchResults behaves like a Mapping: len, iteration, .items(), .values()."
-    results = client.search_recursive(Key("sample_id") == "abc123")
+def test_search_deep_mapping_protocol(client):
+    "DeepSearchResults behaves like a Mapping: len, iteration, .items(), .values()."
+    results = client.search_deep(Key("sample_id") == "abc123")
     assert len(results) == len(list(results))
     for path, node in results.items():
         assert isinstance(path, tuple)
@@ -197,34 +197,34 @@ def test_search_recursive_mapping_protocol(client):
         assert node.metadata["sample_id"] == "abc123"
 
 
-def test_search_recursive_getitem_tuple_key(client):
+def test_search_deep_getitem_tuple_key(client):
     "A path tuple relative to the search root can be used to look up a result."
-    results = client.search_recursive(Key("sample_id") == "abc123")
+    results = client.search_deep(Key("sample_id") == "abc123")
     node = results[("nested", "images", "sample_042")]
     assert node.metadata["sample_id"] == "abc123"
 
 
-def test_search_recursive_getitem_string_key(client):
+def test_search_deep_getitem_string_key(client):
     "A slash-delimited string path is equivalent to a tuple path."
-    results = client.search_recursive(Key("sample_id") == "abc123")
+    results = client.search_deep(Key("sample_id") == "abc123")
     assert results["nested/images/sample_042"].metadata == (
         results[("nested", "images", "sample_042")].metadata
     )
 
 
-def test_search_recursive_getitem_key_error(client):
+def test_search_deep_getitem_key_error(client):
     "Looking up a path that did not match the query raises KeyError."
-    results = client.search_recursive(Key("sample_id") == "abc123")
+    results = client.search_deep(Key("sample_id") == "abc123")
     with pytest.raises(KeyError):
         results[("nested", "images", "sample_043")]  # exists, but does not match
     with pytest.raises(KeyError):
         results[("does", "not", "exist")]
 
 
-def test_search_recursive_ancestors_relative_to_root(client):
+def test_search_deep_ancestors_relative_to_root(client):
     "Searching from a subcontainer yields paths relative to that subcontainer, not the true root."
     nested = client["nested"]
-    results = nested.search_recursive(Key("sample_id") == "abc123")
+    results = nested.search_deep(Key("sample_id") == "abc123")
     assert set(results.keys()) == {("images", "sample_042")}
     # The Python API's keys are relative to the search root, but the client
     # objects returned still know their true, server-absolute path.
@@ -236,10 +236,10 @@ def test_search_recursive_ancestors_relative_to_root(client):
 
 
 @pytest.mark.asyncio(loop_scope="module")
-async def test_search_recursive_http_ancestors_are_server_absolute(client):
+async def test_search_deep_http_ancestors_are_server_absolute(client):
     "Unlike the Python API's keys, the raw HTTP `ancestors` are always server-absolute."
     nested = client["nested"]
-    link = nested.item["links"]["search_recursive"]
+    link = nested.item["links"]["search_deep"]
     response = client.context.http_client.get(
         link,
         params={
@@ -255,51 +255,51 @@ async def test_search_recursive_http_ancestors_are_server_absolute(client):
     assert ancestors_by_id["sample_042"] == ["nested", "images"]
 
 
-def test_search_recursive_max_depth(client):
+def test_search_deep_max_depth(client):
     "An optional max_depth bounds how far down the tree the search descends."
     # depth=1 is direct children only -- same as .search() from the root.
-    results = client.search_recursive(Key("sample_id") == "abc123", max_depth=1)
+    results = client.search_deep(Key("sample_id") == "abc123", max_depth=1)
     assert set(results.keys()) == {("top_level_match",)}
 
 
-def test_search_recursive_multiple_queries_are_anded(client):
+def test_search_deep_multiple_queries_are_anded(client):
     "Several positional queries are combined with logical AND."
-    results = client.search_recursive(Key("sample_id") == "abc123", Key("depth") == 3)
+    results = client.search_deep(Key("sample_id") == "abc123", Key("depth") == 3)
     assert set(results.keys()) == {("nested", "images", "sample_042")}
 
-    results = client.search_recursive(Key("sample_id") == "abc123", Key("depth") < 3)
+    results = client.search_deep(Key("sample_id") == "abc123", Key("depth") < 3)
     assert set(results.keys()) == {
         ("top_level_match",),
         ("other_branch", "sample_099"),
     }
 
 
-def test_search_recursive_same_key_range(client):
+def test_search_deep_same_key_range(client):
     "Two queries on the same key are both applied, giving a range."
-    results = client.search_recursive(Key("depth") > 1, Key("depth") < 3)
+    results = client.search_deep(Key("depth") > 1, Key("depth") < 3)
     assert set(results.keys()) == {
         ("nested", "no_match"),
         ("other_branch", "sample_099"),
     }
 
 
-def test_search_recursive_multiple_queries_with_max_depth(client):
+def test_search_deep_multiple_queries_with_max_depth(client):
     "max_depth is keyword-only and composes with multiple queries."
-    results = client.search_recursive(
+    results = client.search_deep(
         Key("sample_id") == "abc123", Key("depth") < 3, max_depth=1
     )
     assert set(results.keys()) == {("top_level_match",)}
 
 
-def test_search_recursive_requires_query(client):
+def test_search_deep_requires_query(client):
     "Calling with no queries is an error rather than an unfiltered walk."
     with pytest.raises(TypeError):
-        client.search_recursive()
+        client.search_deep()
 
 
-def test_search_recursive_multiple_queries_http_params(client):
+def test_search_deep_multiple_queries_http_params(client):
     "Every query is sent as its own filter parameter."
-    results = client.search_recursive(Key("sample_id") == "abc123", Key("depth") == 3)
+    results = client.search_deep(Key("sample_id") == "abc123", Key("depth") == 3)
     with record_history() as history:
         len(results)
     assert len(history.requests) == 1
@@ -310,9 +310,9 @@ def test_search_recursive_multiple_queries_http_params(client):
     ]
 
 
-def test_search_recursive_laziness(client):
+def test_search_deep_laziness(client):
     "Slicing .values() sends a single request with an explicit page[limit]."
-    results = client.search_recursive(Key("sample_id") == "abc123")
+    results = client.search_deep(Key("sample_id") == "abc123")
     with record_history() as history:
         values = results.values()[:2]
     assert len(values) == 2
@@ -321,9 +321,9 @@ def test_search_recursive_laziness(client):
 
 
 @pytest.mark.asyncio(loop_scope="module")
-async def test_search_recursive_http_response_shape(client):
+async def test_search_deep_http_response_shape(client):
     "The raw HTTP response mirrors /search/{path} conventions."
-    link = client.item["links"]["search_recursive"]
+    link = client.item["links"]["search_deep"]
     response = client.context.http_client.get(
         link,
         params={
@@ -341,9 +341,9 @@ async def test_search_recursive_http_response_shape(client):
     assert "next" in content["links"]
 
 
-def test_search_recursive_descends_into_mounted_subtree(mixed_client):
-    "A catalog mounted under a MapAdapter root is still searched recursively."
-    results = mixed_client.search_recursive(Key("sample_id") == "abc123")
+def test_search_deep_descends_into_mounted_subtree(mixed_client):
+    "A catalog mounted under a MapAdapter root is still searched deeply."
+    results = mixed_client.search_deep(Key("sample_id") == "abc123")
     found_keys = set(results.keys())
     assert ("map_top",) in found_keys
     assert ("mounted", "top_level_match") in found_keys
@@ -352,36 +352,34 @@ def test_search_recursive_descends_into_mounted_subtree(mixed_client):
     assert len(results) == 4
 
 
-def test_search_recursive_mounted_subtree_no_matches(mixed_client):
+def test_search_deep_mounted_subtree_no_matches(mixed_client):
     "An unmatched query against a mixed tree returns an empty Mapping."
-    results = mixed_client.search_recursive(Key("sample_id") == "does-not-exist")
+    results = mixed_client.search_deep(Key("sample_id") == "does-not-exist")
     assert len(results) == 0
     assert list(results) == []
 
 
-def test_search_recursive_mounted_subtree_max_depth(mixed_client):
+def test_search_deep_mounted_subtree_max_depth(mixed_client):
     "max_depth is honored across the MapAdapter/catalog mount boundary."
     # depth=1 reaches only the map-native top-level child and the mount
     # point itself ("mounted" is a container, not a match); depth=2 reaches
     # one level into the mounted catalog.
-    results = mixed_client.search_recursive(Key("sample_id") == "abc123", max_depth=2)
+    results = mixed_client.search_deep(Key("sample_id") == "abc123", max_depth=2)
     assert set(results.keys()) == {("map_top",), ("mounted", "top_level_match")}
 
 
-def test_search_recursive_mounted_subtree_multiple_queries(mixed_client):
+def test_search_deep_mounted_subtree_multiple_queries(mixed_client):
     "AND is applied to both the map-native part and the mounted catalog."
-    results = mixed_client.search_recursive(
-        Key("sample_id") == "abc123", Key("depth") < 3
-    )
+    results = mixed_client.search_deep(Key("sample_id") == "abc123", Key("depth") < 3)
     assert set(results.keys()) == {
         ("mounted", "top_level_match"),
         ("mounted", "other_branch", "sample_099"),
     }
 
 
-def test_search_recursive_mounted_path_results_parent(mixed_client):
+def test_search_deep_mounted_path_results_parent(mixed_client):
     "`.parent` of a nested result found via a scoped search resolves to the real absolute path."
-    results = mixed_client["mounted"].search_recursive(Key("sample_id") == "abc123")
+    results = mixed_client["mounted"].search_deep(Key("sample_id") == "abc123")
     assert len(results) == 3
 
     # This result's key is relative to "mounted": ("nested", "images", "sample_042").
@@ -396,9 +394,9 @@ def test_search_recursive_mounted_path_results_parent(mixed_client):
 
 
 @pytest.mark.asyncio(loop_scope="module")
-async def test_search_recursive_mounted_subtree_http_response_shape(mixed_client):
+async def test_search_deep_mounted_subtree_http_response_shape(mixed_client):
     "Ancestors for matches inside the mounted subtree include the mount prefix."
-    link = mixed_client.item["links"]["search_recursive"]
+    link = mixed_client.item["links"]["search_deep"]
     response = mixed_client.context.http_client.get(
         link,
         params={

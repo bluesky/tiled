@@ -245,7 +245,7 @@ class SelfLinkOnly(pydantic.BaseModel):
 class ContainerLinks(pydantic.BaseModel):
     self: str
     search: str
-    search_recursive: str
+    search_deep: str
     full: str
 
 

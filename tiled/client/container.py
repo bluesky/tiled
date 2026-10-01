@@ -575,12 +575,12 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         """
         return self.new_variation(queries=self._queries + [query])
 
-    def search_recursive(self, *queries, max_depth=None):
+    def search_deep(self, *queries, max_depth=None):
         """
         Search all descendants of this Node (at any depth), not just direct children.
 
-        Returns a `RecursiveSearchResults` mapping, not a `Node`: it is not
-        chainable via further `.search()`/`.search_recursive()` calls,
+        Returns a `DeepSearchResults` mapping, not a `Node`: it is not
+        chainable via further `.search()`/`.search_deep()` calls,
         because matches at different depths do not share a single parent.
         To narrow a search, pass several queries; they are combined with
         logical AND.
@@ -596,27 +596,27 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         --------
 
         >>> from tiled.queries import Key
-        >>> results = tree.search_recursive(Key("sample_id") == "abc123")
+        >>> results = tree.search_deep(Key("sample_id") == "abc123")
         >>> results[("nested", "images", "sample_042")]
 
         Logical AND of several queries:
 
-        >>> tree.search_recursive(Key("sample_id") == "abc123", Key("depth") > 1)
+        >>> tree.search_deep(Key("sample_id") == "abc123", Key("depth") > 1)
         """
         if not queries:
-            raise TypeError("search_recursive() requires at least one query")
-        if "search_recursive" not in self.item["links"]:
-            raise NotImplementedError("This server does not support recursive search.")
-        return RecursiveSearchResults(
+            raise TypeError("search_deep() requires at least one query")
+        if "search_deep" not in self.item["links"]:
+            raise NotImplementedError("This server does not support deep search.")
+        return DeepSearchResults(
             context=self.context,
-            link=self.item["links"]["search_recursive"],
+            link=self.item["links"]["search_deep"],
             structure_clients=self.structure_clients,
             queries=queries,
             max_depth=max_depth,
             include_data_sources=self._include_data_sources,
             # The server reports `ancestors` relative to the true root, like
             # every other endpoint; strip this Node's own path so that result
-            # keys/paths stay relative to the root that `search_recursive`
+            # keys/paths stay relative to the root that `search_deep`
             # was called on.
             root_path_parts=[part for part in self.path_parts if part],
         )
@@ -1540,9 +1540,9 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         )
 
 
-class RecursiveSearchResults(collections.abc.Mapping):
+class DeepSearchResults(collections.abc.Mapping):
     """
-    Lazy, paginated results of `Container.search_recursive(...)`.
+    Lazy, paginated results of `Container.search_deep(...)`.
 
     Keys are tuples of path segments relative to the Node that the search
     was performed on. Values are ordinary live client nodes, the same as
@@ -1611,7 +1611,7 @@ class RecursiveSearchResults(collections.abc.Mapping):
     def _items_slice(self, start, stop, direction, page_size=None):
         if direction < 0:
             raise NotImplementedError(
-                "Recursive search results do not yet support reverse iteration."
+                "Deep search results do not yet support reverse iteration."
             )
         assert start >= 0
         assert (stop is None) or (stop >= 0)
@@ -1638,7 +1638,7 @@ class RecursiveSearchResults(collections.abc.Mapping):
             )
             for item in content["data"]:
                 # `ancestors` is server-absolute; make the key relative to
-                # the Node that `search_recursive` was called on.
+                # the Node that `search_deep` was called on.
                 full_path = tuple(item["attributes"]["ancestors"]) + (item["id"],)
                 key = full_path[len(self._root_path_parts) :]  # noqa: E203
                 yield key, client_for_item(
