@@ -171,7 +171,6 @@ WHERE node.id = assignment.node_id
             "(dependencies, ndistinct, mcv) "
             "ON parent_id, tag_id FROM node_access_tags_association"
         )
-        op.execute("ALTER ROLE tiled SET plan_cache_mode = force_custom_plan")
         # VACUUM cannot run inside a transaction. Creating the statistics before
         # this also ensures that VACUUM ANALYZE populates them immediately.
         with op.get_context().autocommit_block():
@@ -200,7 +199,6 @@ def downgrade():
     _drop_triggers(connection)
     if dialect_name == "postgresql":
         op.execute(f"DROP STATISTICS IF EXISTS {STATISTICS_NAME}")
-        op.execute("ALTER ROLE tiled RESET plan_cache_mode")
         op.drop_index(
             INDEX_NAME,
             table_name="node_access_tags_association",

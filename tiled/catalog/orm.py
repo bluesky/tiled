@@ -327,6 +327,20 @@ EXECUTE FUNCTION node_access_tags_sync_parent_after_node_update()"""
         )
 
 
+@event.listens_for(NodeAccessTagAssociation.__table__, "after_create")
+def create_node_access_tag_statistics(target, connection, **kw):
+    if connection.engine.dialect.name == "postgresql":
+        connection.execute(
+            text(
+                """
+CREATE STATISTICS IF NOT EXISTS node_access_tags_association_parent_id_tag_id_node_id_stats
+(dependencies, ndistinct, mcv)
+ON parent_id, tag_id
+FROM node_access_tags_association"""
+            )
+        )
+
+
 class AccessTagsPrincipal(Timestamped, Base):
     """
     A principal (human user or service account) that can be granted access
