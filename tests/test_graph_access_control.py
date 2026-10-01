@@ -779,6 +779,76 @@ async def test_duplicate_node_kind_name_conflicts_in_store(store):
     await store.create_entity(kind="sample", name="ext", node_id=None)
 
 
+UPSERT_ENTITY_MUTATION = """
+mutation($input: CreateEntityInput!) {
+    upsertEntity(input: $input) { id name kind }
+}
+"""
+
+
+@pytest.mark.asyncio
+async def test_upsert_entity_is_idempotent(store, policy):
+    """upsertEntity returns the same row for a repeated (node, kind, name)."""
+    await _insert_node(store, 1, ["team"])
+    alice_ctx = _context(store, policy, "alice", {"read:metadata", "write:metadata"})
+
+    first = await _execute(
+        UPSERT_ENTITY_MUTATION,
+        alice_ctx,
+        {"input": {"kind": "array", "name": "a1", "nodePathParts": ["node"]}},
+    )
+    second = await _execute(
+        UPSERT_ENTITY_MUTATION,
+        alice_ctx,
+        {"input": {"kind": "array", "name": "a1", "nodePathParts": ["node"]}},
+    )
+    assert first.errors is None and second.errors is None
+    assert first.data["upsertEntity"]["id"] == second.data["upsertEntity"]["id"]
+    assert len(await store.list_entities(node_id=1)) == 1
+
+
+@pytest.mark.asyncio
+async def test_upsert_entity_requires_node_binding(store, policy):
+    """upsertEntity has no natural key for external entities, so it errors."""
+    alice_ctx = _context(store, policy, "alice", {"read:metadata", "write:metadata"})
+    result = await _execute(
+        UPSERT_ENTITY_MUTATION,
+        alice_ctx,
+        {"input": {"kind": "sample", "name": "ext"}},
+    )
+    assert result.errors
+    assert result.errors[0].extensions["code"] == "NODE_REQUIRED"
+
+
+@pytest.mark.asyncio
+async def test_create_and_upsert_require_write_on_bound_node(store, policy):
+    """
+    Binding an entity to a node requires write:metadata on that node, not merely
+    the global write scope. Otherwise any writer could attach (or, via the
+    uniqueness constraint, squat) entities on nodes they cannot write.
+    """
+    # Node writable by alice (alice_tag) but not bob (who only has team).
+    await _insert_node(store, 1, ["alice_tag"], key="node")
+
+    bob_ctx = _context(store, policy, "bob", {"read:metadata", "write:metadata"})
+    for mutation in (CREATE_ENTITY_MUTATION, UPSERT_ENTITY_MUTATION):
+        denied = await _execute(
+            mutation,
+            bob_ctx,
+            {"input": {"kind": "array", "name": "a1", "nodePathParts": ["node"]}},
+        )
+        assert denied.errors
+        assert "Not permitted" in denied.errors[0].message
+
+    alice_ctx = _context(store, policy, "alice", {"read:metadata", "write:metadata"})
+    allowed = await _execute(
+        UPSERT_ENTITY_MUTATION,
+        alice_ctx,
+        {"input": {"kind": "array", "name": "a1", "nodePathParts": ["node"]}},
+    )
+    assert allowed.errors is None
+
+
 @pytest.mark.asyncio
 async def test_update_entity_rejects_setting_access_tags_on_node_linked_entity(
     store, policy

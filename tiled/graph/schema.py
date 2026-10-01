@@ -48,12 +48,7 @@ from tiled.type_aliases import AccessTags
 from .curie import compact_term, compact_value, expand_term, expand_value
 from .orm import ENTITY_NODE_ACCESS_TAGS_ERROR
 from .store import UNSET as STORE_UNSET
-from .store import (
-    EntityConflictError,
-    EntityRecord,
-    GraphSQLAlchemyStore,
-    LinkRecord,
-)
+from .store import EntityConflictError, EntityRecord, GraphSQLAlchemyStore, LinkRecord
 
 logger = logging.getLogger(__name__)
 
@@ -131,6 +126,25 @@ async def _assert_allowed(
 ) -> None:
     if not await _is_allowed(info, access_tags, scope):
         raise GraphQLError("Not permitted")
+
+
+async def _assert_node_write(info: Info, node_id: Optional[int]) -> None:
+    """
+    Require write:metadata on the catalog node an entity is being bound to.
+
+    Binding an entity to a node attaches graph metadata to that node and
+    delegates the entity's access control to it, so it must require the same
+    permission as writing the node's own metadata. Without this check any
+    principal holding the global write:metadata scope could attach (or, via the
+    uniqueness constraint, squat) entities on nodes they cannot write. A None
+    node_id (external entity) is a no-op.
+    """
+    if node_id is None:
+        return
+    node_tags = await _store(info).get_node_access_tags(node_id)
+    await _assert_allowed(
+        info, normalize_access_tags(node_tags or ()), "write:metadata"
+    )
 
 
 async def _effective_access_tags(info: Info, record: EntityRecord) -> AccessTags:
@@ -509,6 +523,9 @@ class Mutation:
         _assert_authn_scope(info, "write:metadata")
         namespaces = await _namespaces(info)
         node_id = await _resolve_node_binding(info, input.node_path_parts)
+        # Binding to a node requires write access on that node, not merely the
+        # global write:metadata scope.
+        await _assert_node_write(info, node_id)
         if node_id is not None:
             if input.access_tags:
                 raise GraphQLError(ENTITY_NODE_ACCESS_TAGS_ERROR)
@@ -535,6 +552,45 @@ class Mutation:
             raise GraphQLError(str(exc), extensions={"code": "ENTITY_EXISTS"})
         logger.info(
             "Created entity kind=%r name=%r id=%s",
+            record.kind,
+            record.name,
+            record.id,
+        )
+        return _entity_from_record(record, namespaces)
+
+    @strawberry.mutation(
+        description=(
+            "Get-or-create an entity bound to a catalog node, keyed on "
+            "(node, kind, name). Idempotent: returns the existing entity if "
+            "one already matches, else creates it."
+        )
+    )
+    async def upsert_entity(self, info: Info, input: CreateEntityInput) -> Entity:
+        _assert_authn_scope(info, "write:metadata")
+        namespaces = await _namespaces(info)
+        node_id = await _resolve_node_binding(info, input.node_path_parts)
+        await _assert_node_write(info, node_id)
+        if node_id is None:
+            # Upsert has no natural key for external entities (node_id NULL is
+            # distinct in the unique index), so it would silently create
+            # duplicates. Require a node binding and steer callers to
+            # createEntity for free-standing entities.
+            raise GraphQLError(
+                "upsertEntity requires nodePathParts; use createEntity for "
+                "external (node-unbound) entities.",
+                extensions={"code": "NODE_REQUIRED"},
+            )
+        if input.access_tags:
+            raise GraphQLError(ENTITY_NODE_ACCESS_TAGS_ERROR)
+        record = await _store(info).upsert_entity(
+            kind=input.kind,
+            name=input.name,
+            node_id=node_id,
+            uri=input.uri,
+            properties=expand_value(input.properties or {}, namespaces),
+        )
+        logger.info(
+            "Upserted entity kind=%r name=%r id=%s",
             record.kind,
             record.name,
             record.id,
@@ -616,6 +672,10 @@ class Mutation:
         else:
             node_id = await _resolve_node_binding(info, input.node_path_parts)
         node_binding_changed = node_id is not STORE_UNSET
+        # Re-binding to a (different) node requires write access on that target
+        # node, in addition to write access on the entity as it stands now.
+        if node_binding_changed and node_id is not None:
+            await _assert_node_write(info, node_id)
         effective_node_id = current.node_id if node_id is STORE_UNSET else node_id
         access_tags = UNSET
         if effective_node_id is not None:

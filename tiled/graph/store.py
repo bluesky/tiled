@@ -27,6 +27,8 @@ from typing import Iterable, Optional
 
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import and_, delete, false, insert, or_, select, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncEngine
 
@@ -35,6 +37,7 @@ from ..catalog.orm import AccessTag, Node, NodeAccessTagAssociation
 from ..queries import AccessTagsFilter
 from ..server.connection_pool import get_database_engine
 from ..server.settings import DatabaseSettings
+from ..utils import UnsupportedQueryType
 from .orm import entities as _entities
 from .orm import entity_access_tags_association as _entity_access_tags
 from .orm import link_access_tags_association as _link_access_tags
@@ -348,6 +351,64 @@ class GraphSQLAlchemyStore:
                 f"An entity with kind={kind!r} name={name!r} "
                 "already exists for this node."
             ) from exc
+        return record
+
+    async def upsert_entity(
+        self,
+        kind: str,
+        name: str,
+        node_id: int,
+        uri: Optional[str] = None,
+        properties: Optional[dict] = None,
+    ) -> EntityRecord:
+        """
+        Get-or-create a node-bound entity keyed on (node_id, kind, name).
+
+        Implemented as a single atomic INSERT ... ON CONFLICT DO UPDATE against
+        the entities_node_kind_name_uq unique index, so concurrent callers
+        converge on one row rather than racing a check-then-insert. On conflict
+        the existing row's uri and properties are refreshed to the supplied
+        values. Node-bound only: such entities carry no access tags of their own
+        (access is delegated to the node), so none are written here.
+        """
+        dialect_name = self._engine.url.get_dialect().name
+        if dialect_name == "sqlite":
+            insert_stmt = sqlite_insert(_entities)
+        elif dialect_name == "postgresql":
+            insert_stmt = pg_insert(_entities)
+        else:
+            raise UnsupportedQueryType(f"upsert not supported on {dialect_name!r}")
+        now = datetime.now(timezone.utc)
+        insert_stmt = insert_stmt.values(
+            id=str(uuid.uuid4()),
+            node_id=node_id,
+            kind=kind,
+            name=name,
+            uri=uri,
+            properties=properties or {},
+            created_at=now,
+        )
+        stmt = insert_stmt.on_conflict_do_update(
+            index_elements=["node_id", "kind", "name"],
+            set_={
+                "uri": insert_stmt.excluded.uri,
+                "properties": insert_stmt.excluded.properties,
+            },
+        )
+        async with self._engine.begin() as conn:
+            await conn.execute(stmt)
+            # Read the surviving row back by its natural key: on conflict it
+            # keeps its original id.
+            row = (
+                await conn.execute(
+                    select(_entities.c.id).where(
+                        _entities.c.node_id == node_id,
+                        _entities.c.kind == kind,
+                        _entities.c.name == name,
+                    )
+                )
+            ).one()
+            record = await self._entity_record(conn, row.id)
         return record
 
     async def get_entity(self, id: str) -> Optional[EntityRecord]:
