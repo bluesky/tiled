@@ -18,6 +18,13 @@ Write the date in place of the "Unreleased" in the case a new version is release
   (`telemetry={"auto_configure": False}`) so that, on FastAPI >=0.142, it does
   not register a second OTLP exporter alongside Tiled's own tracing pipeline and
   export every span twice.
+- Add a `DELETE /api/v1/asset/{path}?id=N` endpoint to dissociate a single
+  asset from a node. If the asset is no longer referenced by any other data
+  source, its catalog record is deleted; and, when it is internally managed,
+  the underlying data (file, directory, object, or storage-database rows) is
+  deleted as well. Mirrors node deletion: gated on `expose_raw_assets` and
+  defaults to `external_only=true`, refusing to delete internally-managed data
+  unless `external_only=false` is passed.
 - Add `Container.register`, a synchronous client method to register external,
   server-accessible files as a single dataset (array, table, etc.).
 - Add registration support for Parquet files.
