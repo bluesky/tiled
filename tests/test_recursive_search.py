@@ -40,30 +40,30 @@ def _nested_map_tree():
     images = MapAdapter(
         {
             "sample_042": ArrayAdapter.from_array(
-                numpy.ones(3), metadata={"sample_id": "abc123"}
+                numpy.ones(3), metadata={"sample_id": "abc123", "depth": 3}
             ),
             "sample_043": ArrayAdapter.from_array(
-                numpy.ones(3), metadata={"sample_id": "other"}
+                numpy.ones(3), metadata={"sample_id": "other", "depth": 3}
             ),
         }
     )
     nested = MapAdapter(
         {
-            "no_match": ArrayAdapter.from_array(numpy.ones(3), metadata={}),
+            "no_match": ArrayAdapter.from_array(numpy.ones(3), metadata={"depth": 2}),
             "images": images,
         }
     )
     other_branch = MapAdapter(
         {
             "sample_099": ArrayAdapter.from_array(
-                numpy.ones(3), metadata={"sample_id": "abc123"}
+                numpy.ones(3), metadata={"sample_id": "abc123", "depth": 2}
             ),
         }
     )
     return MapAdapter(
         {
             "top_level_match": ArrayAdapter.from_array(
-                numpy.ones(3), metadata={"sample_id": "abc123"}
+                numpy.ones(3), metadata={"sample_id": "abc123", "depth": 1}
             ),
             "nested": nested,
             "other_branch": other_branch,
@@ -73,18 +73,22 @@ def _nested_map_tree():
 
 def _populate_catalog_tree(client):
     client.write_array(
-        numpy.ones(3), key="top_level_match", metadata={"sample_id": "abc123"}
+        numpy.ones(3),
+        key="top_level_match",
+        metadata={"sample_id": "abc123", "depth": 1},
     )
     nested = client.create_container("nested")
-    nested.write_array(numpy.ones(3), key="no_match", metadata={})
+    nested.write_array(numpy.ones(3), key="no_match", metadata={"depth": 2})
     images = nested.create_container("images")
     images.write_array(
-        numpy.ones(3), key="sample_042", metadata={"sample_id": "abc123"}
+        numpy.ones(3), key="sample_042", metadata={"sample_id": "abc123", "depth": 3}
     )
-    images.write_array(numpy.ones(3), key="sample_043", metadata={"sample_id": "other"})
+    images.write_array(
+        numpy.ones(3), key="sample_043", metadata={"sample_id": "other", "depth": 3}
+    )
     other_branch = client.create_container("other_branch")
     other_branch.write_array(
-        numpy.ones(3), key="sample_099", metadata={"sample_id": "abc123"}
+        numpy.ones(3), key="sample_099", metadata={"sample_id": "abc123", "depth": 2}
     )
 
 
@@ -258,6 +262,54 @@ def test_search_recursive_max_depth(client):
     assert set(results.keys()) == {("top_level_match",)}
 
 
+def test_search_recursive_multiple_queries_are_anded(client):
+    "Several positional queries are combined with logical AND."
+    results = client.search_recursive(Key("sample_id") == "abc123", Key("depth") == 3)
+    assert set(results.keys()) == {("nested", "images", "sample_042")}
+
+    results = client.search_recursive(Key("sample_id") == "abc123", Key("depth") < 3)
+    assert set(results.keys()) == {
+        ("top_level_match",),
+        ("other_branch", "sample_099"),
+    }
+
+
+def test_search_recursive_same_key_range(client):
+    "Two queries on the same key are both applied, giving a range."
+    results = client.search_recursive(Key("depth") > 1, Key("depth") < 3)
+    assert set(results.keys()) == {
+        ("nested", "no_match"),
+        ("other_branch", "sample_099"),
+    }
+
+
+def test_search_recursive_multiple_queries_with_max_depth(client):
+    "max_depth is keyword-only and composes with multiple queries."
+    results = client.search_recursive(
+        Key("sample_id") == "abc123", Key("depth") < 3, max_depth=1
+    )
+    assert set(results.keys()) == {("top_level_match",)}
+
+
+def test_search_recursive_requires_query(client):
+    "Calling with no queries is an error rather than an unfiltered walk."
+    with pytest.raises(TypeError):
+        client.search_recursive()
+
+
+def test_search_recursive_multiple_queries_http_params(client):
+    "Every query is sent as its own filter parameter."
+    results = client.search_recursive(Key("sample_id") == "abc123", Key("depth") == 3)
+    with record_history() as history:
+        len(results)
+    assert len(history.requests) == 1
+    params = history.requests[0].url.params
+    assert sorted(params.get_list("filter[eq][condition][key]")) == [
+        "depth",
+        "sample_id",
+    ]
+
+
 def test_search_recursive_laziness(client):
     "Slicing .values() sends a single request with an explicit page[limit]."
     results = client.search_recursive(Key("sample_id") == "abc123")
@@ -314,6 +366,17 @@ def test_search_recursive_mounted_subtree_max_depth(mixed_client):
     # one level into the mounted catalog.
     results = mixed_client.search_recursive(Key("sample_id") == "abc123", max_depth=2)
     assert set(results.keys()) == {("map_top",), ("mounted", "top_level_match")}
+
+
+def test_search_recursive_mounted_subtree_multiple_queries(mixed_client):
+    "AND is applied to both the map-native part and the mounted catalog."
+    results = mixed_client.search_recursive(
+        Key("sample_id") == "abc123", Key("depth") < 3
+    )
+    assert set(results.keys()) == {
+        ("mounted", "top_level_match"),
+        ("mounted", "other_branch", "sample_099"),
+    }
 
 
 def test_search_recursive_mounted_path_results_parent(mixed_client):

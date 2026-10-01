@@ -575,17 +575,20 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         """
         return self.new_variation(queries=self._queries + [query])
 
-    def search_recursive(self, query, max_depth=None):
+    def search_recursive(self, *queries, max_depth=None):
         """
         Search all descendants of this Node (at any depth), not just direct children.
 
         Returns a `RecursiveSearchResults` mapping, not a `Node`: it is not
         chainable via further `.search()`/`.search_recursive()` calls,
         because matches at different depths do not share a single parent.
+        To narrow a search, pass several queries; they are combined with
+        logical AND.
 
         Parameters
         ----------
-        query : query object, e.g. from tiled.queries
+        *queries : query objects, e.g. from tiled.queries
+            At least one is required. All must match.
         max_depth : int, optional
             Only descend this many levels below this Node.
 
@@ -595,14 +598,20 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         >>> from tiled.queries import Key
         >>> results = tree.search_recursive(Key("sample_id") == "abc123")
         >>> results[("nested", "images", "sample_042")]
+
+        Logical AND of several queries:
+
+        >>> tree.search_recursive(Key("sample_id") == "abc123", Key("depth") > 1)
         """
+        if not queries:
+            raise TypeError("search_recursive() requires at least one query")
         if "search_recursive" not in self.item["links"]:
             raise NotImplementedError("This server does not support recursive search.")
         return RecursiveSearchResults(
             context=self.context,
             link=self.item["links"]["search_recursive"],
             structure_clients=self.structure_clients,
-            queries=[query],
+            queries=queries,
             max_depth=max_depth,
             include_data_sources=self._include_data_sources,
             # The server reports `ancestors` relative to the true root, like
