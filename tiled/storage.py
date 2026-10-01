@@ -247,7 +247,7 @@ class SQLStorage(Storage):
     def _connection_pool(self) -> "sqlalchemy.pool.QueuePool":
         from .server.metrics import monitor_db_pool
 
-        creator = self._adbc_connection.adbc_clone
+        creator = self._instrument_adbc_creator(self._adbc_connection.adbc_clone)
         if (self.dialect == "duckdb") or (":memory:" in self.uri):
             pool = sqlalchemy.pool.StaticPool(creator)
         else:
@@ -257,6 +257,34 @@ class SQLStorage(Storage):
             monitor_db_pool(pool, self.uri)
 
         return pool
+
+    def _instrument_adbc_creator(self, creator):
+        """Wrap the ADBC connection factory to emit OpenTelemetry spans for its queries.
+
+        The storage database is accessed via ADBC, which the asyncpg instrumentation does
+        not cover, so its queries would otherwise be invisible in traces. A no-op if tracing
+        is off or the optional dbapi instrumentation is not installed.
+        """
+        if not os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT"):
+            return creator
+        try:
+            from opentelemetry.instrumentation.dbapi import instrument_connection
+        except ImportError:
+            return creator
+
+        dialect = self.dialect
+
+        def instrumented_creator():
+            # adbc_current_catalog is the database name (e.g. "tiled_storage"),
+            # which populates db.name so the database appears as its own node.
+            return instrument_connection(
+                "tiled.storage",
+                creator(),
+                dialect,
+                connection_attributes={"database": "adbc_current_catalog"},
+            )
+
+        return instrumented_creator
 
     def connect(self) -> "adbc_driver_manager.dbapi.Connection":
         "Get a connection from the pool."
