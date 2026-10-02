@@ -19,6 +19,7 @@ from tiled.adapters.utils import (
     DataNotReadyError,
     IncompatibleShapeError,
     force_reshape,
+    grow_structure_along_leading_axis,
 )
 from tiled.client import Context, from_context, record_history
 from tiled.client.array import ArrayClient
@@ -404,6 +405,64 @@ def test_force_reshape_trims_leading_axis_when_file_ahead():
     trimmed = force_reshape(arr, (2, 3))
     assert trimmed.shape == (2, 3)
     numpy.testing.assert_array_equal(trimmed, arr[:2])
+
+
+def test_grow_structure_along_leading_axis():
+    recorded = ArrayStructure.from_array(dask.array.ones((70, 3), chunks=(10, 3)))
+    grown = grow_structure_along_leading_axis(recorded, (100, 3), 10)
+    assert grown.shape == (100, 3)
+    assert grown.chunks == ((10,) * 10, (3,))
+    assert grown.data_type == recorded.data_type
+
+
+@pytest.mark.parametrize(
+    "recorded_chunks, chunk_size, expected",
+    [
+        # Chunking customized at registration is kept, whatever the file's.
+        (((35, 35), (3,)), 10, (35, 35, 30)),
+        # A partial last chunk is filled up; earlier block boundaries are kept.
+        (((10,) * 7 + (5,), (3,)), 10, (10,) * 10),
+        # Nothing recorded to go by (empty when registered): use the file's.
+        (((0,), (3,)), 8, (8,) * 12 + (4,)),
+    ],
+)
+def test_grow_structure_keeps_block_boundaries(recorded_chunks, chunk_size, expected):
+    old_rows = sum(recorded_chunks[0])
+    recorded = ArrayStructure.from_array(
+        numpy.ones((old_rows, 3)), chunks=recorded_chunks
+    )
+    grown = grow_structure_along_leading_axis(recorded, (100, 3), chunk_size)
+    assert grown.chunks == (expected, (3,))
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [
+        (70, 3),  # unchanged
+        (60, 3),  # shrunk: not ours to fix
+        (100, 4),  # trailing dimension changed
+        (100, 3, 1),  # rank changed
+    ],
+)
+def test_grow_structure_only_for_leading_axis_growth(shape):
+    recorded = ArrayStructure.from_array(dask.array.ones((70, 3), chunks=(10, 3)))
+    assert grow_structure_along_leading_axis(recorded, shape, 10) is None
+
+
+def test_client_with_earlier_structure_reads_frames_it_expects():
+    # Data is appended between the client fetching the structure and reading.
+    # The client gets exactly the frames it expects, rather than an error.
+    data = numpy.arange(100 * 3).reshape((100, 3))
+    adapter = ArrayAdapter.from_array(data[:75], chunks=(10, 3))
+    app = build_app(MapAdapter({"growing": adapter}))
+    with Context.from_app(app) as growing_context:
+        arr = from_context(growing_context)["growing"]
+        assert arr.chunks[0] == (10,) * 7 + (5,)
+        grown = grow_structure_along_leading_axis(adapter.structure(), (100, 3), 10)
+        adapter._array, adapter._structure = data, grown
+        numpy.testing.assert_array_equal(arr.read(), data[:75])
+        numpy.testing.assert_array_equal(arr.read_block((7, 0)), data[70:75])
+        numpy.testing.assert_array_equal(arr[60:], data[60:75])
 
 
 def test_force_reshape_raises_when_structure_ahead_of_data():

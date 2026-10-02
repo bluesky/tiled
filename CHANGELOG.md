@@ -47,6 +47,14 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Fixed
 
+- HDF5 datasets registered as arrays and later appended to (e.g. by a SWMR
+  writer) are now served at their current length. Previously the catalog kept
+  advertising the shape recorded at registration, and the extra rows were
+  silently trimmed away. When a lookup finds that the dataset has grown, the
+  catalog records the new structure (keeping existing chunk boundaries) and a
+  digest of the files' mtimes and sizes, so unchanged files are only stat'd.
+- Reading an array whose leading axis grew after the client fetched its
+  structure now returns the frames the client expects instead of an error.
 - Extend to zarr routes the previous fix for reads of array data whose
   on-disk shape has diverged from the shape recorded in the catalog
   structure, which can happen while an array is being extended

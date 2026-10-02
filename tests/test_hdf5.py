@@ -865,3 +865,103 @@ def test_files_opened_and_closed(example_files_with_chunked_arrays, swmr):
 
     h5py.File(file_paths[0], "r", swmr=not swmr).close()
     h5py.File(file_paths[1], "r", swmr=not swmr).close()
+
+
+@pytest.fixture
+def appendable_catalog(tmp_path):
+    h5py = pytest.importorskip("h5py")
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    file_path = data_dir / "growing.h5"
+    with h5py.File(file_path, "w", libver="latest") as file:
+        file.create_dataset(
+            "data",
+            data=numpy.arange(70 * 3, dtype="f8").reshape((70, 3)),
+            maxshape=(None, 3),
+            chunks=(10, 3),
+        )
+    catalog = in_memory(
+        writable_storage=tmp_path / "writable", readable_storage=[data_dir]
+    )
+    with Context.from_app(build_app(catalog)) as context:
+        client = from_context(context)
+        # Registered as an array node: its shape is recorded in the catalog.
+        client.register(file_path, key="ds", parameters={"dataset": "data"})
+        yield client, file_path
+
+
+def _append_rows(file, total):
+    ds = file["data"]
+    old = ds.shape[0]
+    ds.resize((total, 3))
+    ds[old:total] = numpy.arange(old * 3, total * 3, dtype="f8").reshape((-1, 3))
+    file.flush()
+
+
+def test_registered_dataset_grows_after_append(appendable_catalog):
+    "An HDF5 dataset appended to after registration is served in full, not trimmed."
+    h5py = pytest.importorskip("h5py")
+    client, file_path = appendable_catalog
+    assert client["ds"].shape == (70, 3)
+
+    with h5py.File(file_path, "a", libver="latest") as file:
+        _append_rows(file, 100)
+
+    arr = client["ds"]
+    assert arr.shape == (100, 3)
+    assert sum(arr.chunks[0]) == 100
+    expected = numpy.arange(100 * 3, dtype="f8").reshape((100, 3))
+    numpy.testing.assert_array_equal(arr.read(), expected)
+    numpy.testing.assert_array_equal(arr[60:100], expected[60:100])
+    # The grown structure is recorded in the catalog, so listings and the data
+    # source agree with it.
+    assert dict(client.items())["ds"].shape == (100, 3)
+    assert tuple(client["ds"].data_sources()[0].structure["shape"]) == (100, 3)
+
+
+def test_client_holding_earlier_structure_after_append(appendable_catalog):
+    "A client that fetched the structure before an append still reads what it expects."
+    h5py = pytest.importorskip("h5py")
+    client, file_path = appendable_catalog
+    arr = client["ds"]
+    with h5py.File(file_path, "a", libver="latest") as file:
+        _append_rows(file, 100)
+    expected = numpy.arange(70 * 3, dtype="f8").reshape((70, 3))
+    assert client["ds"].shape == (100, 3)  # Record the growth in the catalog.
+    numpy.testing.assert_array_equal(arr.read(), expected)
+    numpy.testing.assert_array_equal(arr.read_block((6, 0)), expected[60:70])
+
+
+def test_unchanged_file_is_not_reopened(appendable_catalog, monkeypatch):
+    "Once a file's growth is recorded, lookups only stat it until it changes again."
+    h5py = pytest.importorskip("h5py")
+    from tiled.catalog import adapter as catalog_adapter
+
+    monkeypatch.setattr(catalog_adapter, "ARRAY_NOT_READY_WINDOW", 0)
+    client, file_path = appendable_catalog
+    with h5py.File(file_path, "a", libver="latest") as file:
+        _append_rows(file, 100)
+    with patch.object(
+        HDF5Adapter, "refresh_structure", wraps=HDF5Adapter.refresh_structure
+    ) as refresh:
+        assert client["ds"].shape == (100, 3)
+        assert refresh.call_count == 1
+        assert client["ds"].shape == (100, 3)
+        assert refresh.call_count == 1
+        with h5py.File(file_path, "a", libver="latest") as file:
+            _append_rows(file, 110)
+        assert client["ds"].shape == (110, 3)
+        assert refresh.call_count == 2
+
+
+def test_registered_dataset_grows_with_successive_appends(appendable_catalog):
+    "Each flush by a writer that keeps the file open is picked up, not cached away."
+    h5py = pytest.importorskip("h5py")
+    client, file_path = appendable_catalog
+    with h5py.File(file_path, "a", libver="latest") as file:
+        file.swmr_mode = True
+        for total in (80, 90, 100):
+            _append_rows(file, total)
+            arr = client["ds"]
+            assert arr.shape == (total, 3)
+            assert arr.read()[-1, -1] == total * 3 - 1

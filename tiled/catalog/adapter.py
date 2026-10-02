@@ -1,6 +1,7 @@
 import collections
 import copy
 import dataclasses
+import hashlib
 import importlib
 import itertools as it
 import logging
@@ -145,6 +146,11 @@ logger = logging.getLogger(__name__)
 # modified within this many seconds. This distinguishes an in-progress
 # streaming append from a write that was aborted and left at rest.
 ARRAY_NOT_READY_WINDOW = float(os.getenv("TILED_ARRAY_NOT_READY_WINDOW", "10.0"))
+
+# Key in DataSource.properties recording the state of the assets (a digest of
+# their mtimes and sizes) when the structure was last checked against storage.
+# See CatalogArrayAdapter.refresh_structure.
+ASSET_STAMP_PROPERTY = "asset_stamp"
 
 # When data is uploaded, how is it saved?
 # TODO: Make this configurable at Catalog construction time.
@@ -350,6 +356,8 @@ class CatalogNodeAdapter:
     query_registry = QueryTranslationRegistry()
     register_query = query_registry.register
     register_query_lazy = query_registry.register_lazy
+    # Data source with assets, if already fetched while handling this request.
+    _prefetched_data_source = None
 
     def __init__(
         self,
@@ -684,7 +692,7 @@ class CatalogNodeAdapter:
                     return adapter
             raise NoEntry(segments)
 
-        return STRUCTURES[node.structure_family](self.context, node)
+        return await adapter_for_node(self.context, node)
 
     def _ensure_uri_within_readable_storage(self, data_uri):
         """Raise if a `file://` data URI lies outside every readable storage area.
@@ -708,7 +716,11 @@ class CatalogNodeAdapter:
         )
 
     async def get_adapter(self):
-        (data_source,) = await self.data_sources(include_assets=True)
+        if self._prefetched_data_source is not None:
+            data_source = self._prefetched_data_source
+            self._prefetched_data_source = None
+        else:
+            (data_source,) = await self.data_sources(include_assets=True)
         try:
             adapter_cls = self.context.adapters_by_mimetype[data_source.mimetype]
         except KeyError:
@@ -2023,6 +2035,113 @@ class CatalogContainerAdapter(CatalogNodeAdapter):
 
 
 class CatalogArrayAdapter(CatalogNodeAdapter):
+    async def refresh_structure(self) -> None:
+        """Bring the recorded structure up to date with data appended in storage.
+
+        Applies to adapters that implement `refresh_structure(data_source,
+        **parameters)` (e.g. HDF5, whose datasets are commonly extended in place
+        by SWMR writers). Otherwise the catalog keeps advertising the shape
+        captured at registration, and `force_reshape` trims the new frames away.
+
+        The backing files are only stat'd, unless they changed since the last
+        check (per a digest kept in the data source properties) or were modified
+        within `ARRAY_NOT_READY_WINDOW`, because mtimes can be too coarse to tell
+        consecutive appends apart. A grown structure is written to the database,
+        so every code path, and every server sharing the catalog, sees it.
+        """
+        data_source_orms = self.node.data_sources or []
+        if len(data_source_orms) != 1 or data_source_orms[0].structure is None:
+            return
+        adapter_cls = self.context.adapters_by_mimetype.get(
+            data_source_orms[0].mimetype
+        )
+        refresh = getattr(adapter_cls, "refresh_structure", None)
+        if refresh is None:
+            return
+        (data_source,) = await self.data_sources(include_assets=True)
+        self._prefetched_data_source = data_source  # Spare get_adapter a query.
+        data_uris = [asset.data_uri for asset in data_source.assets]
+        if not data_uris or any(urlparse(uri).scheme != "file" for uri in data_uris):
+            return
+        try:
+            for asset in data_source.assets:
+                if asset.parameter is not None:
+                    self._ensure_uri_within_readable_storage(asset.data_uri)
+            stamp, newest_mtime = await anyio.to_thread.run_sync(
+                _asset_stamp, data_uris
+            )
+        except (OSError, RuntimeError):
+            return  # Let the read path report missing or forbidden files.
+        recently_modified = time.time() - newest_mtime < ARRAY_NOT_READY_WINDOW
+        stamp_unchanged = (data_source.properties or {}).get(
+            ASSET_STAMP_PROPERTY
+        ) == stamp
+        if stamp_unchanged and not recently_modified:
+            return
+        try:
+            structure = await anyio.to_thread.run_sync(
+                partial(refresh, data_source, **data_source.parameters)
+            )
+        except Exception:
+            # E.g. a writer holds the file in a state that cannot be read;
+            # keep serving the recorded structure.
+            logger.debug(
+                "Could not refresh structure of node %s", self.node.id, exc_info=True
+            )
+            return
+        if structure is None and stamp_unchanged:
+            return
+        await self._record_refreshed_structure(
+            data_source_orms[0], data_source, structure, stamp
+        )
+
+    async def _record_refreshed_structure(
+        self, data_source_orm, data_source, structure, stamp
+    ):
+        "Use the refreshed structure for this request and persist it with the stamp."
+        properties = {**(data_source.properties or {}), ASSET_STAMP_PROPERTY: stamp}
+        update = {"properties": properties}
+        structure_row = None
+        if structure is not None:
+            structure_json = _prepare_structure(self.structure_family, structure)
+            structure_row = orm.Structure(
+                id=compute_structure_id(structure_json), structure=structure_json
+            )
+            update["structure"] = structure
+            data_source_orm.structure = structure_row
+            data_source_orm.structure_id = structure_row.id
+        data_source_orm.properties = properties
+        self._prefetched_data_source = data_source.model_copy(update=update)
+        try:
+            async with self.context.session() as db:
+                row = await db.get(orm.DataSource, data_source_orm.id)
+                if row is None:
+                    return
+                if structure_row is not None:
+                    current = await db.get(orm.Structure, row.structure_id)
+                    # A concurrent request may have recorded even more frames.
+                    if (current is None) or (
+                        list(current.structure["shape"][:1]) < list(structure.shape[:1])
+                    ):
+                        await db.execute(
+                            self.insert(orm.Structure)
+                            .values(
+                                id=structure_row.id, structure=structure_row.structure
+                            )
+                            .on_conflict_do_nothing(index_elements=["id"])
+                        )
+                        row.structure = await db.get(orm.Structure, structure_row.id)
+                        row.structure_id = structure_row.id
+                row.properties = properties
+                await db.commit()
+        except Exception:
+            # E.g. a read-only database; this request still serves the new shape.
+            logger.warning(
+                "Could not record refreshed structure of node %s",
+                self.node.id,
+                exc_info=True,
+            )
+
     async def _assets_recently_modified(self) -> Optional[bool]:
         """Report whether a backing asset was modified within the freshness window.
 
@@ -2469,6 +2588,17 @@ def _get_value(value, type):
     # Study https://gist.github.com/brthor/e3d23ae549ee53cdea56d72d39ad1288
     # which may or may not be relevant anymore.
     return getattr(value, _TYPE_CONVERSION_MAP[type])()
+
+
+def _asset_stamp(data_uris):
+    "Return a digest of the mtimes and sizes of local files, and the newest mtime."
+    digest = hashlib.sha256()
+    newest_mtime = 0.0
+    for data_uri in sorted(data_uris):
+        stat = path_from_uri(data_uri).stat()
+        digest.update(f"{data_uri}\0{stat.st_mtime_ns}\0{stat.st_size}\0".encode())
+        newest_mtime = max(newest_mtime, stat.st_mtime)
+    return digest.hexdigest()[:32], newest_mtime
 
 
 def _prepare_structure(structure_family, structure):
@@ -2981,6 +3111,14 @@ STRUCTURES = {
     StructureFamily.sparse: CatalogSparseAdapter,
     StructureFamily.table: CatalogTableAdapter,
 }
+
+
+async def adapter_for_node(context, node):
+    "Construct the catalog adapter for a node, with its structure up to date with storage."
+    adapter = STRUCTURES[node.structure_family](context, node)
+    if isinstance(adapter, CatalogArrayAdapter):
+        await adapter.refresh_structure()
+    return adapter
 
 
 class DatabaseInitializationError(Exception):
