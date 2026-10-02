@@ -14,6 +14,7 @@ from starlette.status import HTTP_415_UNSUPPORTED_MEDIA_TYPE
 from tiled.adapters.hdf5 import HDF5Adapter
 from tiled.adapters.tiff import TiffAdapter
 from tiled.adapters.utils import init_adapter_from_catalog
+from tiled.adapters.zarr import ZARR_LIB_V2
 from tiled.catalog import in_memory
 from tiled.client import Context, from_context
 from tiled.client.register import (
@@ -369,6 +370,48 @@ async def test_zarr_directory(tmpdir, register_parent):
         assert list(client) == ["test"]
         assert client["test"].structure_family == "array"
         assert numpy.array_equal(client["test"][:], zarr_data)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "zarr_format, dimension_names, attributes, expected",
+    [
+        (3, ["y", "x"], {}, ("y", "x")),
+        (3, ["y", None], {}, None),
+        (2, None, {"_ARRAY_DIMENSIONS": ["y", "x"]}, ("y", "x")),
+        (2, None, {}, None),
+    ],
+    ids=["v3-named", "v3-partly-named", "v2-xarray-attribute", "v2-unnamed"],
+)
+async def test_zarr_dimension_names(
+    tmpdir, zarr_format, dimension_names, attributes, expected
+):
+    if ZARR_LIB_V2 and zarr_format == 3:
+        pytest.skip("Zarr v3 format needs zarr-python 3")
+    kwargs = {"dimension_names": dimension_names} if dimension_names else {}
+    # The same array as a group member, and as a store of its own.
+    group = zarr.open_group(
+        Path(tmpdir, "grouped.zarr"), mode="w", zarr_format=zarr_format
+    )
+    single = zarr.open_array(
+        Path(tmpdir, "single.zarr"),
+        mode="w",
+        shape=(2, 3),
+        dtype="i4",
+        zarr_format=zarr_format,
+        **kwargs,
+    )
+    member = group.create_array("image", shape=(2, 3), dtype="i4", **kwargs)
+    for array in (single, member):
+        array.attrs.update(attributes)
+
+    catalog = in_memory(writable_storage=str(tmpdir))
+    with Context.from_app(build_app(catalog)) as context:
+        client = from_context(context)
+        await register(client, tmpdir)
+
+        assert client["single"].structure().dims == expected
+        assert client["grouped"]["image"].structure().dims == expected
 
 
 def test_unknown_mimetype(tmpdir):
