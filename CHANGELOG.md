@@ -66,6 +66,8 @@ Write the date in place of the "Unreleased" in the case a new version is release
   on-disk shape has diverged from the shape recorded in the catalog
   structure, which can happen while an array is being extended
   (e.g. streaming appends).
+- `distinct` on a catalog node counted nodes across the whole catalog instead of
+  only the node's children. It is now scoped to the requested node.
 
 ## v0.2.18 (2026-09-02)
 

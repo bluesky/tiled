@@ -1027,6 +1027,10 @@ class CatalogNodeAdapter:
     def sort(self, sorting):
         return self.new_variation(sorting=sorting)
 
+    def _scoped(self, statement):
+        "Restrict a `SELECT ... FROM nodes` to the nodes in scope that match the conditions."
+        return self.apply_conditions(self._scope_statement(statement))
+
     async def get_distinct(self, metadata, structure_families, specs, counts):
         if self.node.data_sources:
             return (await self.get_adapter()).get_disinct(
@@ -1045,9 +1049,7 @@ class CatalogNodeAdapter:
                         columns = (clause, func.count(clause))
                     else:
                         columns = (clause,)
-                    statement = select(*columns).group_by(clause)
-                    for condition in self.conditions:
-                        statement = statement.filter(condition)
+                    statement = self._scoped(select(*columns)).group_by(clause)
                     results = (await db.execute(statement)).all()
                     data["metadata"][key] = format_distinct_result(results, counts)
 
@@ -1059,9 +1061,9 @@ class CatalogNodeAdapter:
                     )
                 else:
                     columns = (orm.Node.structure_family,)
-                statement = select(*columns).group_by(orm.Node.structure_family)
-                for condition in self.conditions:
-                    statement = statement.filter(condition)
+                statement = self._scoped(select(*columns)).group_by(
+                    orm.Node.structure_family
+                )
                 results = (await db.execute(statement)).all()
 
                 data["structure_families"] = format_distinct_result(results, counts)
@@ -1071,9 +1073,7 @@ class CatalogNodeAdapter:
                     columns = (orm.Node.specs, func.count(orm.Node.specs))
                 else:
                     columns = (orm.Node.specs,)
-                statement = select(*columns).group_by(orm.Node.specs)
-                for condition in self.conditions:
-                    statement = statement.filter(condition)
+                statement = self._scoped(select(*columns)).group_by(orm.Node.specs)
                 results = (await db.execute(statement)).all()
 
                 data["specs"] = format_distinct_result(results, counts)
