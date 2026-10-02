@@ -12,7 +12,7 @@ implementing the same duck-typed paging protocol as `CatalogNodeAdapter`
 (see `tiled.server.core.construct_entries_response`).
 """
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
 
 from ..structures.core import Spec, StructureFamily
 from ..type_aliases import JSON
@@ -73,6 +73,14 @@ class MergedDeepSearchAdapter:
             (prefix, subtree.search(query)) for prefix, subtree in self._mounts
         ]
         return self.new_variation(flat=dict(local.items()), mounts=new_mounts)
+
+    async def map_mounts(
+        self, fn: Callable[[Any], Awaitable[Any]]
+    ) -> "MergedDeepSearchAdapter":
+        "Apply an async function (e.g. access filtering) to every mounted subtree."
+        return self.new_variation(
+            mounts=[(prefix, await fn(subtree)) for prefix, subtree in self._mounts]
+        )
 
     async def _mount_len(self, index: int, subtree: Any) -> int:
         # Cached: this adapter is immutable, and a COUNT per page is expensive.

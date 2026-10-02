@@ -32,9 +32,10 @@ Write the date in place of the "Unreleased" in the case a new version is release
   mounted at a sub-path, e.g. via `trees` configuration. Results are in default
   (database) order; sorting is not supported. Looking up a single result with
   `results[key]` scans the results and is linear in their number.
-  Limitation: deep search has not yet been validated against access policies,
-  and it does not check that the containers above a match are visible to the
-  requesting user. Do not rely on it for access-controlled data yet. See
+  Access policy is applied to every container between the search root and a
+  match, as path traversal does for other routes, so a node is not returned
+  (and its container's name not revealed) if a container above it is not
+  visible to the requesting user. See
   [#1368](https://github.com/bluesky/tiled/issues/1368).
 
 ### Changed

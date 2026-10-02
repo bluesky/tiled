@@ -1503,6 +1503,39 @@ def test_search_deep_user_query_does_not_gate_ancestors(
     assert _deep_keys(sue_client["baz"], marker) == {("ds_ctr", "ds_x")}
 
 
+def test_search_deep_from_root_applies_policy_to_mounted_catalogs(
+    access_control_test_context_factory,
+):
+    """
+    The root is a MapAdapter with catalogs mounted beneath it; deep search
+    reaches them by walking rather than through `get_entry`, so the policy
+    must still be applied to each mount.
+    """
+    alice_client = access_control_test_context_factory("alice", "alice")
+    sue_client = access_control_test_context_factory("sue", "sue")
+    marker = "mounted"
+    meta = {"deep_search_marker": marker}
+
+    # Both leaves are tagged for sue; only `baz` is a mount she may enter.
+    alice_client["foo"].write_array(
+        arr, key="ds_foo_leaf", access_tags=["physicists_tag"], metadata=meta
+    )
+    alice_client["baz"].write_array(
+        arr, key="ds_baz_leaf", access_tags=["physicists_tag"], metadata=meta
+    )
+
+    assert _deep_keys(alice_client, marker) == {
+        ("foo", "ds_foo_leaf"),
+        ("baz", "ds_baz_leaf"),
+    }
+    assert _deep_keys(sue_client, marker) == {("baz", "ds_baz_leaf")}
+
+    content = _deep_search_http(sue_client, marker)
+    assert content["meta"]["count"] == 1
+    for item in content["data"]:
+        assert "foo" not in item["attributes"]["ancestors"]
+
+
 def test_node_export_access_control(
     access_control_test_context_factory, buffer_factory
 ):
