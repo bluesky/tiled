@@ -126,6 +126,23 @@ T = TypeVar("T")
 ARRAY_RETRY_AFTER_SECONDS = int(os.getenv("TILED_ARRAY_RETRY_AFTER", "1"))
 
 
+def _grown_along_leading_axis(expected_shape, shape):
+    """Has the array only grown along its leading axis since the client saw its structure?
+
+    This happens when data is appended between a client fetching the structure
+    and reading the data. The client then gets the frames it expects: the
+    leading-axis chunk boundaries are kept when an array grows, so these are the
+    same frames as before.
+    """
+    return (
+        expected_shape is not None
+        and len(shape) > 0
+        and len(expected_shape) == len(shape)
+        and tuple(expected_shape[1:]) == tuple(shape[1:])
+        and expected_shape[0] < shape[0]
+    )
+
+
 def _patch_route_signature(
     query_registry: QueryRegistry,
 ) -> Callable[[Callable[..., T]], Callable[..., T]]:
@@ -611,7 +628,11 @@ def get_router(
 
         # Check if resulting shape matches expected and raise before even loading the data
         resulting_shape = slice.shape_after_slice(block_shape)
-        if (expected_shape is not None) and (expected_shape != resulting_shape):
+        if (
+            (expected_shape is not None)
+            and (expected_shape != resulting_shape)
+            and not _grown_along_leading_axis(expected_shape, resulting_shape)
+        ):
             raise HTTPException(
                 status_code=HTTP_422_UNPROCESSABLE_CONTENT,
                 detail=(
@@ -643,6 +664,8 @@ def get_router(
                 raise HTTPException(
                     status_code=HTTP_422_UNPROCESSABLE_CONTENT, detail=str(err)
                 )
+            if _grown_along_leading_axis(expected_shape, array.shape):
+                array = array[: expected_shape[0]]
             # Something is wrong with the shape of the data vs the value in the structure
             if (expected_shape is not None) and (expected_shape != array.shape):
                 raise HTTPException(
@@ -734,6 +757,8 @@ def get_router(
             raise HTTPException(
                 status_code=HTTP_422_UNPROCESSABLE_CONTENT, detail=str(err)
             )
+        if _grown_along_leading_axis(expected_shape, array.shape):
+            array = array[: expected_shape[0]]
         if (expected_shape is not None) and (expected_shape != array.shape):
             raise HTTPException(
                 status_code=HTTP_500_INTERNAL_SERVER_ERROR,

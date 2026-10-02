@@ -29,7 +29,7 @@ from ..structures.data_source import DataSource
 from ..type_aliases import JSON
 from ..utils import BrokenLink, Sentinel, node_repr, path_from_uri
 from .array import ArrayAdapter
-from .utils import split_chunks
+from .utils import grow_structure_along_leading_axis, split_chunks
 
 SWMR_DEFAULT = bool(int(os.getenv("TILED_HDF5_SWMR_DEFAULT", "0")))
 INLINED_DEPTH = int(os.getenv("TILED_HDF5_INLINED_CONTENTS_MAX_DEPTH", "7"))
@@ -363,6 +363,56 @@ class HDF5ArrayAdapter(ArrayAdapter):
         )
 
     @classmethod
+    def refresh_structure(
+        cls,
+        data_source: DataSource[ArrayStructure],
+        /,
+        dataset: Optional[str] = None,
+        slice: Optional[Union[str, NDSlice]] = None,
+        squeeze: Optional[bool] = False,
+        swmr: bool = SWMR_DEFAULT,
+        libver: str = "latest",
+        locking: Optional[Union[bool, str]] = None,
+    ) -> Optional[ArrayStructure]:
+        """Return the catalog structure grown to the dataset's current length, if it has grown
+
+        HDF5 datasets with an unlimited leading dimension are commonly appended to
+        (e.g. by a SWMR writer) after they are registered. Returns `None` if the
+        dataset has not grown along its leading axis since `data_source.structure`
+        was recorded. Only the dataset shapes are read, not the data.
+        """
+        assets = data_source.assets
+        data_uris = [
+            ast.data_uri for ast in assets if ast.parameter == "data_uris"
+        ] or [assets[0].data_uri]
+        shapes, leading_chunks = [], []
+        for uri in data_uris:
+            with h5open(
+                path_from_uri(uri), dataset, swmr=swmr, libver=libver, locking=locking
+            ) as ds:
+                if ds.dtype == numpy.dtype("O") or not ds.shape:
+                    # Object-dtype data is repackaged when read; scalars do not grow.
+                    return None
+                shapes.append(ds.shape)
+                leading_chunks.append((ds.chunks or ds.shape)[0])
+        shape = (sum(shp[0] for shp in shapes), *shapes[0][1:])
+        if slice or squeeze:
+            # Apply them to a zero-size placeholder of the same shape.
+            placeholder = numpy.broadcast_to(numpy.empty((), dtype="u1"), shape)
+            if slice:
+                if isinstance(slice, str):
+                    slice = NDSlice.from_numpy_str(slice)
+                placeholder = placeholder[slice]
+            if squeeze:
+                placeholder = placeholder.squeeze()
+            shape = placeholder.shape
+        return grow_structure_along_leading_axis(
+            data_source.structure,
+            shape,
+            max(leading_chunks[-1], MIN_CHUNK_SIZE),
+        )
+
+    @classmethod
     def from_uris(
         cls,
         *data_uris: str,
@@ -514,6 +564,26 @@ class HDF5Adapter(
             swmr=swmr,
             libver=libver,
             locking=locking,
+        )
+
+    @classmethod
+    def refresh_structure(
+        cls,
+        data_source: DataSource[Union[ArrayStructure, None]],
+        /,
+        dataset: Union[str, list[str]] = "/",
+        **kwargs: Any,
+    ) -> Optional[ArrayStructure]:
+        """Return the current structure of an HDF5 dataset that has grown since registration
+
+        See `HDF5ArrayAdapter.refresh_structure`. Returns `None` for groups.
+        """
+        if data_source.structure_family != StructureFamily.array:
+            return None
+        if not isinstance(dataset, str):
+            dataset = "/".join(dataset)
+        return HDF5ArrayAdapter.refresh_structure(
+            data_source, dataset=dataset, **kwargs  # type: ignore
         )
 
     @classmethod

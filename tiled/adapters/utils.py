@@ -1,3 +1,4 @@
+import dataclasses
 import math
 from collections import defaultdict
 from typing import Any, Optional, Tuple, Union
@@ -7,6 +8,7 @@ import numpy as np
 
 from tiled.adapters.core import A, S
 
+from ..structures.array import ArrayStructure
 from ..structures.data_source import DataSource
 
 # for back-compat
@@ -158,6 +160,58 @@ def force_reshape(
     # trailing dimensions disagree, or the total sizes are incompatible).
     raise IncompatibleShapeError(
         f"Can not reshape {arr.shape} array data to {desired_shape}"
+    )
+
+
+def grow_structure_along_leading_axis(
+    structure: ArrayStructure,
+    shape: Tuple[int, ...],
+    chunk_size: int,
+) -> Optional[ArrayStructure]:
+    """Return `structure` extended to `shape` if the data has grown along the leading axis.
+
+    This is the counterpart of the trimming done by `force_reshape`: when a
+    file is appended to after its structure was recorded in the catalog, the
+    catalog advertises (and `force_reshape` serves) only the frames that
+    existed at registration time. Adapters that can cheaply read the current
+    shape from storage use this to advertise the frames that have arrived since.
+
+    The recorded chunk boundaries are kept, so a block index means the same
+    rows before and after growth: only a partial last chunk is filled up, and
+    new chunks of the recorded chunk size are appended.
+
+    Returns `None` if the data has not grown, or if it differs in any way
+    other than a longer leading axis (rank, trailing dimensions), in which case
+    the recorded structure should be left alone.
+
+    Parameters
+    ----------
+    structure : ArrayStructure
+        The structure recorded in the catalog.
+    shape : tuple
+        The current shape of the data in storage.
+    chunk_size : int
+        Chunk size along the leading axis to use if none was recorded
+        (e.g. the dataset was empty when it was registered).
+    """
+    shape = tuple(shape)
+    old_shape = tuple(structure.shape)
+    if (
+        len(shape) == 0
+        or len(shape) != len(old_shape)
+        or shape[1:] != old_shape[1:]
+        or shape[0] <= old_shape[0]
+    ):
+        return None
+    kept = tuple(c for c in structure.chunks[0] if c)
+    step = max(kept, default=max(chunk_size, 1))
+    if kept and kept[-1] < step:
+        kept = kept[:-1]  # Fill up the partial last chunk.
+    leading_chunks = kept + split_chunks(shape[0] - sum(kept), step)
+    return dataclasses.replace(
+        structure,
+        shape=shape,
+        chunks=(leading_chunks, *structure.chunks[1:]),
     )
 
 
