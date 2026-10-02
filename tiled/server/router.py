@@ -435,6 +435,7 @@ def get_router(
         fields: Optional[List[schemas.EntryFields]] = Query(list(schemas.EntryFields)),
         select_metadata: Optional[str] = Query(None),
         page: PaginationParams = Depends(),
+        sort: Optional[List[tuple[str, Literal[1, -1]]]] = Depends(sorting_param),
         max_depth: Optional[int] = Query(
             None,
             ge=1,
@@ -469,6 +470,11 @@ def get_router(
             {StructureFamily.container},
             getattr(request.app.state, "access_policy", None),
         )
+        if sort:
+            raise HTTPException(
+                status_code=HTTP_400_BAD_REQUEST,
+                detail="Sorting is not supported for deep search.",
+            )
         if not hasattr(entry, "search_deep"):
             raise HTTPException(
                 status_code=HTTP_400_BAD_REQUEST,

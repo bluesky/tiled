@@ -87,8 +87,10 @@ class MergedDeepSearchAdapter:
         if index not in self._mount_lens:
             if hasattr(subtree, "exact_len"):
                 self._mount_lens[index] = int(await subtree.exact_len())
-            else:
+            elif hasattr(subtree, "__len__"):
                 self._mount_lens[index] = len(subtree)
+            else:
+                self._mount_lens[index] = len(await self._mount_keys(subtree, 0, None))
         return self._mount_lens[index]
 
     async def _mount_keys(

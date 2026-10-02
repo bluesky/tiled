@@ -447,6 +447,17 @@ async def test_search_deep_max_depth_bounds(client):
         assert response.status_code == expected_status, max_depth
 
 
+@pytest.mark.asyncio(loop_scope="module")
+async def test_search_deep_sort_param_is_a_400(client):
+    "Passing a sort parameter to /search-deep returns 400."
+    link = client.item["links"]["search_deep"]
+    response = client.context.http_client.get(
+        link, params={**_SAMPLE_ID_PARAMS, "sort": "sample_id"}
+    )
+    assert response.status_code == 400
+    assert "Sorting is not supported" in response.json()["detail"]
+
+
 def test_search_deep_unsupported_server_link_is_not_implemented(client, monkeypatch):
     "A server that does not advertise the link gives a clear client-side error."
     nested = client["nested"]

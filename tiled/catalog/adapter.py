@@ -373,8 +373,9 @@ class CatalogNodeAdapter:
             self.default_sorting_direction,
         ) = construct_order_by_clauses(self.sorting)
         self.conditions = conditions or []
-        # (AccessTagsFilter, compiled clause) pairs. Each clause is also in
-        # `conditions`; deep search needs the query to apply it along the path.
+        # (AccessTagsFilter, compiled clause) pairs kept separate from
+        # `conditions`. In non-deep mode `apply_conditions` appends each clause;
+        # in deep mode `_scope_statement` applies the query along the path.
         self.access_filters = access_filters or []
         self.queries = queries or []
         # When True, listing/counting methods below scope to ALL descendants
@@ -474,18 +475,13 @@ class CatalogNodeAdapter:
         return f"<{type(self).__name__} {self.key}>"
 
     async def __aiter__(self):
-        statement = self._scope_statement(select(orm.Node.key))
-        for condition in self.conditions:
-            statement = statement.filter(condition)
+        statement = self._scoped(select(orm.Node.key, orm.Node.id))
         async with self.context.session() as db:
-            return (
-                (await db.execute(statement.order_by(*self.order_by_clauses)))
-                .scalars()
-                .all()
-            )
-        statement = select(orm.Node.key).filter(orm.Node.parent == self.node.id)
-        async with self.context.session() as db:
-            return (await db.execute(statement)).scalar().all()
+            rows = (await db.execute(statement.order_by(*self.order_by_clauses))).all()
+        if self.recursive:
+            relative_keys = await self.relative_keys_for_ids([row[1] for row in rows])
+            return [relative_keys[row[1]] for row in rows]
+        return [row[0] for row in rows]
 
     async def data_sources(self, include_assets: bool = False):
         """Return this node's data source(s) as pydantic `DataSource` objects.
@@ -549,12 +545,9 @@ class CatalogNodeAdapter:
         return None
 
     def apply_conditions(self, statement):
-        conditions = self.conditions
-        if self.recursive and self.access_filters:
-            # Access clauses are pinned to this node's direct children; in deep
-            # mode `_scope_statement` applies them to every node on the path.
-            access_ids = {id(clause) for _, clause in self.access_filters}
-            conditions = [c for c in conditions if id(c) not in access_ids]
+        conditions = list(self.conditions)
+        if not self.recursive:
+            conditions.extend(clause for _, clause in self.access_filters)
         # IF this is a sqlite database and we are doing a full text MATCH
         # query, we need a JOIN with the FTS5 virtual table.
         if (self.context.engine.dialect.name == "sqlite") and any(
@@ -658,7 +651,7 @@ class CatalogNodeAdapter:
         # TODO: Accept filter for predicate-pushdown.
         if not segments:
             return self
-        if self.conditions and len(segments) > 1:
+        if (self.conditions or self.access_filters) and len(segments) > 1:
             # There are some conditions (i.e. WHERE clauses) applied to
             # this node, either via user search queries or via access
             # control policy queries. Look up first the _direct_ child of this
@@ -2741,7 +2734,6 @@ def _access_tags_predicate(query, node, parent):
 def access_tags_filter(query, tree):
     condition = _access_tags_predicate(query, orm.Node, tree.node.id)
     return tree.new_variation(
-        conditions=tree.conditions + [condition],
         access_filters=tree.access_filters + [(query, condition)],
     )
 

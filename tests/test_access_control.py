@@ -1450,9 +1450,35 @@ def test_search_deep_pagination_skips_leaf_under_inaccessible_container(
     )
     top.write_array(arr, key="ds_p2", access_tags=["physicists_tag"], metadata=meta)
 
-    results = sue_client["baz"].search_deep(Key("deep_search_marker") == marker)
+    sue_baz = sue_client["baz"]
+    results = sue_baz.search_deep(Key("deep_search_marker") == marker)
+    assert len(results) == 2
     keys = [key for key, _ in results.items().page_size(1)]
     assert sorted(keys) == [("ds_p1",), ("ds_p2",)]
+
+    # Page-by-page walk via raw HTTP links: exactly 2 pages with page[limit]=1,
+    # and no page contains the hidden item.
+    link = sue_baz.item["links"]["search_deep"]
+    http = sue_baz.context.http_client
+    pages = 0
+    next_url = link
+    params = {
+        "filter[eq][condition][key]": "deep_search_marker",
+        "filter[eq][condition][value]": json.dumps(marker),
+        "page[limit]": 1,
+    }
+    seen_ids = []
+    while next_url:
+        resp = http.get(next_url, params=params if next_url == link else None)
+        assert resp.status_code == 200
+        data = resp.json()
+        for item in data["data"]:
+            seen_ids.append(item["id"])
+            assert "ds_p_hidden" not in item["attributes"]["ancestors"]
+        pages += 1
+        next_url = data["links"].get("next")
+    assert sorted(seen_ids) == ["ds_p1", "ds_p2"]
+    assert pages == 2
 
 
 def test_search_deep_hides_leaf_under_inaccessible_nested_container(
@@ -1534,6 +1560,35 @@ def test_search_deep_from_root_applies_policy_to_mounted_catalogs(
     assert content["meta"]["count"] == 1
     for item in content["data"]:
         assert "foo" not in item["attributes"]["ancestors"]
+
+
+def test_search_deep_anonymous_sees_only_public_data(
+    access_control_test_context_factory,
+):
+    """
+    An unauthenticated (anonymous) client deep-searching from the root must see
+    only nodes that are under public containers AND tagged public themselves.
+    """
+    admin_client = access_control_test_context_factory("admin", "admin")
+    marker = "anon"
+    meta = {"deep_search_marker": marker}
+
+    # Public mount `qux`: one public leaf, one private leaf.
+    admin_client["qux"].write_array(
+        arr, key="ds_pub_leaf", access_tags=["public"], metadata=meta
+    )
+    admin_client["qux"].write_array(
+        arr, key="ds_priv_leaf", access_tags=["alice_tag"], metadata=meta
+    )
+    # Private mount `foo`: one public-tagged leaf inside a private mount.
+    admin_client["foo"].write_array(
+        arr, key="ds_foo_pub", access_tags=["public"], metadata=meta
+    )
+
+    anon_client = access_control_test_context_factory("zoe", "zoe")
+    anon_client.logout()
+
+    assert _deep_keys(anon_client, marker) == {("qux", "ds_pub_leaf")}
 
 
 def test_node_export_access_control(
