@@ -361,7 +361,7 @@ class CatalogNodeAdapter:
         sorting: Optional[list[tuple[str, Literal[1, -1]]]] = None,
         mount_path: Optional[list[str]] = None,
         create_mount_nodes_if_not_exist: bool = False,
-        recursive: bool = False,
+        deep: bool = False,
         max_depth: Optional[int] = None,
         access_filters=None,
     ):
@@ -380,7 +380,7 @@ class CatalogNodeAdapter:
         self.queries = queries or []
         # When True, listing/counting methods below scope to ALL descendants
         # (via nodes_closure) rather than just direct children. See search_deep().
-        self.recursive = recursive
+        self.deep = deep
         self.max_depth = max_depth
         self.structure_family = node.structure_family
         self.specs = [Spec(**spec) for spec in node.specs]
@@ -478,7 +478,7 @@ class CatalogNodeAdapter:
         statement = self._scoped(select(orm.Node.key, orm.Node.id))
         async with self.context.session() as db:
             rows = (await db.execute(statement.order_by(*self.order_by_clauses))).all()
-        if self.recursive:
+        if self.deep:
             relative_keys = await self.relative_keys_for_ids([row[1] for row in rows])
             return [relative_keys[row[1]] for row in rows]
         return [row[0] for row in rows]
@@ -546,7 +546,7 @@ class CatalogNodeAdapter:
 
     def apply_conditions(self, statement):
         conditions = list(self.conditions)
-        if not self.recursive:
+        if not self.deep:
             conditions.extend(clause for _, clause in self.access_filters)
         # IF this is a sqlite database and we are doing a full text MATCH
         # query, we need a JOIN with the FTS5 virtual table.
@@ -577,7 +577,7 @@ class CatalogNodeAdapter:
             return list(result.scalars().all())
 
     async def exact_len(self):
-        "Get the exact number of child (or, if recursive, descendant) nodes."
+        "Get the exact number of child (or, in deep mode, descendant) nodes."
         statement = self._scope_statement(select(func.count()).select_from(orm.Node))
         statement = self.apply_conditions(statement)
 
@@ -594,9 +594,9 @@ class CatalogNodeAdapter:
         If the database is not PostgreSQL, or if the statistics can not be
         obtained, return None.
         """
-        if self.recursive:
+        if self.deep:
             # pg_stats counts direct children by `parent`, which cannot
-            # approximate a recursive descendant count. Fall back to exact_len.
+            # approximate a descendant count. Fall back to exact_len.
             return None
 
         if self.context.engine.dialect.name == "postgresql":
@@ -887,7 +887,7 @@ class CatalogNodeAdapter:
         sorting=UNCHANGED,
         conditions=UNCHANGED,
         queries=UNCHANGED,
-        recursive=UNCHANGED,
+        deep=UNCHANGED,
         max_depth=UNCHANGED,
         access_filters=UNCHANGED,
         **kwargs,
@@ -900,8 +900,8 @@ class CatalogNodeAdapter:
             conditions = self.conditions
         if queries is UNCHANGED:
             queries = self.queries
-        if recursive is UNCHANGED:
-            recursive = self.recursive
+        if deep is UNCHANGED:
+            deep = self.deep
         if max_depth is UNCHANGED:
             max_depth = self.max_depth
         return type(self)(
@@ -910,7 +910,7 @@ class CatalogNodeAdapter:
             conditions=conditions,
             sorting=sorting,
             queries=queries,
-            recursive=recursive,
+            deep=deep,
             max_depth=max_depth,
             access_filters=access_filters,
             **kwargs,
@@ -939,20 +939,20 @@ class CatalogNodeAdapter:
             raise NotImplementedError(
                 "Deep search is not supported inside data-source-backed nodes."
             )
-        return self.new_variation(recursive=True, max_depth=max_depth)
+        return self.new_variation(deep=True, max_depth=max_depth)
 
     def _scope_statement(self, statement):
         """Restrict a `SELECT ... FROM nodes` statement to the nodes in scope.
 
-        By default (self.recursive is False), scope is this node's direct
+        By default (self.deep is False), scope is this node's direct
         children, via the adjacency-list `parent` column.
 
-        When self.recursive is True, scope is ALL descendants of this node
+        When self.deep is True, scope is ALL descendants of this node
         (any depth), found via the `nodes_closure` table, which is kept up
         to date by DB triggers (see orm.py). `self.max_depth`, if set, bounds
         how many levels below this node to include.
         """
-        if not self.recursive:
+        if not self.deep:
             return statement.filter(orm.Node.parent == self.node.id)
         statement = statement.join(
             orm.NodesClosure, orm.NodesClosure.descendant == orm.Node.id
@@ -985,8 +985,8 @@ class CatalogNodeAdapter:
         """Map each of the given (descendant) node ids to a relative key.
 
         The relative key is the "/"-joined chain of key segments from just
-        below this node (the recursive search root) down to, and including,
-        the node with the given id. Used only in recursive mode: results at
+        below this node (the deep search root) down to, and including,
+        the node with the given id. Used only in deep mode: results at
         different depths may share a local `key`, so callers use this joined
         string, rather than the bare `orm.Node.key`, as an unambiguous
         identifier.
@@ -1975,7 +1975,7 @@ class CatalogContainerAdapter(CatalogNodeAdapter):
             if self._is_default_sort:
                 next_cursor = rows[-1][1]
 
-        if self.recursive:
+        if self.deep:
             relative_keys = await self.relative_keys_for_ids([row[1] for row in rows])
             return [relative_keys[row[1]] for row in rows], next_cursor
         return [row[0] for row in rows], next_cursor
@@ -2006,7 +2006,7 @@ class CatalogContainerAdapter(CatalogNodeAdapter):
         async with self.context.session() as db:
             rows = (await db.execute(statement)).all()
 
-        if self.recursive:
+        if self.deep:
             relative_keys = await self.relative_keys_for_ids([row[1] for row in rows])
             return [relative_keys[row[1]] for row in rows]
         return [row[0] for row in rows]
@@ -2061,13 +2061,13 @@ class CatalogContainerAdapter(CatalogNodeAdapter):
 
         relative_keys = (
             await self.relative_keys_for_ids([node.id for node in nodes])
-            if self.recursive
+            if self.deep
             else {}
         )
         return (
             [
                 (
-                    relative_keys[node.id] if self.recursive else node.key,
+                    relative_keys[node.id] if self.deep else node.key,
                     STRUCTURES[node.structure_family](self.context, node),
                 )
                 for node in nodes
@@ -2102,12 +2102,12 @@ class CatalogContainerAdapter(CatalogNodeAdapter):
 
         relative_keys = (
             await self.relative_keys_for_ids([node.id for node in nodes])
-            if self.recursive
+            if self.deep
             else {}
         )
         return [
             (
-                relative_keys[node.id] if self.recursive else node.key,
+                relative_keys[node.id] if self.deep else node.key,
                 STRUCTURES[node.structure_family](self.context, node),
             )
             for node in nodes

@@ -520,7 +520,7 @@ def get_router(
                 resolve_media_type(request),
                 max_depth=None,
                 exact_count_limit=settings.exact_count_limit,
-                recursive=True,
+                deep=True,
             )
             response_model_dump = _model_dump_backcompat(request, response)
 
