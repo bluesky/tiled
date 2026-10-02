@@ -421,6 +421,136 @@ def get_router(
             )
 
     @router.get(
+        "/search-deep/{path:path}",
+        response_model=schemas.Response[
+            List[schemas.Resource[schemas.NodeAttributes, dict, dict]],
+            schemas.PaginationLinks,
+            dict,
+        ],
+    )
+    @_patch_route_signature(query_registry)
+    async def search_deep(
+        request: Request,
+        path: str,
+        fields: Optional[List[schemas.EntryFields]] = Query(list(schemas.EntryFields)),
+        select_metadata: Optional[str] = Query(None),
+        page: PaginationParams = Depends(),
+        sort: Optional[List[tuple[str, Literal[1, -1]]]] = Depends(sorting_param),
+        max_depth: Optional[int] = Query(
+            None,
+            ge=1,
+            le=64,
+            description="Maximum number of levels below `path` to search.",
+        ),
+        omit_links: bool = Query(False),
+        include_data_sources: bool = Query(False),
+        principal: Optional[Principal] = Depends(get_current_principal),
+        root_tree=Depends(get_root_tree),
+        session_state: dict = Depends(get_session_state),
+        authn_access_tags: Optional[AccessTags] = Depends(get_current_access_tags),
+        authn_scopes: Scopes = Depends(get_current_scopes),
+        settings: Settings = Depends(get_settings),
+        _=Security(check_scopes, scopes=["read:metadata"]),
+        **filters,
+    ):
+        """
+        Search all descendants of this node (at any depth), not just direct children.
+
+        See https://github.com/bluesky/tiled/issues/1368
+        """
+        entry = await get_entry(
+            path,
+            ["read:metadata"],
+            principal,
+            authn_access_tags,
+            authn_scopes,
+            root_tree,
+            session_state,
+            request.state.metrics,
+            {StructureFamily.container},
+            getattr(request.app.state, "access_policy", None),
+        )
+        if sort:
+            raise HTTPException(
+                status_code=HTTP_400_BAD_REQUEST,
+                detail="Sorting is not supported for deep search.",
+            )
+        if not hasattr(entry, "search_deep"):
+            raise HTTPException(
+                status_code=HTTP_400_BAD_REQUEST,
+                detail="This Tree does not support deep search.",
+            )
+        try:
+            entry = entry.search_deep(max_depth=max_depth)
+        except (NotImplementedError, ValueError) as err:
+            raise HTTPException(status_code=HTTP_400_BAD_REQUEST, detail=str(err))
+        if hasattr(entry, "map_mounts"):
+            # Mounted catalogs are reached by walking, not by `get_entry`, so
+            # the access policy has not been applied to them yet.
+            entry = await entry.map_mounts(
+                partial(
+                    filter_for_access,
+                    access_policy=getattr(request.app.state, "access_policy", None),
+                    principal=principal,
+                    authn_access_tags=authn_access_tags,
+                    authn_scopes=authn_scopes,
+                    scopes=["read:metadata"],
+                    metrics=request.state.metrics,
+                )
+            )
+        request.state.endpoint = "search"
+        try:
+            (
+                response,
+                metadata_stale_at,
+                must_revalidate,
+            ) = await construct_entries_response(
+                query_registry,
+                entry,
+                "/search-deep",
+                path,
+                page,
+                fields,
+                select_metadata,
+                omit_links,
+                include_data_sources,
+                filters,
+                None,  # Sorting is not yet supported for deep search.
+                get_base_url(request),
+                resolve_media_type(request),
+                max_depth=None,
+                exact_count_limit=settings.exact_count_limit,
+                deep=True,
+            )
+            response_model_dump = _model_dump_backcompat(request, response)
+
+            entries_stale_at = getattr(entry, "entries_stale_at", None)
+            headers = {}
+            if (metadata_stale_at is None) or (entries_stale_at is None):
+                expires = None
+            else:
+                expires = min(metadata_stale_at, entries_stale_at)
+            if must_revalidate:
+                headers["Cache-Control"] = "must-revalidate"
+            return json_or_msgpack(
+                request,
+                response_model_dump,
+                expires=expires,
+                headers=headers,
+            )
+        except BrokenLink as err:
+            raise HTTPException(status_code=HTTP_410_GONE, detail=err.args[0])
+        except NoEntry:
+            raise HTTPException(status_code=HTTP_404_NOT_FOUND, detail="No such entry.")
+        except WrongTypeForRoute as err:
+            raise HTTPException(status_code=HTTP_404_NOT_FOUND, detail=err.args[0])
+        except JMESPathError as err:
+            raise HTTPException(
+                status_code=HTTP_400_BAD_REQUEST,
+                detail=f"Malformed 'select_metadata' parameter raised JMESPathError: {err}",
+            )
+
+    @router.get(
         "/distinct/{path:path}",
         response_model=schemas.GetDistinctResponse,
     )
