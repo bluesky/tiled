@@ -363,6 +363,7 @@ class CatalogNodeAdapter:
         create_mount_nodes_if_not_exist: bool = False,
         recursive: bool = False,
         max_depth: Optional[int] = None,
+        access_filters=None,
     ):
         self.context = context
         self.node = node
@@ -372,6 +373,9 @@ class CatalogNodeAdapter:
             self.default_sorting_direction,
         ) = construct_order_by_clauses(self.sorting)
         self.conditions = conditions or []
+        # (AccessTagsFilter, compiled clause) pairs. Each clause is also in
+        # `conditions`; deep search needs the query to apply it along the path.
+        self.access_filters = access_filters or []
         self.queries = queries or []
         # When True, listing/counting methods below scope to ALL descendants
         # (via nodes_closure) rather than just direct children. See search_deep().
@@ -545,15 +549,21 @@ class CatalogNodeAdapter:
         return None
 
     def apply_conditions(self, statement):
+        conditions = self.conditions
+        if self.recursive and self.access_filters:
+            # Access clauses are pinned to this node's direct children; in deep
+            # mode `_scope_statement` applies them to every node on the path.
+            access_ids = {id(clause) for _, clause in self.access_filters}
+            conditions = [c for c in conditions if id(c) not in access_ids]
         # IF this is a sqlite database and we are doing a full text MATCH
         # query, we need a JOIN with the FTS5 virtual table.
         if (self.context.engine.dialect.name == "sqlite") and any(
-            isinstance(condition.type, MatchType) for condition in self.conditions
+            isinstance(condition.type, MatchType) for condition in conditions
         ):
             statement = statement.join(
                 orm.metadata_fts5, orm.metadata_fts5.c.rowid == orm.Node.id
             )
-        for condition in self.conditions:
+        for condition in conditions:
             statement = statement.filter(condition)
         return statement
 
@@ -886,8 +896,11 @@ class CatalogNodeAdapter:
         queries=UNCHANGED,
         recursive=UNCHANGED,
         max_depth=UNCHANGED,
+        access_filters=UNCHANGED,
         **kwargs,
     ):
+        if access_filters is UNCHANGED:
+            access_filters = self.access_filters
         if sorting is UNCHANGED:
             sorting = self.sorting
         if conditions is UNCHANGED:
@@ -906,6 +919,7 @@ class CatalogNodeAdapter:
             queries=queries,
             recursive=recursive,
             max_depth=max_depth,
+            access_filters=access_filters,
             **kwargs,
         )
 
@@ -924,12 +938,9 @@ class CatalogNodeAdapter:
         applied ahead of them) will match against nodes at any depth below
         this one, not just direct children. See `_scope_statement`.
 
-        DECISION NEEDING REVIEW (see issue #1368): the access-policy condition
-        is evaluated only against each matched node itself, not against its
-        intermediate ancestors, so a match could be returned even if one of
-        its ancestor containers is not independently visible to the
-        principal. The stricter alternative -- requiring every ancestor on
-        the path to also satisfy the access policy -- is not implemented.
+        A node is in scope only if it and every container between this node
+        and it satisfy the access policy, matching what path traversal
+        enforces for every other route (see issue #1368).
         """
         if self.node.data_sources:
             raise NotImplementedError(
@@ -955,6 +966,26 @@ class CatalogNodeAdapter:
         ).where(orm.NodesClosure.ancestor == self.node.id, orm.NodesClosure.depth >= 1)
         if self.max_depth is not None:
             statement = statement.where(orm.NodesClosure.depth <= self.max_depth)
+        for query, _ in self.access_filters:
+            statement = statement.where(
+                _access_tags_predicate(query, orm.Node, orm.Node.parent)
+            )
+            # No container strictly between this node and the match may fail
+            # the policy: otherwise results leak the paths of hidden containers.
+            hidden = aliased(orm.Node)
+            to_match = aliased(orm.NodesClosure)
+            from_root = aliased(orm.NodesClosure)
+            hidden_ancestor = (
+                select(literal(1))
+                .select_from(to_match)
+                .join(from_root, from_root.descendant == to_match.ancestor)
+                .join(hidden, hidden.id == to_match.ancestor)
+                .where(to_match.descendant == orm.Node.id, to_match.depth >= 1)
+                .where(from_root.ancestor == self.node.id, from_root.depth >= 1)
+                .where(not_(_access_tags_predicate(query, hidden, hidden.parent)))
+                .exists()
+            )
+            statement = statement.where(not_(hidden_ancestor))
         return statement
 
     async def relative_keys_for_ids(self, ids):
@@ -2665,13 +2696,18 @@ def specs(query, tree):
     return tree.new_variation(conditions=tree.conditions + conditions)
 
 
-def access_tags_filter(query, tree):
+def _access_tags_predicate(query, node, parent):
+    """Condition: `node` carries one of the query's tags, as a child of `parent`.
+
+    `parent` is a literal id (`/search`: all candidates share one parent) or
+    `node.parent` (deep search: candidates sit at any depth).
+    """
     if not query.tags:
         # Results cannot possibly match an empty list,
         # so put a False condition in the list ensuring that
         # there are no rows returned.
-        condition = false()
-    elif query.tag_ids is not None:
+        return false()
+    if query.tag_ids is not None:
         # Fast path (used for server-side ACL filtering): the tag names have
         # already been resolved to their ``access_tags.id`` values in the
         # async layer (see ``resolve_access_tag_ids`` /
@@ -2681,31 +2717,33 @@ def access_tags_filter(query, tree):
         # and estimate this correlated subquery correctly.
         if not query.tag_ids:
             # None of the requested tag names exist; match nothing.
-            condition = false()
-        else:
-            condition = (
-                select(orm.NodeAccessTagAssociation.node_id)
-                .where(orm.NodeAccessTagAssociation.node_id == orm.Node.id)
-                .where(orm.NodeAccessTagAssociation.parent_id == tree.node.id)
-                .where(orm.NodeAccessTagAssociation.tag_id.in_(query.tag_ids))
-                .exists()
-            )
-    else:
-        # Nodes carrying at least one of the given access tags.
-        # EXISTS is used (vs IN) as it is much more preformant in SQLite,
-        # though performance in Postgres appears similar for both.
-        condition = (
+            return false()
+        return (
             select(orm.NodeAccessTagAssociation.node_id)
-            .join(
-                orm.AccessTag, orm.AccessTag.id == orm.NodeAccessTagAssociation.tag_id
-            )
-            .where(orm.NodeAccessTagAssociation.node_id == orm.Node.id)
-            .where(orm.NodeAccessTagAssociation.parent_id == tree.node.id)
-            .where(orm.AccessTag.name.in_(query.tags))
+            .where(orm.NodeAccessTagAssociation.node_id == node.id)
+            .where(orm.NodeAccessTagAssociation.parent_id == parent)
+            .where(orm.NodeAccessTagAssociation.tag_id.in_(query.tag_ids))
             .exists()
         )
+    # Nodes carrying at least one of the given access tags.
+    # EXISTS is used (vs IN) as it is much more preformant in SQLite,
+    # though performance in Postgres appears similar for both.
+    return (
+        select(orm.NodeAccessTagAssociation.node_id)
+        .join(orm.AccessTag, orm.AccessTag.id == orm.NodeAccessTagAssociation.tag_id)
+        .where(orm.NodeAccessTagAssociation.node_id == node.id)
+        .where(orm.NodeAccessTagAssociation.parent_id == parent)
+        .where(orm.AccessTag.name.in_(query.tags))
+        .exists()
+    )
 
-    return tree.new_variation(conditions=tree.conditions + [condition])
+
+def access_tags_filter(query, tree):
+    condition = _access_tags_predicate(query, orm.Node, tree.node.id)
+    return tree.new_variation(
+        conditions=tree.conditions + [condition],
+        access_filters=tree.access_filters + [(query, condition)],
+    )
 
 
 def in_or_not_in_sqlite(query, tree, method):
