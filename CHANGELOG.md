@@ -47,6 +47,8 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Fixed
 
+- Retain empty SQL storage tables while other catalog nodes still reference them,
+  and defer dropping a table until all datasets in a deleted subtree are removed.
 - Extend to zarr routes the previous fix for reads of array data whose
   on-disk shape has diverged from the shape recorded in the catalog
   structure, which can happen while an array is being extended
