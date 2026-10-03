@@ -1383,6 +1383,8 @@ class CatalogNodeAdapter:
 
             # Find storage database entries that can be deleted (without deleting the
             # entire storage DB asset)
+            remaining_data_source = aliased(orm.DataSource)
+            remaining_association = aliased(orm.DataSourceAssetAssociation)
             deleted_from_storage_stmt = (
                 select(
                     orm.Asset.id,
@@ -1390,6 +1392,20 @@ class CatalogNodeAdapter:
                     # keep only table_name and dataset_id from parameters
                     orm.DataSource.parameters["table_name"].label("table_name"),
                     orm.DataSource.parameters["dataset_id"].label("dataset_id"),
+                    exists(
+                        select(1)
+                        .select_from(remaining_association)
+                        .join(remaining_data_source)
+                        .where(
+                            remaining_association.asset_id == orm.Asset.id,
+                            remaining_data_source.parameters["table_name"].as_string()
+                            == orm.DataSource.parameters["table_name"].as_string(),
+                            remaining_data_source.node_id.notin_(
+                                select(affected_nodes_cte.c.descendant)
+                            ),
+                        )
+                        .correlate(orm.Asset, orm.DataSource)
+                    ).label("table_referenced"),
                 )
                 .select_from(orm.DataSourceAssetAssociation)
                 .join(
@@ -1517,10 +1533,25 @@ class CatalogNodeAdapter:
             if management != Management.external:
                 delete_physical_asset(data_uri, is_directory=is_directory)
         # Delete storage database entries (management == writable, always)
-        for asset_id, data_uri, table_name, dataset_id in deleted_from_storage:
-            delete_physical_asset(
-                data_uri, table_name=table_name, dataset_id=dataset_id
-            )
+        # An empty table can still be referenced by an unwritten dataset. Drop it
+        # only after deleting all affected datasets, and only if no reference remains.
+        storage_datasets = collections.defaultdict(list)
+        for (
+            asset_id,
+            data_uri,
+            table_name,
+            dataset_id,
+            referenced,
+        ) in deleted_from_storage:
+            storage_datasets[data_uri, table_name, referenced].append(dataset_id)
+        for (data_uri, table_name, referenced), dataset_ids in storage_datasets.items():
+            for index, dataset_id in enumerate(dataset_ids):
+                delete_physical_asset(
+                    data_uri,
+                    table_name=table_name,
+                    dataset_id=dataset_id,
+                    drop_empty_table=not referenced and index == len(dataset_ids) - 1,
+                )
 
         return len(set(record[0] for record in deleted_asset_records))
 
@@ -2353,7 +2384,12 @@ class CatalogTableAdapter(CatalogNodeAdapter):
 
 
 def delete_physical_asset(
-    data_uri, is_directory=False, table_name=None, dataset_id=None
+    data_uri,
+    is_directory=False,
+    table_name=None,
+    dataset_id=None,
+    *,
+    drop_empty_table=True,
 ):
     url = urlparse(data_uri)
     if url.scheme == "file":
@@ -2372,12 +2408,12 @@ def delete_physical_asset(
                     )
                 conn.commit()
 
-                # If the table is empty, we can drop it
-                with conn.cursor() as cursor:
-                    cursor.execute(f'SELECT COUNT(*) FROM "{table_name}";')
-                    if cursor.fetchone()[0] == 0:
-                        cursor.execute(f'DROP TABLE IF EXISTS "{table_name}";')
-                conn.commit()
+                if drop_empty_table:
+                    with conn.cursor() as cursor:
+                        cursor.execute(f'SELECT COUNT(*) FROM "{table_name}";')
+                        if cursor.fetchone()[0] == 0:
+                            cursor.execute(f'DROP TABLE IF EXISTS "{table_name}";')
+                    conn.commit()
 
     elif url.scheme in SUPPORTED_OBJECT_URI_SCHEMES:
         storage = cast(ObjectStorage, get_storage(data_uri))
