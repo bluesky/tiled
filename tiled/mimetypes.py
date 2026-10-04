@@ -109,5 +109,6 @@ DEFAULT_MIMETYPES_BY_FILE_EXT = {
     # on opensuse csv -> text/x-comma-separated-values
     ".csv": "text/csv",
     ".parquet": PARQUET_MIMETYPE,
+    ".arrow": APACHE_ARROW_FILE_MIME_TYPE,
     ".zarr": ZARR_MIMETYPE,
 }
