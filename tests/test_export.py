@@ -40,6 +40,9 @@ tree = MapAdapter(
         "single_row_table": DataFrameAdapter.from_pandas(
             pandas.DataFrame({"A": [1]}), npartitions=1
         ),
+        "single_row_many_columns": DataFrameAdapter.from_pandas(
+            pandas.DataFrame({f"column_{i}": [i] for i in range(100)}), npartitions=1
+        ),
         "structured_data": MapAdapter(
             {
                 "pets": ArrayAdapter.from_array(
@@ -129,9 +132,16 @@ def test_streaming_export_empty(client, buffer):
     assert buffer.read() == b""
 
 
-def test_json_sequence_single_row_uses_record_separator(client):
+@pytest.mark.parametrize(
+    "key,expected",
+    [
+        ("single_row_table", {"A": 1}),
+        ("single_row_many_columns", {f"column_{i}": i for i in range(100)}),
+    ],
+)
+def test_json_sequence_single_row_uses_record_separator(client, key, expected):
     """A one-row JSON sequence must not be mistaken for one JSON document."""
-    url = client["single_row_table"].item["links"]["partition"]
+    url = client[key].item["links"]["partition"]
     response = client.context.http_client.get(
         url,
         params={"partition": 0, "format": "application/json-seq"},
@@ -141,7 +151,8 @@ def test_json_sequence_single_row_uses_record_separator(client):
     assert response.headers["content-type"].split(";", 1)[0] == "application/json-seq"
     assert response.content.startswith(b"\x1e")
     assert response.content.endswith(b"\n")
-    assert json.loads(response.content[1:]) == {"A": 1}
+    assert response.content.count(b"\x1e") == 1
+    assert json.loads(response.content[1:]) == expected
     with pytest.raises(json.JSONDecodeError):
         json.loads(response.content)
 
