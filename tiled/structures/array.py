@@ -1,4 +1,5 @@
 import enum
+import math
 import os
 import sys
 from collections.abc import Mapping
@@ -289,4 +290,24 @@ class ArrayStructure(Structure):
             shape=shape,
             chunks=normalized_chunks,
             dims=dims,
+        )
+
+    def is_compatible(self, other: "Structure") -> bool:
+        """Whether data stored as `other` can be served using this structure.
+
+        Compatible means the two structures describe the same underlying array
+        data: the dtypes match and both cover the same total number of elements,
+        so the data can be reshaped from `other`'s shape to this one's.
+
+        The shapes themselves need not be equal -- an array may be reshaped when
+        served -- so this is a looser relation than equality. (Whether this
+        structure's own chunks tile its shape is a matter of self-consistency,
+        not of compatibility with `other`.)
+        """
+        if not isinstance(other, ArrayStructure):
+            return False
+        # Use math.prod (exact Python ints) rather than numpy.prod, which would
+        # overflow int64 for very large arrays and give a wrong comparison.
+        return self.data_type.to_numpy_dtype() == other.data_type.to_numpy_dtype() and (
+            math.prod(self.shape) == math.prod(other.shape)
         )

@@ -7,7 +7,7 @@ The are encoded into and decoded from URL query parameters.
 
 import enum
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, List, Optional
 
 from .query_registration import register
@@ -512,46 +512,52 @@ def SpecQuery(spec):
     return SpecsQuery([spec])
 
 
-@register(name="access_blob_filter")
+@register(name="access_tags_filter")
 @dataclass
-class AccessBlobFilter:
+class AccessTagsFilter:
     """
-    Perform a query against the access_blob with two conditions.
-    1. Query for a user id (i.e. username) match against the "user" field
-    2. Query for if any tag in a list of tags is present in the "tags" field
-    The values for these conditions are independent.
+    Perform a query against node access tags.
+    Match nodes that carry at least one tag in the given list of tags.
 
     Parameters
     ----------
-    user_id : str
-        e.g. "bill", "amanda"
-    tags : List[JSONSerializable]
+    tags : List[str]
         e.g. ["tag_for_bill", "amanda_only"]
 
 
     Examples
     --------
 
-    Search for user "bill", as well as tags in ["tag_for_bill", "useful_data"]
+    Search for tags in ["tag_for_bill", "useful_data"]
 
-    >>> c.search(AccessBlobFilter("bill", ["tag_for_bill", "useful_data"]))
+    >>> c.search(AccessTagsFilter(["tag_for_bill", "useful_data"]))
     """
 
-    user_id: Optional[str]
     tags: List[str]
+    # Server-internal field (NOT a query parameter, NOT sent over the wire):
+    # the tag 'id's corresponding to 'tags', resolved against the
+    # 'access_tags' table on the server side. The 'internal' metadata marks it
+    # to be skipped by the search route's query-parameter builder, and
+    # 'compare=False' keeps it out of equality. It is populated per-instance by
+    # 'tiled.server.utils.filter_for_access'. When set, the catalog query
+    # builder filters on 'tag_id' literals directly instead of joining
+    # 'access_tags' by name, so PostgreSQL can use the (parent_id, tag_id)
+    # extended statistics to estimate the ACL subquery correctly.
+    tag_ids: Optional[List[int]] = field(
+        default=None, compare=False, metadata={"internal": True}
+    )
+
+    def __post_init__(self):
+        if isinstance(self.tags, str):
+            raise TypeError("tags must be a list not a str")
+        self.tags = list(self.tags)
 
     def encode(self):
-        return {
-            "user_id": self.user_id,
-            "tags": self.tags,
-        }
+        return {"tags": json.dumps(self.tags)}
 
     @classmethod
-    def decode(cls, *, user_id, tags):
-        return cls(
-            user_id=user_id,
-            tags=tags,
-        )
+    def decode(cls, *, tags):
+        return cls(tags=json.loads(tags))
 
 
 @register(name="structure_family")
