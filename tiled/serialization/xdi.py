@@ -24,8 +24,11 @@ The MIME type is "application/x-xdi" and the file extension alias ".xdi" is regi
 
 import io
 import mimetypes
+import zipfile
 
 from ..media_type_registration import default_serialization_registry
+from ..structures.core import StructureFamily
+from ..utils import SerializationError, ensure_awaitable
 
 # Register ".xdi" extension -> "application/x-xdi"
 mimetypes.types_map.setdefault(".xdi", "application/x-xdi")
@@ -57,8 +60,7 @@ XDI_REQUIRED_FIELDS = {
 }
 
 
-@default_serialization_registry.register("xdi", "application/x-xdi")
-def serialize_xdi(mimetype, df, metadata):
+def _serialize_xdi(df, metadata):
     """Serialize a pandas DataFrame and its XDI metadata to XDI format.
 
     Parameters
@@ -137,3 +139,65 @@ def serialize_xdi(mimetype, df, metadata):
     df.to_csv(output, header=False, index=False, sep=" ")
 
     return output.getvalue().encode()
+
+
+@default_serialization_registry.register("xdi", "application/x-xdi")
+def serialize_xdi(mimetype, df, metadata):
+    """Serialize one XDI-tagged table as an XDI text file."""
+    return _serialize_xdi(df, metadata)
+
+
+async def _walk_xdi_tables(node, filter_for_access, path=()):
+    """Yield access-filtered, XDI-tagged table descendants and their paths."""
+    filtered = await filter_for_access(node)
+    if filtered.structure_family == StructureFamily.table:
+        if any(spec.name == "xdi" for spec in filtered.specs):
+            yield path, filtered
+        return
+
+    if hasattr(filtered, "items_range"):
+        items = await filtered.items_range()
+    else:
+        items = filtered.items()
+    for key, child in items:
+        async for result in _walk_xdi_tables(child, filter_for_access, path + (key,)):
+            yield result
+
+
+def _archive_name(path):
+    """Build a safe, deterministic member name from a Tiled key path."""
+    parts = []
+    for key in path:
+        part = str(key).replace("/", "_").replace("\\", "_")
+        parts.append(f"_{part}" if part in {".", ".."} else part)
+    return "/".join(parts) + ".xdi"
+
+
+@default_serialization_registry.register("xdi", "application/zip")
+async def serialize_xdi_zip(mimetype, node, metadata, filter_for_access=None):
+    """Export XDI-tagged table descendants of a container as a ZIP archive.
+
+    Each archive member is named after its path within the container and uses
+    that table's own metadata. Only table descendants tagged with Spec("xdi")
+    are included.
+    """
+    if node.structure_family != StructureFamily.container:
+        raise SerializationError(
+            "XDI ZIP export requires a container with XDI-tagged table descendants."
+        )
+    if filter_for_access is None:
+        raise SerializationError("XDI ZIP export requires an access filter.")
+
+    file = io.BytesIO()
+    count = 0
+    with zipfile.ZipFile(file, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        async for path, table in _walk_xdi_tables(node, filter_for_access):
+            df = await ensure_awaitable(table.read)
+            archive.writestr(_archive_name(path), _serialize_xdi(df, table.metadata()))
+            count += 1
+
+    if not count:
+        raise SerializationError(
+            "Cannot export XDI ZIP: no descendant tables are tagged with Spec('xdi')."
+        )
+    return file.getvalue()
