@@ -124,6 +124,17 @@ and a low-level method for creating a new node to write into:
    tiled.client.container.Container.new
 ```
 
+There is also a method for registering externally-managed files (which stay
+where they are, in their original format) as datasets served by Tiled:
+
+
+```{eval-rst}
+.. autosummary::
+   :toctree: generated
+
+   tiled.client.container.Container.register
+```
+
 ## Structure Clients
 
 For each *structure family* ("array", "table", etc.) there is a client
