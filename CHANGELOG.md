@@ -7,6 +7,8 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Added
 
+- Expose the Deployment `strategy` in the helm chart, so that a deployment can
+  use `Recreate` instead of the default `RollingUpdate`.
 - Add a `DELETE /api/v1/asset/{path}?id=N` endpoint to dissociate a single
   asset from a node. If the asset is no longer referenced by any other data
   source, its catalog record is deleted; and, when it is internally managed,
