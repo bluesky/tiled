@@ -14,10 +14,8 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - Emit OpenTelemetry spans for internal request phases (access control, read,
   tokenize, pack) so they appear as child spans in a request's trace, giving a
   per-request breakdown of where time is spent.
-- Disable FastAPI's built-in OpenTelemetry auto-configuration
-  (`telemetry={"auto_configure": False}`) so that, on FastAPI >=0.142, it does
-  not register a second OTLP exporter alongside Tiled's own tracing pipeline and
-  export every span twice.
+- Expose the Deployment `strategy` in the helm chart, so that a deployment can
+  use `Recreate` instead of the default `RollingUpdate`.
 - Add a `DELETE /api/v1/asset/{path}?id=N` endpoint to dissociate a single
   asset from a node. If the asset is no longer referenced by any other data
   source, its catalog record is deleted; and, when it is internally managed,
