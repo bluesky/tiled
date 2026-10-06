@@ -14,6 +14,10 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - Emit OpenTelemetry spans for internal request phases (access control, read,
   tokenize, pack) so they appear as child spans in a request's trace, giving a
   per-request breakdown of where time is spent.
+- Disable FastAPI's built-in OpenTelemetry auto-configuration
+  (`telemetry={"auto_configure": False}`) so that, on FastAPI >=0.142, it does
+  not register a second OTLP exporter alongside Tiled's own tracing pipeline and
+  export every span twice.
 - Emit OpenTelemetry spans for PostgreSQL queries (asyncpg for the catalog and
   authentication databases, ADBC for the storage database), Redis commands, and
   outbound HTTP calls (httpx: OIDC, webhooks, external policy servers), so
