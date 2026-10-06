@@ -16,6 +16,10 @@ config:
 # This will set the replicaset count more information can be found here: https://kubernetes.io/docs/concepts/workloads/controllers/replicaset/
 replicaCount: 1
 
+# Override the deployment update strategy. If not set, Kubernetes uses RollingUpdate.
+# Use `type: Recreate` when two pods must not run at once, e.g. with a SQLite database.
+strategy: {}
+
 # This sets the container image more information can be found here: https://kubernetes.io/docs/concepts/containers/images/
 image:
   repository: ghcr.io/bluesky/tiled
