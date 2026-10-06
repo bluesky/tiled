@@ -389,19 +389,20 @@ async def test_zarr_dimension_names(
     if ZARR_LIB_V2 and zarr_format == 3:
         pytest.skip("Zarr v3 format needs zarr-python 3")
     kwargs = {"dimension_names": dimension_names} if dimension_names else {}
+    # zarr-python 2 writes only format 2 and has no zarr_format keyword.
+    format_kwargs = {} if ZARR_LIB_V2 else {"zarr_format": zarr_format}
     # The same array as a group member, and as a store of its own.
-    group = zarr.open_group(
-        Path(tmpdir, "grouped.zarr"), mode="w", zarr_format=zarr_format
-    )
+    group = zarr.open_group(Path(tmpdir, "grouped.zarr"), mode="w", **format_kwargs)
     single = zarr.open_array(
         Path(tmpdir, "single.zarr"),
         mode="w",
         shape=(2, 3),
         dtype="i4",
-        zarr_format=zarr_format,
+        **format_kwargs,
         **kwargs,
     )
-    member = group.create_array("image", shape=(2, 3), dtype="i4", **kwargs)
+    create = group.create_dataset if ZARR_LIB_V2 else group.create_array
+    member = create("image", shape=(2, 3), dtype="i4", **kwargs)
     for array in (single, member):
         array.attrs.update(attributes)
 
