@@ -53,6 +53,10 @@ Write the date in place of the "Unreleased" in the case a new version is release
   on-disk shape has diverged from the shape recorded in the catalog
   structure, which can happen while an array is being extended
   (e.g. streaming appends).
+- Fix the background task that purges expired Sessions and API keys. It
+  crashed on its first run and was never retried, so expired entries
+  (including the short-lived keys minted for websocket subscriptions)
+  could accumulate until a Principal hit the API-key limit.
 
 ## v0.2.18 (2026-09-02)
 
