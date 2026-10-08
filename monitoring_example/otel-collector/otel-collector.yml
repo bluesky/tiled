@@ -35,7 +35,13 @@ receivers:
             - targets: ['tiled:8000']
 
 processors:
-  batch: {}
+  # Cap the batch size: Jaeger and Tempo reject OTLP/gRPC messages larger than
+  # 4 MiB by default, and an oversized batch is dropped, not retried. With no
+  # cap (`batch: {}`), a burst of traces can exceed that limit. 1024 spans fit
+  # if spans average under ~4 KiB.
+  batch:
+    send_batch_size: 512
+    send_batch_max_size: 1024
 
   # Drop noisy transaction/session-control statements so traces show the
   # queries that matter, not every BEGIN/COMMIT/ROLLBACK.
