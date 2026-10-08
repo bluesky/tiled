@@ -1,4 +1,5 @@
 import contextlib
+import importlib.util
 import time
 from collections.abc import Generator
 from typing import Any, Literal, Mapping, Optional, Sequence
@@ -18,14 +19,6 @@ API_KEY_COOKIE_NAME = "tiled_api_key"
 API_KEY_QUERY_PARAMETER = "api_key"
 CSRF_COOKIE_NAME = "tiled_csrf"
 
-try:
-    from opentelemetry import trace
-
-    _tracer = trace.get_tracer("tiled.server")
-except ImportError:
-    # OpenTelemetry is an optional dependency; tracing is simply disabled.
-    _tracer = None
-
 # Human-readable OpenTelemetry span names for the phases timed below.
 _SPAN_NAMES = {
     "app": "tiled.app",
@@ -34,6 +27,17 @@ _SPAN_NAMES = {
     "tok": "tiled.tokenize",
     "pack": "tiled.pack",
 }
+
+# Enable tracing if the OpenTelemetry API is installed. `opentelemetry` is a
+# namespace package shared by all `opentelemetry-*` distributions, so check for
+# the `trace` module itself and its parent (first).
+_tracer = None
+if importlib.util.find_spec("opentelemetry") and importlib.util.find_spec(
+    "opentelemetry.trace"
+):
+    from opentelemetry import trace
+
+    _tracer = trace.get_tracer("tiled.server")
 
 
 def normalize_root_path(root_path: Optional[str]) -> str:
