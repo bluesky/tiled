@@ -541,10 +541,16 @@ class SQLAdapter(Adapter[TableStructure]):
         else:
             order_by_partition = [{"column": "_partition_id", "direction": "asc"}]
 
-        if args := self.order_by_args + order_by_partition:
-            query += " ORDER BY " + ", ".join(
-                [f'"{c["column"].lower()}" {c["direction"].upper()}' for c in args]
-            )
+        order_by = [
+            f'"{c["column"].lower()}" {c["direction"].upper()}'
+            for c in self.order_by_args + order_by_partition
+        ]
+        # SQL leaves the order of rows that tie on the keys above undefined.
+        # rowid follows insertion order in DuckDB and SQLite.
+        if self.storage.dialect in ("duckdb", "sqlite"):
+            order_by.append("rowid")
+        if order_by:
+            query += " ORDER BY " + ", ".join(order_by)
 
         with closing(self.storage.connect()) as conn:
             with conn.cursor() as cursor:
