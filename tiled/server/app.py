@@ -1,7 +1,7 @@
 import asyncio
 import collections
 import contextvars
-import importlib
+import importlib.metadata
 import logging
 import os
 import secrets

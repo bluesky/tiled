@@ -28,9 +28,13 @@ _SPAN_NAMES = {
     "pack": "tiled.pack",
 }
 
-# Enable tracing if OpenTelemetry is installed
+# Enable tracing if the OpenTelemetry API is installed. `opentelemetry` is a
+# namespace package shared by all `opentelemetry-*` distributions, so check for
+# the `trace` module itself and its parent (first).
 _tracer = None
-if importlib.util.find_spec("opentelemetry"):
+if importlib.util.find_spec("opentelemetry") and importlib.util.find_spec(
+    "opentelemetry.trace"
+):
     from opentelemetry import trace
 
     _tracer = trace.get_tracer("tiled.server")
