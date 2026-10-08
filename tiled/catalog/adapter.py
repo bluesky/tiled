@@ -1098,6 +1098,7 @@ class CatalogNodeAdapter:
         access_tags = normalize_access_tags(access_tags or [])
         key = key or self.context.key_maker()
         data_sources = data_sources or []
+        child_path = list(await self.path_segments()) + [key]
 
         node = orm.Node(
             key=key,
@@ -1111,17 +1112,17 @@ class CatalogNodeAdapter:
                 # Assigning AccessTag rows to the (many-to-many) relationship
                 # creates the node_access_tags_association association rows on flush.
                 node.access_tags = await _resolve_access_tags(db, access_tags)
-            # TODO Consider using nested transitions to ensure that
-            # both the node is created (name not already taken)
-            # and the directory/file is created---or neither are.
+            # Flush the node so collisions surface before storage initialization,
+            # but do not commit it until its data sources are ready. If storage
+            # initialization fails, closing the session rolls the node back.
             try:
                 db.add(node)
-                await db.commit()
+                await db.flush()
             except IntegrityError as exc:
                 UNIQUE_CONSTRAINT_FAILED = "gkpj"
                 if exc.code == UNIQUE_CONSTRAINT_FAILED:
                     await db.rollback()
-                    raise Collision(f"/{'/'.join(await self.path_segments() + [key])}")
+                    raise Collision(f"/{'/'.join(child_path)}")
                 raise
             await db.refresh(node)
             for data_source in data_sources:
@@ -1162,7 +1163,7 @@ class CatalogNodeAdapter:
                         adapter_cls.init_storage,
                         storage,
                         data_source,
-                        await self.path_segments() + [key],
+                        child_path,
                     )
                 else:
                     if data_source.mimetype not in self.context.adapters_by_mimetype:
@@ -1252,8 +1253,6 @@ class CatalogNodeAdapter:
                 # a notification about it.
                 await self.context.streaming_cache.set(self.node.id, sequence, metadata)
             if self.context.webhook_dispatcher:
-                segments = list(await self.path_segments())
-                child_path = segments + [key]
                 await self.context.webhook_dispatcher.dispatch(
                     ContainerChildCreatedEvent(
                         timestamp=datetime.now(tz=timezone.utc),
