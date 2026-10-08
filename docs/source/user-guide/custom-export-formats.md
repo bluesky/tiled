@@ -219,7 +219,7 @@ The file extension alias is not accepted.
 ## Advanced: Streaming export
 
 HTTP supports chunked responses, where data is streamed incrementally. This
-is a good fit for streaming-oriented formats such as newline-delimited JSON.
+is a good fit for streaming-oriented formats such as JSON text sequences (RFC 7464).
 
 To create a chunked exporter, implement your exporter as a Python generator
 that yields bytes.
