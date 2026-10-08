@@ -24,6 +24,9 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - ACL filtering by access tags ids resolved from access tag names on the server.
   The ids are passed as literals in the querries, which allows Postgres to use
   extended statstics to plan the query.
+- Zarr arrays are served with `dims` taken from the store: Zarr v3
+  `dimension_names`, or the `_ARRAY_DIMENSIONS` attribute on Zarr v2 arrays.
+  An array with any unnamed dimension keeps `dims=None`.
 
 ### Changed
 
