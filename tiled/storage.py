@@ -273,15 +273,26 @@ class SQLStorage(Storage):
             return creator
 
         dialect = self.dialect
+        # Report the database name as `db.name`, so the storage database appears as
+        # its own node in the service graph. ADBC follows the SQL standard naming,
+        # where a "catalog" is a database (and a "schema" is a namespace inside it),
+        # so on Postgres `adbc_current_catalog` is e.g. "tiled_storage". This has
+        # nothing to do with Tiled's catalog. Not every driver implements it (DuckDB
+        # raises), and the instrumentation only tolerates a missing attribute, not
+        # an error, so check once and leave `db.name` unset if it fails.
+        try:
+            self._adbc_connection.adbc_current_catalog
+        except Exception:
+            connection_attributes = {}
+        else:
+            connection_attributes = {"database": "adbc_current_catalog"}
 
         def instrumented_creator():
-            # adbc_current_catalog is the database name (e.g. "tiled_storage"),
-            # which populates db.name so the database appears as its own node.
             return instrument_connection(
                 "tiled.storage",
                 creator(),
                 dialect,
-                connection_attributes={"database": "adbc_current_catalog"},
+                connection_attributes=connection_attributes,
             )
 
         return instrumented_creator

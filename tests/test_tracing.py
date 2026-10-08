@@ -278,6 +278,43 @@ def test_sql_storage_write_emits_adbc_span(
     assert any(s.attributes.get("db.name") for s in dbapi_spans)
 
 
+@pytest.mark.parametrize("scheme", ["sqlite", "duckdb"])
+def test_embedded_sql_storage_write_with_tracing(
+    monkeypatch, span_exporter, tmp_path, scheme
+):
+    """Tracing must not break embedded SQL storage. DuckDB's ADBC driver does not
+    implement `adbc_current_catalog` (it raises rather than returning nothing), so
+    the storage spans are emitted without a database name instead."""
+    _enable_tracing(monkeypatch)
+    config = {
+        "authentication": {"single_user_api_key": API_KEY},
+        "trees": [
+            {
+                "tree": "catalog",
+                "path": "/",
+                "args": {
+                    "uri": f"sqlite:///{tmp_path / 'catalog.db'}",
+                    "writable_storage": [
+                        str(tmp_path / "data"),
+                        f"{scheme}:///{tmp_path / f'tables.{scheme}'}",
+                    ],
+                    "init_if_not_exists": True,
+                },
+            }
+        ],
+    }
+    table = pyarrow.Table.from_pydict({"A": [1, 2, 3]})
+    with Context.from_app(build_app_from_config(config)) as context:
+        client = from_context(context)
+        span_exporter.clear()
+        appendable = client.create_appendable_table(schema=table.schema, key="tab")
+        appendable.append_partition(0, table)
+        assert appendable.read()["A"].tolist() == [1, 2, 3]
+
+    spans = span_exporter.get_finished_spans()
+    assert _spans_where(spans, "db.system", scheme), f"expected {scheme} storage spans"
+
+
 def test_streaming_emits_redis_spans(monkeypatch, span_exporter, redis_uri, tmp_path):
     """Subscribing to a node's stream exercises the Redis streaming cache."""
     _enable_tracing(monkeypatch)
