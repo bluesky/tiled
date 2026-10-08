@@ -857,7 +857,9 @@ def test_table_bytes_column_json_export(tree, buffer, media_type):
     if media_type == "application/json":
         assert json.loads(payload)["label"] == expected
     else:
-        rows = [json.loads(line) for line in payload.splitlines()]
+        rows = [
+            json.loads(record) for record in payload.split("\x1e") if record.strip()
+        ]
         assert [row["label"] for row in rows] == expected
 
 
