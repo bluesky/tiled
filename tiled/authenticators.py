@@ -10,10 +10,10 @@ from datetime import timedelta
 from typing import Any, Dict, List, Mapping, Optional, cast
 
 import httpx
+import jwt
 from cachetools import TTLCache, cached
 from fastapi import APIRouter, Request
 from fastapi.security import OAuth2, OAuth2AuthorizationCodeBearer
-from jose import JWTError, jwt
 from pydantic import Secret
 from starlette.responses import RedirectResponse
 
@@ -212,14 +212,33 @@ properties:
     def decode_token(
         self, id_token: str, access_token: Optional[str] = None
     ) -> dict[str, Any]:
-        return jwt.decode(
+        header = jwt.get_unverified_header(id_token)
+        kid = header.get("kid")
+        try:
+            key = jwt.PyJWKSet.from_dict({"keys": self.keys()})[kid]
+        except KeyError:
+            raise jwt.InvalidKeyError(f"No JWKS key matches kid {kid!r}") from None
+        claims = jwt.decode(
             id_token,
-            key=self.keys(),
+            key=key,
             algorithms=self.id_token_signing_alg_values_supported,
             audience=self._audience,
             issuer=self.issuer,
-            access_token=access_token,
+            # Clocks on the provider and this server drift apart, so accept
+            # a fresh token whose iat is slightly in the future.
+            options={"verify_iat": False},
         )
+        # PyJWT does not check the OIDC at_hash claim, which binds an
+        # id_token to the access_token issued alongside it.
+        if "at_hash" in claims:
+            if not access_token:
+                raise jwt.InvalidTokenError("No access_token to check at_hash against")
+            algorithm = jwt.get_algorithm_by_name(header["alg"])
+            digest = algorithm.compute_hash_digest(access_token.encode())
+            at_hash = base64.urlsafe_b64encode(digest[: len(digest) // 2])
+            if claims["at_hash"] != at_hash.rstrip(b"=").decode():
+                raise jwt.InvalidTokenError("at_hash claim does not match access_token")
+        return claims
 
     async def authenticate(self, request: Request) -> Optional[UserSessionState]:
         code = request.query_params.get("code")
@@ -248,10 +267,10 @@ properties:
         access_token = response_body["access_token"]
         try:
             verified_body = self.decode_token(id_token, access_token)
-        except JWTError:
+        except jwt.PyJWTError:
             logger.exception(
                 "Authentication error. Unverified token: %r",
-                jwt.get_unverified_claims(id_token),
+                jwt.decode(id_token, options={"verify_signature": False}),
             )
             return None
         return UserSessionState(verified_body[self.user_id_claim], {})
@@ -495,10 +514,10 @@ class EntraAuthenticator(ProxiedOIDCAuthenticator):
         refresh_token = response_body.get("refresh_token")
         try:
             verified_body = self.decode_token(id_token, access_token)
-        except JWTError:
+        except jwt.PyJWTError:
             logger.exception(
                 "Authentication error. Unverified token: %r",
-                jwt.get_unverified_claims(id_token),
+                jwt.decode(id_token, options={"verify_signature": False}),
             )
             return None
         # Log the id_token claims available for username resolution so
