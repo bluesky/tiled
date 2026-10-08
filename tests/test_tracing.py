@@ -16,6 +16,7 @@ single provider is installed for the whole module and the exporter is cleared
 between tests.
 """
 import os
+from urllib.parse import urlparse
 
 import numpy as np
 import pyarrow
@@ -230,13 +231,15 @@ def test_catalog_query_emits_asyncpg_spans(
     assert any(s.attributes.get("db.name") for s in pg_spans)
 
 
-def test_sql_storage_write_emits_adbc_span(
-    monkeypatch, span_exporter, postgres_uri, sqlite_uri, tmp_path
+def test_sql_storage_write_emits_adbc_spans(
+    monkeypatch, span_exporter, sql_storage_uri, tmp_path
 ):
-    """Writing an appendable table to SQL (Postgres) storage produces both the
-    manual `adbc_ingest` span (the bulk write bypasses the DBAPI `execute` path)
-    and the DBAPI-level spans from the instrumented ADBC connection."""
+    """Writing an appendable table to SQL storage (SQLite, DuckDB, or Postgres)
+    produces both the manual `adbc_ingest` span (the bulk write bypasses the DBAPI
+    `execute` path) and the DBAPI-level spans from the instrumented ADBC
+    connection."""
     _enable_tracing(monkeypatch)
+    dialect = urlparse(sql_storage_uri).scheme
     config = {
         "authentication": {"single_user_api_key": API_KEY},
         "trees": [
@@ -244,9 +247,8 @@ def test_sql_storage_write_emits_adbc_span(
                 "tree": "catalog",
                 "path": "/",
                 "args": {
-                    # Catalog on SQLite; storage on Postgres so the write goes through ADBC.
-                    "uri": sqlite_uri,
-                    "writable_storage": [postgres_uri],
+                    "uri": f"sqlite:///{tmp_path / 'catalog.db'}",
+                    "writable_storage": [sql_storage_uri],
                     "init_if_not_exists": True,
                 },
             }
@@ -258,61 +260,26 @@ def test_sql_storage_write_emits_adbc_span(
         span_exporter.clear()
         appendable = client.create_appendable_table(schema=table.schema, key="tab")
         appendable.append_partition(0, table)
-
-    spans = span_exporter.get_finished_spans()
-    names = {s.name for s in spans}
-    assert "adbc_ingest" in names, "expected the manual adbc_ingest span"
-    ingest = next(s for s in spans if s.name == "adbc_ingest")
-    assert ingest.kind == SpanKind.CLIENT
-    assert ingest.attributes.get("db.system") == "postgresql"
-
-    # The ADBC connection factory is wrapped by _instrument_adbc_creator, so the
-    # DBAPI-level statements (e.g. the CREATE TABLE preceding the ingest) are
-    # also traced, carrying the storage database name (from adbc_current_catalog).
-    dbapi_spans = [
-        s
-        for s in spans
-        if s.attributes.get("db.system") == "postgresql" and s.name != "adbc_ingest"
-    ]
-    assert dbapi_spans, "expected DBAPI-instrumented storage query spans"
-    assert any(s.attributes.get("db.name") for s in dbapi_spans)
-
-
-@pytest.mark.parametrize("scheme", ["sqlite", "duckdb"])
-def test_embedded_sql_storage_write_with_tracing(
-    monkeypatch, span_exporter, tmp_path, scheme
-):
-    """Tracing must not break embedded SQL storage. DuckDB's ADBC driver does not
-    implement `adbc_current_catalog` (it raises rather than returning nothing), so
-    the storage spans are emitted without a database name instead."""
-    _enable_tracing(monkeypatch)
-    config = {
-        "authentication": {"single_user_api_key": API_KEY},
-        "trees": [
-            {
-                "tree": "catalog",
-                "path": "/",
-                "args": {
-                    "uri": f"sqlite:///{tmp_path / 'catalog.db'}",
-                    "writable_storage": [
-                        str(tmp_path / "data"),
-                        f"{scheme}:///{tmp_path / f'tables.{scheme}'}",
-                    ],
-                    "init_if_not_exists": True,
-                },
-            }
-        ],
-    }
-    table = pyarrow.Table.from_pydict({"A": [1, 2, 3]})
-    with Context.from_app(build_app_from_config(config)) as context:
-        client = from_context(context)
-        span_exporter.clear()
-        appendable = client.create_appendable_table(schema=table.schema, key="tab")
-        appendable.append_partition(0, table)
+        # Tracing must not break the storage connections.
         assert appendable.read()["A"].tolist() == [1, 2, 3]
 
     spans = span_exporter.get_finished_spans()
-    assert _spans_where(spans, "db.system", scheme), f"expected {scheme} storage spans"
+    ingest = [s for s in spans if s.name == "adbc_ingest"]
+    assert ingest, "expected the manual adbc_ingest span"
+    assert ingest[0].kind == SpanKind.CLIENT
+    assert ingest[0].attributes.get("db.system") == dialect
+
+    # The ADBC connection factory is wrapped by _instrument_adbc_creator, so the
+    # DBAPI-level statements (e.g. the CREATE TABLE preceding the ingest) are
+    # also traced.
+    dbapi_spans = [
+        s for s in _spans_where(spans, "db.system", dialect) if s.name != "adbc_ingest"
+    ]
+    assert dbapi_spans, "expected DBAPI-instrumented storage query spans"
+    # They carry the database name (`adbc_current_catalog`), except on DuckDB, whose
+    # ADBC driver does not implement it.
+    if dialect != "duckdb":
+        assert any(s.attributes.get("db.name") for s in dbapi_spans)
 
 
 def test_streaming_emits_redis_spans(monkeypatch, span_exporter, redis_uri, tmp_path):
