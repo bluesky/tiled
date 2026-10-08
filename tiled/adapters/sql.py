@@ -1032,15 +1032,15 @@ def is_safe_identifier(
         )
 
     if not allow_reserved_words and identifier.lower() in RESERVED_WORDS:
-        raise ValueError(
+        raise UnsafeIdentifier(
             f'Reserved SQL keywords are not allowed in identifiers, "{identifier}"'
         )
 
     if pattern.match(identifier) is None:
-        raise ValueError(f'Malformed SQL identifier "{identifier}"')
+        raise UnsafeIdentifier(f'Malformed SQL identifier "{identifier}"')
 
     if match := FORBIDDEN_CHARACTERS.search(identifier):
-        raise ValueError(
+        raise UnsafeIdentifier(
             f'Invalid SQL identifier "{identifier}" '
             f"contains forbidden character(s): {', '.join(match.groups())}"
         )

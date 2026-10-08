@@ -52,6 +52,8 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Fixed
 
+- Roll back catalog node creation when SQL identifier validation fails, so a
+  corrected retry is not blocked by a partially-created node.
 - Encode `application/json-seq` table exports with the RFC 7464 record
   separator and line-feed framing, preventing single-row sequences from being
   mistaken for a single JSON document by browser clients.
