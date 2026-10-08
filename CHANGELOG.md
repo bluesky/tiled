@@ -7,6 +7,8 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Added
 
+- Expose the Deployment `strategy` in the helm chart, so that a deployment can
+  use `Recreate` instead of the default `RollingUpdate`.
 - Add a `DELETE /api/v1/asset/{path}?id=N` endpoint to dissociate a single
   asset from a node. If the asset is no longer referenced by any other data
   source, its catalog record is deleted; and, when it is internally managed,
@@ -22,6 +24,9 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - ACL filtering by access tags ids resolved from access tag names on the server.
   The ids are passed as literals in the querries, which allows Postgres to use
   extended statstics to plan the query.
+- Zarr arrays are served with `dims` taken from the store: Zarr v3
+  `dimension_names`, or the `_ARRAY_DIMENSIONS` attribute on Zarr v2 arrays.
+  An array with any unnamed dimension keeps `dims=None`.
 
 ### Changed
 
@@ -49,6 +54,9 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 - Roll back catalog node creation when SQL identifier validation fails, so a
   corrected retry is not blocked by a partially-created node.
+- Encode `application/json-seq` table exports with the RFC 7464 record
+  separator and line-feed framing, preventing single-row sequences from being
+  mistaken for a single JSON document by browser clients.
 - Extend to zarr routes the previous fix for reads of array data whose
   on-disk shape has diverged from the shape recorded in the catalog
   structure, which can happen while an array is being extended
