@@ -4,11 +4,10 @@ from sys import intern
 
 import yaml
 from sqlalchemy import delete, func, insert, inspect, select, tuple_, update
-from sqlalchemy.dialects.postgresql import insert as postgresql_upsert
-from sqlalchemy.dialects.sqlite import insert as sqlite_upsert
 
 from ..authn_database import orm as authn_orm
 from ..catalog import orm
+from ..catalog.core import dialect_insert
 from ..graph import orm as graph_orm
 from ..server.connection_pool import get_database_engine
 from ..server.schemas import PrincipalType
@@ -185,13 +184,6 @@ ASSIGNMENT_TABLES = [
 ACCESS_TAGS_COMPILER_LOCK_KEY = 746
 
 
-def _upsert(engine):
-    "Return the dialect-specific INSERT ... ON CONFLICT construct."
-    if engine.dialect.name == "postgresql":
-        return postgresql_upsert
-    return sqlite_upsert
-
-
 async def create_access_tags_tables(engine):
     "Create the access tag tables and their indexes, if they do not exist."
     async with engine.begin() as connection:
@@ -219,7 +211,7 @@ async def update_access_tags_tables(engine, tags, owners, public_tags):
     (tag, principal, scope) triple absent from the newly compiled state --
     whatever the reason for its absence.
     """
-    upsert = _upsert(engine)
+    upsert = dialect_insert(engine)
     tags_table = orm.AccessTag.__table__
     users_table = orm.AccessTagsPrincipal.__table__
     tags_users_scopes_table = orm.AccessTagPrincipalScopeAssociation.__table__
