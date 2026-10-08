@@ -6,8 +6,11 @@ Collector, Jaeger, or Tempo. OpenTelemetry's global tracer provider can only be
 set once per process, so a single provider is installed for the whole module and
 the exporter is cleared between tests.
 """
+import contextvars
+import logging
 import os
 
+import httpx
 import pytest
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
@@ -16,7 +19,12 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanE
 from opentelemetry.trace import SpanKind
 
 from tiled.client import Context
+from tiled.client.utils import handle_error
 from tiled.server.app import build_app_from_config
+from tiled.server.logging_config import LOGGING_CONFIG, TraceIdFilter
+from tiled.server.utils import request_trace_id
+
+from .utils import error_router
 
 pytest.importorskip("opentelemetry.sdk")
 
@@ -72,12 +80,12 @@ def _clear_spans(span_exporter):
     span_exporter.clear()
 
 
-def _build_app(monkeypatch, *, endpoint=ENDPOINT):
+def _build_app(monkeypatch, *, endpoint=ENDPOINT, config=CONFIG):
     if endpoint is None:
         monkeypatch.delenv("OTEL_EXPORTER_OTLP_ENDPOINT", raising=False)
     else:
         monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", endpoint)
-    return build_app_from_config(CONFIG)
+    return build_app_from_config(config)
 
 
 def _is_descendant_of(span, ancestor_span_id, by_id):
@@ -141,6 +149,9 @@ def test_tracing_disabled_by_default(monkeypatch):
     # the app is not instrumented by OpenTelemetry.)
     app = _build_app(monkeypatch, endpoint=None)
     assert not getattr(app, "_is_instrumented_by_opentelemetry", False)
+    with Context.from_app(app) as context:
+        response = context.http_client.get("/api/v1/metadata/")
+    assert "x-tiled-trace-id" not in response.headers
 
 
 def test_no_duplicate_export_pipeline(monkeypatch, span_exporter):
@@ -163,3 +174,74 @@ def test_no_duplicate_export_pipeline(monkeypatch, span_exporter):
         "a second span processor was registered on the global provider; "
         "FastAPI's built-in OpenTelemetry auto-configuration is not disabled"
     )
+
+
+# --- trace ID in responses and logs -------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "path, status_code", [("/api/v1/metadata/", 200), ("/error", 500)]
+)
+def test_response_carries_trace_id(monkeypatch, span_exporter, path, status_code):
+    """The trace ID is in the response header, exposed to cross-origin browser
+    clients. Unhandled exceptions (500) are answered by the exception handler,
+    outside the middleware that adds the header, so the handler adds it, and the
+    client includes it in the error message. (Starlette answers those outside the
+    CORS middleware too, so they carry no CORS headers at all.)"""
+    origin = "https://example.com"
+    app = _build_app(monkeypatch, config={**CONFIG, "allow_origins": [origin]})
+    app.include_router(error_router)
+    with Context.from_app(app, raise_server_exceptions=False) as context:
+        span_exporter.clear()
+        response = context.http_client.get(path, headers={"Origin": origin})
+        spans = span_exporter.get_finished_spans()
+
+    assert response.status_code == status_code
+    server_span = next(s for s in spans if s.kind == SpanKind.SERVER)
+    trace_id = trace.format_trace_id(server_span.context.trace_id)
+    assert response.headers["x-tiled-trace-id"] == trace_id
+    # The correlation ID is on the server span, so it also finds the trace.
+    assert (
+        server_span.attributes["tiled.request_id"]
+        == response.headers["x-tiled-request-id"]
+    )
+    if status_code == 200:
+        exposed = response.headers["access-control-expose-headers"].lower()
+        assert "x-tiled-trace-id" in exposed
+    else:
+        with pytest.raises(httpx.HTTPStatusError) as exc_info:
+            handle_error(response)
+        assert f"trace ID {trace_id}" in exc_info.value.args[0]
+
+
+@pytest.mark.parametrize("in_span", [True, False])
+@pytest.mark.parametrize("traced", [True, False])
+def test_log_lines_carry_trace_id(span_exporter, traced, in_span):
+    """Log lines carry the trace ID next to the correlation ID, also after the
+    request's span ended (e.g. uvicorn's traceback of an unhandled exception), and
+    are unchanged when the request is not traced."""
+    formatter = logging.Formatter(LOGGING_CONFIG["formatters"]["default"]["format"])
+
+    def log_line():
+        record = logging.LogRecord("tiled", logging.INFO, "", 0, "message", None, None)
+        record.correlation_id = "0123456789abcdef"
+        record.levelprefix = "INFO:"
+        TraceIdFilter().filter(record)
+        return formatter.format(record)
+
+    def handle_request():
+        with trace.get_tracer(__name__).start_as_current_span("request") as span:
+            # What TraceIdMiddleware does at the start of a traced request.
+            request_trace_id.set(
+                trace.format_trace_id(span.get_span_context().trace_id)
+            )
+            line = log_line()
+        return line if in_span else log_line()
+
+    # A copy of the context, so request_trace_id does not leak into other tests.
+    if traced:
+        line = contextvars.copy_context().run(handle_request)
+        assert line.startswith("[0123456789abcdef ") and len(line.split()[1]) == 33
+    else:
+        line = contextvars.copy_context().run(log_line)
+        assert line == "[0123456789abcdef] INFO: message"

@@ -25,6 +25,7 @@ from fastapi.openapi.utils import get_openapi
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.datastructures import MutableHeaders
 from starlette.middleware.base import RequestResponseEndpoint
 from starlette.responses import FileResponse
 from starlette.status import (
@@ -37,6 +38,7 @@ from starlette.status import (
     HTTP_422_UNPROCESSABLE_CONTENT,
     HTTP_500_INTERNAL_SERVER_ERROR,
 )
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from ..access_control.protocols import AccessPolicy
 from ..access_control.scopes import ScopeName
@@ -68,7 +70,15 @@ from .compression import CompressionMiddleware
 from .protocols import ExternalAuthenticator, InternalAuthenticator
 from .router import get_metrics_router, get_router
 from .settings import Settings, get_settings
-from .utils import API_KEY_COOKIE_NAME, CSRF_COOKIE_NAME, get_root_url, record_timing
+from .utils import (
+    API_KEY_COOKIE_NAME,
+    CSRF_COOKIE_NAME,
+    TRACE_ID_HEADER_NAME,
+    get_root_url,
+    get_trace_id,
+    record_timing,
+    request_trace_id,
+)
 from .webhook_router import UrlValidator, get_webhook_router
 from .zarr import get_zarr_router_v2, get_zarr_router_v3
 
@@ -437,19 +447,23 @@ def build_app(
         # If we restrict the allowed_headers in future, remember to include
         # exemptions for these, related to asgi_correlation_id.
         # allow_headers=["X-Requested-With", "X-Tiled-Request-ID"],
-        expose_headers=["X-Tiled-Request-ID"],
+        expose_headers=["X-Tiled-Request-ID", TRACE_ID_HEADER_NAME],
     )
 
     @app.exception_handler(Exception)
     async def unhandled_exception_handler(
         request: Request, exc: Exception
     ) -> JSONResponse:
+        headers = {"X-Tiled-Request-ID": correlation_id.get() or ""}
+        # This response bypasses TraceIdMiddleware, so add the trace ID here.
+        if trace_id := get_trace_id():
+            headers[TRACE_ID_HEADER_NAME] = trace_id
         return await http_exception_handler(
             request,
             HTTPException(
                 HTTP_500_INTERNAL_SERVER_ERROR,
                 "Internal server error",
-                headers={"X-Tiled-Request-ID": correlation_id.get() or ""},
+                headers=headers,
             ),
         )
 
@@ -1118,6 +1132,60 @@ def _setup_opentelemetry_tracing(app: FastAPI) -> None:
         provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter()))
         trace.set_tracer_provider(provider)
     FastAPIInstrumentor.instrument_app(app)
+    app.add_middleware(TraceIdMiddleware)
+
+
+class TraceIdMiddleware:
+    """Link the request's trace and its correlation ID.
+
+    Add the trace ID to the response headers (`X-Tiled-Trace-ID`), so a user or
+    client can report the trace of a failed or slow request, and record it in
+    `request_trace_id` for the log lines (see `logging_config.TraceIdFilter`).
+    Record the correlation ID (`X-Tiled-Request-ID`) on the request's server span
+    as `tiled.request_id`, so the trace can also be found from the correlation ID.
+    Added only when tracing is enabled. Responses to unhandled exceptions bypass
+    this middleware; the exception handler adds the header itself.
+    """
+
+    def __init__(self, app: ASGIApp) -> None:
+        from opentelemetry import trace
+
+        self.app = app
+        self._get_current_span = trace.get_current_span
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        trace_id = get_trace_id() if scope["type"] == "http" else None
+        if trace_id is None:
+            await self.app(scope, receive, send)
+            return
+        request_trace_id.set(trace_id)
+        # This middleware runs directly inside the FastAPI instrumentation, so the
+        # current span is the request's server span.
+        server_span = self._get_current_span()
+        response_started = False
+
+        def record_request_id() -> None:
+            # The correlation ID is assigned by CorrelationIdMiddleware, which runs
+            # inside this one, so it is only available once the request is handled.
+            if request_id := correlation_id.get():
+                server_span.set_attribute("tiled.request_id", request_id)
+
+        async def send_with_trace_id(message: Message) -> None:
+            nonlocal response_started
+            if message["type"] == "http.response.start":
+                response_started = True
+                MutableHeaders(scope=message).append(TRACE_ID_HEADER_NAME, trace_id)
+                # Record it now: the server span ends once the response is sent.
+                record_request_id()
+            await send(message)
+
+        try:
+            await self.app(scope, receive, send_with_trace_id)
+        finally:
+            if not response_started:
+                # An unhandled exception: the response is sent by the exception
+                # handler, outside this middleware, and the span is still open.
+                record_request_id()
 
 
 def build_app_from_config(config: Union[Config, dict[str, Any]], scalable=False):
