@@ -11,6 +11,7 @@ from tiled.catalog.core import initialize_database
 from tiled.config import Database
 from tiled.graph.schema import schema
 from tiled.graph.store import (
+    EntityConflictError,
     GraphSQLAlchemyStore,
     _access_tags,
     _entities,
@@ -272,13 +273,13 @@ async def test_tag_is_shared_across_node_entity_and_link(store):
     """
     await _insert_node(store, 1, ["team"])
     entity = await store.create_entity(
-        entity_type="sample", name="entity", access_tags=["team"]
+        kind="sample", name="entity", access_tags=["team"]
     )
     subject = await store.create_entity(
-        entity_type="sample", name="subject", access_tags=["team"]
+        kind="sample", name="subject", access_tags=["team"]
     )
     object_ = await store.create_entity(
-        entity_type="sample", name="object", access_tags=["team"]
+        kind="sample", name="object", access_tags=["team"]
     )
     link = await store.create_link(
         subject.id, "relates_to", object_.id, access_tags=["team"]
@@ -311,7 +312,7 @@ async def test_tag_is_shared_across_node_entity_and_link(store):
 @pytest.mark.asyncio
 async def test_deleting_entity_removes_tag_associations_but_not_tag(store):
     entity = await store.create_entity(
-        entity_type="sample", name="entity", access_tags=["team"]
+        kind="sample", name="entity", access_tags=["team"]
     )
     async with store._engine.begin() as conn:
         access_tag_id = await conn.scalar(
@@ -335,8 +336,8 @@ async def test_deleting_entity_removes_tag_associations_but_not_tag(store):
 
 @pytest.mark.asyncio
 async def test_deleting_link_removes_tag_associations_but_not_tag(store):
-    subject = await store.create_entity(entity_type="sample", name="subject")
-    object_ = await store.create_entity(entity_type="sample", name="object")
+    subject = await store.create_entity(kind="sample", name="subject")
+    object_ = await store.create_entity(kind="sample", name="object")
     link = await store.create_link(
         subject.id, "relates_to", object_.id, access_tags=["team"]
     )
@@ -368,7 +369,7 @@ async def test_entity_create_defaults_to_user_tag_and_read_visibility(store, pol
     result = await _execute(
         CREATE_ENTITY_MUTATION,
         alice_ctx,
-        {"input": {"entityType": "sample", "name": "E1", "properties": {}}},
+        {"input": {"kind": "sample", "name": "E1", "properties": {}}},
     )
     assert result.errors is None
     entity_id = result.data["createEntity"]["id"]
@@ -396,7 +397,7 @@ async def test_entity_can_be_tagged_and_shared_for_reads(store, policy):
         alice_ctx,
         {
             "input": {
-                "entityType": "sample",
+                "kind": "sample",
                 "name": "Etag",
                 "properties": {},
                 "accessTags": ["team"],
@@ -420,7 +421,7 @@ async def test_entity_update_and_delete_enforce_access_control(store, policy):
     created = await _execute(
         CREATE_ENTITY_MUTATION,
         alice_ctx,
-        {"input": {"entityType": "sample", "name": "E2", "properties": {}}},
+        {"input": {"kind": "sample", "name": "E2", "properties": {}}},
     )
     assert created.errors is None
     entity_id = created.data["createEntity"]["id"]
@@ -473,7 +474,7 @@ async def test_link_crud_and_access_control(store, policy):
         alice_ctx,
         {
             "input": {
-                "entityType": "sample",
+                "kind": "sample",
                 "name": "S",
                 "properties": {},
                 "accessTags": ["team"],
@@ -485,7 +486,7 @@ async def test_link_crud_and_access_control(store, policy):
         alice_ctx,
         {
             "input": {
-                "entityType": "sample",
+                "kind": "sample",
                 "name": "O",
                 "properties": {},
                 "accessTags": ["team"],
@@ -586,7 +587,7 @@ async def test_query_paths_use_access_policy_filters(store, filter_policy):
         alice_ctx,
         {
             "input": {
-                "entityType": "sample",
+                "kind": "sample",
                 "name": "team-visible",
                 "properties": {},
                 "accessTags": ["team"],
@@ -598,7 +599,7 @@ async def test_query_paths_use_access_policy_filters(store, filter_policy):
         alice_ctx,
         {
             "input": {
-                "entityType": "sample",
+                "kind": "sample",
                 "name": "private-visible-to-alice",
                 "properties": {},
             }
@@ -634,7 +635,7 @@ async def test_pagination_applies_after_access_filtering(store, filter_policy):
             alice_ctx,
             {
                 "input": {
-                    "entityType": "sample",
+                    "kind": "sample",
                     "name": f"private-{i}",
                     "properties": {},
                 }
@@ -646,7 +647,7 @@ async def test_pagination_applies_after_access_filtering(store, filter_policy):
             alice_ctx,
             {
                 "input": {
-                    "entityType": "sample",
+                    "kind": "sample",
                     "name": f"team-{i}",
                     "properties": {},
                     "accessTags": ["team"],
@@ -681,14 +682,14 @@ async def test_entity_node_access_tags_rejected_when_both_set(store):
 
     with pytest.raises(IntegrityError):
         await store.create_entity(
-            entity_type="sample",
+            kind="sample",
             name="bad",
             node_id=1,
             access_tags=["team"],
         )
 
     entity = await store.create_entity(
-        entity_type="sample", name="ok", node_id=1, access_tags=None
+        kind="sample", name="ok", node_id=1, access_tags=None
     )
     with pytest.raises(IntegrityError):
         await store.update_entity(entity.id, access_tags=["team"])
@@ -703,7 +704,7 @@ async def test_entity_node_access_tags_trigger_rejects_direct_insert(store):
     """
     await _insert_node(store, 1, ["team"])
     entity = await store.create_entity(
-        entity_type="sample", name="linked", node_id=1, access_tags=None
+        kind="sample", name="linked", node_id=1, access_tags=None
     )
     async with store._engine.connect() as conn:
         (access_tag_id,) = await _access_tag_ids(conn, ["team"])
@@ -727,7 +728,7 @@ async def test_create_entity_rejects_node_id_with_access_tags(store, policy):
         alice_ctx,
         {
             "input": {
-                "entityType": "sample",
+                "kind": "sample",
                 "name": "bad",
                 "nodePathParts": ["node"],
                 "accessTags": ["team"],
@@ -736,6 +737,116 @@ async def test_create_entity_rejects_node_id_with_access_tags(store, policy):
     )
     assert result.errors
     assert "access is controlled by the referenced node" in result.errors[0].message
+
+
+@pytest.mark.asyncio
+async def test_create_entity_duplicate_returns_entity_exists(store, policy):
+    """A duplicate node-bound (node, kind, name) surfaces as ENTITY_EXISTS."""
+    await _insert_node(store, 1, ["team"])
+    alice_ctx = _context(store, policy, "alice", {"read:metadata", "write:metadata"})
+
+    first = await _execute(
+        CREATE_ENTITY_MUTATION,
+        alice_ctx,
+        {"input": {"kind": "sample", "name": "dup", "nodePathParts": ["node"]}},
+    )
+    assert first.errors is None
+
+    second = await _execute(
+        CREATE_ENTITY_MUTATION,
+        alice_ctx,
+        {"input": {"kind": "sample", "name": "dup", "nodePathParts": ["node"]}},
+    )
+    assert second.errors
+    assert second.errors[0].extensions["code"] == "ENTITY_EXISTS"
+
+
+@pytest.mark.asyncio
+async def test_duplicate_node_kind_name_conflicts_in_store(store):
+    """The store raises EntityConflictError on a duplicate node-bound entity;
+    free-standing entities (node_id NULL) are left unconstrained."""
+    await _insert_node(store, 1, ["team"])
+
+    await store.create_entity(kind="sample", name="dup", node_id=1)
+    with pytest.raises(EntityConflictError):
+        await store.create_entity(kind="sample", name="dup", node_id=1)
+
+    # A different kind, name, or node is allowed.
+    await store.create_entity(kind="other", name="dup", node_id=1)
+
+    # Free-standing entities (node_id NULL) are not deduplicated.
+    await store.create_entity(kind="sample", name="ext", node_id=None)
+    await store.create_entity(kind="sample", name="ext", node_id=None)
+
+
+UPSERT_ENTITY_MUTATION = """
+mutation($input: CreateEntityInput!) {
+    upsertEntity(input: $input) { id name kind }
+}
+"""
+
+
+@pytest.mark.asyncio
+async def test_upsert_entity_is_idempotent(store, policy):
+    """upsertEntity returns the same row for a repeated (node, kind, name)."""
+    await _insert_node(store, 1, ["team"])
+    alice_ctx = _context(store, policy, "alice", {"read:metadata", "write:metadata"})
+
+    first = await _execute(
+        UPSERT_ENTITY_MUTATION,
+        alice_ctx,
+        {"input": {"kind": "array", "name": "a1", "nodePathParts": ["node"]}},
+    )
+    second = await _execute(
+        UPSERT_ENTITY_MUTATION,
+        alice_ctx,
+        {"input": {"kind": "array", "name": "a1", "nodePathParts": ["node"]}},
+    )
+    assert first.errors is None and second.errors is None
+    assert first.data["upsertEntity"]["id"] == second.data["upsertEntity"]["id"]
+    assert len(await store.list_entities(node_id=1)) == 1
+
+
+@pytest.mark.asyncio
+async def test_upsert_entity_requires_node_binding(store, policy):
+    """upsertEntity has no natural key for external entities, so it errors."""
+    alice_ctx = _context(store, policy, "alice", {"read:metadata", "write:metadata"})
+    result = await _execute(
+        UPSERT_ENTITY_MUTATION,
+        alice_ctx,
+        {"input": {"kind": "sample", "name": "ext"}},
+    )
+    assert result.errors
+    assert result.errors[0].extensions["code"] == "NODE_REQUIRED"
+
+
+@pytest.mark.asyncio
+async def test_create_and_upsert_require_write_on_bound_node(store, policy):
+    """
+    Binding an entity to a node requires write:metadata on that node, not merely
+    the global write scope. Otherwise any writer could attach (or, via the
+    uniqueness constraint, squat) entities on nodes they cannot write.
+    """
+    # Node writable by alice (alice_tag) but not bob (who only has team).
+    await _insert_node(store, 1, ["alice_tag"], key="node")
+
+    bob_ctx = _context(store, policy, "bob", {"read:metadata", "write:metadata"})
+    for mutation in (CREATE_ENTITY_MUTATION, UPSERT_ENTITY_MUTATION):
+        denied = await _execute(
+            mutation,
+            bob_ctx,
+            {"input": {"kind": "array", "name": "a1", "nodePathParts": ["node"]}},
+        )
+        assert denied.errors
+        assert "Not permitted" in denied.errors[0].message
+
+    alice_ctx = _context(store, policy, "alice", {"read:metadata", "write:metadata"})
+    allowed = await _execute(
+        UPSERT_ENTITY_MUTATION,
+        alice_ctx,
+        {"input": {"kind": "array", "name": "a1", "nodePathParts": ["node"]}},
+    )
+    assert allowed.errors is None
 
 
 @pytest.mark.asyncio
@@ -750,7 +861,7 @@ async def test_update_entity_rejects_setting_access_tags_on_node_linked_entity(
         alice_ctx,
         {
             "input": {
-                "entityType": "sample",
+                "kind": "sample",
                 "name": "linked",
                 "nodePathParts": ["node"],
             }
@@ -788,7 +899,7 @@ async def test_update_entity_detaching_node_reinitializes_access_tags(store, pol
         alice_ctx,
         {
             "input": {
-                "entityType": "sample",
+                "kind": "sample",
                 "name": "linked",
                 "nodePathParts": ["node"],
             }
@@ -822,7 +933,7 @@ async def test_entity_read_access_delegates_to_node_access_tags(store):
     node_policy = FakeTagPolicy({"alice": {"node_team"}, "bob": {"team"}})
     await _insert_node(store, 1, ["node_team"])
     entity = await store.create_entity(
-        entity_type="sample", name="linked", node_id=1, access_tags=None
+        kind="sample", name="linked", node_id=1, access_tags=None
     )
 
     alice_ctx = _context(store, node_policy, "alice", {"read:metadata"})
@@ -844,10 +955,10 @@ async def test_entities_listing_filters_by_node_access_tags(store, filter_policy
     await _insert_node(store, 1, ["team"], key="visible-node")
     await _insert_node(store, 2, ["other"], key="hidden-node")
     await store.create_entity(
-        entity_type="sample", name="node-linked-visible", node_id=1, access_tags=None
+        kind="sample", name="node-linked-visible", node_id=1, access_tags=None
     )
     await store.create_entity(
-        entity_type="sample", name="node-linked-hidden", node_id=2, access_tags=None
+        kind="sample", name="node-linked-hidden", node_id=2, access_tags=None
     )
 
     bob_ctx = _context(store, filter_policy, "bob", {"read:metadata"})
@@ -931,7 +1042,7 @@ async def test_graphql_expands_and_compacts_curies(store, policy):
         alice_ctx,
         {
             "input": {
-                "entityType": "sample",
+                "kind": "sample",
                 "name": "E",
                 "properties": {"schema:name": "hello"},
             }
@@ -959,7 +1070,7 @@ async def test_graphql_expands_and_compacts_curies(store, policy):
     other = await _execute(
         create_entity_with_properties,
         alice_ctx,
-        {"input": {"entityType": "sample", "name": "O", "properties": {}}},
+        {"input": {"kind": "sample", "name": "O", "properties": {}}},
     )
     other_id = other.data["createEntity"]["id"]
     link_created = await _execute(
@@ -1026,7 +1137,7 @@ def test_graphql_http_route_access_control_integration(policy):
                 "query": CREATE_ENTITY_MUTATION,
                 "variables": {
                     "input": {
-                        "entityType": "sample",
+                        "kind": "sample",
                         "name": "S",
                         "properties": {},
                         "accessTags": ["team"],
@@ -1040,7 +1151,7 @@ def test_graphql_http_route_access_control_integration(policy):
                 "query": CREATE_ENTITY_MUTATION,
                 "variables": {
                     "input": {
-                        "entityType": "sample",
+                        "kind": "sample",
                         "name": "O",
                         "properties": {},
                         "accessTags": ["team"],
