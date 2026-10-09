@@ -539,10 +539,10 @@ class AccessTagsFilter:
     # 'access_tags' table on the server side. The 'internal' metadata marks it
     # to be skipped by the search route's query-parameter builder, and
     # 'compare=False' keeps it out of equality. It is populated per-instance by
-    # 'tiled.server.utils.filter_for_access'. When set, the catalog query
-    # builder filters on 'tag_id' literals directly instead of joining
-    # 'access_tags' by name, so PostgreSQL can use the (parent_id, tag_id)
-    # extended statistics to estimate the ACL subquery correctly.
+    # the catalog and graph access-filter paths. When set, their query builders
+    # filter on 'tag_id' literals directly instead of joining 'access_tags' by
+    # name. For catalog queries, this also lets PostgreSQL use the
+    # (parent_id, tag_id) extended statistics to estimate the ACL subquery.
     tag_ids: Optional[List[int]] = field(
         default=None, compare=False, metadata={"internal": True}
     )

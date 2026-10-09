@@ -129,6 +129,7 @@ from .core import (
     check_catalog_database,
     initialize_database,
     register_principal_tag_rows,
+    resolve_access_tag_ids,
 )
 from .explain import ExplainAsyncSession
 from .utils import compute_structure_id
@@ -559,13 +560,8 @@ class CatalogNodeAdapter:
         filters that reference 'tag_id' literals instead of joining
         'access_tags' by name -- see 'access_tags_filter'.
         """
-        if not names:
-            return []
         async with self.context.session() as db:
-            result = await db.execute(
-                select(orm.AccessTag.id).where(orm.AccessTag.name.in_(list(names)))
-            )
-            return list(result.scalars().all())
+            return await resolve_access_tag_ids(db, names)
 
     async def exact_len(self):
         "Get the exact number of child nodes."

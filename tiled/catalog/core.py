@@ -38,6 +38,7 @@ REQUIRED_REVISION = ALL_REVISIONS[0]
 
 
 async def initialize_database(engine: AsyncEngine):
+    # The definitions in .orm alter Base.metadata.
     from ..graph import orm as graph_orm  # noqa: F401
     from . import orm  # noqa: F401
 
@@ -99,13 +100,14 @@ async def register_principal_tag_rows(connection, access_tag_names):
     `await session.connection()`.)
     """
     from ..access_control.protocols import PRINCIPAL_TAG_PREFIXES
-    from . import orm
 
     principal_tags = {
         name for name in access_tag_names if name.startswith(PRINCIPAL_TAG_PREFIXES)
     }
     if not principal_tags:
         return
+    from . import orm
+
     if connection.dialect.name == "postgresql":
         from sqlalchemy.dialects.postgresql import insert as upsert
     else:
@@ -115,6 +117,18 @@ async def register_principal_tag_rows(connection, access_tag_names):
         .values([{"name": name, "is_public": False} for name in sorted(principal_tags)])
         .on_conflict_do_nothing(index_elements=["name"])
     )
+
+
+async def resolve_access_tag_ids(connection, names):
+    """Resolve existing access-tag names to their integer IDs."""
+    if not names:
+        return []
+    from . import orm
+
+    result = await connection.execute(
+        select(orm.AccessTag.id).where(orm.AccessTag.name.in_(list(names)))
+    )
+    return list(result.scalars().all())
 
 
 async def check_catalog_database(engine: AsyncEngine):
