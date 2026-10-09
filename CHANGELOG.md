@@ -64,6 +64,8 @@ Write the date in place of the "Unreleased" in the case a new version is release
   started automatically by the test suite, instead of requiring a MinIO
   container (whose image was removed from Docker Hub). Set `TILED_TEST_BUCKET`
   to point the tests at a real MinIO/S3 endpoint instead.
+- The server depends on `PyJWT` instead of `python-jose` to sign and verify
+  JSON Web Tokens.
 
 ### Fixed
 
