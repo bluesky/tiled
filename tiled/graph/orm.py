@@ -8,12 +8,18 @@ of provisioning a catalog database both include them:
 
 * a fresh database created by ``tiled.catalog.core.initialize_database``
   (which runs ``Base.metadata.create_all``), and
-* an existing database upgraded through the Alembic migration
-  ``c31f6a1d7e20``.
+* an existing database upgraded through Alembic migrations.
 
 The store (``tiled.graph.store``) uses these ``Table`` objects to read and
 write rows; it does not create them itself. This mirrors how ``metadata_fts5``
 is declared as a Core table on ``Base.metadata`` in ``tiled.catalog.orm``.
+
+Access control: entities and links carry access tags drawn from the same
+catalog ``access_tags`` table that nodes use. The ``entity_access_tags_association`` and
+``link_access_tags_association`` association tables mirror the catalog's
+``node_access_tags_association`` table. An entity that points to a catalog node
+(``node_id`` set) must not carry its own access tags -- it assumes the tags of
+the referenced node -- and this is enforced at the database level by triggers.
 """
 
 from __future__ import annotations
@@ -49,83 +55,16 @@ entities = Table(
     Column("name", String, nullable=False),
     Column("uri", String, nullable=True),
     Column("properties", JSON, nullable=False),
-    # Nullable: an entity with node_id set must not have its own
-    # access_blob (enforced by the trigger below and in
-    # tiled.graph.schema); access control for such an entity is delegated
-    # to the node it points to. none_as_null=True: without it, SQLAlchemy's
-    # JSON type stores Python None as the JSON literal 'null' (a non-NULL
-    # string), which would defeat both the trigger's and our own
-    # IS NULL / IS NOT NULL checks.
-    Column("access_blob", JSON(none_as_null=True), nullable=True),
     Column("created_at", DateTime(timezone=True), nullable=False),
     Index("entities_node_id_idx", "node_id"),
     Index("entities_type_created_idx", "entity_type", "created_at"),
     Index("entities_uri_idx", "uri"),
 )
 
-ENTITY_NODE_ACCESS_BLOB_ERROR = (
-    "An entity with node_id set must not have its own access_blob; "
+ENTITY_NODE_ACCESS_TAGS_ERROR = (
+    "An entity with node_id set must not have its own access tags; "
     "access is controlled by the referenced node."
 )
-
-
-@event.listens_for(entities, "after_create")
-def _create_entities_node_access_blob_trigger(target, connection, **kw):
-    """
-    Enforce, at the database level, that an entity pointing to a catalog
-    node (node_id set) does not also carry its own access_blob. This
-    mirrors the trigger created by the
-    c31f6a1d7e20_add_graph_entities_and_links_tables alembic migration,
-    which applies the same DDL for databases provisioned via `alembic
-    upgrade` rather than `create_all` (e.g.
-    tiled.catalog.core.initialize_database, which is what the test suite
-    exercises).
-    """
-    if connection.engine.dialect.name == "sqlite":
-        connection.execute(
-            text(
-                f"""
-CREATE TRIGGER entities_node_access_blob_insert
-BEFORE INSERT ON entities
-WHEN (NEW.node_id IS NOT NULL AND NEW.access_blob IS NOT NULL)
-BEGIN
-    SELECT RAISE(ABORT, '{ENTITY_NODE_ACCESS_BLOB_ERROR}');
-END"""
-            )
-        )
-        connection.execute(
-            text(
-                f"""
-CREATE TRIGGER entities_node_access_blob_update
-BEFORE UPDATE ON entities
-WHEN (NEW.node_id IS NOT NULL AND NEW.access_blob IS NOT NULL)
-BEGIN
-    SELECT RAISE(ABORT, '{ENTITY_NODE_ACCESS_BLOB_ERROR}');
-END"""
-            )
-        )
-    elif connection.engine.dialect.name == "postgresql":
-        connection.execute(
-            text(
-                f"""
-CREATE OR REPLACE FUNCTION entities_reject_node_access_blob()
-RETURNS TRIGGER AS $$
-BEGIN
-    RAISE EXCEPTION '{ENTITY_NODE_ACCESS_BLOB_ERROR}';
-END;
-$$ LANGUAGE plpgsql;"""
-            )
-        )
-        connection.execute(
-            text(
-                """
-CREATE TRIGGER entities_node_access_blob_check
-BEFORE INSERT OR UPDATE ON entities
-FOR EACH ROW
-WHEN (NEW.node_id IS NOT NULL AND NEW.access_blob IS NOT NULL)
-EXECUTE FUNCTION entities_reject_node_access_blob();"""
-            )
-        )
 
 
 links = Table(
@@ -146,12 +85,164 @@ links = Table(
         nullable=False,
     ),
     Column("properties", JSON, nullable=False),
-    Column("access_blob", JSON, nullable=False),
     Column("created_at", DateTime(timezone=True), nullable=False),
     Index("links_subject_predicate_idx", "subject_id", "predicate"),
     Index("links_predicate_object_idx", "predicate", "object_id"),
     Index("links_triple_idx", "subject_id", "predicate", "object_id"),
 )
+
+# Association tables mapping entities/links to catalog access tags
+# (many-to-many), mirroring the catalog's node_access_tags_association table. Both
+# directions of lookup are served: "which tags are on this entity/link?"
+# by the composite primary key, and "which entities/links have this tag?"
+# by the covering reverse index. Deleting an entity, link, or tag cascades
+# to its association rows via the foreign keys.
+
+entity_access_tags_association = Table(
+    "entity_access_tags_association",
+    metadata,
+    Column(
+        "entity_id",
+        String,
+        ForeignKey(
+            "entities.id",
+            name="fk_entity_access_tags_association_entity",
+            ondelete="CASCADE",
+        ),
+        primary_key=True,
+    ),
+    Column(
+        "tag_id",
+        Integer,
+        ForeignKey(
+            "access_tags.id",
+            name="fk_entity_access_tags_association_tag",
+            ondelete="CASCADE",
+        ),
+        primary_key=True,
+    ),
+    Index("ix_entity_access_tags_association_tag_id_entity_id", "tag_id", "entity_id"),
+)
+
+link_access_tags_association = Table(
+    "link_access_tags_association",
+    metadata,
+    Column(
+        "link_id",
+        String,
+        ForeignKey(
+            "links.id", name="fk_link_access_tags_association_link", ondelete="CASCADE"
+        ),
+        primary_key=True,
+    ),
+    Column(
+        "tag_id",
+        Integer,
+        ForeignKey(
+            "access_tags.id",
+            name="fk_link_access_tags_association_tag",
+            ondelete="CASCADE",
+        ),
+        primary_key=True,
+    ),
+    Index("ix_link_access_tags_association_tag_id_link_id", "tag_id", "link_id"),
+)
+
+
+@event.listens_for(entity_access_tags_association, "after_create")
+def _create_entities_node_access_tags_triggers(target, connection, **kw):
+    """
+    Enforce, at the database level, that an entity pointing to a catalog
+    node (node_id set) does not also carry its own access tags. Two paths
+    could violate this: an UPDATE that sets node_id on an entity that has
+    tag associations, and an INSERT/UPDATE on entity_access_tags_association that
+    references a node-backed entity.
+    """
+    if connection.engine.dialect.name == "sqlite":
+        connection.execute(
+            text(
+                f"""
+CREATE TRIGGER IF NOT EXISTS entities_node_access_tags_update
+BEFORE UPDATE OF node_id ON entities
+WHEN (NEW.node_id IS NOT NULL AND EXISTS (
+    SELECT 1 FROM entity_access_tags_association WHERE entity_id = NEW.id
+))
+BEGIN
+    SELECT RAISE(ABORT, '{ENTITY_NODE_ACCESS_TAGS_ERROR}');
+END"""
+            )
+        )
+        for operation in ("INSERT", "UPDATE OF entity_id"):
+            connection.execute(
+                text(
+                    f"""
+CREATE TRIGGER IF NOT EXISTS
+entity_access_tags_association_{operation.split()[0].lower()}_reject_node_backed_entity
+BEFORE {operation} ON entity_access_tags_association
+WHEN EXISTS (SELECT 1 FROM entities WHERE id = NEW.entity_id AND node_id IS NOT NULL)
+BEGIN
+    SELECT RAISE(ABORT, '{ENTITY_NODE_ACCESS_TAGS_ERROR}');
+END"""
+                )
+            )
+    elif connection.engine.dialect.name == "postgresql":
+        # PostgreSQL does not allow subqueries in a trigger WHEN clause
+        # ("cannot use subquery in trigger WHEN condition"), so the EXISTS
+        # checks live in the function bodies; the trigger WHEN clause keeps
+        # only the cheap scalar column test.
+        connection.execute(
+            text(
+                f"""
+CREATE OR REPLACE FUNCTION entities_reject_node_access_tags()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM entity_access_tags_association WHERE entity_id = NEW.id
+    ) THEN
+        RAISE EXCEPTION '{ENTITY_NODE_ACCESS_TAGS_ERROR}'
+            USING ERRCODE = '23514';
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;"""
+            )
+        )
+        # OR REPLACE keeps this belt-and-suspenders idempotent even though the
+        # table-level listener already fires only once (PostgreSQL 14+).
+        connection.execute(
+            text(
+                """
+CREATE OR REPLACE TRIGGER entities_node_access_tags_check
+BEFORE UPDATE OF node_id ON entities
+FOR EACH ROW
+WHEN (NEW.node_id IS NOT NULL)
+EXECUTE FUNCTION entities_reject_node_access_tags();"""
+            )
+        )
+        connection.execute(
+            text(
+                f"""
+CREATE OR REPLACE FUNCTION entity_access_tags_association_reject_node_backed_entity()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM entities WHERE id = NEW.entity_id AND node_id IS NOT NULL) THEN
+        RAISE EXCEPTION '{ENTITY_NODE_ACCESS_TAGS_ERROR}'
+            USING ERRCODE = '23514';
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;"""
+            )
+        )
+        connection.execute(
+            text(
+                """
+CREATE OR REPLACE TRIGGER entity_access_tags_association_reject_node_backed_entity
+BEFORE INSERT OR UPDATE OF entity_id ON entity_access_tags_association
+FOR EACH ROW EXECUTE FUNCTION entity_access_tags_association_reject_node_backed_entity();"""
+            )
+        )
+
 
 namespaces = Table(
     "namespaces",

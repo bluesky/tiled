@@ -136,6 +136,7 @@ def downgrade_database(
         engine = create_async_engine(database_uri)
         redacted_url = engine.url._replace(password="[redacted]")
         current_revision = await get_current_revision(engine, ALL_REVISIONS)
+        await engine.dispose()
         if current_revision is None:
             # Create tables and stamp (alembic) revision.
             typer.echo(

@@ -20,7 +20,7 @@ from .server.protocols import (
     InternalAuthenticator,
     UserSessionState,
 )
-from .server.utils import get_root_url
+from .server.utils import get_current_url
 from .utils import modules_available
 
 logger = logging.getLogger(__name__)
@@ -267,7 +267,7 @@ properties:
         # A proxy in the middle may make the request into something like
         # 'http://localhost:8000/...' so we fix the first part but keep
         # the original URI path.
-        redirect_uri = f"{get_root_url(request)}{request.url.path}"
+        redirect_uri = get_current_url(request)
         response = await exchange_code(
             self.token_endpoint,
             code,
@@ -513,7 +513,7 @@ class EntraAuthenticator(ProxiedOIDCAuthenticator):
                 "Authentication failed: No authorization code parameter provided."
             )
             return None
-        redirect_uri = f"{get_root_url(request)}{request.url.path}"
+        redirect_uri = get_current_url(request)
         response = await exchange_code(
             self.token_endpoint,
             code,

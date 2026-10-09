@@ -38,6 +38,7 @@ from starlette.status import (
 )
 
 from ..access_control.protocols import AccessPolicy
+from ..access_control.scopes import ScopeName
 from ..authenticators import ProxiedOIDCAuthenticator
 from ..catalog.adapter import WouldDeleteData
 from ..config import (
@@ -116,6 +117,34 @@ def custom_openapi(app):
     ]["refreshUrl"] = "token/refresh"
     app.openapi_schema = openapi_schema
     return app.openapi_schema
+
+
+def _find_catalog_context(tree):
+    """
+    Find a catalog database context within the served tree.
+
+    The access tags parser needs the catalog's database settings (the URI) to
+    read tag definitions. The served tree may be a single catalog adapter, or a
+    MapAdapter nesting several catalog mounts (e.g. /foo, /bar mounted from the
+    same catalog database). Walk only the already-materialized, dict-backed
+    mount structure and return the first catalog context found (any one
+    suffices: access tags are a single shared namespace written to one catalog
+    database). In particular, do not use MapAdapter.values(): a MapAdapter may
+    wrap a lazy mapping whose values are data adapters, and inspecting them
+    would construct catalog data during application startup.
+
+    Returns the context, or None if the tree contains no catalog adapter.
+    """
+    context = getattr(tree, "context", None)
+    if context is not None:
+        return context
+    mapping = getattr(tree, "_mapping", None)
+    if isinstance(mapping, dict):
+        for child in mapping.values():
+            found = _find_catalog_context(child)
+            if found is not None:
+                return found
+    return None
 
 
 def build_app(
@@ -736,7 +765,78 @@ def build_app(
             if app.state.access_policy is not None and hasattr(
                 app.state.access_policy, "access_tags_parser"
             ):
-                await app.state.access_policy.access_tags_parser.connect()
+                # Access tag definitions live in the catalog database, so the
+                # parser connects with the catalog's own database settings.
+                access_tags_catalog_context = _find_catalog_context(tree)
+                if access_tags_catalog_context is None:
+                    raise ValueError(
+                        "This access policy reads access tags from the catalog "
+                        "database, so it requires a catalog-backed tree."
+                    )
+                await app.state.access_policy.access_tags_parser.connect(
+                    access_tags_catalog_context.database_settings
+                )
+                # The scope set the catalog database enforces should match the
+                # ScopeName enum this server is running. A disagreement here
+                # points at a schema that was changed outside of a migration.
+                enforced_scopes = (
+                    await app.state.access_policy.access_tags_parser.get_enforced_scopes()
+                )
+                # An empty set means the constraint is missing or could not be
+                # read. The catalog then stores any value as a scope, so this
+                # is reported on its own rather than compared: every scope
+                # would otherwise look like a disagreement.
+                if enforced_scopes:
+                    unknown_scopes = enforced_scopes - {
+                        scope.value for scope in ScopeName
+                    }
+                    if unknown_scopes:
+                        logger.warning(
+                            f"The catalog database accepts scopes that this "
+                            f"version of Tiled does not define: "
+                            f"{sorted(unknown_scopes)}. If any access tag "
+                            f"grants one of these, Tiled cannot read that tag "
+                            f"at all: every permission the tag grants is lost, "
+                            f"and requests for data carrying it fail with an "
+                            f"error rather than being denied. The catalog's "
+                            f"scope constraint appears to have been altered "
+                            f"outside of a migration. The catalog schema and "
+                            f"the running version of Tiled need to be "
+                            f"reconciled."
+                        )
+                    # The opposite direction. Only scopes that the policy is
+                    # actually configured with are reported.
+                    configured_scopes = {
+                        getattr(scope, "value", scope)
+                        for scope in getattr(app.state.access_policy, "scopes", ())
+                    }
+                    unstorable_scopes = configured_scopes - enforced_scopes
+                    if unstorable_scopes:
+                        logger.warning(
+                            f"The catalog database cannot store scopes that "
+                            f"this access policy is configured to grant: "
+                            f"{sorted(unstorable_scopes)}. As a result, no "
+                            f"access tag can grant them, so every operation "
+                            f"that requires one is refused, and tag "
+                            f"definitions may fail to compile. The catalog's "
+                            f"scope constraint appears to have been altered "
+                            f"outside of a migration. The catalog schema and "
+                            f"the running version of Tiled need to be "
+                            f"reconciled."
+                        )
+                else:
+                    logger.error(
+                        "Tiled could not read the set of scopes that the "
+                        "catalog database enforces. The catalog will store "
+                        "any value as a scope, and an access tag that grants "
+                        "an unrecognized scope cannot be read at all: every "
+                        "permission that tag grants is lost, and requests for "
+                        "data carrying it fail with an error rather than "
+                        "being denied. The catalog's scope constraint appears "
+                        "to have been dropped outside of a migration. The "
+                        "catalog schema and the running version of Tiled need "
+                        "to be reconciled."
+                    )
 
             async def purge_expired_sessions_and_api_keys():
                 PURGE_INTERVAL = 600  # seconds

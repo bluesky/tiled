@@ -5,8 +5,58 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## Unreleased
 
+### Added
+
+- Expose the Deployment `strategy` in the helm chart, so that a deployment can
+  use `Recreate` instead of the default `RollingUpdate`.
+- Add a `DELETE /api/v1/asset/{path}?id=N` endpoint to dissociate a single
+  asset from a node. If the asset is no longer referenced by any other data
+  source, its catalog record is deleted; and, when it is internally managed,
+  the underlying data (file, directory, object, or storage-database rows) is
+  deleted as well. Mirrors node deletion: gated on `expose_raw_assets` and
+  defaults to `external_only=true`, refusing to delete internally-managed data
+  unless `external_only=false` is passed.
+- Add `Container.register`, a synchronous client method to register external,
+  server-accessible files as a single dataset (array, table, etc.).
+- Add registration support for Parquet files.
+- Documentation: a user-guide page on validating metadata against custom specs
+  via server configuration.
+- ACL filtering by access tags ids resolved from access tag names on the server.
+  The ids are passed as literals in the querries, which allows Postgres to use
+  extended statstics to plan the query.
+- Zarr arrays are served with `dims` taken from the store: Zarr v3
+  `dimension_names`, or the `_ARRAY_DIMENSIONS` attribute on Zarr v2 arrays.
+  An array with any unnamed dimension keeps `dims=None`.
+
+### Changed
+
+- Replace catalog `access_blob` column with a normalized `access_tags` table.
+  Tags, grants, tag ownership, and node-tag associations now live in the
+  catalog database; graph entities and links share the same tags table,
+  but have their own association tables. Per-user principal tags replace
+  user-owned blobs and are granted implicitly to their principals.
+- `AccessTagsParser` and `AccessTagsCompiler` now discover and use the catalog
+  database on both SQLite and PostgreSQL. Removed tag definitions retain their
+  node associations but lose their grants, preventing transient configuration
+  failures from erasing access-control information. The server remains
+  compatible with older clients that use `access_blob`.
+- Deployment note: this change includes three sequential catalog migrations
+  (an intermediate blob-association schema, conversion to tags, and a
+  parent-scoped node-tag association). Apply the full migration chain without
+  stopping at an intermediate revision. This also drops the old metadata
+  index; deploy the improved replacement index from #1521 as well.
+- Object-storage (S3) tests now run against an in-process `moto` S3 server
+  started automatically by the test suite, instead of requiring a MinIO
+  container (whose image was removed from Docker Hub). Set `TILED_TEST_BUCKET`
+  to point the tests at a real MinIO/S3 endpoint instead.
+
 ### Fixed
 
+- Roll back catalog node creation when SQL identifier validation fails, so a
+  corrected retry is not blocked by a partially-created node.
+- Encode `application/json-seq` table exports with the RFC 7464 record
+  separator and line-feed framing, preventing single-row sequences from being
+  mistaken for a single JSON document by browser clients.
 - Extend to zarr routes the previous fix for reads of array data whose
   on-disk shape has diverged from the shape recorded in the catalog
   structure, which can happen while an array is being extended
@@ -1353,3 +1403,6 @@ tiled catalog upgrade-database [postgresql://.. | sqlite:///...]
  - Updated the pydantic version in the pyproject.toml. Now the allowed versions are >2.0.0 - <3.0.0 .
  - Changes to prepare for upcoming numpy 2.0 release
  - Changes to address deprecations in FastAPI
+- Require `duckdb !=1.4.0` instead of `duckdb <1.4.0`.
+- `SQLAdapter.read` and `SQLAdapter.read_partition` return rows in the
+  order they were appended on DuckDB and SQLite.

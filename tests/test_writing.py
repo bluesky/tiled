@@ -16,6 +16,7 @@ from datetime import datetime
 from urllib.parse import urljoin, urlparse
 
 import awkward
+import boto3
 import dask.dataframe
 import numpy
 import pandas
@@ -23,8 +24,7 @@ import pandas.testing
 import pyarrow
 import pytest
 import sparse
-from minio import Minio
-from minio.error import S3Error
+from botocore.exceptions import ClientError as BotoClientError
 from pandas.testing import assert_frame_equal
 from starlette.status import (
     HTTP_404_NOT_FOUND,
@@ -55,34 +55,36 @@ validation_registry.register("SomeSpec", lambda *args, **kwargs: None)
 
 
 @pytest.fixture
-def tmp_minio_bucket():
-    """Create a temporary MinIO bucket and clean it up after tests."""
+def tmp_s3_bucket():
+    """Create a temporary S3 bucket and clean it up after tests."""
     if uri := os.getenv("TILED_TEST_BUCKET"):
         clean_uri, username, password = sanitize_uri(uri)
-        minio_client = Minio(
-            endpoint=urlparse(clean_uri).netloc,  # e.g. only "localhost:9000"
-            access_key=username or "minioadmin",
-            secret_key=password or "minioadmin",
-            secure=False,
+        parsed = urlparse(clean_uri)
+        s3 = boto3.client(
+            "s3",
+            endpoint_url=f"{parsed.scheme}://{parsed.netloc}",
+            aws_access_key_id=username or "bucketadmin",
+            aws_secret_access_key=password or "bucketadmin",
+            region_name="us-east-1",
         )
 
         bucket_name = f"test-{uuid.uuid4().hex}"
-        minio_client.make_bucket(bucket_name=bucket_name)
+        s3.create_bucket(Bucket=bucket_name)
 
         try:
             yield urljoin(uri, "/" + bucket_name)  # full URI with credentials
         finally:
             # Cleanup: remove all objects and delete the bucket
             try:
-                objects = minio_client.list_objects(
-                    bucket_name=bucket_name, recursive=True
-                )
-                for obj in objects:
-                    minio_client.remove_object(
-                        bucket_name=bucket_name, object_name=obj.object_name
-                    )
-                minio_client.remove_bucket(bucket_name=bucket_name)
-            except S3Error as e:
+                paginator = s3.get_paginator("list_objects_v2")
+                for page in paginator.paginate(Bucket=bucket_name):
+                    objects = [{"Key": o["Key"]} for o in page.get("Contents", [])]
+                    if objects:
+                        s3.delete_objects(
+                            Bucket=bucket_name, Delete={"Objects": objects}
+                        )
+                s3.delete_bucket(Bucket=bucket_name)
+            except BotoClientError as e:
                 print(f"Warning: failed to delete test bucket {bucket_name}: {e}")
 
     else:
@@ -90,14 +92,14 @@ def tmp_minio_bucket():
 
 
 @pytest.fixture
-def tree(tmpdir, tmp_minio_bucket):
+def tree(tmpdir, tmp_s3_bucket):
     writable_storage = [f"duckdb:///{tmpdir / 'data.duckdb'}"]
 
-    if tmp_minio_bucket:
+    if tmp_s3_bucket:
         writable_storage.append(
             {
                 "provider": "s3",
-                "uri": tmp_minio_bucket,
+                "uri": tmp_s3_bucket,
                 "config": {
                     "virtual_hosted_style_request": False,
                     "client_options": {"allow_http": True},
@@ -283,6 +285,36 @@ def test_write_table_full(tree):
         pandas.testing.assert_frame_equal(result_dataframe, df)
         assert result.metadata == metadata
         assert result.specs == specs
+
+
+@pytest.mark.parametrize(
+    "column_name, table_name",
+    [
+        (
+            "column_name_that_exceeds_the_sixty_three_byte_sql_identifier_limit",
+            None,
+        ),
+        ("1invalid_start", None),
+        ('invalid"name', None),
+        ("valid_column", "select"),
+    ],
+)
+def test_invalid_sql_identifier_does_not_create_catalog_node(
+    tree, column_name, table_name
+):
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        key = "invalid_sql_identifier"
+        schema = pyarrow.schema([pyarrow.field(column_name, pyarrow.int64())])
+
+        with fail_with_status_code(HTTP_422_UNPROCESSABLE_CONTENT):
+            client.create_appendable_table(schema, key=key, table_name=table_name)
+
+        assert key not in client
+        client.create_appendable_table(
+            pyarrow.schema([pyarrow.field("valid_column", pyarrow.int64())]), key=key
+        )
+        assert key in client
 
 
 def test_write_table_partitioned(tree):
@@ -855,7 +887,9 @@ def test_table_bytes_column_json_export(tree, buffer, media_type):
     if media_type == "application/json":
         assert json.loads(payload)["label"] == expected
     else:
-        rows = [json.loads(line) for line in payload.splitlines()]
+        rows = [
+            json.loads(record) for record in payload.split("\x1e") if record.strip()
+        ]
         assert [row["label"] for row in rows] == expected
 
 
@@ -940,38 +974,26 @@ def test_append_partition(
 
 
 @pytest.mark.parametrize(
-    "table_name, expected",
+    "table_name, valid",
     [
-        (None, None),
-        ("valid_table_name", None),
-        (
-            "_invalid_table_name",
-            pytest.raises(ValueError, match=r"Malformed SQL identifier.+"),
-        ),
-        (
-            "invalid-table-name",
-            pytest.raises(ValueError, match=r"Malformed SQL identifier.+"),
-        ),
-        (
-            "UPPERCASE_TABLE_NAME",
-            pytest.raises(ValueError, match=r"Malformed SQL identifier.+"),
-        ),
-        (
-            "",
-            pytest.raises(ValueError, match=r"Malformed SQL identifier.+"),
-        ),
+        (None, True),
+        ("valid_table_name", True),
+        ("_invalid_table_name", False),
+        ("invalid-table-name", False),
+        ("UPPERCASE_TABLE_NAME", False),
+        ("", False),
     ],
 )
 def test_create_table_with_custom_name(
     tree: CatalogContainerAdapter,
     table_name: str,
-    expected: str,
+    valid: bool,
 ):
     table = pyarrow.Table.from_arrays([[1, 2, 3]], ["column_name"])
     with Context.from_app(build_app(tree)) as context:
         client = from_context(context, include_data_sources=True)
-        if isinstance(expected, type(pytest.raises(ValueError))):
-            with expected:
+        if not valid:
+            with fail_with_status_code(HTTP_422_UNPROCESSABLE_CONTENT):
                 client.create_appendable_table(table.schema, table_name=table_name)
         else:
             x = client.create_appendable_table(table.schema, table_name=table_name)
