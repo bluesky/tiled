@@ -11,7 +11,7 @@ from contextlib import asynccontextmanager
 from functools import cache, partial
 from pathlib import Path
 from textwrap import dedent
-from typing import Any, Optional, Union
+from typing import Any
 
 import anyio
 import packaging.version
@@ -119,6 +119,50 @@ def custom_openapi(app):
     return app.openapi_schema
 
 
+async def _ensure_authn_database_initialized(engine) -> None:
+    """
+    Create tables and stamp the alembic revision, via `tiled admin initialize-database`.
+
+    Multiple processes may call this concurrently against the same brand-new
+    database (e.g. several replicas starting up at once). Only one wins the
+    race; retry, re-checking in case another process has since finished,
+    rather than crashing.
+    """
+    import subprocess
+
+    import stamina
+
+    from ..alembic_utils import UninitializedDatabase, check_database
+    from ..authn_database.core import ALL_REVISIONS, REQUIRED_REVISION
+
+    async for attempt in stamina.retry_context(
+        on=(subprocess.CalledProcessError, UninitializedDatabase),
+        attempts=5,
+        wait_initial=0.5,
+        wait_max=2.0,
+        wait_jitter=0.5,
+        timeout=None,
+    ):
+        with attempt:
+            try:
+                subprocess.run(
+                    [
+                        sys.executable,
+                        "-m",
+                        "tiled",
+                        "admin",
+                        "initialize-database",
+                        str(engine.url),
+                    ],
+                    capture_output=True,
+                    check=True,
+                )
+            except subprocess.CalledProcessError:
+                # Another process may have already won the race and
+                # initialized the database.
+                await check_database(engine, REQUIRED_REVISION, ALL_REVISIONS)
+
+
 def _find_catalog_context(tree):
     """
     Find a catalog database context within the served tree.
@@ -149,18 +193,18 @@ def _find_catalog_context(tree):
 
 def build_app(
     tree,
-    authentication: Optional[Authentication] = None,
+    authentication: Authentication | None = None,
     server_settings=None,
-    query_registry: Optional[QueryRegistry] = None,
-    serialization_registry: Optional[SerializationRegistry] = None,
-    deserialization_registry: Optional[SerializationRegistry] = None,
-    compression_registry: Optional[CompressionRegistry] = None,
-    validation_registry: Optional[ValidationRegistry] = None,
-    tasks: Optional[dict[str, list[AppTask]]] = None,
+    query_registry: QueryRegistry | None = None,
+    serialization_registry: SerializationRegistry | None = None,
+    deserialization_registry: SerializationRegistry | None = None,
+    compression_registry: CompressionRegistry | None = None,
+    validation_registry: ValidationRegistry | None = None,
+    tasks: dict[str, list[AppTask]] | None = None,
     scalable=False,
-    access_policy: Optional[AccessPolicy] = None,
-    include_routers: Optional[list[APIRouter]] = None,
-    webhook_url_validator: Optional[UrlValidator] = None,
+    access_policy: AccessPolicy | None = None,
+    include_routers: list[APIRouter] | None = None,
+    webhook_url_validator: UrlValidator | None = None,
 ):
     """
     Serve a Tree
@@ -697,24 +741,10 @@ def build_app(
                     await check_database(engine, REQUIRED_REVISION, ALL_REVISIONS)
                 except UninitializedDatabase:
                     if settings.database_init_if_not_exists:
-                        # The alembic stamping can only be does synchronously.
+                        # The alembic stamping can only be done synchronously.
                         # The cleanest option available is to start a subprocess
                         # because SQLite is allergic to threads.
-                        import subprocess
-
-                        # TODO Check if catalog exists.
-                        subprocess.run(
-                            [
-                                sys.executable,
-                                "-m",
-                                "tiled",
-                                "admin",
-                                "initialize-database",
-                                str(engine.url),
-                            ],
-                            capture_output=True,
-                            check=True,
-                        )
+                        await _ensure_authn_database_initialized(engine)
                     else:
                         print(
                             dedent(
@@ -779,9 +809,7 @@ def build_app(
                 # The scope set the catalog database enforces should match the
                 # ScopeName enum this server is running. A disagreement here
                 # points at a schema that was changed outside of a migration.
-                enforced_scopes = (
-                    await app.state.access_policy.access_tags_parser.get_enforced_scopes()
-                )
+                enforced_scopes = await app.state.access_policy.access_tags_parser.get_enforced_scopes()
                 # An empty set means the constraint is missing or could not be
                 # read. The catalog then stores any value as a scope, so this
                 # is reported on its own rather than compared: every scope
@@ -1070,7 +1098,7 @@ def build_app(
     return app
 
 
-def build_app_from_config(config: Union[Config, dict[str, Any]], scalable=False):
+def build_app_from_config(config: Config | dict[str, Any], scalable=False):
     """
     Convenience function that calls build_app(...) given config as parsed Config instance
 
