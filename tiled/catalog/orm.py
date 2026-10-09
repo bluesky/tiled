@@ -153,7 +153,7 @@ class AccessTag(Timestamped, Base):
     AccessTags are the unit of access control: nodes carry a set of tags, and
     principals are granted access by being associated with one or more tags.
     The allowed operations for a principal on a node are determined by the
-    scopes bound to their AccessTagPrincipalScopeAssociation rows.
+    scopes bound to their AccessGrant rows.
 
     A tag with is_public=True grants read access to unauthenticated requests.
 
@@ -169,7 +169,7 @@ class AccessTag(Timestamped, Base):
         Boolean, nullable=False, default=False, server_default=text("false")
     )
 
-    principal_scopes: Mapped[List["AccessTagPrincipalScopeAssociation"]] = relationship(
+    grants: Mapped[List["AccessGrant"]] = relationship(
         back_populates="tag",
         cascade="all, delete-orphan",
         passive_deletes=True,
@@ -327,6 +327,20 @@ EXECUTE FUNCTION node_access_tags_sync_parent_after_node_update()"""
         )
 
 
+@event.listens_for(NodeAccessTagAssociation.__table__, "after_create")
+def create_node_access_tag_statistics(target, connection, **kw):
+    if connection.engine.dialect.name == "postgresql":
+        connection.execute(
+            text(
+                """
+CREATE STATISTICS IF NOT EXISTS node_access_tags_association_parent_id_tag_id_node_id_stats
+(dependencies, ndistinct, mcv)
+ON parent_id, tag_id
+FROM node_access_tags_association"""
+            )
+        )
+
+
 class AccessTagsPrincipal(Timestamped, Base):
     """
     A principal (human user or service account) that can be granted access
@@ -334,7 +348,7 @@ class AccessTagsPrincipal(Timestamped, Base):
 
     The name is the canonical identifier used in authentication tokens and group
     memberships.  Scopes granted to this principal for a given tag are stored in
-    AccessTagPrincipalScopeAssociation rows; ownership of a tag is stored in AccessTagOwnerAssociation
+    AccessGrant rows; ownership of a tag is stored in AccessTagOwnerAssociation
     rows.
     """
 
@@ -343,7 +357,7 @@ class AccessTagsPrincipal(Timestamped, Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(Unicode(255), nullable=False, unique=True)
 
-    tag_scopes: Mapped[List["AccessTagPrincipalScopeAssociation"]] = relationship(
+    grants: Mapped[List["AccessGrant"]] = relationship(
         back_populates="principal",
         cascade="all, delete-orphan",
         passive_deletes=True,
@@ -355,7 +369,7 @@ class AccessTagsPrincipal(Timestamped, Base):
     )
 
 
-class AccessTagPrincipalScopeAssociation(Base):
+class AccessGrant(Base):
     """
     Junction (association table) between AccessTag and AccessTagsPrincipal,
     with one row per granted scope: a Principal is granted a scope on all
@@ -369,13 +383,13 @@ class AccessTagPrincipalScopeAssociation(Base):
           nodes be filtered for that principal?
     """
 
-    __tablename__ = "access_tag_principal_scopes_association"
+    __tablename__ = "access_grants"
 
     tag_id = Column(
         Integer,
         ForeignKey(
             "access_tags.id",
-            name="fk_access_tag_principal_scopes_association_access_tag",
+            name="fk_access_grants_access_tag",
             ondelete="CASCADE",
         ),
         nullable=False,
@@ -384,7 +398,7 @@ class AccessTagPrincipalScopeAssociation(Base):
         Integer,
         ForeignKey(
             "access_tags_principals.id",
-            name="fk_access_tag_principal_scopes_association_principal",
+            name="fk_access_grants_principal",
             ondelete="CASCADE",
         ),
         nullable=False,
@@ -403,8 +417,8 @@ class AccessTagPrincipalScopeAssociation(Base):
         nullable=False,
     )
 
-    tag: Mapped["AccessTag"] = relationship(back_populates="principal_scopes")
-    principal: Mapped["AccessTagsPrincipal"] = relationship(back_populates="tag_scopes")
+    tag: Mapped["AccessTag"] = relationship(back_populates="grants")
+    principal: Mapped["AccessTagsPrincipal"] = relationship(back_populates="grants")
 
     __table_args__ = (
         # Serves '(tag, principal) -> scopes' probes, e.g. checking scopes on a
@@ -413,12 +427,12 @@ class AccessTagPrincipalScopeAssociation(Base):
             "tag_id",
             "principal_id",
             "scope",
-            name="access_tag_principal_scopes_association_pkey",
+            name="access_grants_pkey",
         ),
         # Covering index serving '(principal, scope) -> tags' lookups, used to
         # filter nodes visible to a principal.
         Index(
-            "ix_access_tag_principal_scopes_association_principal_scope",
+            "ix_access_grants_principal_scope",
             "principal_id",
             "scope",
             "tag_id",

@@ -19,21 +19,18 @@ from .scopes import validate_scopes
 # Name of the scope enum, shared by the PostgreSQL enum type and the SQLite
 # CHECK constraint that stands in for it. Taken from the ORM so that the two
 # cannot drift.
-SCOPE_ENUM_NAME = orm.AccessTagPrincipalScopeAssociation.__table__.c.scope.type.name
+SCOPE_ENUM_NAME = orm.AccessGrant.__table__.c.scope.type.name
 
-# The access_tag_principal_scopes_association junction table, joined to the tables its
-# two foreign keys reference so that it can be queried by name. The scope is
-# stored inline on the junction and needs no join. Shared by the lookups in
+# The access_grants junction table, joined to the tables its two foreign keys
+# reference so that it can be queried by name. The scope is stored inline on
+# the junction and needs no join. Shared by the lookups in
 # both directions: (tag, principal) -> scopes and (principal, scope) -> tags.
-access_tag_principal_scopes_association_named = (
-    orm.AccessTagPrincipalScopeAssociation.__table__.join(
-        orm.AccessTag.__table__,
-        orm.AccessTag.id == orm.AccessTagPrincipalScopeAssociation.tag_id,
-    ).join(
-        orm.AccessTagsPrincipal.__table__,
-        orm.AccessTagsPrincipal.id
-        == orm.AccessTagPrincipalScopeAssociation.principal_id,
-    )
+access_grants_named = orm.AccessGrant.__table__.join(
+    orm.AccessTag.__table__,
+    orm.AccessTag.id == orm.AccessGrant.tag_id,
+).join(
+    orm.AccessTagsPrincipal.__table__,
+    orm.AccessTagsPrincipal.id == orm.AccessGrant.principal_id,
 )
 
 
@@ -83,7 +80,7 @@ class AccessTagsParser:
             else:
                 constraints = await conn.run_sync(
                     lambda sync: inspect(sync).get_check_constraints(
-                        orm.AccessTagPrincipalScopeAssociation.__tablename__
+                        orm.AccessGrant.__tablename__
                     )
                 )
                 for constraint in constraints:
@@ -100,8 +97,8 @@ class AccessTagsParser:
 
     async def get_scopes_from_tag(self, tagname, username):
         statement = (
-            select(orm.AccessTagPrincipalScopeAssociation.scope)
-            .select_from(access_tag_principal_scopes_association_named)
+            select(orm.AccessGrant.scope)
+            .select_from(access_grants_named)
             .where(
                 orm.AccessTag.name == tagname,
                 orm.AccessTagsPrincipal.name == username,
@@ -142,9 +139,9 @@ class AccessTagsParser:
     async def get_tags_from_scope(self, scope, username):
         statement = (
             select(orm.AccessTag.name)
-            .select_from(access_tag_principal_scopes_association_named)
+            .select_from(access_grants_named)
             .where(
-                orm.AccessTagPrincipalScopeAssociation.scope == scope,
+                orm.AccessGrant.scope == scope,
                 orm.AccessTagsPrincipal.name == username,
             )
         )
@@ -162,7 +159,7 @@ class AccessTagsParser:
 ACCESS_TAGS_TABLES = [
     orm.AccessTag.__table__,
     orm.AccessTagsPrincipal.__table__,
-    orm.AccessTagPrincipalScopeAssociation.__table__,
+    orm.AccessGrant.__table__,
     orm.AccessTagOwnerAssociation.__table__,
 ]
 
@@ -222,7 +219,7 @@ async def update_access_tags_tables(engine, tags, owners, public_tags):
     upsert = _upsert(engine)
     tags_table = orm.AccessTag.__table__
     users_table = orm.AccessTagsPrincipal.__table__
-    tags_users_scopes_table = orm.AccessTagPrincipalScopeAssociation.__table__
+    access_grants_table = orm.AccessGrant.__table__
     tag_owners_table = orm.AccessTagOwnerAssociation.__table__
 
     # stage all items in memory, deduplicated
@@ -358,9 +355,9 @@ async def update_access_tags_tables(engine, tags, owners, public_tags):
             tuple(row)
             for row in await connection.execute(
                 select(
-                    tags_users_scopes_table.c.tag_id,
-                    tags_users_scopes_table.c.principal_id,
-                    tags_users_scopes_table.c.scope,
+                    access_grants_table.c.tag_id,
+                    access_grants_table.c.principal_id,
+                    access_grants_table.c.scope,
                 )
             )
         }
@@ -375,7 +372,7 @@ async def update_access_tags_tables(engine, tags, owners, public_tags):
         new_tags_users_scopes = tags_users_scopes - existing_tags_users_scopes
         if new_tags_users_scopes:
             await connection.execute(
-                insert(tags_users_scopes_table),
+                insert(access_grants_table),
                 [
                     {"tag_id": tag_id, "principal_id": user_id, "scope": scope}
                     for tag_id, user_id, scope in new_tags_users_scopes
@@ -384,11 +381,11 @@ async def update_access_tags_tables(engine, tags, owners, public_tags):
         stale_tags_users_scopes = existing_tags_users_scopes - tags_users_scopes
         if stale_tags_users_scopes:
             await connection.execute(
-                delete(tags_users_scopes_table).where(
+                delete(access_grants_table).where(
                     tuple_(
-                        tags_users_scopes_table.c.tag_id,
-                        tags_users_scopes_table.c.principal_id,
-                        tags_users_scopes_table.c.scope,
+                        access_grants_table.c.tag_id,
+                        access_grants_table.c.principal_id,
+                        access_grants_table.c.scope,
                     ).in_(list(stale_tags_users_scopes))
                 )
             )

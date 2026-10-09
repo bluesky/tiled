@@ -40,11 +40,12 @@ Write the date in place of the "Unreleased" in the case a new version is release
   node associations but lose their grants, preventing transient configuration
   failures from erasing access-control information. The server remains
   compatible with older clients that use `access_blob`.
-- Deployment note: this change includes three sequential catalog migrations
-  (an intermediate blob-association schema, conversion to tags, and a
-  parent-scoped node-tag association). Apply the full migration chain without
-  stopping at an intermediate revision. This also drops the old metadata
-  index; deploy the improved replacement index from #1521 as well.
+- Deployment note: this change includes four sequential catalog migrations
+  (an intermediate blob-association schema, conversion to tags, a
+  parent-scoped node-tag association, and naming adjustment). Apply the full
+  migration chain without stopping at an intermediate revision. This also drops
+  the old metadata index; deploy the improved replacement index from #1521
+  as well.
 - Object-storage (S3) tests now run against an in-process `moto` S3 server
   started automatically by the test suite, instead of requiring a MinIO
   container (whose image was removed from Docker Hub). Set `TILED_TEST_BUCKET`
