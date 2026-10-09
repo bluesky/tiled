@@ -1,3 +1,6 @@
+import asyncio
+import logging
+
 import httpx
 import numpy
 import pytest
@@ -9,7 +12,7 @@ from tiled.adapters.array import ArrayAdapter
 from tiled.adapters.mapping import MapAdapter
 from tiled.catalog import in_memory
 from tiled.client import from_uri
-from tiled.config import Authentication
+from tiled.config import Authentication, Database
 from tiled.server.app import build_app, build_app_from_config
 from tiled.server.logging_config import LOGGING_CONFIG
 
@@ -143,3 +146,56 @@ def test_about_reports_api_root_path(tmpdir, root_path):
         response = httpx.get(url + "/api/v1/")
 
     assert response.json()["meta"]["root_path"] == f"{root_path}/api"
+
+
+@pytest.mark.asyncio
+async def test_auth_database_purge_task_logs_and_retries_after_failure(
+    monkeypatch, caplog
+):
+    attempts = 0
+    retried = asyncio.Event()
+    release_purge = asyncio.Event()
+    purge_task = None
+
+    async def fail_then_block(db_session, model):
+        nonlocal attempts, purge_task
+        attempts += 1
+        purge_task = asyncio.current_task()
+        if attempts == 1:
+            raise RuntimeError("database unavailable")
+        retried.set()
+        await release_purge.wait()
+
+    async def no_wait(delay):
+        pass
+
+    monkeypatch.setattr("tiled.authn_database.core.purge_expired", fail_then_block)
+    monkeypatch.setattr("tiled.server.app.asyncio.sleep", no_wait)
+
+    app = build_app(
+        MapAdapter({}),
+        server_settings={"database": Database(uri="sqlite:///:memory:")},
+    )
+    try:
+        with caplog.at_level(logging.WARNING, logger="tiled.server.app"):
+            async with app.router.lifespan_context(app):
+                await asyncio.wait_for(retried.wait(), timeout=1)
+                assert purge_task is not None
+                assert purge_task in app.state.tasks
+                assert not purge_task.done()
+    finally:
+        if purge_task is not None:
+            done, pending = await asyncio.wait({purge_task}, timeout=1)
+            assert not pending, "Purge task did not stop during lifespan shutdown."
+            await asyncio.gather(*done, return_exceptions=True)
+
+    warning = next(
+        record
+        for record in caplog.records
+        if record.getMessage()
+        == "Failed to purge expired Sessions and API keys from the database."
+    )
+    assert warning.levelno == logging.WARNING
+    assert warning.exc_info is not None
+    assert isinstance(warning.exc_info[1], RuntimeError)
+    assert str(warning.exc_info[1]) == "database unavailable"
