@@ -99,9 +99,9 @@ async def purge_expired(db: AsyncSession, cls) -> int:
     statement = (
         select(cls)
         .filter(cls.expiration_time.is_not(None))
-        .filter(cls.expiration_time.replace(tzinfo=timezone.utc) < now)
+        .filter(cls.expiration_time < now)
     )
-    result = await db.execute(statement)
+    result = (await db.execute(statement)).unique()
     for obj in result.scalars():
         num_expired += 1
         await db.delete(obj)

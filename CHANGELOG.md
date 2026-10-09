@@ -80,6 +80,10 @@ Write the date in place of the "Unreleased" in the case a new version is release
   (e.g. streaming appends).
 - `distinct` on a catalog node counted nodes across the whole catalog instead of
   only the node's children. It is now scoped to the requested node.
+- Fix the background task that purges expired Sessions and API keys. It
+  crashed on its first run and was never retried, so expired entries
+  (including the short-lived keys minted for websocket subscriptions)
+  could accumulate until a Principal hit the API-key limit.
 
 ## v0.2.18 (2026-09-02)
 

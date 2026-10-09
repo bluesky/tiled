@@ -841,23 +841,29 @@ def build_app(
             async def purge_expired_sessions_and_api_keys():
                 PURGE_INTERVAL = 600  # seconds
                 while True:
-                    async with AsyncSession(
-                        engine, autoflush=False, expire_on_commit=False
-                    ) as db_session:
-                        num_expired_sessions = await purge_expired(
-                            db_session, orm.Session
-                        )
-                        if num_expired_sessions:
-                            logger.info(
-                                f"Purged {num_expired_sessions} expired Sessions from the database."
+                    try:
+                        async with AsyncSession(
+                            engine, autoflush=False, expire_on_commit=False
+                        ) as db_session:
+                            num_expired_sessions = await purge_expired(
+                                db_session, orm.Session
                             )
-                        num_expired_api_keys = await purge_expired(
-                            db_session, orm.APIKey
-                        )
-                        if num_expired_api_keys:
-                            logger.info(
-                                f"Purged {num_expired_api_keys} expired API keys from the database."
+                            if num_expired_sessions:
+                                logger.info(
+                                    f"Purged {num_expired_sessions} expired Sessions from the database."
+                                )
+                            num_expired_api_keys = await purge_expired(
+                                db_session, orm.APIKey
                             )
+                            if num_expired_api_keys:
+                                logger.info(
+                                    f"Purged {num_expired_api_keys} expired API keys from the database."
+                                )
+                    except Exception:
+                        logger.warning(
+                            "Failed to purge expired Sessions and API keys from the database.",
+                            exc_info=True,
+                        )
                     await asyncio.sleep(PURGE_INTERVAL)
 
             app.state.tasks.append(
