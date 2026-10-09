@@ -24,6 +24,24 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - ACL filtering by access tags ids resolved from access tag names on the server.
   The ids are passed as literals in the querries, which allows Postgres to use
   extended statstics to plan the query.
+- `Container.search_deep(*queries, max_depth=None)` and the corresponding
+  `GET /api/v1/search-deep/{path}` HTTP endpoint, which search all
+  descendants of a node (at any depth), not just direct children. Multiple
+  queries are combined with logical AND. Results are
+  returned as a `DeepSearchResults` mapping keyed by path tuples relative
+  to the search root. Supported by both the SQL catalog and `MapAdapter`,
+  including `MapAdapter` trees with a catalog (or other container adapter)
+  mounted at a sub-path, e.g. via `trees` configuration. Results are in default
+  (database) order; sorting is not supported. Looking up a single result with
+  `results[key]` scans the results and is linear in their number.
+  Access policy is applied to every container between the search root and a
+  match, as path traversal does for other routes, so a node is not returned
+  (and its container's name not revealed) if a container above it is not
+  visible to the requesting user. See
+  [#1368](https://github.com/bluesky/tiled/issues/1368).
+- Zarr arrays are served with `dims` taken from the store: Zarr v3
+  `dimension_names`, or the `_ARRAY_DIMENSIONS` attribute on Zarr v2 arrays.
+  An array with any unnamed dimension keeps `dims=None`.
 
 ### Changed
 
@@ -46,13 +64,22 @@ Write the date in place of the "Unreleased" in the case a new version is release
   started automatically by the test suite, instead of requiring a MinIO
   container (whose image was removed from Docker Hub). Set `TILED_TEST_BUCKET`
   to point the tests at a real MinIO/S3 endpoint instead.
+- The server depends on `PyJWT` instead of `python-jose` to sign and verify
+  JSON Web Tokens.
 
 ### Fixed
 
+- Roll back catalog node creation when SQL identifier validation fails, so a
+  corrected retry is not blocked by a partially-created node.
+- Encode `application/json-seq` table exports with the RFC 7464 record
+  separator and line-feed framing, preventing single-row sequences from being
+  mistaken for a single JSON document by browser clients.
 - Extend to zarr routes the previous fix for reads of array data whose
   on-disk shape has diverged from the shape recorded in the catalog
   structure, which can happen while an array is being extended
   (e.g. streaming appends).
+- `distinct` on a catalog node counted nodes across the whole catalog instead of
+  only the node's children. It is now scoped to the requested node.
 - Fix the background task that purges expired Sessions and API keys. It
   crashed on its first run and was never retried, so expired entries
   (including the short-lived keys minted for websocket subscriptions)
@@ -1399,3 +1426,6 @@ tiled catalog upgrade-database [postgresql://.. | sqlite:///...]
  - Updated the pydantic version in the pyproject.toml. Now the allowed versions are >2.0.0 - <3.0.0 .
  - Changes to prepare for upcoming numpy 2.0 release
  - Changes to address deprecations in FastAPI
+- Require `duckdb !=1.4.0` instead of `duckdb <1.4.0`.
+- `SQLAdapter.read` and `SQLAdapter.read_partition` return rows in the
+  order they were appended on DuckDB and SQLite.

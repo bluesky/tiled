@@ -71,7 +71,7 @@ all = [
     "dask",
     "dask[array]",
     "dask[dataframe]",
-    "duckdb <1.4.0",  # https://github.com/bluesky/tiled/issues/1144
+    "duckdb!=1.4.0",  # https://github.com/bluesky/tiled/issues/1144
     "entrypoints",
     "fastapi >=0.132.0",
     "h5netcdf",
@@ -92,8 +92,8 @@ all = [
     "pillow",
     "prometheus_client",
     "pyarrow >=14.0.1",  # includes fix to CVE 2023-47248
+    "pyjwt[crypto]>=2.15.1",
     "python-dateutil",
-    "python-jose[cryptography]",
     "python-multipart",
     "ragged",
     "redis",
@@ -183,8 +183,8 @@ minimal-server = [
     "numcodecs",
     "packaging",
     "prometheus_client",
+    "pyjwt[crypto]>=2.15.1",
     "python-dateutil",
-    "python-jose[cryptography]",
     "python-multipart",
     "redis",
     "sqlalchemy[asyncio] >=2,<2.1",
@@ -210,7 +210,7 @@ server = [
     "dask",
     "dask[array]",
     "dask[dataframe]",
-    "duckdb <1.4.0",  # https://github.com/bluesky/tiled/issues/1144
+    "duckdb!=1.4.0",  # https://github.com/bluesky/tiled/issues/1144
     "entrypoints",
     "fastapi >=0.132.0",
     "h5netcdf",
@@ -231,8 +231,8 @@ server = [
     "pillow",
     "prometheus_client",
     "pyarrow >=14.0.1",  # includes fix to CVE 2023-47248
+    "pyjwt[crypto]>=2.15.1",
     "python-dateutil",
-    "python-jose[cryptography]",
     "python-multipart",
     "ragged",
     "sparse >=0.15.5",
