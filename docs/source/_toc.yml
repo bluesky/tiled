@@ -42,6 +42,7 @@ subtrees:
             - file: user-guide/api-keys
             - file: user-guide/custom-clients
             - file: user-guide/metrics
+            - file: user-guide/tracing
             - file: user-guide/direct-client
             - file: user-guide/tiled-authn-database
             - file: user-guide/register

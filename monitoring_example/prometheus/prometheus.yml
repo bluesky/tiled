@@ -3,6 +3,10 @@ global:
   scrape_interval: 5s
 
 scrape_configs:
+  # Scrape Tiled's metrics endpoint directly. The OpenTelemetry Collector
+  # independently scrapes the same endpoint and brings the metrics into its
+  # pipeline (see monitoring_example/otel-collector/otel-collector.yml),
+  # re-exposing them on otel-collector:8889 for forwarding to other backends.
   - job_name: 'tiled'
     metrics_path: /api/v1/metrics
     authorization:  # Set Authorization header to 'Apikey secret'.

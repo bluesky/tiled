@@ -1,0 +1,60 @@
+# Grafana Tempo configuration (single binary, for the example stack).
+#
+# Tempo receives traces over OTLP from the OpenTelemetry Collector and stores
+# them on the local filesystem. This example writes to /tmp (ephemeral, lost on
+# restart) so it needs no volume or permission setup. Traces are queried from
+# Grafana via the Tempo datasource.
+
+server:
+  http_listen_port: 3200
+
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+        http:
+          endpoint: 0.0.0.0:4318
+
+ingester:
+  max_block_duration: 5m
+
+compactor:
+  compaction:
+    block_retention: 1h
+
+storage:
+  trace:
+    backend: local
+    local:
+      path: /tmp/tempo/blocks
+    wal:
+      path: /tmp/tempo/wal
+
+# Generate service-graph and span metrics from incoming traces and remote-write
+# them to Prometheus. Grafana's Tempo "Service Graph" reads these. Client spans
+# to Postgres and Redis (which have no server span) become virtual nodes named
+# from the peer.service attribute the collector sets: the database name for
+# Postgres (e.g. tiled_catalog, tiled_storage) and db.system for others (e.g.
+# redis).
+metrics_generator:
+  registry:
+    external_labels:
+      source: tempo
+  storage:
+    path: /tmp/tempo/generator/wal
+    remote_write:
+      - url: http://prometheus:9090/api/v1/write
+        send_exemplars: true
+  traces_storage:
+    path: /tmp/tempo/generator/traces
+  processor:
+    service_graphs:
+      # Use peer.service (set by the collector) to name dependency nodes.
+      peer_attributes: [peer.service]
+
+overrides:
+  defaults:
+    metrics_generator:
+      processors: [service-graphs, span-metrics]

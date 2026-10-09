@@ -3,9 +3,10 @@ from __future__ import annotations
 import copy
 import hashlib
 import logging
+import os
 import re
 from collections.abc import Set
-from contextlib import closing
+from contextlib import AbstractContextManager, closing, nullcontext
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -20,6 +21,7 @@ from typing import (
     Union,
     cast,
 )
+from urllib.parse import urlparse
 
 from tiled.utils import UnsafeIdentifier
 
@@ -48,6 +50,13 @@ from ..structures.data_source import Asset, DataSource
 from ..structures.table import TableStructure
 from ..type_aliases import JSON
 from .array import ArrayAdapter
+
+try:
+    from opentelemetry import trace as _otel_trace
+
+    _STORAGE_TRACER = _otel_trace.get_tracer("tiled.storage")
+except ImportError:  # OpenTelemetry is an optional dependency.
+    _STORAGE_TRACER = None
 
 DIALECTS = Literal["postgresql", "sqlite", "duckdb"]
 TABLE_NAME_PATTERN = re.compile(r"^[a-z][a-z0-9_]*$")
@@ -503,8 +512,35 @@ class SQLAdapter(Adapter[TableStructure]):
 
         with closing(self.storage.connect()) as conn:
             with conn.cursor() as cursor:
-                cursor.adbc_ingest(self.table_name, table, mode="append")
+                with self._adbc_ingest_span():
+                    cursor.adbc_ingest(self.table_name, table, mode="append")
             conn.commit()
+
+    def _adbc_ingest_span(self) -> AbstractContextManager[Any]:
+        """OpenTelemetry tracing span for the bulk `adbc_ingest` write.
+
+        `adbc_ingest` bypasses the DBAPI `execute()` path, so the generic
+        dbapi instrumentation does not trace it; emit a span explicitly with the
+        same db attributes as the other storage spans. A no-op if OpenTelemetry
+        is not installed or tracing is not configured.
+        """
+        if _STORAGE_TRACER is None or not os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT"):
+            return nullcontext()
+        attributes = {
+            "db.system": self.storage.dialect,
+            "db.sql.table": self.table_name,
+        }
+        db_name = urlparse(self.storage.uri).path.lstrip("/")
+        if db_name:
+            attributes["db.name"] = db_name
+        return cast(
+            AbstractContextManager[Any],
+            _STORAGE_TRACER.start_as_current_span(
+                "adbc_ingest",
+                kind=_otel_trace.SpanKind.CLIENT,
+                attributes=attributes,
+            ),
+        )
 
     def _read_full_table_or_partition(
         self, fields: Optional[List[str]] = None, partition: Optional[int] = None

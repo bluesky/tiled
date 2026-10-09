@@ -1,6 +1,7 @@
 import asyncio
 import collections
 import contextvars
+import importlib.metadata
 import logging
 import os
 import secrets
@@ -79,6 +80,7 @@ CSRF_HEADER_NAME = "x-csrf"
 CSRF_QUERY_PARAMETER = "csrf"
 
 MINIMUM_SUPPORTED_PYTHON_CLIENT_VERSION = packaging.version.parse("0.1.0a104")
+FASTAPI_VERSION = packaging.version.Version(importlib.metadata.version("fastapi"))
 
 logger = logging.getLogger(__name__)
 logger.setLevel("INFO")
@@ -286,7 +288,17 @@ def build_app(
         finally:
             await shutdown_event()
 
-    app = FastAPI(lifespan=lifespan, strict_content_type=False)
+    # FastAPI >=0.142 ships built-in OpenTelemetry support that, when
+    # `OTEL_EXPORTER_OTLP_ENDPOINT` (or a related variable) is set,
+    # auto-registers its own OTLP export pipeline on the global tracer
+    # provider. Tiled configures and manages its own tracing pipeline (see
+    # `_setup_opentelemetry_tracing`), so FastAPI's auto-configuration
+    # would register a second exporter and emit every span twice. Opt out.
+    kwargs = dict(lifespan=lifespan, strict_content_type=False)
+    if FASTAPI_VERSION >= packaging.version.Version("0.142"):
+        kwargs["telemetry"] = {"auto_configure": False}
+
+    app = FastAPI(**kwargs)
 
     # Healthcheck for deployment to containerized systems, needs to preempt other responses.
     # Standardized for Kubernetes, but also used by other systems.
@@ -1067,7 +1079,86 @@ def build_app(
         generator=lambda: secrets.token_hex(8),
     )
 
+    _setup_opentelemetry_tracing(app)
+
     return app
+
+
+def _setup_opentelemetry_tracing(app: FastAPI) -> None:
+    """Enable OpenTelemetry request tracing when an OTLP endpoint is configured.
+
+    Tracing is activated only when the standard `OTEL_EXPORTER_OTLP_ENDPOINT`
+    environment variable is set, so it is off by default and adds no overhead
+    unless explicitly enabled. Spans are exported over OTLP/HTTP.
+    """
+    if not os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT"):
+        return
+    try:
+        from opentelemetry import trace
+        from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
+            OTLPSpanExporter,
+        )
+        from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+        from opentelemetry.sdk.resources import Resource
+        from opentelemetry.sdk.trace import TracerProvider
+        from opentelemetry.sdk.trace.export import BatchSpanProcessor
+    except ImportError:
+        logger.warning(
+            "OTEL_EXPORTER_OTLP_ENDPOINT is set but the OpenTelemetry packages "
+            "are not installed; tracing is disabled."
+        )
+        return
+
+    # Configure the global tracer provider once per process.
+    if not isinstance(trace.get_tracer_provider(), TracerProvider):
+        resource = Resource.create(
+            {"service.name": os.getenv("OTEL_SERVICE_NAME", "tiled")}
+        )
+        provider = TracerProvider(resource=resource)
+        provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter()))
+        trace.set_tracer_provider(provider)
+    FastAPIInstrumentor.instrument_app(app)
+
+    # Emit spans for calls to the PostgreSQL driver (asyncpg), Redis, and
+    # outbound HTTP (httpx: OIDC, webhooks, external policy servers). These
+    # patch the libraries globally, so they are no-ops until a request uses them.
+    try:
+        from opentelemetry.instrumentation.asyncpg import AsyncPGInstrumentor
+    except ImportError:
+        pass
+    else:
+        AsyncPGInstrumentor().instrument()
+    try:
+        from opentelemetry.instrumentation.redis import RedisInstrumentor
+    except ImportError:
+        pass
+    else:
+        RedisInstrumentor().instrument()
+    try:
+        from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
+    except ImportError:
+        pass
+    else:
+
+        def _set_peer_service(span, request):
+            # Name the downstream dependency so it becomes its own node in the
+            # Tempo service graph (via peer.service) and is filterable in Jaeger.
+            # Bundle every webhook delivery under a single 'webhooks' node; name
+            # other outbound calls (OIDC, external policy servers) by their host.
+            if span is None or not span.is_recording():
+                return
+            if "x-tiled-event-id" in request.headers:
+                span.set_attribute("peer.service", "webhooks")
+            elif request.url.host:
+                span.set_attribute("peer.service", request.url.host)
+
+        async def _set_peer_service_async(span, request):
+            _set_peer_service(span, request)
+
+        HTTPXClientInstrumentor().instrument(
+            request_hook=_set_peer_service,
+            async_request_hook=_set_peer_service_async,
+        )
 
 
 def build_app_from_config(config: Union[Config, dict[str, Any]], scalable=False):
