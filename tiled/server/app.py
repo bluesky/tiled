@@ -1,6 +1,7 @@
 import asyncio
 import collections
 import contextvars
+import importlib.metadata
 import logging
 import os
 import secrets
@@ -24,6 +25,7 @@ from fastapi.openapi.utils import get_openapi
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.datastructures import MutableHeaders
 from starlette.middleware.base import RequestResponseEndpoint
 from starlette.responses import FileResponse
 from starlette.status import (
@@ -36,6 +38,7 @@ from starlette.status import (
     HTTP_422_UNPROCESSABLE_CONTENT,
     HTTP_500_INTERNAL_SERVER_ERROR,
 )
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from ..access_control.protocols import AccessPolicy
 from ..access_control.scopes import ScopeName
@@ -67,7 +70,15 @@ from .compression import CompressionMiddleware
 from .protocols import ExternalAuthenticator, InternalAuthenticator
 from .router import get_metrics_router, get_router
 from .settings import Settings, get_settings
-from .utils import API_KEY_COOKIE_NAME, CSRF_COOKIE_NAME, get_root_url, record_timing
+from .utils import (
+    API_KEY_COOKIE_NAME,
+    CSRF_COOKIE_NAME,
+    TRACE_ID_HEADER_NAME,
+    get_root_url,
+    get_trace_id,
+    record_timing,
+    request_trace_id,
+)
 from .webhook_router import UrlValidator, get_webhook_router
 from .zarr import get_zarr_router_v2, get_zarr_router_v3
 
@@ -79,6 +90,7 @@ CSRF_HEADER_NAME = "x-csrf"
 CSRF_QUERY_PARAMETER = "csrf"
 
 MINIMUM_SUPPORTED_PYTHON_CLIENT_VERSION = packaging.version.parse("0.1.0a104")
+FASTAPI_VERSION = packaging.version.Version(importlib.metadata.version("fastapi"))
 
 logger = logging.getLogger(__name__)
 logger.setLevel("INFO")
@@ -286,7 +298,17 @@ def build_app(
         finally:
             await shutdown_event()
 
-    app = FastAPI(lifespan=lifespan, strict_content_type=False)
+    # FastAPI >=0.142 ships built-in OpenTelemetry support that, when
+    # `OTEL_EXPORTER_OTLP_ENDPOINT` (or a related variable) is set,
+    # auto-registers its own OTLP export pipeline on the global tracer
+    # provider. Tiled configures and manages its own tracing pipeline (see
+    # `_setup_opentelemetry_tracing`), so FastAPI's auto-configuration
+    # would register a second exporter and emit every span twice. Opt out.
+    kwargs = dict(lifespan=lifespan, strict_content_type=False)
+    if FASTAPI_VERSION >= packaging.version.Version("0.142"):
+        kwargs["telemetry"] = {"auto_configure": False}
+
+    app = FastAPI(**kwargs)
 
     # Healthcheck for deployment to containerized systems, needs to preempt other responses.
     # Standardized for Kubernetes, but also used by other systems.
@@ -425,19 +447,23 @@ def build_app(
         # If we restrict the allowed_headers in future, remember to include
         # exemptions for these, related to asgi_correlation_id.
         # allow_headers=["X-Requested-With", "X-Tiled-Request-ID"],
-        expose_headers=["X-Tiled-Request-ID"],
+        expose_headers=["X-Tiled-Request-ID", TRACE_ID_HEADER_NAME],
     )
 
     @app.exception_handler(Exception)
     async def unhandled_exception_handler(
         request: Request, exc: Exception
     ) -> JSONResponse:
+        headers = {"X-Tiled-Request-ID": correlation_id.get() or ""}
+        # This response bypasses TraceIdMiddleware, so add the trace ID here.
+        if trace_id := get_trace_id():
+            headers[TRACE_ID_HEADER_NAME] = trace_id
         return await http_exception_handler(
             request,
             HTTPException(
                 HTTP_500_INTERNAL_SERVER_ERROR,
                 "Internal server error",
-                headers={"X-Tiled-Request-ID": correlation_id.get() or ""},
+                headers=headers,
             ),
         )
 
@@ -1067,7 +1093,99 @@ def build_app(
         generator=lambda: secrets.token_hex(8),
     )
 
+    _setup_opentelemetry_tracing(app)
+
     return app
+
+
+def _setup_opentelemetry_tracing(app: FastAPI) -> None:
+    """Enable OpenTelemetry request tracing when an OTLP endpoint is configured.
+
+    Tracing is activated only when the standard `OTEL_EXPORTER_OTLP_ENDPOINT`
+    environment variable is set, so it is off by default and adds no overhead
+    unless explicitly enabled. Spans are exported over OTLP/HTTP.
+    """
+    if not os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT"):
+        return
+    try:
+        from opentelemetry import trace
+        from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
+            OTLPSpanExporter,
+        )
+        from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+        from opentelemetry.sdk.resources import Resource
+        from opentelemetry.sdk.trace import TracerProvider
+        from opentelemetry.sdk.trace.export import BatchSpanProcessor
+    except ImportError:
+        logger.warning(
+            "OTEL_EXPORTER_OTLP_ENDPOINT is set but the OpenTelemetry packages "
+            "are not installed; tracing is disabled."
+        )
+        return
+
+    # Configure the global tracer provider once per process.
+    if not isinstance(trace.get_tracer_provider(), TracerProvider):
+        resource = Resource.create(
+            {"service.name": os.getenv("OTEL_SERVICE_NAME", "tiled")}
+        )
+        provider = TracerProvider(resource=resource)
+        provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter()))
+        trace.set_tracer_provider(provider)
+    FastAPIInstrumentor.instrument_app(app)
+    app.add_middleware(TraceIdMiddleware)
+
+
+class TraceIdMiddleware:
+    """Link the request's trace and its correlation ID.
+
+    Add the trace ID to the response headers (`X-Tiled-Trace-ID`), so a user or
+    client can report the trace of a failed or slow request, and record it in
+    `request_trace_id` for the log lines (see `logging_config.TraceIdFilter`).
+    Record the correlation ID (`X-Tiled-Request-ID`) on the request's server span
+    as `tiled.request_id`, so the trace can also be found from the correlation ID.
+    Added only when tracing is enabled. Responses to unhandled exceptions bypass
+    this middleware; the exception handler adds the header itself.
+    """
+
+    def __init__(self, app: ASGIApp) -> None:
+        from opentelemetry import trace
+
+        self.app = app
+        self._get_current_span = trace.get_current_span
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        trace_id = get_trace_id() if scope["type"] == "http" else None
+        if trace_id is None:
+            await self.app(scope, receive, send)
+            return
+        request_trace_id.set(trace_id)
+        # This middleware runs directly inside the FastAPI instrumentation, so the
+        # current span is the request's server span.
+        server_span = self._get_current_span()
+        response_started = False
+
+        def record_request_id() -> None:
+            # The correlation ID is assigned by CorrelationIdMiddleware, which runs
+            # inside this one, so it is only available once the request is handled.
+            if request_id := correlation_id.get():
+                server_span.set_attribute("tiled.request_id", request_id)
+
+        async def send_with_trace_id(message: Message) -> None:
+            nonlocal response_started
+            if message["type"] == "http.response.start":
+                response_started = True
+                MutableHeaders(scope=message).append(TRACE_ID_HEADER_NAME, trace_id)
+                # Record it now: the server span ends once the response is sent.
+                record_request_id()
+            await send(message)
+
+        try:
+            await self.app(scope, receive, send_with_trace_id)
+        finally:
+            if not response_started:
+                # An unhandled exception: the response is sent by the exception
+                # handler, outside this middleware, and the span is still open.
+                record_request_id()
 
 
 def build_app_from_config(config: Union[Config, dict[str, Any]], scalable=False):

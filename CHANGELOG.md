@@ -7,6 +7,23 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Added
 
+- OpenTelemetry tracing for the server, exported over OTLP. The example monitoring
+  stack (`compose.monitoring.yml`) now includes an OpenTelemetry Collector, Jaeger,
+  and Grafana Tempo (traces are sent to both backends), and the Collector also
+  scrapes and re-exposes Tiled's Prometheus metrics.
+- Emit OpenTelemetry spans for internal request phases (access control, read,
+  tokenize, pack) so they appear as child spans in a request's trace, giving a
+  per-request breakdown of where time is spent.
+- Return the request's OpenTelemetry trace ID in the `X-Tiled-Trace-ID` response
+  header (also on server errors, and exposed via CORS) when the request is
+  traced, and include it in the Python client's error messages and in the server's
+  log lines, so a failing or slow request can be looked up in the tracing backend.
+  The request's span records the correlation ID (`X-Tiled-Request-ID`) as the
+  `tiled.request_id` attribute, so the trace can also be found from it.
+- Disable FastAPI's built-in OpenTelemetry auto-configuration
+  (`telemetry={"auto_configure": False}`) so that, on FastAPI >=0.142, it does
+  not register a second OTLP exporter alongside Tiled's own tracing pipeline and
+  export every span twice.
 - Expose the Deployment `strategy` in the helm chart, so that a deployment can
   use `Recreate` instead of the default `RollingUpdate`.
 - Add a `DELETE /api/v1/asset/{path}?id=N` endpoint to dissociate a single
