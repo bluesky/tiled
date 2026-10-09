@@ -6,6 +6,7 @@ from .base import Base
 
 # This is list of all valid revisions (from current to oldest).
 ALL_REVISIONS = [
+    "917dbbcfc4b1",
     "3e87cbeb195b",
     "0d4e1f2a3b4c",
     "3bc110ce44e9",

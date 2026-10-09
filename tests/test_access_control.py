@@ -536,15 +536,15 @@ def _principal_has_scope_on_access_tag(
     """
     sql = (
         "SELECT 1 "
-        "FROM access_tag_principal_scopes_association aps "
-        "JOIN access_tags t ON t.id = aps.tag_id "
-        "JOIN access_tags_principals p ON p.id = aps.principal_id "
+        "FROM access_grants ag "
+        "JOIN access_tags t ON t.id = ag.tag_id "
+        "JOIN access_tags_principals p ON p.id = ag.principal_id "
     )
     params = {"t": access_tag_name, "p": principal}
     sql += "WHERE t.name = :t AND p.name = :p"
     if scope_name is not None:
         params["s"] = scope_name
-        sql += " AND aps.scope = :s"
+        sql += " AND ag.scope = :s"
     rows = catalog_db_execute(catalog_uri, [(sql, params)])
     return bool(rows)
 
@@ -707,7 +707,7 @@ async def test_catalog_rejects_an_invalid_scope(
             async with engine.begin() as conn:
                 await conn.execute(
                     text(
-                        "INSERT INTO access_tag_principal_scopes_association "
+                        "INSERT INTO access_grants "
                         "(tag_id, principal_id, scope) "
                         "VALUES (:t, :p, 'not:a:real:scope')"
                     ),
@@ -927,10 +927,10 @@ def test_auto_tag_does_not_leak_scopes_to_inherited_tag():
             result = await connection.execute(
                 text(
                     "SELECT t.name "
-                    "FROM access_tag_principal_scopes_association aps "
-                    "JOIN access_tags t ON t.id = aps.tag_id "
-                    "JOIN access_tags_principals p ON p.id = aps.principal_id "
-                    "WHERE p.name = :p AND aps.scope = :s"
+                    "FROM access_grants ag "
+                    "JOIN access_tags t ON t.id = ag.tag_id "
+                    "JOIN access_tags_principals p ON p.id = ag.principal_id "
+                    "WHERE p.name = :p AND ag.scope = :s"
                 ),
                 {"p": "sue", "s": "delete:node"},
             )
