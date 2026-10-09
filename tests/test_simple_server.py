@@ -14,7 +14,10 @@ from websockets.frames import CloseCode
 
 from tiled.client import SERVERS, from_uri, simple
 from tiled.client.register import register
+from tiled.client.utils import DEFAULT_TIMEOUT_PARAMS
 from tiled.server import SimpleTiledServer
+
+TIMEOUT = httpx.Timeout(**DEFAULT_TIMEOUT_PARAMS)
 
 
 def test_default():
@@ -35,7 +38,7 @@ def test_default():
         repr(server)
         server._repr_html_()  # impl, used by Jupyter
         # Web UI
-        response = httpx.get(server.web_ui_link).raise_for_status()
+        response = httpx.get(server.web_ui_link, timeout=TIMEOUT).raise_for_status()
         assert response.headers["content-type"].startswith("text/html")
 
 
@@ -133,6 +136,7 @@ def test_webhooks_disabled_by_default():
         resp = httpx.get(
             f"http://localhost:{server.port}/api/v1/webhooks/target/",
             headers={"Authorization": f"Apikey {server.api_key}"},
+            timeout=TIMEOUT,
         )
         assert (
             resp.status_code == 404
@@ -158,6 +162,7 @@ def test_webhooks_enabled(tmp_path):
                 "Content-Type": "application/json",
             },
             content=json.dumps({"url": "http://localhost:19999/hook"}),
+            timeout=TIMEOUT,
         )
         assert resp.status_code == 200, resp.text
         body = resp.json()
@@ -197,6 +202,7 @@ def test_webhooks_delivers_event(tmp_path):
                     "Content-Type": "application/json",
                 },
                 content=json.dumps({"url": f"http://127.0.0.1:{receiver_port}/hook"}),
+                timeout=TIMEOUT,
             )
             assert resp.status_code == 200, resp.text
 

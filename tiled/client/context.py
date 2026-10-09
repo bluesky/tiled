@@ -715,9 +715,14 @@ class Context:
         # Logic will follow only one redirect, it is intended ONLY to toggle HTTPS.
         # The redirect will be followed only if the netloc host is identical to the original.
         if uri.scheme == "http":
+            probe_timeout = (
+                httpx.Timeout(**DEFAULT_TIMEOUT_PARAMS) if timeout is None else timeout
+            )
             for attempt in retry_context():
                 with attempt:
-                    response_from_http = httpx.get(uri)
+                    response_from_http = httpx.get(
+                        uri, timeout=probe_timeout, trust_env=trust_env
+                    )
             if response_from_http.is_redirect:
                 redirect_uri = httpx.URL(response_from_http.headers["location"])
                 if redirect_uri.scheme == "https" and redirect_uri.host == uri.host:
