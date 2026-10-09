@@ -6,14 +6,12 @@ import re
 import secrets
 import uuid
 from collections.abc import Iterable
-from datetime import timedelta
 from typing import Any, Dict, List, Mapping, Optional, cast
 
 import httpx
-from cachetools import TTLCache, cached
+import jwt
 from fastapi import APIRouter, Request
 from fastapi.security import OAuth2, OAuth2AuthorizationCodeBearer
-from jose import JWTError, jwt
 from pydantic import Secret
 from starlette.responses import RedirectResponse
 
@@ -205,20 +203,58 @@ properties:
     def end_session_endpoint(self) -> str:
         return cast(str, self._config_from_oidc_url.get("end_session_endpoint"))
 
-    @cached(TTLCache(maxsize=1, ttl=timedelta(hours=1).total_seconds()))
-    def keys(self) -> List[str]:
-        return httpx.get(self.jwks_uri).raise_for_status().json().get("keys", [])
+    @functools.cached_property
+    def py_JWK_client(self) -> jwt.PyJWKClient:
+        return jwt.PyJWKClient(self.jwks_uri)
 
-    def decode_token(
-        self, id_token: str, access_token: Optional[str] = None
-    ) -> dict[str, Any]:
+    def _calc_at_hash(self, access_token: str, algorithm: str):
+        """
+        Calculates "at_hash" claim which is not done by pyjwt.
+
+        See https://pyjwt.readthedocs.io/en/stable/usage.html#oidc-login-flow
+        """
+        alg_obj = jwt.get_algorithm_by_name(algorithm)
+        digest = alg_obj.compute_hash_digest(access_token.encode("utf-8"))
+        return (
+            base64.urlsafe_b64encode(digest[: (len(digest) // 2)])
+            .decode("utf-8")
+            .rstrip("=")
+        )
+
+    def verify_login(self, id_token: str, access_token: str) -> dict[str, Any]:
+        """Verify an id_token's at_hash claim matches the paired access_token.
+
+        Confirms the OIDC provider issued both tokens as a matching pair.
+        See https://openid.net/specs/openid-connect-core-1_0.html#CodeIDToken
+        """
+        signing_key = self.py_JWK_client.get_signing_key_from_jwt(id_token)
+
+        decoded = jwt.decode_complete(
+                id_token,
+                key=signing_key,
+                audience=self._client_id,
+                algorithms=self.id_token_signing_alg_values_supported,
+            )
+        payload, header = decoded["payload"], decoded["header"]
+        at_hash = payload.get("at_hash")
+        if at_hash is None:
+            return decoded
+        alg_obj = jwt.get_algorithm_by_name(header["alg"])
+        digest = alg_obj.compute_hash_digest(access_token.encode("utf-8"))
+        expected_at_hash = (
+            base64.urlsafe_b64encode(digest[: len(digest) // 2]).rstrip(b"=").decode()
+        )
+        if expected_at_hash != at_hash:
+            raise jwt.InvalidTokenError("id_token at_hash does not match access_token")
+        return decoded
+
+    def decode_token(self, access_token: str) -> dict[str, Any]:
+        signing_key = self.py_JWK_client.get_signing_key_from_jwt(access_token)
         return jwt.decode(
-            id_token,
-            key=self.keys(),
-            algorithms=self.id_token_signing_alg_values_supported,
+            access_token,
+            key=signing_key,
             audience=self._audience,
-            issuer=self.issuer,
-            access_token=access_token,
+            algorithms=self.id_token_signing_alg_values_supported,
         )
 
     async def authenticate(self, request: Request) -> Optional[UserSessionState]:
@@ -247,11 +283,11 @@ properties:
         id_token = response_body["id_token"]
         access_token = response_body["access_token"]
         try:
-            verified_body = self.decode_token(id_token, access_token)
-        except JWTError:
+            verified_body = self.verify_login(id_token, access_token)
+        except jwt.PyJWTError as e:
             logger.exception(
                 "Authentication error. Unverified token: %r",
-                jwt.get_unverified_claims(id_token),
+                e,
             )
             return None
         return UserSessionState(verified_body[self.user_id_claim], {})
@@ -335,9 +371,9 @@ properties:
         return sorted(combined)
 
     def decode_token(
-        self, id_token: str, access_token: Optional[str] = None
+        self, access_token: str
     ) -> dict[str, Any]:
-        claims = super().decode_token(id_token, access_token)
+        claims = super().decode_token(access_token)
         # Translate identity-provider scopes to Tiled scopes via scopes_map.
         # The provider "scp" claim is present in access tokens but may be absent
         # from id_tokens (e.g. during the authorization-code flow).  When absent,
@@ -395,10 +431,10 @@ class EntraAuthenticator(ProxiedOIDCAuthenticator):
             self._client_secret = Secret(client_secret)
 
     def decode_token(
-        self, id_token: str, access_token: Optional[str] = None
+        self, access_token: str
     ) -> dict[str, Any]:
         # Handle scope translation (scp -> Tiled scopes via scopes_map) in super()
-        claims = super().decode_token(id_token, access_token)
+        claims = super().decode_token(access_token)
 
         # sub generated by Entra is an opaque string; generate a stable UUID
         # for Tiled based on "iss|sub" for uniqueness across tenants.
@@ -494,11 +530,11 @@ class EntraAuthenticator(ProxiedOIDCAuthenticator):
         access_token = response_body.get("access_token")
         refresh_token = response_body.get("refresh_token")
         try:
-            verified_body = self.decode_token(id_token, access_token)
-        except JWTError:
+            verified_body = self.verify_login(id_token, access_token)
+        except jwt.PyJWTError as e:
             logger.exception(
                 "Authentication error. Unverified token: %r",
-                jwt.get_unverified_claims(id_token),
+                e,
             )
             return None
         # Log the id_token claims available for username resolution so
