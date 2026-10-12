@@ -1,5 +1,6 @@
 apiVersion: v2
 name: tiled
+home: https://github.com/bluesky/tiled
 description: Tiled is a data access service for data-aware portals and data science tools.
 
 # A chart can be either an 'application' or a 'library' chart.
