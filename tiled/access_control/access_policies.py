@@ -70,8 +70,19 @@ class TagBasedAccessPolicy(AccessPolicy):
         provider,
         access_tags_parser,
         scopes=None,
+        tag_new_nodes_with_owner=False,
     ):
+        """
+        Parameters
+        ----------
+        tag_new_nodes_with_owner : bool, optional
+            If True, a node created without access tags is tagged with its
+            creator's principal tag (e.g. 'user:alice'), making it private to
+            them. By default, it is left untagged and so inherits the tags of
+            its nearest tagged ancestor.
+        """
         self.provider = provider
+        self.tag_new_nodes_with_owner = tag_new_nodes_with_owner
         self.scopes = scopes if (scopes is not None) else ALL_SCOPES
         validate_scopes(self.scopes, "TagBasedAccessPolicy 'scopes'")
 
@@ -197,6 +208,11 @@ class TagBasedAccessPolicy(AccessPolicy):
                         f"These access tags do not confer the minimum scopes: "
                         f"{sorted(scope.value for scope in self.unremovable_scopes)}"
                     )
+        elif not self.tag_new_nodes_with_owner:
+            # No tags of its own: the node inherits the tags of its nearest
+            # tagged ancestor.
+            access_tags_from_policy = normalize_access_tags()
+            access_tags_modified = True
         else:
             if (
                 authn_access_tags is not None
@@ -381,8 +397,15 @@ class TagBasedAccessPolicy(AccessPolicy):
                 else set()
             )
 
+            # A node with no tags of its own inherits its nearest tagged
+            # ancestor's, consistent with the AccessTagsFilter in `filters`.
+            if hasattr(node, "effective_access_tags"):
+                access_tags = await node.effective_access_tags()
+            else:
+                access_tags = node.access_tags
+
             allowed = set()
-            for tag in node.access_tags:
+            for tag in access_tags:
                 if authn_access_tags is not None:
                     if tag not in authn_access_tags:
                         continue

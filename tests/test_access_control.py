@@ -217,6 +217,9 @@ def _server_config(catalog_uri, authn_uri, tmp_path):
                 "access_tags_parser": (
                     "tiled.access_control.access_tags:AccessTagsParser"
                 ),
+                # Most tests here exercise user-owned nodes. Tests of the
+                # default (untagged nodes inherit) opt out per client.
+                "tag_new_nodes_with_owner": True,
             },
         },
         "authentication": {
@@ -423,11 +426,14 @@ def access_control_test_context_factory(compile_access_tags_tables, tmp_path_fac
     contexts = []
     clients = {}
 
-    def _create_and_login_context(username, password=None, api_key=None):
+    def _create_and_login_context(
+        username, password=None, api_key=None, tag_new_nodes_with_owner=True
+    ):
         if not any([password, api_key]):
             raise ValueError("Please provide either 'password' or 'api_key' for auth")
 
-        if client := clients.get(username, None):
+        cache_key = (username, tag_new_nodes_with_owner)
+        if client := clients.get(cache_key, None):
             return client
         # Each user gets its own app, and each app's TestClient runs its own
         # event loop. On PostgreSQL, asyncpg connections are bound to the loop
@@ -444,13 +450,16 @@ def access_control_test_context_factory(compile_access_tags_tables, tmp_path_fac
         # catalog connection pool, so no asyncpg connection is shared across
         # apps' event loops.
         per_user_config["catalog_pool_size"] = 6 + len(clients)
+        per_user_config["access_control"]["args"][
+            "tag_new_nodes_with_owner"
+        ] = tag_new_nodes_with_owner
         app = build_app_from_config(per_user_config)
         context = Context.from_app(
             app, uri=f"http://local-tiled-app-{username}/api/v1", api_key=api_key
         )
         contexts.append(context)
         client = from_context(context, remember_me=False)
-        clients[username] = client
+        clients[cache_key] = client
         if api_key is None:
             with enter_username_password(username, password):
                 client.context.login(remember_me=False)
@@ -594,8 +603,8 @@ def _set_node_access_tags(catalog_uri, node_key, access_tag_names):
 def _delete_node_access_tags(catalog_uri, node_key):
     """
     Surgically remove ALL access-tag rows for the node with key ``node_key``,
-    leaving a node with zero ``node_access_tags_association`` entries. In the access-tags
-    model such a node is admin-only (no tag grants any principal access).
+    leaving a node with zero ``node_access_tags_association`` entries. Such a
+    node inherits the tags of its nearest tagged ancestor.
     """
     catalog_db_execute(
         catalog_uri,
@@ -1175,7 +1184,7 @@ def test_admin_access_control(access_control_test_context_factory):
     - View all data regardless of tags
     - Apply an access tag that is not defined (disallowed)
     - Remove all tags from a node, but still view that node
-    - Also includes test of an empty tags list blocking access for regular users
+    - Also includes test of an empty tags list making a node inherit its parent's tags
     """
     admin_client = access_control_test_context_factory("admin", "admin")
     alice_client = access_control_test_context_factory("alice", "alice")
@@ -1190,9 +1199,9 @@ def test_admin_access_control(access_control_test_context_factory):
         admin_client[top][data].replace_metadata(access_tags=[])
         assert data in admin_client[top]
         admin_client[top][data]
-        assert data not in alice_client[top]
-        with pytest.raises(KeyError):
-            alice_client[top][data]
+        # the untagged node inherits alice_tag from its parent
+        assert data in alice_client[top]
+        alice_client[top][data]
         # apply a tag that the admin user does not own and ignore missing scopes
         admin_client[top][data].replace_metadata(access_tags=["chemists_tag"])
         assert data in admin_client[top]
@@ -1334,11 +1343,12 @@ def test_empty_tags_node_access_control(
     """
     Test the case where a node in the catalog has zero access-tag rows.
 
-    In the access-tags model, a node with no tags grants no principal any
-    access, so it is visible only to admins.
+    A node with no tags inherits the tags of its nearest tagged ancestor,
+    here the public tag of the top-level node.
     """
     admin_client = access_control_test_context_factory("admin", "admin")
     alice_client = access_control_test_context_factory("alice", "alice")
+    anon_client = access_control_test_context_factory("zoe", "zoe")
 
     top = "qux"
     for data in ["data_M"]:
@@ -1347,9 +1357,94 @@ def test_empty_tags_node_access_control(
 
         assert data in admin_client[top]
         admin_client[top][data]
-        assert data not in alice_client[top]
-        with pytest.raises(KeyError):
-            alice_client[top][data]
+        assert data in alice_client[top]
+        alice_client[top][data]
+        assert data in anon_client[top]
+        # public grants read access only
+        with fail_with_status_code(HTTP_403_FORBIDDEN):
+            alice_client[top][data].replace_metadata(metadata={"a": 1})
+
+
+def test_new_node_without_tags_inherits(access_control_test_context_factory):
+    """
+    By default (tag_new_nodes_with_owner=False), a node created without
+    access tags is left untagged, so it inherits its parent's tags rather than
+    being private to its creator.
+    """
+    alice_client = access_control_test_context_factory(
+        "alice", "alice", tag_new_nodes_with_owner=False
+    )
+    chris_client = access_control_test_context_factory("chris", "chris")
+    sue_client = access_control_test_context_factory("sue", "sue")
+
+    container = alice_client["foo"].create_container(key="new_untagged")
+    container.write_array(arr, key="new_untagged_leaf")
+    assert not list(container.access_tags)
+
+    # foo is tagged alice_tag: alice may write, chris may read.
+    alice_client["foo/new_untagged/new_untagged_leaf"].replace_metadata(
+        metadata={"a": 1}
+    )
+    assert "new_untagged" in chris_client["foo"]
+    chris_client["foo/new_untagged/new_untagged_leaf"].read()
+    with fail_with_status_code(HTTP_403_FORBIDDEN):
+        chris_client["foo/new_untagged/new_untagged_leaf"].replace_metadata(
+            metadata={"a": 2}
+        )
+    with pytest.raises(KeyError):
+        sue_client["foo/new_untagged"]
+
+
+def test_inherited_access_control(access_control_test_context_factory):
+    """
+    Test that a node with no tags of its own takes the tags of its nearest
+    tagged ancestor, for listing, direct access, scopes, and deep search.
+
+    foo (alice_tag: alice admin, chris read)
+    └── inh_parent (no tags -> alice_tag)
+        ├── inh_leaf (no tags -> alice_tag)
+        └── inh_chris (chris_tag: alice and chris admin)
+            └── inh_chris_leaf (no tags -> chris_tag)
+    """
+    admin_client = access_control_test_context_factory("admin", "admin")
+    alice_client = access_control_test_context_factory("alice", "alice")
+    chris_client = access_control_test_context_factory("chris", "chris")
+    sue_client = access_control_test_context_factory("sue", "sue")
+    marker = "inherited"
+    meta = {"deep_search_marker": marker}
+
+    top = admin_client["foo"]
+    parent = top.create_container(key="inh_parent", access_tags=[])
+    parent.write_array(arr, key="inh_leaf", access_tags=[], metadata=meta)
+    chris_container = parent.create_container(
+        key="inh_chris", access_tags=["chris_tag"]
+    )
+    chris_container.write_array(
+        arr, key="inh_chris_leaf", access_tags=[], metadata=meta
+    )
+
+    for client in [alice_client, chris_client]:
+        assert "inh_parent" in client["foo"]
+        assert "inh_leaf" in client["foo"]["inh_parent"]
+        assert "inh_chris_leaf" in client["foo"]["inh_parent"]["inh_chris"]
+        client["foo/inh_parent/inh_leaf"].read()
+        client["foo/inh_parent/inh_chris/inh_chris_leaf"].read()
+        assert _deep_keys(client["foo"], marker) == {
+            ("inh_parent", "inh_leaf"),
+            ("inh_parent", "inh_chris", "inh_chris_leaf"),
+        }
+
+    # chris may only read under alice_tag, but the nearest tagged ancestor of
+    # inh_chris_leaf is inh_chris, whose chris_tag lets chris write.
+    with fail_with_status_code(HTTP_403_FORBIDDEN):
+        chris_client["foo/inh_parent/inh_leaf"].replace_metadata(metadata={"a": 1})
+    chris_client["foo/inh_parent/inh_chris/inh_chris_leaf"].replace_metadata(
+        metadata={"a": 1, **meta}
+    )
+
+    # sue has none of these tags, so sees nothing, by any route.
+    with pytest.raises(KeyError):
+        sue_client["foo/inh_parent/inh_leaf"]
 
 
 def test_container_access_control(access_control_test_context_factory):

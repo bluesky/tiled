@@ -30,6 +30,7 @@ from urllib.parse import urlparse
 import anyio
 from fastapi import HTTPException
 from sqlalchemy import (
+    and_,
     delete,
     exists,
     false,
@@ -303,6 +304,8 @@ class Context:
         self.cache_config = cache_config
         self.webhook_secret_keys: List[str] = webhook_secret_keys or []
         self.webhook_dispatcher = None
+        # Inherited by any node that has no tagged ancestor. Set by from_uri.
+        self.top_level_access_tags = normalize_access_tags([])
 
     def session(self):
         "Convenience method for constructing an AsyncSession context"
@@ -416,6 +419,24 @@ class CatalogNodeAdapter:
             # already an AccessTags frozenset of names.
             return self.node.access_tags
         return normalize_access_tags(tag.name for tag in self.node.access_tags)
+
+    async def effective_access_tags(self):
+        """The access tags that govern this node.
+
+        A node with no tags of its own inherits the tags of its nearest tagged
+        ancestor or, if there is none, the server's top-level access tags.
+        """
+        if self.access_tags:
+            return self.access_tags
+        async with self.context.session() as db:
+            names = (
+                (await db.execute(_nearest_tagged_ancestor_tags(self.node.id)))
+                .scalars()
+                .all()
+            )
+        if names:
+            return normalize_access_tags(names)
+        return self.context.top_level_access_tags
 
     def metadata(self):
         return self.node.metadata_
@@ -960,8 +981,11 @@ class CatalogNodeAdapter:
         if self.max_depth is not None:
             statement = statement.where(orm.NodesClosure.depth <= self.max_depth)
         for query, _ in self.access_filters:
+            scope_root_matches = _scope_root_matches(query, self)
             statement = statement.where(
-                _access_tags_predicate(query, orm.Node, orm.Node.parent)
+                _access_tags_predicate(
+                    query, orm.Node, orm.Node.parent, self.node.id, scope_root_matches
+                )
             )
             # No container strictly between this node and the match may fail
             # the policy: otherwise results leak the paths of hidden containers.
@@ -975,7 +999,17 @@ class CatalogNodeAdapter:
                 .join(hidden, hidden.id == to_match.ancestor)
                 .where(to_match.descendant == orm.Node.id, to_match.depth >= 1)
                 .where(from_root.ancestor == self.node.id, from_root.depth >= 1)
-                .where(not_(_access_tags_predicate(query, hidden, hidden.parent)))
+                .where(
+                    not_(
+                        _access_tags_predicate(
+                            query,
+                            hidden,
+                            hidden.parent,
+                            self.node.id,
+                            scope_root_matches,
+                        )
+                    )
+                )
                 .exists()
             )
             statement = statement.where(not_(hidden_ancestor))
@@ -2688,11 +2722,65 @@ def specs(query, tree):
     return tree.new_variation(conditions=tree.conditions + conditions)
 
 
-def _access_tags_predicate(query, node, parent):
-    """Condition: `node` carries one of the query's tags, as a child of `parent`.
+def _nearest_tagged_ancestor_tags(node_id):
+    """SELECT the tag names of the nearest node at or above `node_id` that has tags.
 
-    `parent` is a literal id (`/search`: all candidates share one parent) or
-    `node.parent` (deep search: candidates sit at any depth).
+    Selects nothing if neither the node nor any of its ancestors has tags.
+    """
+    nearest_depth = (
+        select(func.min(orm.NodesClosure.depth))
+        .select_from(orm.NodesClosure)
+        .join(
+            orm.NodeAccessTagAssociation,
+            orm.NodeAccessTagAssociation.node_id == orm.NodesClosure.ancestor,
+        )
+        .where(orm.NodesClosure.descendant == node_id)
+        .scalar_subquery()
+    )
+    return (
+        select(orm.AccessTag.name)
+        .join(
+            orm.NodeAccessTagAssociation,
+            orm.NodeAccessTagAssociation.tag_id == orm.AccessTag.id,
+        )
+        .join(
+            orm.NodesClosure,
+            orm.NodesClosure.ancestor == orm.NodeAccessTagAssociation.node_id,
+        )
+        .where(orm.NodesClosure.descendant == node_id)
+        .where(orm.NodesClosure.depth == nearest_depth)
+    )
+
+
+def _scope_root_matches(query, tree):
+    """Whether `tree`'s own effective access tags include one of the query's tags.
+
+    Untagged children of `tree` inherit its effective tags. Returns a bool when
+    that is known up front (the server precomputes it in
+    ``tiled.server.utils.filter_for_access``), or else a SQL condition.
+    """
+    if query.scope_root_matches is not None:
+        return query.scope_root_matches
+    if isinstance(tree.node, RootNode) and tree.node.access_tags:
+        return not set(query.tags).isdisjoint(tree.node.access_tags)
+    nearest = _nearest_tagged_ancestor_tags(tree.node.id)
+    condition = nearest.where(orm.AccessTag.name.in_(query.tags)).exists()
+    if not set(query.tags).isdisjoint(tree.context.top_level_access_tags):
+        condition = or_(condition, not_(nearest.exists()))
+    return condition
+
+
+def _access_tags_predicate(query, node, parent, scope_root_id, scope_root_matches):
+    """Condition: `node`, a child of `parent`, has one of the query's tags.
+
+    A node with no tags of its own inherits its parent's. Callers require every
+    node between the scope root and `node` to pass this same predicate, so an
+    untagged node below a non-root parent passes here: the parent is checked
+    in its own right. An untagged child of the scope root passes if
+    `scope_root_matches` (see `_scope_root_matches`).
+
+    `parent` is a literal id (`/search`: all candidates are children of the
+    scope root) or `node.parent` (deep search: candidates sit at any depth).
     """
     if not query.tags:
         # Results cannot possibly match an empty list,
@@ -2707,31 +2795,55 @@ def _access_tags_predicate(query, node, parent):
         # ``tag_id`` values -- rather than joining ``access_tags`` by name --
         # lets PostgreSQL apply the (parent_id, tag_id) extended statistics
         # and estimate this correlated subquery correctly.
-        if not query.tag_ids:
-            # None of the requested tag names exist; match nothing.
-            return false()
-        return (
+        if query.tag_ids:
+            has_tag = (
+                select(orm.NodeAccessTagAssociation.node_id)
+                .where(orm.NodeAccessTagAssociation.node_id == node.id)
+                .where(orm.NodeAccessTagAssociation.parent_id == parent)
+                .where(orm.NodeAccessTagAssociation.tag_id.in_(query.tag_ids))
+                .exists()
+            )
+        else:
+            # None of the requested tag names exist, so no node has them.
+            has_tag = false()
+    else:
+        # Nodes carrying at least one of the given access tags.
+        # EXISTS is used (vs IN) as it is much more preformant in SQLite,
+        # though performance in Postgres appears similar for both.
+        has_tag = (
             select(orm.NodeAccessTagAssociation.node_id)
+            .join(
+                orm.AccessTag, orm.AccessTag.id == orm.NodeAccessTagAssociation.tag_id
+            )
             .where(orm.NodeAccessTagAssociation.node_id == node.id)
             .where(orm.NodeAccessTagAssociation.parent_id == parent)
-            .where(orm.NodeAccessTagAssociation.tag_id.in_(query.tag_ids))
+            .where(orm.AccessTag.name.in_(query.tags))
             .exists()
         )
-    # Nodes carrying at least one of the given access tags.
-    # EXISTS is used (vs IN) as it is much more preformant in SQLite,
-    # though performance in Postgres appears similar for both.
-    return (
+    if isinstance(parent, int):
+        # Every candidate is a child of the scope root.
+        inherits = scope_root_matches
+    elif scope_root_matches is True:
+        inherits = True
+    else:
+        inherits = or_(parent != scope_root_id, scope_root_matches)
+    if inherits is False:
+        return has_tag
+    untagged = not_(
         select(orm.NodeAccessTagAssociation.node_id)
-        .join(orm.AccessTag, orm.AccessTag.id == orm.NodeAccessTagAssociation.tag_id)
         .where(orm.NodeAccessTagAssociation.node_id == node.id)
         .where(orm.NodeAccessTagAssociation.parent_id == parent)
-        .where(orm.AccessTag.name.in_(query.tags))
         .exists()
     )
+    if inherits is True:
+        return or_(has_tag, untagged)
+    return or_(has_tag, and_(untagged, inherits))
 
 
 def access_tags_filter(query, tree):
-    condition = _access_tags_predicate(query, orm.Node, tree.node.id)
+    condition = _access_tags_predicate(
+        query, orm.Node, tree.node.id, tree.node.id, _scope_root_matches(query, tree)
+    )
     return tree.new_variation(
         access_filters=tree.access_filters + [(query, condition)],
     )
@@ -2997,6 +3109,7 @@ def from_uri(
         webhook_secret_keys=webhook_secret_keys,
     )
     node = RootNode(metadata, specs, top_level_access_tags)
+    context.top_level_access_tags = node.access_tags
     mount_path = (
         [segment for segment in mount_node.split("/") if segment]
         if isinstance(mount_node, str)

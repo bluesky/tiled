@@ -519,6 +519,9 @@ class AccessTagsFilter:
     Perform a query against node access tags.
     Match nodes that carry at least one tag in the given list of tags.
 
+    A node with no tags of its own inherits the tags of its nearest tagged
+    ancestor, and is matched against those.
+
     Parameters
     ----------
     tags : List[str]
@@ -544,6 +547,13 @@ class AccessTagsFilter:
     # 'access_tags' by name, so PostgreSQL can use the (parent_id, tag_id)
     # extended statistics to estimate the ACL subquery correctly.
     tag_ids: Optional[List[int]] = field(
+        default=None, compare=False, metadata={"internal": True}
+    )
+    # Server-internal field, like 'tag_ids': whether the node being searched
+    # itself has (directly or by inheritance) one of 'tags', which its untagged
+    # children inherit. Populated by 'tiled.server.utils.filter_for_access';
+    # when None, the catalog query builder works it out in SQL instead.
+    scope_root_matches: Optional[bool] = field(
         default=None, compare=False, metadata={"internal": True}
     )
 

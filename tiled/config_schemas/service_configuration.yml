@@ -412,6 +412,10 @@ properties:
             provider: "pam"
             # Access tag definitions are read from the catalog database.
             access_tags_parser: "tiled.access_control.access_tags:AccessTagsParser"
+            # Optional. If true, a node created without access tags is tagged
+            # with its creator's user tag, making it private to them. By
+            # default it is left untagged and inherits its parent's tags.
+            tag_new_nodes_with_owner: false
           ```
       args:
         type: object
