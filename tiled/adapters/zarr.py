@@ -44,6 +44,20 @@ else:
 INLINED_DEPTH = int(os.getenv("TILED_HDF5_INLINED_CONTENTS_MAX_DEPTH", "7"))
 
 
+def dims_from_zarr_array(array: Any) -> Optional[Tuple[str, ...]]:
+    """Dimension names recorded in the store, or None unless every one is named.
+
+    Reads Zarr v3 ``dimension_names``, then the ``_ARRAY_DIMENSIONS`` attribute
+    that xarray writes to Zarr v2 arrays.
+    """
+    names = getattr(getattr(array, "metadata", None), "dimension_names", None)
+    if names is None:
+        names = array.attrs.get("_ARRAY_DIMENSIONS")
+    if names is None or any(name is None for name in names):
+        return None
+    return tuple(names)
+
+
 class ZarrArrayAdapter(Adapter[ArrayStructure]):
     "Adapter for Zarr arrays"
 
@@ -226,7 +240,7 @@ class ZarrGroupAdapter(
         if isinstance(value, zarr.Group):
             return ZarrGroupAdapter(value)
         else:
-            return ArrayAdapter.from_array(value)
+            return ArrayAdapter.from_array(value, dims=dims_from_zarr_array(value))
 
     def __len__(self) -> int:
         return len(self._zarr_group)
@@ -326,5 +340,7 @@ class ZarrAdapter:
         if isinstance(zarr_obj, zarr.Group):
             return ZarrGroupAdapter(zarr_obj, **kwargs)
         else:
-            structure = ArrayStructure.from_array(zarr_obj)
+            structure = ArrayStructure.from_array(
+                zarr_obj, dims=dims_from_zarr_array(zarr_obj)
+            )
             return ZarrArrayAdapter(zarr_obj, structure=structure, **kwargs)
