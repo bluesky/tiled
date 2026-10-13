@@ -1021,6 +1021,7 @@ def test_deprecated_argument_order_raises_warning(tree: CatalogContainerAdapter)
 
 # Tests for retried non-idempotent write requests
 
+
 class LoseResponseOnce(httpx.BaseTransport):
     """Simulate a lost response: the first request matching (method,
     url_substring) is forwarded to the wrapped transport -- so the server fully
