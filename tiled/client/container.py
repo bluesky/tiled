@@ -4,7 +4,9 @@ import concurrent.futures
 import functools
 import importlib
 import itertools
+import logging
 import time
+import uuid
 import warnings
 from dataclasses import asdict
 from pathlib import Path
@@ -33,6 +35,7 @@ from ..utils import (
 from .base import STRUCTURE_TYPES, BaseClient
 from .utils import (
     MSGPACK_MIME_TYPE,
+    SENT_REQUEST_TRANSPORT_ERRORS,
     ClientError,
     client_for_item,
     export_util,
@@ -46,6 +49,15 @@ if TYPE_CHECKING:
     import pyarrow
 
     from .stream import ContainerSubscription
+
+logger = logging.getLogger("tiled.client")
+
+
+def _as_spec_set(spec_dicts):
+    # Specs that have been passed through normalize_specs -- as well as the
+    # specs on a fetched item -- are lists of {"name": ..., "version": ...}
+    # dicts; represent them as a set for order-insensitive comparison.
+    return {(spec["name"], spec.get("version")) for spec in (spec_dicts or [])}
 
 
 class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
@@ -777,27 +789,56 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                 "access_tags": access_tags,
             }
         }
+        if key is None:
+            key = str(uuid.uuid4())
         body = dict(item["attributes"])
-        if key is not None:
-            body["id"] = key
+        body["id"] = key
 
         if any(data_source.assets for data_source in data_sources):
             endpoint = self.uri.replace("/metadata/", "/register/", 1)
         else:
             endpoint = self.uri
 
+        # Track whether any failed attempt may have been received and processed
+        # by the server: the request was sent but the response was lost (read/
+        # write transport error) or a proxy/server-side error (5xx) occurred
+        # after the fact. In that case a 409 Conflict on a subsequent retry
+        # most likely refers to the node created by our own earlier attempt
+        # (every create carries a key -- supplied or client-generated -- that
+        # acts as an idempotency token), so adopt it instead of failing.
+        may_have_reached_server = False
         for attempt in retry_context():
             with attempt:
-                document = handle_error(
-                    self.context.http_client.post(
-                        endpoint,
-                        headers={
-                            "Accept": MSGPACK_MIME_TYPE,
-                            "Content-Type": "application/json",
-                        },
-                        content=safe_json_dump(body),
-                    )
-                ).json()
+                try:
+                    document = handle_error(
+                        self.context.http_client.post(
+                            endpoint,
+                            headers={
+                                "Accept": MSGPACK_MIME_TYPE,
+                                "Content-Type": "application/json",
+                            },
+                            content=safe_json_dump(body),
+                        )
+                    ).json()
+                except SENT_REQUEST_TRANSPORT_ERRORS:
+                    may_have_reached_server = True
+                    raise
+                except httpx.HTTPStatusError as err:
+                    if err.response.status_code >= 500:
+                        may_have_reached_server = True
+                    elif (
+                        may_have_reached_server
+                        and err.response.status_code == httpx.codes.CONFLICT
+                    ):
+                        existing = self._adopt_after_retried_create_conflict(
+                            key,
+                            StructureFamily(structure_family),
+                            normalize_specs(specs or []),
+                            metadata,
+                        )
+                        if existing is not None:
+                            return existing
+                    raise
 
         if structure_family == StructureFamily.container:
             structure = {"contents": None, "count": None}
@@ -853,6 +894,72 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             structure=structure,
             include_data_sources=self._include_data_sources,
         )
+
+    def _adopt_after_retried_create_conflict(
+        self, key, structure_family, specs, metadata
+    ):
+        """Fetch and return an existing node after a retried create hit 409 Conflict.
+
+        Called only when an earlier attempt of the same create request may have
+        reached the server (the response was lost to a transport error, or a
+        proxy/server returned 5xx after the fact), so the existing node under
+        `key` is most likely the one created by our own earlier attempt. To
+        guard against adopting a genuinely unrelated node (a true key
+        collision), the existing node must match the request: same structure
+        family, same specs, and the same metadata (compared after the same JSON
+        normalization that a create applies to the submitted metadata).
+        Otherwise return None and let the caller re-raise the original 409.
+
+        NB: a server-side spec validator that *modifies* metadata on ingestion
+        will defeat the metadata comparison, so in such deployments a retried
+        create degrades to the old behavior (the 409 is raised). This is the
+        conservative trade-off: never adopt a node we can not positively match.
+        """
+        try:
+            existing = self[key]
+        except Exception:
+            logger.warning(
+                "Create of %r returned 409 Conflict after a retried request, "
+                "but the existing item could not be fetched; treating as a "
+                "genuine conflict.",
+                key,
+            )
+            return None
+
+        existing_attrs = existing.item["attributes"]
+        existing_family = StructureFamily(existing_attrs["structure_family"])
+        # The elif chain evaluates lazily, so cheaper checks short-circuit the
+        # more expensive ones (the metadata check serializes the submitted
+        # metadata with the same JSON round-trip normalization that `new()`
+        # applies: numpy scalars, datetimes, etc. become plain JSON types).
+        if existing_family != structure_family:
+            mismatch = f"structure_family {existing_family!r} != {structure_family!r}"
+        elif _as_spec_set(existing_attrs.get("specs")) != _as_spec_set(specs):
+            mismatch = f"specs {existing_attrs.get('specs')!r} != {specs!r}"
+        elif existing_attrs.get("metadata") != orjson.loads(
+            safe_json_dump(metadata or {})
+        ):
+            mismatch = "metadata differs"
+        else:
+            mismatch = None
+
+        if mismatch is not None:
+            logger.warning(
+                "Create of %r returned 409 Conflict after a retried request, "
+                "but the existing item does not match the request (%s); "
+                "treating as a genuine conflict.",
+                key,
+                mismatch,
+            )
+            return None
+
+        logger.warning(
+            "Create of %r returned 409 Conflict after a retried request that "
+            "may have reached the server; adopting the existing (matching) "
+            "item as the result of this create.",
+            key,
+        )
+        return existing
 
     # When (re)chunking arrays for upload, we use this limit
     # to attempt to avoid bumping into size limits.
