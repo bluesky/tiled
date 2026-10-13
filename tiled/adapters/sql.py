@@ -541,10 +541,16 @@ class SQLAdapter(Adapter[TableStructure]):
         else:
             order_by_partition = [{"column": "_partition_id", "direction": "asc"}]
 
-        if args := self.order_by_args + order_by_partition:
-            query += " ORDER BY " + ", ".join(
-                [f'"{c["column"].lower()}" {c["direction"].upper()}' for c in args]
-            )
+        order_by = [
+            f'"{c["column"].lower()}" {c["direction"].upper()}'
+            for c in self.order_by_args + order_by_partition
+        ]
+        # SQL leaves the order of rows that tie on the keys above undefined.
+        # rowid follows insertion order in DuckDB and SQLite.
+        if self.storage.dialect in ("duckdb", "sqlite"):
+            order_by.append("rowid")
+        if order_by:
+            query += " ORDER BY " + ", ".join(order_by)
 
         with closing(self.storage.connect()) as conn:
             with conn.cursor() as cursor:
@@ -1032,15 +1038,15 @@ def is_safe_identifier(
         )
 
     if not allow_reserved_words and identifier.lower() in RESERVED_WORDS:
-        raise ValueError(
+        raise UnsafeIdentifier(
             f'Reserved SQL keywords are not allowed in identifiers, "{identifier}"'
         )
 
     if pattern.match(identifier) is None:
-        raise ValueError(f'Malformed SQL identifier "{identifier}"')
+        raise UnsafeIdentifier(f'Malformed SQL identifier "{identifier}"')
 
     if match := FORBIDDEN_CHARACTERS.search(identifier):
-        raise ValueError(
+        raise UnsafeIdentifier(
             f'Invalid SQL identifier "{identifier}" '
             f"contains forbidden character(s): {', '.join(match.groups())}"
         )

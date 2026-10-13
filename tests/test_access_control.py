@@ -14,6 +14,7 @@ from starlette.status import HTTP_403_FORBIDDEN
 from tiled.access_control.access_tags import AccessTagsCompiler
 from tiled.access_control.scopes import ALL_SCOPES
 from tiled.client import Context, from_context
+from tiled.queries import Key
 from tiled.server.app import build_app_from_config
 from tiled.server.connection_pool import close_database_connection_pool
 from tiled.server.settings import DatabaseSettings
@@ -1372,6 +1373,222 @@ def test_container_access_control(access_control_test_context_factory):
         assert c not in sue_client[top]
         with pytest.raises(KeyError):
             sue_client[top][c][f"{c}_array"]
+
+
+def _deep_keys(client, marker):
+    results = client.search_deep(Key("deep_search_marker") == marker)
+    return set(results.keys())
+
+
+def _deep_search_http(client, marker):
+    link = client.item["links"]["search_deep"]
+    response = client.context.http_client.get(
+        link,
+        params={
+            "filter[eq][condition][key]": "deep_search_marker",
+            "filter[eq][condition][value]": json.dumps(marker),
+        },
+    )
+    assert response.status_code == 200
+    return response.json()
+
+
+def test_search_deep_hides_leaf_under_inaccessible_container(
+    access_control_test_context_factory,
+):
+    """
+    `ds_leaf` is tagged for sue, but its container `ds_hidden` is not, so
+    sue must not get it (nor learn the container's name) from a deep search.
+    """
+    alice_client = access_control_test_context_factory("alice", "alice")
+    sue_client = access_control_test_context_factory("sue", "sue")
+    marker = "hides_leaf"
+    meta = {"deep_search_marker": marker}
+
+    top = alice_client["baz"]
+    top.write_array(
+        arr, key="ds_visible", access_tags=["physicists_tag"], metadata=meta
+    )
+    hidden = top.create_container(key="ds_hidden", access_tags=["alice_tag"])
+    hidden.write_array(
+        arr, key="ds_leaf", access_tags=["physicists_tag"], metadata=meta
+    )
+
+    # Deep matches beyond direct children are found at all for tagged users.
+    assert _deep_keys(alice_client["baz"], marker) == {
+        ("ds_visible",),
+        ("ds_hidden", "ds_leaf"),
+    }
+
+    sue_top = sue_client["baz"]
+    results = sue_top.search_deep(Key("deep_search_marker") == marker)
+    assert set(results.keys()) == {("ds_visible",)}
+    assert len(results) == 1
+    with pytest.raises(KeyError):
+        results[("ds_hidden", "ds_leaf")]
+
+    content = _deep_search_http(sue_top, marker)
+    assert content["meta"]["count"] == 1
+    for item in content["data"]:
+        assert "ds_hidden" not in item["attributes"]["ancestors"]
+
+
+def test_search_deep_pagination_skips_leaf_under_inaccessible_container(
+    access_control_test_context_factory,
+):
+    "A hidden row must not consume a slot on a page."
+    alice_client = access_control_test_context_factory("alice", "alice")
+    sue_client = access_control_test_context_factory("sue", "sue")
+    marker = "pagination"
+    meta = {"deep_search_marker": marker}
+
+    top = alice_client["baz"]
+    top.write_array(arr, key="ds_p1", access_tags=["physicists_tag"], metadata=meta)
+    hidden = top.create_container(key="ds_p_hidden", access_tags=["alice_tag"])
+    hidden.write_array(
+        arr, key="ds_p_leaf", access_tags=["physicists_tag"], metadata=meta
+    )
+    top.write_array(arr, key="ds_p2", access_tags=["physicists_tag"], metadata=meta)
+
+    sue_baz = sue_client["baz"]
+    results = sue_baz.search_deep(Key("deep_search_marker") == marker)
+    assert len(results) == 2
+    keys = [key for key, _ in results.items().page_size(1)]
+    assert sorted(keys) == [("ds_p1",), ("ds_p2",)]
+
+    # Page-by-page walk via raw HTTP links: exactly 2 pages with page[limit]=1,
+    # and no page contains the hidden item.
+    link = sue_baz.item["links"]["search_deep"]
+    http = sue_baz.context.http_client
+    pages = 0
+    next_url = link
+    params = {
+        "filter[eq][condition][key]": "deep_search_marker",
+        "filter[eq][condition][value]": json.dumps(marker),
+        "page[limit]": 1,
+    }
+    seen_ids = []
+    while next_url:
+        resp = http.get(next_url, params=params if next_url == link else None)
+        assert resp.status_code == 200
+        data = resp.json()
+        for item in data["data"]:
+            seen_ids.append(item["id"])
+            assert "ds_p_hidden" not in item["attributes"]["ancestors"]
+        pages += 1
+        next_url = data["links"].get("next")
+    assert sorted(seen_ids) == ["ds_p1", "ds_p2"]
+    assert pages == 2
+
+
+def test_search_deep_hides_leaf_under_inaccessible_nested_container(
+    access_control_test_context_factory,
+):
+    "Every container between the search root and the match is checked."
+    alice_client = access_control_test_context_factory("alice", "alice")
+    sue_client = access_control_test_context_factory("sue", "sue")
+    marker = "nested"
+    meta = {"deep_search_marker": marker}
+
+    outer = alice_client["baz"].create_container(
+        key="ds_outer", access_tags=["physicists_tag"]
+    )
+    inner = outer.create_container(key="ds_inner", access_tags=["alice_tag"])
+    inner.write_array(
+        arr, key="ds_deep_leaf", access_tags=["physicists_tag"], metadata=meta
+    )
+
+    assert _deep_keys(alice_client["baz"], marker) == {
+        ("ds_outer", "ds_inner", "ds_deep_leaf")
+    }
+    assert _deep_keys(alice_client["baz"]["ds_outer"], marker) == {
+        ("ds_inner", "ds_deep_leaf")
+    }
+    assert _deep_keys(sue_client["baz"], marker) == set()
+    assert _deep_keys(sue_client["baz"]["ds_outer"], marker) == set()
+
+
+def test_search_deep_user_query_does_not_gate_ancestors(
+    access_control_test_context_factory,
+):
+    "Only access policy gates the path; a container need not match the user's query."
+    alice_client = access_control_test_context_factory("alice", "alice")
+    sue_client = access_control_test_context_factory("sue", "sue")
+    marker = "user_query"
+
+    ctr = alice_client["baz"].create_container(
+        key="ds_ctr", access_tags=["physicists_tag"]
+    )
+    ctr.write_array(
+        arr,
+        key="ds_x",
+        access_tags=["physicists_tag"],
+        metadata={"deep_search_marker": marker},
+    )
+
+    assert _deep_keys(sue_client["baz"], marker) == {("ds_ctr", "ds_x")}
+
+
+def test_search_deep_from_root_applies_policy_to_mounted_catalogs(
+    access_control_test_context_factory,
+):
+    """
+    The root is a MapAdapter with catalogs mounted beneath it; deep search
+    reaches them by walking rather than through `get_entry`, so the policy
+    must still be applied to each mount.
+    """
+    alice_client = access_control_test_context_factory("alice", "alice")
+    sue_client = access_control_test_context_factory("sue", "sue")
+    marker = "mounted"
+    meta = {"deep_search_marker": marker}
+
+    # Both leaves are tagged for sue; only `baz` is a mount she may enter.
+    alice_client["foo"].write_array(
+        arr, key="ds_foo_leaf", access_tags=["physicists_tag"], metadata=meta
+    )
+    alice_client["baz"].write_array(
+        arr, key="ds_baz_leaf", access_tags=["physicists_tag"], metadata=meta
+    )
+
+    assert _deep_keys(alice_client, marker) == {
+        ("foo", "ds_foo_leaf"),
+        ("baz", "ds_baz_leaf"),
+    }
+    assert _deep_keys(sue_client, marker) == {("baz", "ds_baz_leaf")}
+
+    content = _deep_search_http(sue_client, marker)
+    assert content["meta"]["count"] == 1
+    for item in content["data"]:
+        assert "foo" not in item["attributes"]["ancestors"]
+
+
+def test_search_deep_anonymous_sees_only_public_data(
+    access_control_test_context_factory,
+):
+    """
+    An unauthenticated (anonymous) client deep-searching from the root must see
+    only nodes that are under public containers AND tagged public themselves.
+    """
+    admin_client = access_control_test_context_factory("admin", "admin")
+    marker = "anon"
+    meta = {"deep_search_marker": marker}
+
+    # Public mount `qux`: one public leaf, one private leaf.
+    admin_client["qux"].write_array(
+        arr, key="ds_pub_leaf", access_tags=["public"], metadata=meta
+    )
+    admin_client["qux"].write_array(
+        arr, key="ds_priv_leaf", access_tags=["alice_tag"], metadata=meta
+    )
+    # Private mount `foo`: one public-tagged leaf inside a private mount.
+    admin_client["foo"].write_array(
+        arr, key="ds_foo_pub", access_tags=["public"], metadata=meta
+    )
+
+    anon_client = access_control_test_context_factory("zoe", "zoe")
+    anon_client.logout()
+
+    assert _deep_keys(anon_client, marker) == {("qux", "ds_pub_leaf")}
 
 
 def test_node_export_access_control(
