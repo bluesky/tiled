@@ -20,7 +20,8 @@ services:
     networks:
       - backend
     healthcheck:
-      test: curl --fail http://localhost:8000/healthz || exit 1
+      # Use httpx (a core dependency of tiled) rather than curl.
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8000/healthz', timeout=5).raise_for_status()"]
       interval: 60s
       timeout: 10s
       retries: 3

@@ -66,6 +66,9 @@ Write the date in place of the "Unreleased" in the case a new version is release
   to point the tests at a real MinIO/S3 endpoint instead.
 - The server depends on `PyJWT` instead of `python-jose` to sign and verify
   JSON Web Tokens.
+- Remove `curl` from the container image; it was only used for health checks.
+  The `compose.yml` and `compose.dev.yml` health checks now use `httpx`
+  instead.
 
 ### Fixed
 
