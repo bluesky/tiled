@@ -55,17 +55,21 @@ Write the date in place of the "Unreleased" in the case a new version is release
   node associations but lose their grants, preventing transient configuration
   failures from erasing access-control information. The server remains
   compatible with older clients that use `access_blob`.
-- Deployment note: this change includes three sequential catalog migrations
-  (an intermediate blob-association schema, conversion to tags, and a
-  parent-scoped node-tag association). Apply the full migration chain without
-  stopping at an intermediate revision. This also drops the old metadata
-  index; deploy the improved replacement index from #1521 as well.
+- Deployment note: this change includes four sequential catalog migrations
+  (an intermediate blob-association schema, conversion to tags, a
+  parent-scoped node-tag association, and naming adjustment). Apply the full
+  migration chain without stopping at an intermediate revision. This also drops
+  the old metadata index; deploy the improved replacement index from #1521
+  as well.
 - Object-storage (S3) tests now run against an in-process `moto` S3 server
   started automatically by the test suite, instead of requiring a MinIO
   container (whose image was removed from Docker Hub). Set `TILED_TEST_BUCKET`
   to point the tests at a real MinIO/S3 endpoint instead.
 - The server depends on `PyJWT` instead of `python-jose` to sign and verify
   JSON Web Tokens.
+- Remove `curl` from the container image; it was only used for health checks.
+  The `compose.yml` and `compose.dev.yml` health checks now use `httpx`
+  instead.
 
 ### Fixed
 
@@ -78,12 +82,15 @@ Write the date in place of the "Unreleased" in the case a new version is release
   on-disk shape has diverged from the shape recorded in the catalog
   structure, which can happen while an array is being extended
   (e.g. streaming appends).
+- Make retrying of non-idempotent requests (create and append) safe against duplication.
 - `distinct` on a catalog node counted nodes across the whole catalog instead of
   only the node's children. It is now scoped to the requested node.
 - Fix the background task that purges expired Sessions and API keys. It
   crashed on its first run and was never retried, so expired entries
   (including the short-lived keys minted for websocket subscriptions)
   could accumulate until a Principal hit the API-key limit.
+- `from_uri` applies its `timeout` and `trust_env` arguments, or the default
+  timeouts when none are given, to the first request it makes to an `http://` URI.
 
 ## v0.2.18 (2026-09-02)
 

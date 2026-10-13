@@ -19,6 +19,7 @@ branch_labels = None
 depends_on = None
 
 INDEX_NAME = "ix_node_access_tags_association_parent_id_tag_id_node_id"
+STATISTICS_NAME = "node_access_tags_association_parent_id_tag_id_node_id_stats"
 
 # Tune these for the database host running the migration. These settings apply
 # only to this migration's PostgreSQL connection. work_mem may be consumed by
@@ -165,7 +166,15 @@ WHERE node.id = assignment.node_id
             "node_access_tags_association",
             ["parent_id", "tag_id", "node_id"],
         )
-        op.execute("ANALYZE node_access_tags_association")
+        op.execute(
+            f"CREATE STATISTICS IF NOT EXISTS {STATISTICS_NAME} "
+            "(dependencies, ndistinct, mcv) "
+            "ON parent_id, tag_id FROM node_access_tags_association"
+        )
+        # VACUUM cannot run inside a transaction. Creating the statistics before
+        # this also ensures that VACUUM ANALYZE populates them immediately.
+        with op.get_context().autocommit_block():
+            connection.execute(sa.text("VACUUM ANALYZE node_access_tags_association"))
     else:
         op.execute(
             """
@@ -189,6 +198,7 @@ def downgrade():
 
     _drop_triggers(connection)
     if dialect_name == "postgresql":
+        op.execute(f"DROP STATISTICS IF EXISTS {STATISTICS_NAME}")
         op.drop_index(
             INDEX_NAME,
             table_name="node_access_tags_association",
