@@ -27,6 +27,8 @@ from typing import Iterable, Optional
 
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import and_, delete, false, insert, or_, select, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncEngine
 
@@ -35,6 +37,7 @@ from ..catalog.orm import AccessTag, Node, NodeAccessTagAssociation
 from ..queries import AccessTagsFilter
 from ..server.connection_pool import get_database_engine
 from ..server.settings import DatabaseSettings
+from ..utils import UnsupportedQueryType
 from .orm import entities as _entities
 from .orm import entity_access_tags_association as _entity_access_tags
 from .orm import link_access_tags_association as _link_access_tags
@@ -54,12 +57,27 @@ _node_access_tags = NodeAccessTagAssociation.__table__
 # ---------------------------------------------------------------------------
 
 
+class EntityConflictError(Exception):
+    "An entity with the same (node_id, kind, name) already exists."
+
+
+def _is_unique_violation(exc: IntegrityError) -> bool:
+    """
+    True if an IntegrityError is a unique-constraint violation (as opposed to
+    one of the store's own sentinel IntegrityErrors for the delegation/clear
+    invariants). SQLite reports "UNIQUE constraint failed: ..."; PostgreSQL
+    reports "duplicate key value violates unique constraint ...".
+    """
+    message = str(getattr(exc, "orig", exc)).lower()
+    return "unique constraint failed" in message or "duplicate key value" in message
+
+
 class EntityRecord(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     id: str
     node_id: Optional[int] = None
-    entity_type: str
+    kind: str
     name: str
     uri: Optional[str]
     properties: dict
@@ -199,7 +217,7 @@ class GraphSQLAlchemyStore:
         return EntityRecord(
             id=row.id,
             node_id=row.node_id,
-            entity_type=row.entity_type,
+            kind=row.kind,
             name=row.name,
             uri=row.uri,
             properties=row.properties or {},
@@ -289,7 +307,7 @@ class GraphSQLAlchemyStore:
 
     async def create_entity(
         self,
-        entity_type: str,
+        kind: str,
         name: str,
         node_id: Optional[int] = None,
         uri: Optional[str] = None,
@@ -300,28 +318,97 @@ class GraphSQLAlchemyStore:
         now = datetime.now(timezone.utc)
         if node_id is not None and access_tags:
             raise IntegrityError("entity node access tags", {}, None)
-        async with self._engine.begin() as conn:
-            await conn.execute(
-                insert(_entities).values(
-                    id=id_,
-                    node_id=node_id,
-                    entity_type=entity_type,
-                    name=name,
-                    uri=uri,
-                    properties=properties or {},
-                    created_at=now,
-                )
-            )
-            if node_id is None and access_tags:
-                access_tag_ids = await _resolve_access_tag_ids(conn, access_tags)
+        try:
+            async with self._engine.begin() as conn:
                 await conn.execute(
-                    insert(_entity_access_tags),
-                    [
-                        {"entity_id": id_, "tag_id": access_tag_id}
-                        for access_tag_id in access_tag_ids
-                    ],
+                    insert(_entities).values(
+                        id=id_,
+                        node_id=node_id,
+                        kind=kind,
+                        name=name,
+                        uri=uri,
+                        properties=properties or {},
+                        created_at=now,
+                    )
                 )
-            record = await self._entity_record(conn, id_)
+                if node_id is None and access_tags:
+                    access_tag_ids = await _resolve_access_tag_ids(conn, access_tags)
+                    await conn.execute(
+                        insert(_entity_access_tags),
+                        [
+                            {"entity_id": id_, "tag_id": access_tag_id}
+                            for access_tag_id in access_tag_ids
+                        ],
+                    )
+                record = await self._entity_record(conn, id_)
+        except IntegrityError as exc:
+            # The only user-triggerable unique constraint here is
+            # entities_node_kind_name_uq (the primary key is a fresh UUID).
+            # Other IntegrityErrors (the delegation sentinel above) propagate.
+            if not _is_unique_violation(exc):
+                raise
+            raise EntityConflictError(
+                f"An entity with kind={kind!r} name={name!r} "
+                "already exists for this node."
+            ) from exc
+        return record
+
+    async def upsert_entity(
+        self,
+        kind: str,
+        name: str,
+        node_id: int,
+        uri: Optional[str] = None,
+        properties: Optional[dict] = None,
+    ) -> EntityRecord:
+        """
+        Get-or-create a node-bound entity keyed on (node_id, kind, name).
+
+        Implemented as a single atomic INSERT ... ON CONFLICT DO UPDATE against
+        the entities_node_kind_name_uq unique index, so concurrent callers
+        converge on one row rather than racing a check-then-insert. On conflict
+        the existing row's uri and properties are refreshed to the supplied
+        values. Node-bound only: such entities carry no access tags of their own
+        (access is delegated to the node), so none are written here.
+        """
+        dialect_name = self._engine.url.get_dialect().name
+        if dialect_name == "sqlite":
+            insert_stmt = sqlite_insert(_entities)
+        elif dialect_name == "postgresql":
+            insert_stmt = pg_insert(_entities)
+        else:
+            raise UnsupportedQueryType(f"upsert not supported on {dialect_name!r}")
+        now = datetime.now(timezone.utc)
+        insert_stmt = insert_stmt.values(
+            id=str(uuid.uuid4()),
+            node_id=node_id,
+            kind=kind,
+            name=name,
+            uri=uri,
+            properties=properties or {},
+            created_at=now,
+        )
+        stmt = insert_stmt.on_conflict_do_update(
+            index_elements=["node_id", "kind", "name"],
+            set_={
+                "uri": insert_stmt.excluded.uri,
+                "properties": insert_stmt.excluded.properties,
+            },
+        )
+        async with self._engine.begin() as conn:
+            await conn.execute(stmt)
+            # Read the surviving row back by its natural key: on conflict it
+            # keeps its original id.
+            row = (
+                await conn.execute(
+                    select(_entities.c.id).where(
+                        _entities.c.node_id == node_id,
+                        _entities.c.kind == kind,
+                        _entities.c.name == name,
+                    )
+                )
+            ).one()
+            record = await self._entity_record(conn, row.id)
         return record
 
     async def get_entity(self, id: str) -> Optional[EntityRecord]:
@@ -356,15 +443,15 @@ class GraphSQLAlchemyStore:
 
     async def list_entities(
         self,
-        entity_type: Optional[str] = None,
+        kind: Optional[str] = None,
         node_id: Optional[int] = None,
         limit: int = 100,
         offset: int = 0,
         access_filters: Optional[list[AccessTagsFilter]] = None,
     ) -> list[EntityRecord]:
         stmt = select(_entities).order_by(_entities.c.created_at)
-        if entity_type is not None:
-            stmt = stmt.where(_entities.c.entity_type == entity_type)
+        if kind is not None:
+            stmt = stmt.where(_entities.c.kind == kind)
         if node_id is not None:
             stmt = stmt.where(_entities.c.node_id == node_id)
         if access_filters:
@@ -390,7 +477,7 @@ class GraphSQLAlchemyStore:
         name: Optional[str] = None,
         node_id: object = UNSET,
         uri: object = UNSET,
-        entity_type: Optional[str] = None,
+        kind: Optional[str] = None,
         access_tags: object = UNSET,
     ) -> Optional[EntityRecord]:
         values: dict = {}
@@ -400,8 +487,8 @@ class GraphSQLAlchemyStore:
             values["node_id"] = node_id
         if uri is not UNSET:
             values["uri"] = uri
-        if entity_type is not None:
-            values["entity_type"] = entity_type
+        if kind is not None:
+            values["kind"] = kind
         async with self._engine.begin() as conn:
             existing = await self._entity_record(conn, id)
             if existing is None:
@@ -422,9 +509,17 @@ class GraphSQLAlchemyStore:
                     )
                 )
             if values:
-                await conn.execute(
-                    update(_entities).where(_entities.c.id == id).values(**values)
-                )
+                try:
+                    await conn.execute(
+                        update(_entities).where(_entities.c.id == id).values(**values)
+                    )
+                except IntegrityError as exc:
+                    if not _is_unique_violation(exc):
+                        raise
+                    raise EntityConflictError(
+                        "An entity with the same kind and name already exists "
+                        "for this node."
+                    ) from exc
             if access_tags is not UNSET:
                 if access_tags is None:
                     if effective_node_id is None:

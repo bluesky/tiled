@@ -45,6 +45,18 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Changed
 
+- Enforce canonical identity for graph entities bound to a catalog node: at most
+  one entity may exist for a given `(node_id, kind, name)` (a unique index).
+  Free-standing (external) entities, which have no node, are left unconstrained.
+  A new `upsertEntity` mutation does an atomic get-or-create against that
+  constraint (via `INSERT ... ON CONFLICT`), so concurrent writers converge on
+  one entity instead of racing a check-then-insert and fragmenting the graph. A
+  duplicate `createEntity`/`updateEntity` now fails with an `ENTITY_EXISTS` error.
+- Binding a graph entity to a catalog node (via `createEntity`, `upsertEntity`,
+  or re-binding through `updateEntity`) now requires `write:metadata` permission
+  on that specific node, not merely the global `write:metadata` scope.
+- Rename the experimental graph entity's `entity_type` field to `kind`, in both
+  the database column and the GraphQL API (`entityType` becomes `kind`).
 - Replace catalog `access_blob` column with a normalized `access_tags` table.
   Tags, grants, tag ownership, and node-tag associations now live in the
   catalog database; graph entities and links share the same tags table,
