@@ -21,7 +21,10 @@ entries.
 The ``GET /api/v1/metadata/{path}`` route provides the metadata about one node.
 The ``GET /api/v1/search/{path}`` route provides paginated access to the children of
 a given node, with optional filtering (search). The responses contain links to
-the data, in various forms.
+the data, in various forms. The ``GET /api/v1/search-deep/{path}`` route is like
+``search`` but matches all descendants of the node, at any depth, rather than
+just its direct children; results are in default (database) order and cannot be
+sorted.
 
 For example, data access routes ``GET /api/v1/array/block/{path}``,
 ``GET /api/v1/array/full/{path}``, and ``GET /api/v1/table/partition/{path}``

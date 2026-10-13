@@ -90,6 +90,18 @@ It adds these methods, which return a new Container instance.
    tiled.client.container.Container.sort
 ```
 
+This method searches all descendants, at any depth, and returns a
+{py:class}`~tiled.client.container.DeepSearchResults` mapping rather than a
+Container.
+
+```{eval-rst}
+.. autosummary::
+   :toctree: generated
+
+   tiled.client.container.Container.search_deep
+   tiled.client.container.DeepSearchResults
+```
+
 It adds this method, which returns the unique metadata keys,
 structure_families, and specs of its children along with their counts.
 

@@ -22,6 +22,7 @@ from tiled.structures.container import ContainerStructure
 
 if TYPE_CHECKING:
     from fastapi import APIRouter
+    from .merged import MergedDeepSearchAdapter
 
 from collections.abc import Iterable, Mapping
 
@@ -307,6 +308,61 @@ class MapAdapter(Generic[A], ContainerAdapter[A], IndexersMixin):
                 Return a Adapter with a subset of the mapping.
         """
         return self.query_registry(query, self)
+
+    def search_deep(
+        self, max_depth: Optional[int] = None
+    ) -> Union["MapAdapter[A]", "MergedDeepSearchAdapter"]:
+        """Return an adapter over ALL descendants of this node (any depth).
+
+        The returned adapter's keys are "/"-joined paths relative to this
+        node, since descendants at different depths may share a local key.
+        A subsequent `.search(query)` call filters this flattened adapter
+        exactly as it would filter direct children.
+
+        Container children that are not themselves `MapAdapter`s (e.g. a
+        `CatalogNodeAdapter` mounted at a sub-path) but do support
+        `search_deep` are delegated to and their results merged in,
+        via `MergedDeepSearchAdapter`, so mounted subtrees are still searched.
+        """
+        flat: Dict[str, A] = {}
+        mounts: List[Tuple[str, Any]] = []
+
+        def _walk(
+            mapping: Mapping[str, A], prefix: Tuple[str, ...], depth: int
+        ) -> None:
+            for key, value in mapping.items():
+                if "/" in key:
+                    raise ValueError(
+                        f"Cannot deep-search a key containing '/': {key!r}"
+                    )
+                path = prefix + (key,)
+                flat["/".join(path)] = value
+                if max_depth is not None and depth + 1 >= max_depth:
+                    continue
+                if isinstance(value, MapAdapter):
+                    _walk(value._mapping, path, depth + 1)
+                elif hasattr(value, "search_deep") and (
+                    getattr(value, "structure_family", None)
+                    == StructureFamily.container
+                ):
+                    remaining_depth = (
+                        None if max_depth is None else max_depth - (depth + 1)
+                    )
+                    mounts.append(
+                        (
+                            "/".join(path),
+                            value.search_deep(max_depth=remaining_depth),
+                        )
+                    )
+
+        _walk(self._mapping, (), 0)
+        if not mounts:
+            return self.new_variation(mapping=flat)
+        from .merged import MergedDeepSearchAdapter
+
+        return MergedDeepSearchAdapter(
+            flat, mounts, metadata=self._metadata, specs=self.specs
+        )
 
     def get_distinct(
         self,
