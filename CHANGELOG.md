@@ -85,9 +85,20 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - Make retrying of non-idempotent requests (create and append) safe against duplication.
 - `distinct` on a catalog node counted nodes across the whole catalog instead of
   only the node's children. It is now scoped to the requested node.
+- Fix the background task that purges expired Sessions and API keys. It
+  crashed on its first run and was never retried, so expired entries
+  (including the short-lived keys minted for websocket subscriptions)
+  could accumulate until a Principal hit the API-key limit. Expired entries
+  are now removed with a single bulk `DELETE`, so a large backlog is not loaded into
+  memory. The task also purges expired PendingSessions (device-code login attempts).
+- Deleting a Session is no longer blocked by a pending device-code login that
+  still references it: `pending_sessions.session_id` is now `ON DELETE SET
+  NULL`, so the reference is detached instead.
+- On shutdown, the server now stops its background tasks, and waits for them,
+  before closing the database connection pool. Closing the pool first could
+  leave a background task running and hang shutdown.
 - `from_uri` applies its `timeout` and `trust_env` arguments, or the default
-  timeouts when none are given, to the first request it makes to an `http://`
-  URI.
+  timeouts when none are given, to the first request it makes to an `http://` URI.
 
 ## v0.2.18 (2026-09-02)
 
