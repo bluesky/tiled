@@ -2973,8 +2973,8 @@ def from_uri(
             logger.info(f"Subprocess stderr: {process.stderr.decode()}")
 
         except CalledProcessError as cpe:
-            cpe.__cause__ = DatabaseInitializationError(cpe.stderr.decode())
-            raise
+            # Drop cpe: its message echoes cmd, which holds the URI and password.
+            raise DatabaseInitializationError(cpe.stderr.decode()) from None
 
     database_settings = DatabaseSettings(
         uri=uri,
