@@ -14,6 +14,7 @@ from .orm import APIKey, Identity, PendingSession, Principal, Role, Session
 
 # This is list of all valid alembic revisions (from current to oldest).
 ALL_REVISIONS = [
+    "0a017b76d0d0",
     "2d1b550e12e0",
     "d829476bc173",
     "27e069ba3bf5",
@@ -98,7 +99,8 @@ async def purge_expired(db: AsyncSession, cls) -> int:
     This is a single bulk DELETE: expired rows are not loaded into memory, and
     concurrent purges (e.g. from several server processes) do not conflict.
     ORM-level cascades are not applied; no relationship to these tables
-    defines any.
+    defines any. The `pending_sessions.session_id` reference to `sessions` is
+    handled by the database itself (`ON DELETE SET NULL`).
     """
     now = datetime.now(timezone.utc)
     statement = (

@@ -845,6 +845,16 @@ def build_app(
                         async with AsyncSession(
                             engine, autoflush=False, expire_on_commit=False
                         ) as db_session:
+                            # Purge pending sessions first: they reference sessions,
+                            # so clearing expired ones first lets the sessions they point to be deleted in turn.
+                            num_expired_pending_sessions = await purge_expired(
+                                db_session, orm.PendingSession
+                            )
+                            if num_expired_pending_sessions:
+                                logger.info(
+                                    f"Purged {num_expired_pending_sessions} "
+                                    "expired PendingSessions from the database."
+                                )
                             num_expired_sessions = await purge_expired(
                                 db_session, orm.Session
                             )

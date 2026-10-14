@@ -89,8 +89,11 @@ Write the date in place of the "Unreleased" in the case a new version is release
   crashed on its first run and was never retried, so expired entries
   (including the short-lived keys minted for websocket subscriptions)
   could accumulate until a Principal hit the API-key limit. Expired entries
-  are now removed with a single bulk `DELETE`, so a large backlog is not
-  loaded into memory.
+  are now removed with a single bulk `DELETE`, so a large backlog is not loaded into
+  memory. The task also purges expired PendingSessions (device-code login attempts).
+- Deleting a Session is no longer blocked by a pending device-code login that
+  still references it: `pending_sessions.session_id` is now `ON DELETE SET
+  NULL`, so the reference is detached instead.
 - On shutdown, the server now stops its background tasks, and waits for them,
   before closing the database connection pool. Closing the pool first could
   leave a background task running and hang shutdown.
