@@ -199,3 +199,48 @@ async def test_auth_database_purge_task_logs_and_retries_after_failure(
     assert warning.exc_info is not None
     assert isinstance(warning.exc_info[1], RuntimeError)
     assert str(warning.exc_info[1]) == "database unavailable"
+
+
+@pytest.mark.asyncio
+async def test_background_tasks_stop_before_database_pool_closes(monkeypatch):
+    """
+    Shutdown must finish background tasks before closing the connection pool.
+
+    Otherwise a purge cancelled mid-query fails while cleaning up its session,
+    that failure replaces the CancelledError, the purge loop's error handling
+    catches it, and the task keeps running, blocking shutdown indefinitely.
+    """
+    purge_started = asyncio.Event()
+    purge_tasks = []
+    tasks_done_when_pool_closed = []
+
+    async def block_until_cancelled(db_session, model):
+        purge_tasks.append(asyncio.current_task())
+        purge_started.set()
+        await asyncio.Event().wait()
+
+    from tiled.server import connection_pool
+
+    real_close = connection_pool.close_database_connection_pool
+
+    async def recording_close(database_settings):
+        tasks_done_when_pool_closed.append(all(task.done() for task in purge_tasks))
+        await real_close(database_settings)
+
+    monkeypatch.setattr(
+        "tiled.authn_database.core.purge_expired", block_until_cancelled
+    )
+    monkeypatch.setattr(
+        "tiled.server.connection_pool.close_database_connection_pool",
+        recording_close,
+    )
+
+    app = build_app(
+        MapAdapter({}),
+        server_settings={"database": Database(uri="sqlite:///:memory:")},
+    )
+    async with app.router.lifespan_context(app):
+        await asyncio.wait_for(purge_started.wait(), timeout=1)
+
+    assert purge_tasks, "The purge task never ran."
+    assert tasks_done_when_pool_closed == [True]

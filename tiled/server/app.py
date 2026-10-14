@@ -875,13 +875,21 @@ def build_app(
         for task in tasks["shutdown"]:
             await task()
 
+        # Stop background tasks, and wait for them to finish, before closing the
+        # connection pool they may be using. If the pool were closed first, a task
+        # cancelled mid-query could fail while cleaning up its session, and that
+        # failure (raised in place of the CancelledError) could be caught by the
+        # task's error handling, leaving it running and blocking shutdown.
+        running_tasks = getattr(app.state, "tasks", [])
+        for task in running_tasks:
+            task.cancel()
+        await asyncio.gather(*running_tasks, return_exceptions=True)
+
         settings: Settings = app.dependency_overrides[get_settings]()
         if settings.database_settings.uri is not None:
             from .connection_pool import close_database_connection_pool
 
             await close_database_connection_pool(settings.database_settings)
-        for task in getattr(app.state, "tasks", []):
-            task.cancel()
 
     app.add_middleware(
         CompressionMiddleware,
