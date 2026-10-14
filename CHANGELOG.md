@@ -88,7 +88,9 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - Fix the background task that purges expired Sessions and API keys. It
   crashed on its first run and was never retried, so expired entries
   (including the short-lived keys minted for websocket subscriptions)
-  could accumulate until a Principal hit the API-key limit.
+  could accumulate until a Principal hit the API-key limit. Expired entries
+  are now removed with a single bulk `DELETE`, so a large backlog is not
+  loaded into memory.
 - On shutdown, the server now stops its background tasks, and waits for them,
   before closing the database connection pool. Closing the pool first could
   leave a background task running and hang shutdown.

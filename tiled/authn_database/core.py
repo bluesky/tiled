@@ -3,6 +3,7 @@ import uuid as uuid_module
 from datetime import datetime, timezone
 from typing import Optional
 
+from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
@@ -92,22 +93,24 @@ async def initialize_database(engine: AsyncEngine) -> None:
 
 async def purge_expired(db: AsyncSession, cls) -> int:
     """
-    Remove expired entries.
+    Remove expired entries and return how many were removed.
+
+    This is a single bulk DELETE: expired rows are not loaded into memory, and
+    concurrent purges (e.g. from several server processes) do not conflict.
+    ORM-level cascades are not applied; no relationship to these tables
+    defines any.
     """
     now = datetime.now(timezone.utc)
-    num_expired = 0
     statement = (
-        select(cls)
-        .filter(cls.expiration_time.is_not(None))
-        .filter(cls.expiration_time < now)
+        delete(cls)
+        .where(cls.expiration_time.is_not(None))
+        .where(cls.expiration_time < now)
     )
-    result = (await db.execute(statement)).unique()
-    for obj in result.scalars():
-        num_expired += 1
-        await db.delete(obj)
-    if num_expired:
-        await db.commit()
-    return num_expired
+    result = await db.execute(
+        statement, execution_options={"synchronize_session": False}
+    )
+    await db.commit()
+    return result.rowcount
 
 
 async def create_user(db: AsyncSession, identity_provider: str, id: str) -> Principal:
