@@ -18,6 +18,7 @@ from .utils import (
     export_util,
     handle_error,
     retry_context,
+    should_retry_if_unprocessed,
 )
 
 if TYPE_CHECKING:
@@ -275,7 +276,12 @@ class _DaskDataFrameClient(BaseClient):
 
         if partition > self.structure().npartitions:
             raise ValueError(f"Table has {self.structure().npartitions} partitions")
-        for attempt in retry_context():
+        # Appending rows is not idempotent: if the server processed the request
+        # but the response was lost (e.g. a read timeout or a 5xx from a proxy),
+        # retrying would append the same rows a second time. Only retry errors
+        # that guarantee the request was never processed; raise the rest to the
+        # caller, who can inspect the table before deciding to re-append.
+        for attempt in retry_context(on=should_retry_if_unprocessed):
             with attempt:
                 handle_error(
                     self.context.http_client.patch(
