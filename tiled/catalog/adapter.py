@@ -108,10 +108,12 @@ from ..storage import (
     FileStorage,
     ObjectStorage,
     SQLStorage,
+    acquire_storage,
     get_storage,
     mtime_from_uri,
     parse_storage,
     register_storage,
+    release_storage,
 )
 from ..structures.core import Spec, StructureFamily
 from ..utils import (
@@ -285,9 +287,12 @@ class Context:
         # Writable storage should also be readable.
         self.readable_storage.update(self.writable_storage)
         # Register all storage in a registry that enables Adapters to access
-        # credentials (if applicable).
+        # credentials (if applicable). This makes storage usable even if this
+        # Context is never started; startup() additionally takes references,
+        # which shutdown() releases to close connections.
         for item in self.readable_storage.values():
             register_storage(item)
+        self._acquired_storage = []
 
         self.key_maker = key_maker
         adapters_by_mimetype = adapters_by_mimetype or {}
@@ -341,10 +346,38 @@ class Context:
             )
             await self.webhook_dispatcher.startup()
 
+        self._acquire_storage()
+
+    def _acquire_storage(self):
+        "Take a reference to each storage; see release_storage."
+        if self._acquired_storage:
+            return  # already started
+        # Keyed by id(): not all Storage types are hashable.
+        canonical = {}
+        try:
+            for storage in self.readable_storage.values():
+                canonical[id(storage)] = acquire_storage(storage)
+                self._acquired_storage.append(canonical[id(storage)])
+        except Exception:
+            self._release_storage()
+            raise
+        # If a previous shutdown released (and closed) this storage, an equal
+        # instance may since have been created; use that one, so that this
+        # Context shares its pool.
+        for mapping in (self.writable_storage, self.readable_storage):
+            for uri, storage in mapping.items():
+                mapping[uri] = canonical[id(storage)]
+
+    def _release_storage(self):
+        while self._acquired_storage:
+            release_storage(self._acquired_storage.pop())
+
     async def shutdown(self):
         if self.webhook_dispatcher is not None:
             await self.webhook_dispatcher.shutdown()
         await close_database_connection_pool(self.database_settings)
+        # Close storage connections once no started Context uses them.
+        self._release_storage()
 
 
 class CatalogNodeAdapter:
