@@ -118,6 +118,11 @@ async def register_principal_tag_rows(connection, access_tag_names):
         .values([{"name": name, "is_public": False} for name in sorted(principal_tags)])
         .on_conflict_do_nothing(index_elements=["name"])
     )
+    # This may have created new access-tag rows (changing the name -> id
+    # mapping) outside of a compiler run; invalidate compiled-tag caches.
+    from ..access_control.protocols import bump_tags_generation
+
+    bump_tags_generation()
 
 
 async def resolve_access_tag_ids(connection, names):

@@ -151,6 +151,13 @@ logger = logging.getLogger(__name__)
 # streaming append from a write that was aborted and left at rest.
 ARRAY_NOT_READY_WINDOW = float(os.getenv("TILED_ARRAY_NOT_READY_WINDOW", "10.0"))
 
+# How long (in seconds) resolved access-tag ids (name -> id) are cached on the
+# context, and how many distinct tag sets to hold. The mapping only changes
+# when access tags are recompiled, so a short TTL bounds the staleness while
+# saving a database round trip per request. See resolve_access_tag_ids.
+ACCESS_TAG_IDS_CACHE_TTL = float(os.getenv("TILED_ACCESS_TAG_IDS_CACHE_TTL", "60"))
+ACCESS_TAG_IDS_CACHE_MAX_SIZE = 64
+
 # When data is uploaded, how is it saved?
 # TODO: Make this configurable at Catalog construction time.
 DEFAULT_CREATION_MIMETYPE = {
@@ -297,6 +304,9 @@ class Context:
         self._acquired_storage = []
 
         self.key_maker = key_maker
+        # TTL cache of resolved access-tag ids, shared by the adapters of this
+        # catalog: {frozenset(names): (expiry, sorted ids)}.
+        self.access_tag_ids_cache = {}
         adapters_by_mimetype = adapters_by_mimetype or {}
         # If adapters_by_mimetype comes from a configuration file,
         # objects are given as importable strings, like "package.module:Reader".
@@ -599,13 +609,38 @@ class CatalogNodeAdapter:
     async def resolve_access_tag_ids(self, names):
         """Resolve access-tag 'names' to their 'access_tags.id' values.
 
-        Returns a list of integer ids for the names that exist (order is not
-        significant; missing names are simply omitted). Used to build ACL
-        filters that reference 'tag_id' literals instead of joining
-        'access_tags' by name -- see 'access_tags_filter'.
+        Returns a sorted list of integer ids for the names that exist (missing
+        names are simply omitted). Used to build ACL filters that reference
+        'tag_id' literals instead of joining 'access_tags' by name.
+
+        The result is cached on the context (i.e. per catalog database) for
+        ACCESS_TAG_IDS_CACHE_TTL seconds: the ACL filter of a principal with
+        many tags is resolved on every request (and several times per request,
+        once per path segment), while the name -> id mapping only changes when
+        tags are recompiled.
         """
+        if not names:
+            return []
+        from ..access_control.protocols import tags_generation
+
+        key = frozenset(names)
+        cache = self.context.access_tag_ids_cache
+        now = time.monotonic()
+        generation = tags_generation()
+        hit = cache.get(key)
+        if hit is not None and hit[0] > now and hit[1] == generation:
+            return hit[2]
         async with self.context.session() as db:
-            return await resolve_access_tag_ids(db, names)
+            ids = sorted(await resolve_access_tag_ids(db, names))
+        if len(cache) >= ACCESS_TAG_IDS_CACHE_MAX_SIZE:
+            # Drop expired entries; if nothing expired, drop the oldest.
+            expired = [k for k, (expires, *_) in cache.items() if expires <= now]
+            for k in expired:
+                del cache[k]
+            while len(cache) >= ACCESS_TAG_IDS_CACHE_MAX_SIZE:
+                del cache[min(cache, key=lambda k: cache[k][0])]
+        cache[key] = (now + ACCESS_TAG_IDS_CACHE_TTL, generation, ids)
+        return ids
 
     async def exact_len(self):
         "Get the exact number of child (or, in deep mode, descendant) nodes."
