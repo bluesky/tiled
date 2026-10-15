@@ -467,26 +467,38 @@ class AmbiguousStorage(ValueError):
     "Two configured storages are indistinguishable by `storage_registry_key`."
 
 
+def _differing_fields(a: Storage, b: Storage) -> list[str]:
+    "Names (never values: they may be credentials) of fields that differ."
+    if type(a) is not type(b):
+        return ["type"]
+    return [
+        field.name
+        for field in dataclasses.fields(a)
+        if getattr(a, field.name) != getattr(b, field.name)
+    ]
+
+
 def register_storage(storage: Storage) -> None:
     """Stash Storage for later lookup by URI.
 
-    Re-registering an equivalent Storage (e.g. one per catalog mount) is
-    allowed; the last one wins. Registering a Storage that shares a
-    database name with an existing one, but reaches it via different
-    servers, raises `AmbiguousStorage`, since Assets could not be matched
-    to the right one.
+    Each storage location (for PostgreSQL, each database name; see
+    `storage_registry_key`) may have only one configuration per process.
+    Re-registering an equal Storage (e.g. one per catalog mount) is allowed.
+    Registering a different one for the same location raises
+    `AmbiguousStorage`: Assets are matched to Storage by location alone, so
+    there would be no way to choose between them, and a mismatch would
+    silently use the other configuration's credentials and pool.
     """
     key = storage_registry_key(storage.uri)
     existing = _STORAGE.get(key)
-    if (existing is not None) and (
-        strip_connection_parameters(existing.uri)
-        != strip_connection_parameters(storage.uri)
-    ):
+    if (existing is not None) and (existing != storage):
         raise AmbiguousStorage(
-            f"Storage {storage.uri!r} and {existing.uri!r} have the same "
-            "database name, so Assets cannot be matched unambiguously to one of "
-            "them. If they are the same database, configure them with the same "
-            "hosts (in the same order). Otherwise, use distinct database names."
+            f"Storage {storage!r} conflicts with already-configured storage "
+            f"{existing!r}: they refer to the same storage location (for "
+            "PostgreSQL, the same database name) but are configured "
+            f"differently (differing: {', '.join(_differing_fields(storage, existing))})."
+            " Configure every reference to a given storage location identically "
+            "(same URI, hosts, query parameters, credentials, and pool settings)."
         )
     _STORAGE[key] = storage
 

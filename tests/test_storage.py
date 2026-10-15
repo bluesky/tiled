@@ -132,29 +132,51 @@ def test_get_storage_different_database_does_not_match(registered_storage):
         get_storage("postgresql://pg1:5432/ignored?dbname=other_database")
 
 
-def test_reregistering_equivalent_storage_is_allowed(registered_storage):
-    "Each catalog mount registers its own copy; those must not conflict."
-    # Same servers, different credentials / tuning parameters / pool size
-    other = RemoteSQLStorage(
-        "postgresql://other:pw@pg2:5432,pg1:5432,pg3:5432/storage?connect_timeout=9",
-        pool_size=7,
-    )
+def test_reregistering_equal_storage_is_allowed(registered_storage):
+    "Each catalog mount may register its own equal copy."
+    other = RemoteSQLStorage(CONFIGURED_URI)
+    assert other is not registered_storage
     register_storage(other)
     assert get_storage("postgresql://anywhere/storage") is other
 
 
 @pytest.mark.parametrize(
-    "uri",
+    "uri, kwargs, differing",
     [
         # Another server with a database of the same name
-        "postgresql://user:secret@elsewhere:5432/storage",
-        # Same servers, listed differently: ambiguous, so be explicit
-        "postgresql://user:secret@pg1:5432,pg2:5432,pg3:5432/storage",
+        ("postgresql://user:secret@elsewhere:5432/storage", {}, "uri"),
+        # Same servers, listed differently
+        (
+            "postgresql://user:secret@pg1:5432,pg2:5432,pg3:5432/storage"
+            "?connect_timeout=5&target_session_attrs=read-write",
+            {},
+            "uri",
+        ),
+        # Different connection-tuning parameters
+        (
+            "postgresql://user:secret@pg2:5432,pg1:5432,pg3:5432/storage"
+            "?connect_timeout=9&target_session_attrs=read-write",
+            {},
+            "uri",
+        ),
+        # Different credentials: a shared pool would connect as one of them
+        (
+            "postgresql://other:pw@pg2:5432,pg1:5432,pg3:5432/storage"
+            "?connect_timeout=5&target_session_attrs=read-write",
+            {},
+            "username, password",
+        ),
+        # Different pool settings
+        (CONFIGURED_URI, {"pool_size": 7}, "pool_size"),
+        (CONFIGURED_URI, {"max_overflow": 3}, "max_overflow"),
     ],
 )
-def test_ambiguous_storage_is_refused(registered_storage, uri):
-    with pytest.raises(AmbiguousStorage):
-        register_storage(RemoteSQLStorage(uri))
+def test_conflicting_storage_is_refused(registered_storage, uri, kwargs, differing):
+    with pytest.raises(AmbiguousStorage, match=f"differing: {differing}") as info:
+        register_storage(RemoteSQLStorage(uri, **kwargs))
+    # Passwords never appear in the message.
+    assert "secret" not in str(info.value)
+    assert "pw" not in str(info.value)
     # The original registration is intact.
     assert get_storage("postgresql://anywhere/storage") is registered_storage
 
