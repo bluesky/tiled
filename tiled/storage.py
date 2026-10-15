@@ -347,9 +347,19 @@ class SQLStorage(Storage):
         return self._connection_pool.connect()
 
     def dispose(self) -> None:
-        "Close all connections and dispose of the connection pool."
-        self._connection_pool.dispose()
-        self._adbc_connection.close()
+        """Close all connections and dispose of the connection pool.
+
+        Safe to call more than once, and does not open a connection that
+        was never opened. Afterward the Storage remains usable: the next
+        `connect()` opens a fresh pool.
+        """
+        # Pop the cached_property values so they are rebuilt on next use.
+        pool = self.__dict__.pop("_connection_pool", None)
+        connection = self.__dict__.pop("_adbc_connection", None)
+        if pool is not None:
+            pool.dispose()
+        if connection is not None:
+            connection.close()
 
 
 @dataclasses.dataclass(frozen=True)
@@ -425,13 +435,37 @@ class RemoteSQLStorage(SQLStorage):
         return adbc_driver_postgresql.dbapi.connect(self.authenticated_uri)
 
 
+# One SQLStorage instance per distinct configuration per process. Each
+# instance owns a connection pool (and a template connection), so sharing
+# instances shares pools: many catalog mounts configured with the same
+# storage use one pool rather than one each.
+_SQL_STORAGE_INSTANCES: Dict["SQLStorage", "SQLStorage"] = {}
+
+
 def parse_storage(
     item: Union[Path, str, dict],
     *,
     pool_size: int = 5,
     max_overflow: int = 10,
 ) -> Storage:
-    "Create a Storage object from a URI or Path."
+    """Create a Storage object from a URI or Path.
+
+    SQL storage is shared: if an equal SQLStorage (same URI, credentials,
+    and pool settings) has already been created in this process, that
+    instance---and so its connection pool---is returned.
+    """
+    result = _parse_storage(item, pool_size=pool_size, max_overflow=max_overflow)
+    if isinstance(result, SQLStorage):
+        result = _SQL_STORAGE_INSTANCES.setdefault(result, result)
+    return result
+
+
+def _parse_storage(
+    item: Union[Path, str, dict],
+    *,
+    pool_size: int,
+    max_overflow: int,
+) -> Storage:
     if isinstance(item, dict):
         result = ObjectStorage(
             uri=item["uri"],

@@ -8,6 +8,7 @@ from tiled.storage import (
     AmbiguousStorage,
     RemoteSQLStorage,
     get_storage,
+    parse_storage,
     register_storage,
     size_from_uri,
     stat_uri,
@@ -262,6 +263,107 @@ def test_strip_query_on_write_feature_flag(monkeypatch, flag, expected_data_uri)
     (asset,) = data_source.assets
     assert asset.data_uri == expected_data_uri
     assert "secret" not in asset.data_uri
+
+
+def test_parse_storage_shares_equal_sql_storage(tmp_path):
+    uri = f"sqlite:///{tmp_path}/storage.db"
+    a = parse_storage(uri)
+    assert parse_storage(uri) is a
+    # A different configuration is a different instance.
+    b = parse_storage(uri, pool_size=7)
+    assert b is not a
+    assert parse_storage(uri, pool_size=7) is b
+    # Credentials are part of the configuration.
+    pg = "postgresql://u:p@db.example/storage"
+    assert parse_storage(pg) is parse_storage(pg)
+    assert parse_storage(pg) is not parse_storage("postgresql://v:p@db.example/storage")
+
+
+def test_parse_storage_does_not_share_file_storage(tmp_path):
+    "Only SQL storage holds connections; nothing to share otherwise."
+    assert parse_storage(tmp_path) is not parse_storage(tmp_path)
+
+
+@pytest.fixture
+def two_catalogs_sharing_sql_storage(tmp_path):
+    "Two catalog mounts configured with the same SQL storage, as in prod."
+    from tiled.catalog import from_uri
+
+    storage_uri = f"sqlite:///{tmp_path}/storage.db"
+    catalogs = [
+        from_uri(
+            f"sqlite:///{tmp_path}/catalog.db",
+            writable_storage=[storage_uri],
+            storage_pool_size=3,
+        )
+        for _ in range(2)
+    ]
+    yield catalogs
+    for storage in catalogs[0].context.writable_storage.values():
+        storage.dispose()
+        unregister_storage(storage)
+
+
+def test_catalog_mounts_share_one_sql_storage_pool(two_catalogs_sharing_sql_storage):
+    a, b = two_catalogs_sharing_sql_storage
+    (storage_a,) = a.context.writable_storage.values()
+    (storage_b,) = b.context.writable_storage.values()
+    # One instance, which is also what Assets resolve to.
+    assert storage_a is storage_b
+    assert get_storage(storage_a.uri) is storage_a
+
+    # Table creation goes through each mount's own Context, reads through the
+    # registry; all of it should use one pool.
+    _init_sql_data_source(storage_a)
+    _init_sql_data_source(storage_b)
+    with get_storage(storage_a.uri).connect():
+        pass
+    assert storage_a._connection_pool is storage_b._connection_pool
+    assert storage_a._connection_pool.size() == 3
+
+
+def test_catalog_mounts_share_postgresql_connections(tmp_path, postgres_uri):
+    "With PostgreSQL storage, count the server-side connections directly."
+    from tiled.catalog import from_uri
+
+    catalogs = [
+        from_uri(f"sqlite:///{tmp_path}/catalog.db", writable_storage=[postgres_uri])
+        for _ in range(3)
+    ]
+    storages = [
+        storage
+        for catalog in catalogs
+        for storage in catalog.context.writable_storage.values()
+    ]
+    try:
+        for storage in storages:
+            _init_sql_data_source(storage)
+        with storages[0].connect() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "SELECT count(*) FROM pg_stat_activity "
+                    "WHERE datname = current_database()"
+                )
+                (count,) = cursor.fetchone()
+        # One template connection plus one pooled connection (reused for each
+        # sequential checkout), rather than that pair per catalog mount.
+        assert count == 2
+    finally:
+        storages[0].dispose()
+        unregister_storage(storages[0])
+
+
+def test_dispose_then_reuse(tmp_path):
+    "A shared Storage may be disposed and then used again."
+    storage = parse_storage(f"sqlite:///{tmp_path}/storage.db")
+    storage.dispose()  # never connected: no-op
+    _init_sql_data_source(storage)
+    first_pool = storage._connection_pool
+    storage.dispose()
+    storage.dispose()  # idempotent
+    _init_sql_data_source(storage)
+    assert storage._connection_pool is not first_pool
+    storage.dispose()
 
 
 def test_size_from_uri_file(tmp_path):
