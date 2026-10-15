@@ -2,9 +2,19 @@ import dataclasses
 import functools
 import os
 from abc import abstractmethod
+from collections import defaultdict
 from collections.abc import Mapping
 from pathlib import Path
-from typing import TYPE_CHECKING, Dict, Iterator, Literal, NamedTuple, Optional, Union
+from typing import (
+    TYPE_CHECKING,
+    DefaultDict,
+    Dict,
+    Iterator,
+    Literal,
+    NamedTuple,
+    Optional,
+    Union,
+)
 from urllib.parse import quote, unquote, urlparse, urlunparse
 
 import sqlalchemy.pool
@@ -23,8 +33,10 @@ __all__ = [
     "SQLStorage",
     "ObjectStorage",
     "Storage",
+    "acquire_storage",
     "get_storage",
     "parse_storage",
+    "release_storage",
     "storage_registry_key",
     "strip_connection_parameters",
     "unregister_storage",
@@ -540,6 +552,49 @@ def register_storage(storage: Storage) -> None:
 def unregister_storage(storage: Storage) -> None:
     "Remove Storage from the registry (call after dispose to release all references)."
     _STORAGE.pop(storage_registry_key(storage.uri), None)
+
+
+# Number of active users (e.g. started catalog Contexts) per storage location,
+# keyed by `storage_registry_key`. Since the registry admits one
+# configuration per location, this counts users of one Storage.
+_STORAGE_REFCOUNTS: DefaultDict[str, int] = defaultdict(int)
+
+
+def acquire_storage(storage: Storage) -> Storage:
+    """Register Storage and take a reference to it; pair with `release_storage`.
+
+    Returns the canonical instance, which callers should use in place of
+    the one passed in: for SQL storage, an equal instance may already be
+    shared (see `parse_storage`), including one that a previous release
+    disposed and that is being acquired again.
+    """
+    if isinstance(storage, SQLStorage):
+        storage = _SQL_STORAGE_INSTANCES.setdefault(storage, storage)
+    register_storage(storage)
+    key = storage_registry_key(storage.uri)
+    _STORAGE_REFCOUNTS[key] += 1
+    return storage
+
+
+def release_storage(storage: Storage) -> None:
+    """Release a reference taken by `acquire_storage`.
+
+    When the last reference to a storage location is released, its
+    connections are closed and it is unregistered and (for SQL storage)
+    dropped from the shared-instance cache.
+    """
+    key = storage_registry_key(storage.uri)
+    _STORAGE_REFCOUNTS[key] -= 1
+    if _STORAGE_REFCOUNTS[key] > 0:
+        return
+    # Last reference (or a release without a matching acquire): drop the
+    # entry rather than leave a zero or negative count behind.
+    del _STORAGE_REFCOUNTS[key]
+    registered = _STORAGE.pop(key, storage)
+    if isinstance(registered, SQLStorage):
+        registered.dispose()
+        if _SQL_STORAGE_INSTANCES.get(registered) is registered:
+            del _SQL_STORAGE_INSTANCES[registered]
 
 
 def get_storage(uri: str) -> Storage:

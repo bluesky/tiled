@@ -5,11 +5,14 @@ import pytest
 
 from tiled.adapters.sql import SQLAdapter
 from tiled.storage import (
+    _STORAGE_REFCOUNTS,
     AmbiguousStorage,
     RemoteSQLStorage,
+    acquire_storage,
     get_storage,
     parse_storage,
     register_storage,
+    release_storage,
     size_from_uri,
     stat_uri,
     storage_registry_key,
@@ -351,6 +354,107 @@ def test_catalog_mounts_share_postgresql_connections(tmp_path, postgres_uri):
     finally:
         storages[0].dispose()
         unregister_storage(storages[0])
+
+
+def _is_open(storage):
+    "Whether the storage currently holds a connection pool."
+    return "_connection_pool" in storage.__dict__
+
+
+def test_acquire_release_refcount(tmp_path):
+    storage = parse_storage(f"sqlite:///{tmp_path}/storage.db")
+    assert acquire_storage(storage) is storage
+    assert acquire_storage(parse_storage(f"sqlite:///{tmp_path}/storage.db")) is storage
+    _init_sql_data_source(storage)
+    assert _is_open(storage)
+
+    release_storage(storage)
+    # Still referenced once: registered, shared, and open.
+    assert get_storage(storage.uri) is storage
+    assert parse_storage(f"sqlite:///{tmp_path}/storage.db") is storage
+    assert _is_open(storage)
+
+    release_storage(storage)
+    # Last reference released: closed, unregistered, and no longer shared.
+    assert not _is_open(storage)
+    with pytest.raises(KeyError):
+        get_storage(storage.uri)
+    assert parse_storage(f"sqlite:///{tmp_path}/storage.db") is not storage
+
+
+def test_release_without_acquire_is_harmless(tmp_path):
+    storage = parse_storage(f"sqlite:///{tmp_path}/storage.db")
+    release_storage(storage)
+    assert not _is_open(storage)
+    # No negative count is left behind to swallow a later acquire.
+    assert storage_registry_key(storage.uri) not in _STORAGE_REFCOUNTS
+
+
+def test_refcount_entries(tmp_path):
+    "Counts track acquires and releases; no zero entries linger."
+    storage = parse_storage(f"sqlite:///{tmp_path}/storage.db")
+    key = storage_registry_key(storage.uri)
+    assert key not in _STORAGE_REFCOUNTS
+    acquire_storage(storage)
+    acquire_storage(storage)
+    assert _STORAGE_REFCOUNTS[key] == 2
+    release_storage(storage)
+    assert _STORAGE_REFCOUNTS[key] == 1
+    release_storage(storage)
+    assert key not in _STORAGE_REFCOUNTS
+    # Counting restarts cleanly.
+    storage = acquire_storage(storage)
+    assert _STORAGE_REFCOUNTS[key] == 1
+    release_storage(storage)
+    assert key not in _STORAGE_REFCOUNTS
+
+
+async def test_catalog_shutdown_releases_storage(tmp_path):
+    "The storage pool closes when the last catalog mount using it shuts down."
+    from tiled.catalog import from_uri
+
+    def make_catalog():
+        return from_uri(
+            f"sqlite:///{tmp_path}/catalog.db",
+            writable_storage=[f"sqlite:///{tmp_path}/storage.db"],
+            init_if_not_exists=True,
+        )
+
+    a, b = make_catalog(), make_catalog()
+    await a.startup()
+    await b.startup()
+    (storage,) = a.context.writable_storage.values()
+    assert b.context.writable_storage[storage.uri] is storage
+    _init_sql_data_source(storage)
+    assert _is_open(storage)
+
+    await a.shutdown()
+    # b still uses it.
+    assert _is_open(storage)
+    assert get_storage(storage.uri) is storage
+    await a.shutdown()  # repeated shutdown does not release again
+    assert _is_open(storage)
+
+    await b.shutdown()
+    assert not _is_open(storage)
+    with pytest.raises(KeyError):
+        get_storage(storage.uri)
+
+    # A mount created afterward gets a fresh, working instance...
+    c = make_catalog()
+    await c.startup()
+    (new_storage,) = c.context.writable_storage.values()
+    assert new_storage is not storage
+    _init_sql_data_source(new_storage)
+    # ...and restarting an earlier mount shares it.
+    await a.startup()
+    assert a.context.writable_storage[storage.uri] is new_storage
+    assert get_storage(storage.uri) is new_storage
+
+    await a.shutdown()
+    assert _is_open(new_storage)
+    await c.shutdown()
+    assert not _is_open(new_storage)
 
 
 def test_dispose_then_reuse(tmp_path):
