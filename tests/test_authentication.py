@@ -5,6 +5,7 @@ import shutil
 import subprocess
 import sys
 import time
+from datetime import timedelta
 
 import numpy
 import pytest
@@ -206,13 +207,20 @@ def test_refresh_forced(enter_username_password, config):
 
 def test_refresh_transparent(enter_username_password, config):
     "When access token expired, refresh happens transparently."
-    # Pathological configuration: a refresh is almost immediately required
-    config["authentication"]["access_token_max_age"] = 1
     with Context.from_app(build_app_from_config(config)) as context:
         with enter_username_password("alice", "secret1"):
             client = from_context(context)
+        secret_key = config["authentication"]["secret_keys"][0]
+        claims = authentication.decode_token(
+            client.context.tokens["access_token"], [secret_key]
+        )
+        expired_access_token = authentication.create_access_token(
+            claims, secret_key, timedelta(seconds=-1)
+        )
+        client.context.http_client.auth.sync_set_token(
+            "access_token", expired_access_token
+        )
         tokens1 = dict(client.context.tokens)
-        time.sleep(2)
         # A refresh should happen automatically now.
         client["A1"]
         tokens2 = dict(client.context.tokens)

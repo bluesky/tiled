@@ -6,12 +6,13 @@ from typing import Any, Optional, Tuple
 from urllib.parse import parse_qs, urlencode
 
 import httpx
+import jwt
 import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi import HTTPException
 from fastapi.security import SecurityScopes
-from jose import ExpiredSignatureError, jwt
-from jose.backends import RSAKey
+from jwt import ExpiredSignatureError
+from jwt.algorithms import RSAAlgorithm
 from respx import MockRouter
 from starlette.requests import Request
 from starlette.status import HTTP_401_UNAUTHORIZED
@@ -155,6 +156,34 @@ def test_oidc_decoding(
             authenticator.decode_token(encrypted_access_token)
 
 
+@pytest.mark.parametrize(
+    "paired_access_token, error",
+    [
+        ("access-token", None),
+        ("other-access-token", jwt.InvalidTokenError),
+        (None, jwt.InvalidTokenError),
+    ],
+)
+def test_oidc_decoding_checks_at_hash(
+    mock_oidc_server: MockRouter,
+    well_known_url: str,
+    keys: Tuple[rsa.RSAPrivateKey, rsa.RSAPublicKey],
+    paired_access_token: Optional[str],
+    error: Optional[type[Exception]],
+):
+    """Accept an id_token only with the access_token its at_hash was computed from."""
+    authenticator = OIDCAuthenticator("tiled", "tiled", "secret", well_known_uri=well_known_url)
+    # at_hash of "access-token" under RS256: left half of its SHA-256, base64url.
+    claims = {**token(issued=True, expired=False), "at_hash": "Pxa-1wifRlPl7yG_0oJNfw"}
+    id_token = encrypted_token(claims, keys[0])
+
+    if error is None:
+        assert authenticator.decode_token(id_token, paired_access_token) == claims
+    else:
+        with pytest.raises(error):
+            authenticator.decode_token(id_token, paired_access_token)
+
+
 def test_entra_decoding_ignores_unmapped_scopes(caplog):
     def mock_decode_token(self, id_token, access_token):
         return {
@@ -197,7 +226,7 @@ def keys() -> Tuple[rsa.RSAPrivateKey, rsa.RSAPublicKey]:
 def json_web_keyset(keys: Tuple[rsa.RSAPrivateKey, rsa.RSAPublicKey]) -> list[dict[str, Any]]:
     _, public_key = keys
     return [
-        RSAKey(key=public_key, algorithm="RS256").to_dict()
+        {**RSAAlgorithm.to_jwk(public_key, as_dict=True), "alg": "RS256", "kid": "secret"}
     ]
 
 
@@ -254,7 +283,7 @@ async def test_OIDCAuthenticator_mock(
     mock_oidc_server: MockRouter,
     well_known_url: str,
     well_known_response: dict[str, Any],
-    monkeypatch,
+    keys: Tuple[rsa.RSAPrivateKey, rsa.RSAPublicKey],
     root_path: str
 ):
     """
@@ -275,7 +304,7 @@ async def test_OIDCAuthenticator_mock(
     token_route = mock_oidc_server.post(well_known_response["token_endpoint"]).mock(
         return_value=httpx.Response(200, json={
             "access_token": "mock-access-token",
-            "id_token": "mock-id-token",
+            "id_token": encrypted_token(mock_jwt_payload, keys[0]),
             "token_type": "bearer"
         })
     )
@@ -290,17 +319,6 @@ async def test_OIDCAuthenticator_mock(
     mock_request = create_mock_OIDC_request(
         {"code": "test-auth-code"}, root_path=root_path
     )
-
-    def mock_jwt_decode(*args, **kwargs):
-        return mock_jwt_payload
-
-    def mock_jwk_construct(*args, **kwargs):
-        class MockJWK:
-            pass
-        return MockJWK()
-
-    monkeypatch.setattr("jose.jwt.decode", mock_jwt_decode)
-    monkeypatch.setattr("jose.jwk.construct", mock_jwk_construct)
 
     # Test authentication
     user_session = await authenticator.authenticate(mock_request)

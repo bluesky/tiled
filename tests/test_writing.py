@@ -18,12 +18,14 @@ from urllib.parse import urljoin, urlparse
 import awkward
 import boto3
 import dask.dataframe
+import httpx
 import numpy
 import pandas
 import pandas.testing
 import pyarrow
 import pytest
 import sparse
+import stamina
 from botocore.exceptions import ClientError as BotoClientError
 from pandas.testing import assert_frame_equal
 from starlette.status import (
@@ -1035,3 +1037,185 @@ def test_deprecated_argument_order_raises_warning(tree: CatalogContainerAdapter)
         with pytest.warns(DeprecationWarning, match=r"The order of arguments"):
             x.append_partition(table, 0)  # this argument order is deprecated
         assert x.read() is not None
+
+
+# Tests for retried non-idempotent write requests
+
+
+class LoseResponseOnce(httpx.BaseTransport):
+    """Simulate a lost response: the first request matching (method,
+    url_substring) is forwarded to the wrapped transport -- so the server fully
+    processes it -- but a ReadTimeout is raised to the caller. Subsequent
+    requests pass through unmodified."""
+
+    def __init__(self, wrapped, method="POST", url_substring="/metadata/"):
+        self._wrapped = wrapped
+        self._method = method
+        self._url_substring = url_substring
+        self.tripped = False
+
+    def handle_request(self, request):
+        response = self._wrapped.handle_request(request)
+        if (
+            not self.tripped
+            and request.method == self._method
+            and self._url_substring in str(request.url)
+        ):
+            self.tripped = True
+            raise httpx.ReadTimeout("Simulated lost response", request=request)
+        return response
+
+
+class FailBeforeSendOnce(httpx.BaseTransport):
+    """Simulate a connect-phase failure: the first request matching (method,
+    url_substring) raises ConnectError WITHOUT being forwarded -- the server
+    never sees it. Subsequent requests pass through unmodified."""
+
+    def __init__(self, wrapped, method="POST", url_substring="/metadata/"):
+        self._wrapped = wrapped
+        self._method = method
+        self._url_substring = url_substring
+        self.tripped = False
+
+    def handle_request(self, request):
+        if (
+            not self.tripped
+            and request.method == self._method
+            and self._url_substring in str(request.url)
+        ):
+            self.tripped = True
+            raise httpx.ConnectError("Simulated connection failure", request=request)
+        return self._wrapped.handle_request(request)
+
+
+@pytest.fixture
+def retries_enabled():
+    """Enable stamina retries (disabled globally in conftest) without backoff."""
+    stamina.set_active(True)
+    try:
+        with stamina.set_testing(True, attempts=3):
+            yield
+    finally:
+        stamina.set_active(False)
+
+
+def _wrap_transport(client, transport_cls, **kwargs):
+    transport = transport_cls(client.context.http_client._transport, **kwargs)
+    client.context.http_client._transport = transport
+    return transport
+
+
+@pytest.mark.parametrize(
+    "kind, key",
+    [("container", "x"), ("array", "x"), ("container", None)],
+    ids=["container", "array", "auto-key"],
+)
+def test_retried_create_adopts_own_node(tree, retries_enabled, kind, key):
+    """A retried create whose first attempt succeeded server-side (lost
+    response) is adopted instead of raising 409 -- also when no key was
+    supplied, because the client generates the key before the first attempt so
+    all retries share it (no duplicate node under a second server-generated
+    key). Metadata with numpy types checks that the match uses the same JSON
+    normalization as the create."""
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        transport = _wrap_transport(client, LoseResponseOnce)
+
+        metadata = {"count": numpy.int64(3), "vals": numpy.arange(2)}
+        specs = [Spec("SomeSpec")]
+        if kind == "container":
+            node = client.create_container(key=key, metadata=metadata, specs=specs)
+        else:
+            node = client.write_array(
+                numpy.arange(10), key=key, metadata=metadata, specs=specs
+            )
+
+        assert transport.tripped  # The simulated lost response did happen
+        created_key = node.item["id"]
+        if key is not None:
+            assert created_key == key
+        assert created_key in client
+        assert len(list(client)) == 1  # one node total: no duplicate from the retry
+        assert node.metadata["count"] == 3  # numpy types normalized to JSON
+        assert node.metadata["vals"] == [0, 1]
+        assert [spec.name for spec in node.specs] == ["SomeSpec"]
+
+        # The adopted node is fully usable.
+        if kind == "container":
+            node.create_container(key="child")
+            assert "child" in client[created_key]
+        else:
+            numpy.testing.assert_array_equal(node.read(), numpy.arange(10))
+
+
+@pytest.mark.parametrize(
+    "lossy, precreate_kind, precreate_kwargs, attempt_kwargs",
+    [
+        # A clean first-attempt 409 (no lost response) must raise as before.
+        (False, "container", {}, {}),
+        # After a lost response, a 409 for a non-matching node is a genuine
+        # key collision and must raise: different structure family, ...
+        (True, "array", {}, {}),
+        # ... different specs, ...
+        (
+            True,
+            "container",
+            {"specs": [Spec("SpecA")]},
+            {"specs": [Spec("SpecB")]},
+        ),
+        # ... or different metadata.
+        (True, "container", {"metadata": {"a": 1}}, {"metadata": {"a": 2}}),
+    ],
+    ids=["clean-conflict", "family-mismatch", "specs-mismatch", "metadata-mismatch"],
+)
+def test_retried_create_conflict_not_adopted(
+    tree, retries_enabled, lossy, precreate_kind, precreate_kwargs, attempt_kwargs
+):
+    "409 Conflicts that can not be positively matched to our own create raise."
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        if precreate_kind == "container":
+            client.create_container(key="x", **precreate_kwargs)
+        else:
+            client.write_array(numpy.arange(5), key="x", **precreate_kwargs)
+
+        if lossy:
+            _wrap_transport(client, LoseResponseOnce)
+        with pytest.raises(ClientError) as info:
+            client.create_container(key="x", **attempt_kwargs)
+        assert info.value.response.status_code == httpx.codes.CONFLICT
+
+
+@pytest.mark.parametrize(
+    "transport_cls, expect_raise",
+    [(LoseResponseOnce, True), (FailBeforeSendOnce, False)],
+    ids=["maybe-processed-raises", "unsent-retried"],
+)
+def test_append_partition_retry_policy(
+    tree, retries_enabled, transport_cls, expect_raise
+):
+    """Appending rows is not idempotent, so an append whose request may have
+    been processed (lost response) raises instead of retrying (a retry would
+    duplicate the rows), while a connect-phase failure (request never sent) is
+    retried transparently. Either way the rows appear exactly once."""
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        schema = pyarrow.schema([("x", pyarrow.int64()), ("y", pyarrow.float64())])
+        df_client = client.create_appendable_table(schema=schema, key="t")
+        table = pyarrow.Table.from_pydict({"x": [1, 2, 3], "y": [1.0, 2.0, 3.0]})
+
+        transport = _wrap_transport(
+            client, transport_cls, method="PATCH", url_substring="/table/partition/"
+        )
+
+        if expect_raise:
+            with pytest.raises(httpx.ReadTimeout):
+                df_client.append_partition(0, table)
+        else:
+            df_client.append_partition(0, table)
+        assert transport.tripped
+
+        # In both cases the server applied the append exactly once.
+        result = client["t"].read()
+        assert len(result) == 3
+        assert list(result["x"]) == [1, 2, 3]

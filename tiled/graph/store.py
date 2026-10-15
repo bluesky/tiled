@@ -30,7 +30,7 @@ from sqlalchemy import and_, delete, false, insert, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from ..catalog.core import register_principal_tag_rows
+from ..catalog.core import register_principal_tag_rows, resolve_access_tag_ids
 from ..catalog.orm import AccessTag, Node, NodeAccessTagAssociation
 from ..queries import AccessTagsFilter
 from ..server.connection_pool import get_database_engine
@@ -81,29 +81,42 @@ class LinkRecord(BaseModel):
 
 
 def _access_tags_match_condition(
-    assoc_table, assoc_id_column, owner_column, access_tag_names
+    assoc_table,
+    assoc_id_column,
+    owner_column,
+    access_tag_names,
+    access_tag_ids=None,
 ):
     """
     Rows tagged with at least one of the given access tags.
     EXISTS is used (vs IN) as it is much more preformant in SQLite,
-    though performance in Postgres appears similar for both.
+    though performance in Postgres appears similar for both. Resolved policy
+    filters use tag ID literals; the name join remains for direct callers.
     """
-    return (
+    statement = (
         select(assoc_id_column)
         .select_from(assoc_table)
-        .join(_access_tags, _access_tags.c.id == assoc_table.c.tag_id)
         .where(assoc_id_column == owner_column)
-        .where(_access_tags.c.name.in_(access_tag_names))
-        .exists()
     )
+    if access_tag_ids is not None:
+        statement = statement.where(assoc_table.c.tag_id.in_(access_tag_ids))
+    else:
+        statement = statement.join(
+            _access_tags, _access_tags.c.id == assoc_table.c.tag_id
+        ).where(_access_tags.c.name.in_(access_tag_names))
+    return statement.exists()
 
 
 def _link_access_condition(query: AccessTagsFilter):
-    if not query.tags:
+    if not query.tags or query.tag_ids == []:
         # Nothing can match an empty tag list.
         return false()
     return _access_tags_match_condition(
-        _link_access_tags, _link_access_tags.c.link_id, _links.c.id, query.tags
+        _link_access_tags,
+        _link_access_tags.c.link_id,
+        _links.c.id,
+        query.tags,
+        query.tag_ids,
     )
 
 
@@ -112,7 +125,7 @@ def _entity_access_condition(query: AccessTagsFilter):
     An entity matches if it carries one of the given tags itself, or, when it
     is node-backed (node_id set), if the referenced catalog node does.
     """
-    if not query.tags:
+    if not query.tags or query.tag_ids == []:
         return false()
     return or_(
         and_(
@@ -122,6 +135,7 @@ def _entity_access_condition(query: AccessTagsFilter):
                 _entity_access_tags.c.entity_id,
                 _entities.c.id,
                 query.tags,
+                query.tag_ids,
             ),
         ),
         and_(
@@ -131,6 +145,7 @@ def _entity_access_condition(query: AccessTagsFilter):
                 _node_access_tags.c.node_id,
                 _entities.c.node_id,
                 query.tags,
+                query.tag_ids,
             ),
         ),
     )
@@ -143,7 +158,9 @@ def _access_filters_condition(condition_builder, queries: list[AccessTagsFilter]
     return condition
 
 
-async def _resolve_access_tag_ids(conn, access_tag_names: Iterable[str]) -> list[int]:
+async def _resolve_access_tag_ids_for_write(
+    conn, access_tag_names: Iterable[str]
+) -> list[int]:
     """
     Resolve access tag names to access_tags ids. An association cannot
     reference a tag that has no row, so unknown names raise. Normally the
@@ -193,6 +210,11 @@ class GraphSQLAlchemyStore:
     ) -> "GraphSQLAlchemyStore":
         engine = get_database_engine(database_settings)
         return cls(engine, owns_engine=False)
+
+    async def resolve_access_tag_ids_for_read(self, names):
+        """Resolve access-tag names to IDs for access-filter query literals."""
+        async with self._engine.connect() as conn:
+            return await resolve_access_tag_ids(conn, names)
 
     @staticmethod
     def _to_entity(row, access_tags: Optional[frozenset[str]]) -> EntityRecord:
@@ -272,7 +294,7 @@ class GraphSQLAlchemyStore:
         self, conn, assoc_table, assoc_id_column_name: str, id: str, access_tag_names
     ) -> None:
         """Replace the access tag associations of an entity or link."""
-        access_tag_ids = await _resolve_access_tag_ids(conn, access_tag_names)
+        access_tag_ids = await _resolve_access_tag_ids_for_write(conn, access_tag_names)
         await conn.execute(
             delete(assoc_table).where(
                 getattr(assoc_table.c, assoc_id_column_name) == id
@@ -313,7 +335,9 @@ class GraphSQLAlchemyStore:
                 )
             )
             if node_id is None and access_tags:
-                access_tag_ids = await _resolve_access_tag_ids(conn, access_tags)
+                access_tag_ids = await _resolve_access_tag_ids_for_write(
+                    conn, access_tags
+                )
                 await conn.execute(
                     insert(_entity_access_tags),
                     [
@@ -475,7 +499,9 @@ class GraphSQLAlchemyStore:
                     )
                 )
                 if access_tags:
-                    access_tag_ids = await _resolve_access_tag_ids(conn, access_tags)
+                    access_tag_ids = await _resolve_access_tag_ids_for_write(
+                        conn, access_tags
+                    )
                     await conn.execute(
                         insert(_link_access_tags),
                         [

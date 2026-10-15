@@ -47,6 +47,10 @@ def open_database_connection_pool(database_settings: DatabaseSettings) -> AsyncE
     # For SQLite, ensure that foreign key constraints are enforced.
     if engine.dialect.name == "sqlite":
         event.listens_for(engine.sync_engine, "connect")(_set_sqlite_pragma)
+    elif engine.dialect.name == "postgresql":
+        event.listens_for(engine.sync_engine, "connect")(
+            _set_postgresql_plan_cache_mode
+        )
 
     return engine
 
@@ -100,6 +104,13 @@ def _set_sqlite_pragma(conn, record):
     cursor = conn.cursor()
     cursor.execute("PRAGMA foreign_keys=ON")
     cursor.close()
+
+
+def _set_postgresql_plan_cache_mode(conn, record):
+    cursor = conn.cursor()
+    cursor.execute("SET plan_cache_mode = force_custom_plan")
+    cursor.close()
+    conn.commit()
 
 
 def is_memory_sqlite(url: Union[URL, str]) -> bool:
