@@ -5,6 +5,14 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## Unreleased
 
+### Changed
+
+- Tiled now manages its connection pools to tabular storage more correctly.
+  Also, it is now not allowed to use two storage databases with the same
+  database on different hosts.
+
+## v0.2.19 (2026-10-13)
+
 ### Added
 
 - Expose the Deployment `strategy` in the helm chart, so that a deployment can
