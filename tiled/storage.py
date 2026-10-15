@@ -5,7 +5,7 @@ from abc import abstractmethod
 from collections.abc import Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING, Dict, Iterator, Literal, NamedTuple, Optional, Union
-from urllib.parse import urlparse, urlunparse
+from urllib.parse import quote, unquote, urlparse, urlunparse
 
 import sqlalchemy.pool
 
@@ -25,11 +25,95 @@ __all__ = [
     "Storage",
     "get_storage",
     "parse_storage",
+    "storage_registry_key",
+    "strip_connection_parameters",
     "unregister_storage",
 ]
 
 
 SUPPORTED_OBJECT_URI_SCHEMES = {"http", "https"}  # TODO: Add "s3", "gs", "azure", "az"
+
+POSTGRESQL_SCHEMES = frozenset({"postgresql", "postgres"})
+
+# libpq connection parameters that determine *which* server and database a
+# connection reaches. Any other query parameter (connect_timeout, sslmode,
+# target_session_attrs, application_name, ...) only tunes *how* we connect.
+# https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-PARAMKEYWORDS
+POSTGRESQL_LOCATION_QUERY_PARAMETERS = frozenset(
+    {"host", "hostaddr", "port", "dbname", "service"}
+)
+
+
+def strip_storage_uri_query_on_write() -> bool:
+    """Feature flag: write Asset URIs without connection-tuning parameters.
+
+    See `strip_connection_parameters`. Read at call time, not import time,
+    so it can be flipped by restarting with a new environment and so tests
+    can toggle it.
+
+    Rollout: first deploy code that matches on read by `storage_registry_key`
+    (always on), then set TILED_STRIP_STORAGE_URI_QUERY_ON_WRITE=1 so new
+    Assets are written in stripped form.
+    """
+    return bool(int(os.getenv("TILED_STRIP_STORAGE_URI_QUERY_ON_WRITE", "0") or "0"))
+
+
+def _query_pairs(query: str) -> list[tuple[str, str]]:
+    "Split a query string into (decoded key, raw pair) without re-encoding."
+    return [(unquote(pair.split("=", 1)[0]), pair) for pair in query.split("&") if pair]
+
+
+def strip_connection_parameters(uri: str) -> str:
+    """Drop query parameters that only tune how we connect.
+
+    For PostgreSQL URIs, remove parameters such as `?connect_timeout=5` or
+    `?target_session_attrs=read-write`, keeping those that locate the server
+    and database (see POSTGRESQL_LOCATION_QUERY_PARAMETERS). Kept parameters
+    are preserved verbatim and in order, so a URI with nothing to strip is
+    returned unchanged. Other schemes are returned unchanged.
+
+    This is the form written to `Asset.data_uri` when the
+    TILED_STRIP_STORAGE_URI_QUERY_ON_WRITE feature flag is on. It retains
+    the hosts, which is informative for humans, but matching Assets to
+    Storage does not depend on them; see `storage_registry_key`.
+    """
+    parsed = urlparse(uri)
+    if parsed.scheme not in POSTGRESQL_SCHEMES or not parsed.query:
+        return uri
+    kept = [
+        pair
+        for key, pair in _query_pairs(parsed.query)
+        if key in POSTGRESQL_LOCATION_QUERY_PARAMETERS
+    ]
+    return urlunparse(parsed._replace(query="&".join(kept)))
+
+
+def storage_registry_key(uri: str) -> str:
+    """Return the key used to match an Asset's `data_uri` to a Storage.
+
+    For PostgreSQL, this is the database name alone, so matching is
+    insensitive to everything about *how* the database is reached: host
+    order, cluster membership, a switch to a proxy or pooler endpoint
+    (HAProxy, pgbouncer), ports, credentials, and connection-tuning query
+    parameters. This keeps Assets written under one configuration
+    resolvable after that configuration changes. The database name is taken
+    from a `dbname` query parameter if present (as libpq does), else from
+    the path.
+
+    The trade-off is that two configured storages with the same database
+    name on different servers would be indistinguishable;
+    `register_storage` refuses that configuration.
+
+    Other schemes are returned unchanged.
+    """
+    parsed = urlparse(uri)
+    if parsed.scheme not in POSTGRESQL_SCHEMES:
+        return uri
+    dbname = unquote(parsed.path.lstrip("/"))
+    for key, pair in _query_pairs(parsed.query):
+        if key == "dbname":
+            dbname = unquote(pair.split("=", 1)[1]) if "=" in pair else ""
+    return f"postgresql:///{quote(dbname, safe='')}"
 
 
 @dataclasses.dataclass(frozen=True)
@@ -374,27 +458,57 @@ def parse_storage(
 
 # This global registry enables looking up Storage via URI, primarily for the
 # purpose of obtaining credentials, which are not stored in the catalog
-# database.
+# database. It is keyed by `storage_registry_key`, so for PostgreSQL lookups
+# depend only on the database name, not on how it is reached.
 _STORAGE: Dict[str, Storage] = {}
 
 
+class AmbiguousStorage(ValueError):
+    "Two configured storages are indistinguishable by `storage_registry_key`."
+
+
 def register_storage(storage: Storage) -> None:
-    "Stash Storage for later lookup by URI."
-    _STORAGE[storage.uri] = storage
+    """Stash Storage for later lookup by URI.
+
+    Re-registering an equivalent Storage (e.g. one per catalog mount) is
+    allowed; the last one wins. Registering a Storage that shares a
+    database name with an existing one, but reaches it via different
+    servers, raises `AmbiguousStorage`, since Assets could not be matched
+    to the right one.
+    """
+    key = storage_registry_key(storage.uri)
+    existing = _STORAGE.get(key)
+    if (existing is not None) and (
+        strip_connection_parameters(existing.uri)
+        != strip_connection_parameters(storage.uri)
+    ):
+        raise AmbiguousStorage(
+            f"Storage {storage.uri!r} and {existing.uri!r} have the same "
+            "database name, so Assets cannot be matched unambiguously to one of "
+            "them. If they are the same database, configure them with the same "
+            "hosts (in the same order). Otherwise, use distinct database names."
+        )
+    _STORAGE[key] = storage
 
 
 def unregister_storage(storage: Storage) -> None:
     "Remove Storage from the registry (call after dispose to release all references)."
-    _STORAGE.pop(storage.uri, None)
+    _STORAGE.pop(storage_registry_key(storage.uri), None)
 
 
 def get_storage(uri: str) -> Storage:
-    "Look up Storage by URI."
+    """Look up Storage by URI.
+
+    The URI is normalized with `storage_registry_key`, so an Asset written
+    under an earlier configuration (different hosts, host order, ports, or
+    connection-tuning query parameters) still matches the configured
+    Storage for the same database.
+    """
 
     if urlparse(uri).scheme in SUPPORTED_OBJECT_URI_SCHEMES:
         uri, _, _ = ObjectStorage.parse_blob_uri(uri)
 
-    return _STORAGE[uri]
+    return _STORAGE[storage_registry_key(uri)]
 
 
 def size_from_uri(data_uri: str) -> int:

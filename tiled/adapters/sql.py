@@ -42,6 +42,8 @@ from ..storage import (
     SQLStorage,
     Storage,
     get_storage,
+    strip_connection_parameters,
+    strip_storage_uri_query_on_write,
 )
 from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import Asset, DataSource
@@ -319,10 +321,18 @@ class SQLAdapter(Adapter[TableStructure]):
             data_source.parameters["dataset_id"] = dataset_id
             conn.commit()
 
+        # Store URI *without* credentials. Behind a feature flag, also strip
+        # connection-tuning query parameters. (Reads match on database name
+        # regardless, via get_storage, so Assets written either way remain
+        # resolvable.)
+        data_uri = (
+            strip_connection_parameters(storage.uri)
+            if strip_storage_uri_query_on_write()
+            else storage.uri
+        )
         data_source.assets.append(
             Asset(
-                # Store URI *without* credentials.
-                data_uri=storage.uri,
+                data_uri=data_uri,
                 is_directory=False,
                 parameter="data_uri",
                 num=None,
