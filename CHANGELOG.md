@@ -31,6 +31,9 @@ Write the date in place of the "Unreleased" in the case a new version is release
   pointed directly at a node could not see its data sources.
 - Fixed the deprecation warning for the removed `prompt_for_reauthentication`
   parameter of `from_uri`, which was never emitted.
+- Metadata queries on SQLite compare the stored JSON value with its own type
+  again under SQLAlchemy 2.1 (e.g. `Eq("number", "0")` no longer matches a
+  stored `0`), and the `sqlalchemy <2.1` pin is removed.
 
 ## v0.2.19 (2026-10-13)
 
