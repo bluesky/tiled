@@ -176,7 +176,7 @@ def decode_token(
         except ExpiredSignatureError:
             # Let the caller answer with "Refresh token."
             raise
-        except JWTError:
+        except PyJWTError:
             # A malformed or unverifiable token is a 401, not a 500.
             raise credentials_exception from None
     raise credentials_exception

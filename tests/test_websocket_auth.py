@@ -103,18 +103,18 @@ def test_apikey_header_is_not_an_access_token():
 
 
 def test_malformed_token_is_401_not_500():
-    """decode_token must not let jose's JWTError escape as a 500.
+    """decode_token must not let a PyJWTError escape as a 500.
 
     Regression: with a ProxiedOIDCAuthenticator configured, a malformed token
-    reached proxied_authenticator.decode_token and the raw JWTError propagated,
+    reached proxied_authenticator.decode_token and the raw PyJWTError propagated,
     so a bad token produced a 500 on both the HTTP and WebSocket routes.
     """
-    from jose import JWTError
+    from jwt import PyJWTError
 
     from tiled.server.authentication import decode_token
 
     proxied = MagicMock()
-    proxied.decode_token.side_effect = JWTError("Not enough segments")
+    proxied.decode_token.side_effect = PyJWTError("Not enough segments")
 
     with pytest.raises(HTTPException) as info:
         decode_token("not.a.jwt", ["secret-key"], proxied)
@@ -123,7 +123,7 @@ def test_malformed_token_is_401_not_500():
 
 def test_expired_token_still_propagates_for_refresh():
     """ExpiredSignatureError must survive so callers can answer 'Refresh token.'"""
-    from jose import ExpiredSignatureError
+    from jwt import ExpiredSignatureError
 
     from tiled.server.authentication import decode_token
 
