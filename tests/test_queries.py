@@ -164,6 +164,18 @@ def test_noteq(client):
     assert list(client.search(NotEq("number", 1))) != ["b"]
 
 
+def test_eq_none_sqlite(tmpdir):
+    "On SQLite, a JSON null in the metadata is not confused with a missing key."
+    tree = in_memory(writable_storage=str(tmpdir))
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        client.create_container("null", metadata={"x": None})
+        client.create_container("one", metadata={"x": 1})
+        client.create_container("missing", metadata={"y": 2})
+        assert sorted(client.search(Eq("x", None))) == ["null"]
+        assert sorted(client.search(NotEq("x", None))) == ["one"]
+
+
 def test_comparison(client):
     assert list(client.search(Comparison("gt", "number", 24))) == ["z"]
     assert list(client.search(Comparison("ge", "number", 24))) == ["y", "z"]
