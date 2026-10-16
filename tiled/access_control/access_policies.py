@@ -1,5 +1,6 @@
 import logging
 import os
+import time
 from abc import ABC, abstractmethod
 from typing import Generic, Optional, Tuple, TypeVar
 
@@ -11,7 +12,7 @@ from ..queries import AccessTagsFilter
 from ..server.schemas import Principal
 from ..type_aliases import AccessTags, Filters, Scopes
 from ..utils import Sentinel, import_object
-from .protocols import AccessPolicy, normalize_access_tags
+from .protocols import AccessPolicy, normalize_access_tags, tags_generation
 from .scopes import ALL_SCOPES, NO_SCOPES, PUBLIC_SCOPES, ScopeName, validate_scopes
 
 ALL_ACCESS = []
@@ -64,16 +65,24 @@ class DummyAccessPolicy(AccessPolicy):
 
 
 class TagBasedAccessPolicy(AccessPolicy):
+    # How many distinct (principal, scopes) filter results to hold in the cache.
+    FILTERS_CACHE_MAX_SIZE = 1024
+
     def __init__(
         self,
         *,
         provider,
         access_tags_parser,
         scopes=None,
+        filters_cache_ttl=60,
     ):
         self.provider = provider
         self.scopes = scopes if (scopes is not None) else ALL_SCOPES
         validate_scopes(self.scopes, "TagBasedAccessPolicy 'scopes'")
+        # For how long (in seconds) the set of tags granted to a principal is reused
+        # before being recomputed in `filters`.
+        self.filters_cache_ttl = filters_cache_ttl
+        self._filters_cache = {}
 
         access_tags_parser = import_object(access_tags_parser)
         # The parser reads tag definitions from the catalog database; it is
@@ -418,14 +427,34 @@ class TagBasedAccessPolicy(AccessPolicy):
         if not scopes.issubset(self.scopes):
             return NO_ACCESS
 
-        tag_list = set()
         if principal is None:
-            identifier = None
+            principal_type = identifier = None
         else:
+            principal_type = principal.type
             if principal.type == "service":
                 identifier = str(principal.uuid)
             else:
                 identifier = self._get_id(principal)
+
+        # Cache the computed tag set, keyed by everything it depends on.
+        # Return a fresh AccessTagsFilter on every call, even on a cache hit:
+        # the filter instance gets mutated downstream (`tag_ids`), so it must
+        # not be shared.
+        cache_key = (
+            principal_type,
+            identifier,
+            frozenset(scopes),
+            frozenset(authn_scopes),
+            authn_access_tags,
+        )
+        now = time.monotonic()
+        generation = tags_generation()
+        cached = self._filters_cache.get(cache_key)
+        if cached is not None and cached[0] > now and cached[1] == generation:
+            return [AccessTagsFilter(cached[2])]
+
+        tag_list = set()
+        if principal is not None:
             tag_list.update(
                 set.intersection(
                     *[
@@ -451,7 +480,22 @@ class TagBasedAccessPolicy(AccessPolicy):
         if authn_access_tags is not None:
             tag_list.intersection_update(authn_access_tags)
 
-        return [AccessTagsFilter(normalize_access_tags(tag_list))]
+        tags = normalize_access_tags(tag_list)
+        if self.filters_cache_ttl:
+            if len(self._filters_cache) >= self.FILTERS_CACHE_MAX_SIZE:
+                # Drop expired entries; if nothing expired, drop the oldest.
+                cache = self._filters_cache
+                expired = [k for k, (expires, *_) in cache.items() if expires <= now]
+                for k in expired:
+                    del cache[k]
+                while len(cache) >= self.FILTERS_CACHE_MAX_SIZE:
+                    del cache[min(cache, key=lambda k: cache[k][0])]
+            self._filters_cache[cache_key] = (
+                now + self.filters_cache_ttl,
+                generation,
+                tags,
+            )
+        return [AccessTagsFilter(tags)]
 
 
 T = TypeVar("T")
