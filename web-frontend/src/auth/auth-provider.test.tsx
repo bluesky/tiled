@@ -6,6 +6,7 @@ import { AuthProvider } from "./auth-provider";
 import { useAuth } from "./auth-context";
 import { axiosInstance } from "../client";
 import { tokenManager } from "./token-manager";
+import { SettingsContext, emptySettings } from "../context/settings";
 
 vi.mock("../client", () => {
   const interceptor = { use: vi.fn(() => 0), eject: vi.fn() };
@@ -77,6 +78,18 @@ const renderProvider = (authentication: any) =>
     <AuthProvider authentication={authentication}>
       <Probe />
     </AuthProvider>,
+  );
+
+// A deployment whose ui settings point the API somewhere other than the default.
+const CUSTOM_API_URL = "/custom/api";
+
+const renderWithApiUrl = (authentication: any, api_url: string) =>
+  render(
+    <SettingsContext.Provider value={{ ...emptySettings, api_url }}>
+      <AuthProvider authentication={authentication}>
+        <Probe />
+      </AuthProvider>
+    </SettingsContext.Provider>,
   );
 
 describe("AuthProvider cookie detection", () => {
@@ -214,5 +227,24 @@ describe("AuthProvider cookie detection", () => {
     });
     expect(get).toHaveBeenCalledWith("/api/v1/metadata/");
     expect(screen.getByTestId("authenticated")).toHaveTextContent("false");
+  });
+
+  it("sends auth requests to the api_url from ui settings", async () => {
+    tokenManager.saveTokens({
+      access_token: expiredToken(),
+      refresh_token: "stale-refresh",
+    });
+    get.mockResolvedValue({ data: null } as any);
+
+    renderWithApiUrl(authRequired, CUSTOM_API_URL);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("initialized")).toHaveTextContent("true");
+    });
+    expect(rawPost).toHaveBeenCalledWith(
+      `${CUSTOM_API_URL}/auth/session/refresh`,
+      expect.anything(),
+    );
+    expect(get).toHaveBeenCalledWith(`${CUSTOM_API_URL}/auth/whoami`);
   });
 });
