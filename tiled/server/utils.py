@@ -136,5 +136,8 @@ async def filter_for_access(
                         entry, "resolve_access_tag_ids"
                     ):
                         query.tag_ids = await entry.resolve_access_tag_ids(query.tags)
+                        query.scope_root_matches = not set(query.tags).isdisjoint(
+                            await entry.effective_access_tags()
+                        )
                     entry = entry.search(query)
     return entry
