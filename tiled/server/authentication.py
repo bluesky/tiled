@@ -2,11 +2,11 @@ import hashlib
 import logging
 import secrets
 import uuid as uuid_module
-import warnings
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Annotated, Any, Callable, List, Optional, Sequence
 
+import jwt
 from fastapi import (
     APIRouter,
     Depends,
@@ -28,6 +28,8 @@ from fastapi.security import (
 from fastapi.security.api_key import APIKeyCookie, APIKeyHeader, APIKeyQuery
 from fastapi.security.utils import get_authorization_scheme_param
 from fastapi.templating import Jinja2Templates
+from jwt import ExpiredSignatureError, PyJWTError
+from pydantic import BaseModel
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -45,15 +47,7 @@ from starlette.status import (
 from tiled.access_control.scopes import NO_SCOPES, PUBLIC_SCOPES, SINGLE_USER_SCOPES
 from tiled.authenticators import ProxiedOIDCAuthenticator
 
-# To hide third-party warning
-# .../jose/backends/cryptography_backend.py:18: CryptographyDeprecationWarning:
-#     int_from_bytes is deprecated, use int.from_bytes instead
-with warnings.catch_warnings():
-    warnings.simplefilter("ignore")
-    from jose import ExpiredSignatureError, JWTError, jwt
-
-from pydantic import BaseModel
-
+from ..access_control.protocols import normalize_access_tags
 from ..authn_database import orm
 from ..authn_database.core import (
     create_service,
@@ -172,7 +166,7 @@ def decode_token(
             return payload
         except ExpiredSignatureError:
             raise
-        except JWTError:
+        except PyJWTError:
             continue
     # If none of the tiled keys worked, try the proxied authenticator
     # (e.g. tokens issued directly by an OIDC provider in the device code flow).
@@ -270,7 +264,7 @@ async def get_access_tags_from_api_key(
         return None
     else:
         if (access_tags := api_key_orm.access_tags) is not None:
-            access_tags = set(access_tags)
+            access_tags = normalize_access_tags(access_tags)
         return access_tags
 
 

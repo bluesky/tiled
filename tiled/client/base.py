@@ -260,7 +260,7 @@ class BaseClient:
         """
         metadata = deepcopy(self._item["attributes"]["metadata"])
         specs = [Spec.from_json(spec) for spec in self._item["attributes"]["specs"]]
-        access_tags = deepcopy(self._item["attributes"]["access_blob"].get("tags", []))
+        access_tags = list(self._item["attributes"]["access_tags"])
         return [
             md for md in [metadata, specs, access_tags] if md is not None
         ]  # returning as list of mutable items
@@ -273,15 +273,15 @@ class BaseClient:
         )
 
     @property
-    def access_blob(self) -> DictView[str, JSON_ITEM]:
-        "Authorization information about this node, in blob form"
-        access_blob = self._item["attributes"]["access_blob"]
-        if access_blob is None:
-            raise AttributeError("Node has no attribute 'access_blob'")
+    def access_tags(self) -> ListView[str]:
+        "Authorization information about this node, encoded as access tags."
+        access_tags = self._item["attributes"]["access_tags"]
+        if access_tags is None:
+            raise AttributeError("Node has no attribute 'access_tags'")
         # Ensure this is immutable (at the top level) to help the user avoid
         # getting the wrong impression that editing this would update anything
         # persistent.
-        return DictView(access_blob)
+        return ListView(access_tags)
 
     @property
     def uri(self):
@@ -595,7 +595,7 @@ class BaseClient:
         >>> md['unwanted_key'] = DELETE_KEY
         >>> node.update_metadata(metadata=md)  # Update the copy on the server
         """
-        metadata_patch, specs_patch, access_blob_patch = self.build_metadata_patches(
+        metadata_patch, specs_patch, access_tags_patch = self.build_metadata_patches(
             metadata=metadata,
             specs=specs,
             access_tags=access_tags,
@@ -603,7 +603,7 @@ class BaseClient:
         self.patch_metadata(
             metadata_patch=metadata_patch,
             specs_patch=specs_patch,
-            access_blob_patch=access_blob_patch,
+            access_tags_patch=access_tags_patch,
             drop_revision=drop_revision,
         )
 
@@ -632,9 +632,9 @@ class BaseClient:
         specs_patch : list[dict]
             A JSON serializable object representing a valid JSON patch (RFC6902)
             for metadata validation specifications.
-        access_blob_patch : list[dict]
+        access_tags_patch : list[dict]
             A JSON serializable object representing a valid JSON patch (RFC6902)
-            for access control fields that are stored in the access_blob.
+            for access tags
 
         See Also
         --------
@@ -703,17 +703,14 @@ class BaseClient:
 
         if not access_tags:
             # empty list of access_tags should be a no-op
-            access_blob_patch = None
+            access_tags_patch = None
         else:
-            ab_copy = deepcopy(self._item["attributes"]["access_blob"])
-            access_blob = {"tags": access_tags}
-            access_blob_patch = jsonpatch.JsonPatch.from_diff(
-                self._item["attributes"]["access_blob"],
-                apply_update_patch(ab_copy, access_blob),
-                dumps=orjson.dumps,
+            access_tags_copy = list(self._item["attributes"]["access_tags"])
+            access_tags_patch = jsonpatch.JsonPatch.from_diff(
+                access_tags_copy, access_tags, dumps=orjson.dumps
             ).patch
 
-        return metadata_patch, specs_patch, access_blob_patch
+        return metadata_patch, specs_patch, access_tags_patch
 
     def _build_json_patch(self, origin, update_patch):
         """
@@ -739,7 +736,7 @@ class BaseClient:
         self,
         metadata_patch=None,
         specs_patch=None,
-        access_blob_patch=None,
+        access_tags_patch=None,
         content_type=patch_mimetypes.JSON_PATCH,
         drop_revision=False,
     ):
@@ -755,8 +752,8 @@ class BaseClient:
         specs_patch : List[dict], optional
             JSON-serializable patch to be applied to metadata validation
             specifications list
-        access_blob_patch : List[dict], optional
-            JSON-serializable patch to be applied to the access_blob
+        access_tags_patch : List[dict], optional
+            JSON-serializable patch to be applied to the access_tags
         content_type : str
             Mimetype of the patches. Acceptable values are:
 
@@ -816,7 +813,7 @@ class BaseClient:
             "content-type": content_type,
             "metadata": metadata_patch,
             "specs": normalized_specs_patch,
-            "access_blob": access_blob_patch,
+            "access_tags": access_tags_patch,
         }
         params = {}
         if drop_revision:
@@ -850,12 +847,12 @@ class BaseClient:
             patched_specs = patcher(current_specs, normalized_specs_patch, content_type)
             self._item["attributes"]["specs"] = patched_specs
 
-        if access_blob_patch is not None:
-            if "access_blob" in content:
-                self._item["attributes"]["access_blob"] = content["access_blob"]
+        if access_tags_patch is not None:
+            if "access_tags" in content:
+                self._item["attributes"]["access_tags"] = content["access_tags"]
             else:
-                self._item["attributes"]["access_blob"] = patcher(
-                    dict(self.access_blob), access_blob_patch, content_type
+                self._item["attributes"]["access_tags"] = patcher(
+                    list(self.access_tags), access_tags_patch, content_type
                 )
 
     def replace_metadata(
@@ -888,15 +885,10 @@ class BaseClient:
 
         self._cached_len = None
 
-        if access_tags is None:
-            access_blob = None
-        else:
-            access_blob = {"tags": access_tags}
-
         data = {
             "metadata": metadata,
             "specs": normalize_specs(specs),
-            "access_blob": access_blob,
+            "access_tags": access_tags,
         }
         params = {}
         if drop_revision:
@@ -926,11 +918,11 @@ class BaseClient:
         if specs is not None:
             self._item["attributes"]["specs"] = normalize_specs(specs)
 
-        if access_blob is not None:
-            if "access_blob" in content:
-                self._item["attributes"]["access_blob"] = content["access_blob"]
+        if access_tags is not None:
+            if "access_tags" in content:
+                self._item["attributes"]["access_tags"] = content["access_tags"]
             else:
-                self._item["attributes"]["access_blob"] = access_blob
+                self._item["attributes"]["access_tags"] = access_tags
 
     @property
     def metadata_revisions(self):

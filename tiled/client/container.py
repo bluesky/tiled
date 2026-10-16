@@ -4,9 +4,12 @@ import concurrent.futures
 import functools
 import importlib
 import itertools
+import logging
 import time
+import uuid
 import warnings
 from dataclasses import asdict
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterable, Optional, Union
 from urllib.parse import parse_qs, urlparse
 
@@ -18,19 +21,21 @@ from packaging.version import Version
 from ..iterviews import ItemsView, KeysView, ValuesView
 from ..queries import KeyLookup
 from ..query_registration import default_query_registry
-from ..structures.core import StructureFamily
+from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import DataSource
 from ..utils import (
     UNCHANGED,
     IndexersMixin,
     OneShotCachedMap,
     Sentinel,
+    ensure_uri,
     node_repr,
     safe_json_dump,
 )
 from .base import STRUCTURE_TYPES, BaseClient
 from .utils import (
     MSGPACK_MIME_TYPE,
+    SENT_REQUEST_TRANSPORT_ERRORS,
     ClientError,
     client_for_item,
     export_util,
@@ -44,6 +49,15 @@ if TYPE_CHECKING:
     import pyarrow
 
     from .stream import ContainerSubscription
+
+logger = logging.getLogger("tiled.client")
+
+
+def _as_spec_set(spec_dicts):
+    # Specs that have been passed through normalize_specs -- as well as the
+    # specs on a fetched item -- are lists of {"name": ..., "version": ...}
+    # dicts; represent them as a set for order-insensitive comparison.
+    return {(spec["name"], spec.get("version")) for spec in (spec_dicts or [])}
 
 
 class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
@@ -496,11 +510,14 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             if direction < 0:
                 items = list(reversed(items))
             for key, item in items[start:stop]:
-                yield key, client_for_item(
-                    self.context,
-                    self.structure_clients,
-                    item,
-                    include_data_sources=self._include_data_sources,
+                yield (
+                    key,
+                    client_for_item(
+                        self.context,
+                        self.structure_clients,
+                        item,
+                        include_data_sources=self._include_data_sources,
+                    ),
                 )
             return
         if direction > 0:
@@ -536,11 +553,14 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             )
             for item in content["data"]:
                 key = item["id"]
-                yield key, client_for_item(
-                    self.context,
-                    self.structure_clients,
-                    item,
-                    include_data_sources=self._include_data_sources,
+                yield (
+                    key,
+                    client_for_item(
+                        self.context,
+                        self.structure_clients,
+                        item,
+                        include_data_sources=self._include_data_sources,
+                    ),
                 )
                 if stop is not None and next(item_counter) == stop - 1:
                     return
@@ -566,6 +586,52 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         >>> tree.search(FullText("hello"))
         """
         return self.new_variation(queries=self._queries + [query])
+
+    def search_deep(self, *queries, max_depth=None):
+        """
+        Search all descendants of this Node (at any depth), not just direct children.
+
+        Returns a `DeepSearchResults` mapping, not a `Node`: it is not
+        chainable via further `.search()`/`.search_deep()` calls,
+        because matches at different depths do not share a single parent.
+        To narrow a search, pass several queries; they are combined with
+        logical AND.
+
+        Parameters
+        ----------
+        *queries : query objects, e.g. from tiled.queries
+            At least one is required. All must match.
+        max_depth : int, optional
+            Only descend this many levels below this Node.
+
+        Examples
+        --------
+
+        >>> from tiled.queries import Key
+        >>> results = tree.search_deep(Key("sample_id") == "abc123")
+        >>> results[("nested", "images", "sample_042")]
+
+        Logical AND of several queries:
+
+        >>> tree.search_deep(Key("sample_id") == "abc123", Key("depth") > 1)
+        """
+        if not queries:
+            raise TypeError("search_deep() requires at least one query")
+        if "search_deep" not in self.item["links"]:
+            raise NotImplementedError("This server does not support deep search.")
+        return DeepSearchResults(
+            context=self.context,
+            link=self.item["links"]["search_deep"],
+            structure_clients=self.structure_clients,
+            queries=queries,
+            max_depth=max_depth,
+            include_data_sources=self._include_data_sources,
+            # The server reports `ancestors` relative to the true root, like
+            # every other endpoint; strip this Node's own path so that result
+            # keys/paths stay relative to the root that `search_deep`
+            # was called on.
+            root_path_parts=[part for part in self.path_parts if part],
+        )
 
     def distinct(
         self, *metadata_keys, structure_families=False, specs=False, counts=False
@@ -701,7 +767,6 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
 
         self._cached_len = None
         metadata = metadata or {}
-        access_blob = {"tags": access_tags} if access_tags is not None else {}
 
         # Backompatibility: if the server is older than 0.2.4,
         # it can not accept the "properties" field in the data source.
@@ -721,31 +786,59 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                 "structure_family": StructureFamily(structure_family),
                 "specs": normalize_specs(specs or []),
                 "data_sources": data_sources_as_dicts,
-                "access_blob": access_blob,
+                "access_tags": access_tags,
             }
         }
+        if key is None:
+            key = str(uuid.uuid4())
         body = dict(item["attributes"])
-        if key is not None:
-            body["id"] = key
+        body["id"] = key
 
-        # if check:
         if any(data_source.assets for data_source in data_sources):
             endpoint = self.uri.replace("/metadata/", "/register/", 1)
         else:
             endpoint = self.uri
 
+        # Track whether any failed attempt may have been received and processed
+        # by the server: the request was sent but the response was lost (read/
+        # write transport error) or a proxy/server-side error (5xx) occurred
+        # after the fact. In that case a 409 Conflict on a subsequent retry
+        # most likely refers to the node created by our own earlier attempt
+        # (every create carries a key -- supplied or client-generated -- that
+        # acts as an idempotency token), so adopt it instead of failing.
+        may_have_reached_server = False
         for attempt in retry_context():
             with attempt:
-                document = handle_error(
-                    self.context.http_client.post(
-                        endpoint,
-                        headers={
-                            "Accept": MSGPACK_MIME_TYPE,
-                            "Content-Type": "application/json",
-                        },
-                        content=safe_json_dump(body),
-                    )
-                ).json()
+                try:
+                    document = handle_error(
+                        self.context.http_client.post(
+                            endpoint,
+                            headers={
+                                "Accept": MSGPACK_MIME_TYPE,
+                                "Content-Type": "application/json",
+                            },
+                            content=safe_json_dump(body),
+                        )
+                    ).json()
+                except SENT_REQUEST_TRANSPORT_ERRORS:
+                    may_have_reached_server = True
+                    raise
+                except httpx.HTTPStatusError as err:
+                    if err.response.status_code >= 500:
+                        may_have_reached_server = True
+                    elif (
+                        may_have_reached_server
+                        and err.response.status_code == httpx.codes.CONFLICT
+                    ):
+                        existing = self._adopt_after_retried_create_conflict(
+                            key,
+                            StructureFamily(structure_family),
+                            normalize_specs(specs or []),
+                            metadata,
+                        )
+                        if existing is not None:
+                            return existing
+                    raise
 
         if structure_family == StructureFamily.container:
             structure = {"contents": None, "count": None}
@@ -778,9 +871,9 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                 ds for ds in document.pop("data_sources")
             ]
 
-        # And for access_blob
-        if "access_blob" in document:
-            item["attributes"]["access_blob"] = document.pop("access_blob")
+        # And for access_tags
+        if "access_tags" in document:
+            item["attributes"]["access_tags"] = document.pop("access_tags")
 
         # Merge in "id" and "links" returned by the server.
         item.update(document)
@@ -801,6 +894,72 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             structure=structure,
             include_data_sources=self._include_data_sources,
         )
+
+    def _adopt_after_retried_create_conflict(
+        self, key, structure_family, specs, metadata
+    ):
+        """Fetch and return an existing node after a retried create hit 409 Conflict.
+
+        Called only when an earlier attempt of the same create request may have
+        reached the server (the response was lost to a transport error, or a
+        proxy/server returned 5xx after the fact), so the existing node under
+        `key` is most likely the one created by our own earlier attempt. To
+        guard against adopting a genuinely unrelated node (a true key
+        collision), the existing node must match the request: same structure
+        family, same specs, and the same metadata (compared after the same JSON
+        normalization that a create applies to the submitted metadata).
+        Otherwise return None and let the caller re-raise the original 409.
+
+        NB: a server-side spec validator that *modifies* metadata on ingestion
+        will defeat the metadata comparison, so in such deployments a retried
+        create degrades to the old behavior (the 409 is raised). This is the
+        conservative trade-off: never adopt a node we can not positively match.
+        """
+        try:
+            existing = self[key]
+        except Exception:
+            logger.warning(
+                "Create of %r returned 409 Conflict after a retried request, "
+                "but the existing item could not be fetched; treating as a "
+                "genuine conflict.",
+                key,
+            )
+            return None
+
+        existing_attrs = existing.item["attributes"]
+        existing_family = StructureFamily(existing_attrs["structure_family"])
+        # The elif chain evaluates lazily, so cheaper checks short-circuit the
+        # more expensive ones (the metadata check serializes the submitted
+        # metadata with the same JSON round-trip normalization that `new()`
+        # applies: numpy scalars, datetimes, etc. become plain JSON types).
+        if existing_family != structure_family:
+            mismatch = f"structure_family {existing_family!r} != {structure_family!r}"
+        elif _as_spec_set(existing_attrs.get("specs")) != _as_spec_set(specs):
+            mismatch = f"specs {existing_attrs.get('specs')!r} != {specs!r}"
+        elif existing_attrs.get("metadata") != orjson.loads(
+            safe_json_dump(metadata or {})
+        ):
+            mismatch = "metadata differs"
+        else:
+            mismatch = None
+
+        if mismatch is not None:
+            logger.warning(
+                "Create of %r returned 409 Conflict after a retried request, "
+                "but the existing item does not match the request (%s); "
+                "treating as a genuine conflict.",
+                key,
+                mismatch,
+            )
+            return None
+
+        logger.warning(
+            "Create of %r returned 409 Conflict after a retried request that "
+            "may have reached the server; adopting the existing (matching) "
+            "item as the result of this create.",
+            key,
+        )
+        return existing
 
     # When (re)chunking arrays for upload, we use this limit
     # to attempt to avoid bumping into size limits.
@@ -1322,6 +1481,302 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             executor,
             self.structure_clients,
         )
+
+    def register(
+        self,
+        *uris: Union[str, Path],
+        key: Optional[str] = None,
+        structure: Optional[Any] = None,
+        mimetype: Optional[str] = None,
+        parameters: Optional[dict[str, Any]] = None,
+        metadata: Optional[dict[str, Any]] = None,
+        specs: Optional[list[Spec]] = None,
+        access_tags: Optional[list[str]] = None,
+    ):
+        """Register externally-managed file(s) as a single dataset in this Container.
+
+        This method registers exactly the URIs (or file paths) provided as a
+        single node (array, table, etc.) -- it does not walk the subdirectories, if
+        any, and never creates a container of sub-nodes.
+
+        Multiple URIs are treated as a single dataset assembled from several files
+        (for example, a stack of TIFF images). A single URI pointing at a
+        directory (for example, a Zarr store) is registered as one dataset
+        backed by that directory.
+
+        It is assumed that the URIs are accessible from both the client (to
+        infer the structure) and the server (to serve the data).
+
+        Parameters
+        ----------
+        *uris : str or Path
+            One or more URIs or file paths. Multiple files are combined into a
+            single dataset (e.g. an image stack).
+        key : str, optional
+            The key (name) for the new node. If not provided, the server
+            assigns a random key (consistent with `write_array`,
+            `write_table`, etc.), avoiding collisions with existing nodes.
+        structure : optional
+            Override the structure inferred from the file(s). For example,
+            provide an `ArrayStructure` with a different shape to have the
+            server reshape the data when it is served. The override is checked
+            for compatibility with the file(s) (matching dtype and element
+            count for arrays; matching column count and dtypes for tables) and
+            a `ValueError` is raised if it cannot be used.
+        mimetype : str, optional
+            Override the mimetype. By default it is inferred from the file extension.
+        parameters : dict, optional
+            Extra keyword arguments for opening the file(s), forwarded to the
+            adapter both when inferring the structure client-side and when the
+            server re-opens the file(s) to serve the data. For example,
+            `parameters={"sep": ";"}` for a semicolon-delimited CSV.
+        metadata : dict, optional
+            Metadata for the node. Merged on top of any metadata read from the
+            file(s), with these values taking precedence.
+        specs : list, optional
+            Specs to assign to the new node.
+        access_tags : list, optional
+            Access tags to apply to the new node.
+
+        Returns
+        -------
+        The client for the newly-registered node.
+        """
+        from ..mimetypes import DEFAULT_REGISTRATION_ADAPTERS_BY_MIMETYPE
+        from ..storage import stat_uri
+        from ..structures.data_source import Asset, Management
+        from .register import resolve_mimetype_for_uris
+
+        if not uris:
+            raise ValueError("Provide at least one URI or file path to register.")
+        uris = [ensure_uri(uri) for uri in uris]
+
+        # Resolve the mimetype (extension-based) unless explicitly provided.
+        mimetype = mimetype or resolve_mimetype_for_uris(uris)
+
+        try:
+            adapter_class = DEFAULT_REGISTRATION_ADAPTERS_BY_MIMETYPE[mimetype]
+        except KeyError:
+            raise ValueError(f"No adapter is registered for mimetype {mimetype!r}.")
+
+        # Open the file(s) client-side to infer structure, metadata, and specs.
+        parameters = parameters or {}
+        adapter = adapter_class.from_uris(*uris, **parameters)
+
+        # Optionally override the inferred structure (e.g. to reshape on read),
+        # first checking that the provided structure can actually serve the data.
+        properties = {}
+        if structure is not None:
+            if isinstance(structure, dict):
+                structure = STRUCTURE_TYPES[adapter.structure_family].from_json(
+                    structure
+                )
+            inferred = adapter.structure()
+            if not structure.is_compatible(inferred):
+                raise ValueError(
+                    "The provided structure is not compatible with the structure "
+                    f"read from the file(s).\n  provided: {structure!r}\n  "
+                    f"inferred: {inferred!r}"
+                )
+            # When an array is reshaped/rechunked on read, record the original
+            # on-disk chunking so the server can read the file(s) correctly.
+            if (
+                adapter.structure_family == StructureFamily.array
+                and structure.chunks != inferred.chunks
+            ):
+                properties = {"chunks": inferred.chunks}
+        else:
+            structure = adapter.structure()
+
+        # Build the single DataSource describing this dataset from a list of Assets.
+        if len(uris) > 1:
+            # Multiple files form one stacked dataset: one Asset per file, all
+            # bound to the plural 'data_uris' parameter and ordered by 'num'.
+            assets = []
+            for i, uri in enumerate(uris):
+                is_directory, size = stat_uri(uri)
+                assets.append(
+                    Asset(
+                        data_uri=uri,
+                        is_directory=is_directory,
+                        size=size,
+                        parameter="data_uris",
+                        num=i,
+                    )
+                )
+        else:
+            is_directory, size = stat_uri(uris[0])
+            if hasattr(adapter, "generate_data_sources"):
+                # Let the adapter describe its own DataSource (e.g. CSV, Arrow). Only keep
+                # assets, because we may need to overwrite the structure.
+                # TODO: Drop `generate_data_sources` and unify asset parameterization (`data_uri` vs `data_uris`)
+                data_sources = adapter.generate_data_sources(
+                    mimetype,
+                    uris[0],
+                    is_directory=is_directory,
+                    size=size,
+                    parameters=parameters,
+                )
+                assets = data_sources[0].assets
+            else:
+                assets = [
+                    Asset(
+                        data_uri=uris[0],
+                        is_directory=is_directory,
+                        size=size,
+                        parameter="data_uri",
+                    )
+                ]
+        data_source = DataSource(
+            structure_family=adapter.structure_family,
+            mimetype=mimetype,
+            structure=structure,
+            parameters=parameters,
+            properties=properties,
+            management=Management.external,
+            assets=assets,
+        )
+
+        return self.new(
+            data_source.structure_family,
+            [data_source],
+            key=key,
+            metadata={**adapter.metadata(), **(metadata or {})},
+            specs=specs,
+            access_tags=access_tags,
+        )
+
+
+class DeepSearchResults(collections.abc.Mapping):
+    """
+    Lazy, paginated results of `Container.search_deep(...)`.
+
+    Keys are tuples of path segments relative to the Node that the search
+    was performed on. Values are ordinary live client nodes, the same as
+    manual descent would produce.
+
+    See https://github.com/bluesky/tiled/issues/1368
+    """
+
+    def __init__(
+        self,
+        *,
+        context,
+        link,
+        structure_clients,
+        queries,
+        max_depth=None,
+        include_data_sources=False,
+        root_path_parts=(),
+    ):
+        self.context = context
+        self._link = link
+        self.structure_clients = structure_clients
+        self._queries = list(queries)
+        self._queries_as_params = _queries_to_params(*self._queries)
+        self._max_depth = max_depth
+        self._include_data_sources = include_data_sources
+        self._root_path_parts = tuple(root_path_parts)
+        self._cached_len = None
+
+    def __repr__(self):
+        return f"<{type(self).__name__} ({len(self)} results)>"
+
+    def _params(self, extra=None):
+        params = {**self._queries_as_params}
+        if self._max_depth is not None:
+            params["max_depth"] = self._max_depth
+        if self._include_data_sources:
+            params["include_data_sources"] = True
+        if extra:
+            params.update(extra)
+        return params
+
+    def __len__(self):
+        now = time.monotonic()
+        if self._cached_len is not None:
+            length, deadline = self._cached_len
+            if now < deadline:
+                return length
+        for attempt in retry_context():
+            with attempt:
+                content = handle_error(
+                    self.context.http_client.get(
+                        self._link,
+                        headers={"Accept": MSGPACK_MIME_TYPE},
+                        params=self._params({"fields": "count"}),
+                    )
+                ).json()
+        length = content["meta"]["count"]
+        self._cached_len = (length, now + LENGTH_CACHE_TTL)
+        return length
+
+    def _keys_slice(self, start, stop, direction, page_size=None):
+        for key, _value in self._items_slice(start, stop, direction, page_size):
+            yield key
+
+    def _items_slice(self, start, stop, direction, page_size=None):
+        if direction < 0:
+            raise NotImplementedError(
+                "Deep search results do not yet support reverse iteration."
+            )
+        assert start >= 0
+        assert (stop is None) or (stop >= 0)
+        next_page_url = f"{self._link}?page[offset]={start}"
+        if page_size is not None:
+            next_page_url += f"&page[limit]={page_size}"
+        item_counter = itertools.count(start)
+        while next_page_url is not None:
+            for attempt in retry_context():
+                with attempt:
+                    content = handle_error(
+                        self.context.http_client.get(
+                            next_page_url,
+                            headers={"Accept": MSGPACK_MIME_TYPE},
+                            params={
+                                **parse_qs(urlparse(next_page_url).query),
+                                **self._params(),
+                            },
+                        )
+                    ).json()
+            self._cached_len = (
+                content["meta"]["count"],
+                time.monotonic() + LENGTH_CACHE_TTL,
+            )
+            for item in content["data"]:
+                # `ancestors` is server-absolute; make the key relative to
+                # the Node that `search_deep` was called on.
+                full_path = tuple(item["attributes"]["ancestors"]) + (item["id"],)
+                key = full_path[len(self._root_path_parts) :]  # noqa: E203
+                yield key, client_for_item(
+                    self.context,
+                    self.structure_clients,
+                    item,
+                    include_data_sources=self._include_data_sources,
+                )
+                if stop is not None and next(item_counter) == stop - 1:
+                    return
+            next_page_url = content["links"]["next"]
+
+    def keys(self):
+        return KeysView(lambda: len(self), self._keys_slice)
+
+    def values(self):
+        return ValuesView(lambda: len(self), self._items_slice)
+
+    def items(self):
+        return ItemsView(lambda: len(self), self._items_slice)
+
+    def __iter__(self):
+        yield from self._keys_slice(0, None, 1)
+
+    def __getitem__(self, key):
+        if isinstance(key, str):
+            key = tuple(key.strip("/").split("/"))
+        for existing_key, value in self._items_slice(0, None, 1):
+            if existing_key == key:
+                return value
+        raise KeyError(key)
 
 
 def _queries_to_params(*queries):

@@ -5,6 +5,12 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## Unreleased
 
+### Changed
+
+- Tiled now manages its connection pools to tabular storage more correctly.
+  Also, it is now not allowed to use two storage databases with the same
+  database on different hosts.
+
 ### Fixed
 
 - Accept OIDC access tokens on WebSocket connections. The handshake rejected
@@ -20,10 +26,104 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - Fix the client's WebSocket auth header for API-key sessions, which raised
   `UnboundLocalError`, and ensure the short-lived API key minted for a
   connection is revoked afterwards.
+- Improved the deletion of large subtrees with many associated assets (PostgreSQL only).
+
+## v0.2.19 (2026-10-13)
+
+### Added
+
+- Expose the Deployment `strategy` in the helm chart, so that a deployment can
+  use `Recreate` instead of the default `RollingUpdate`.
+- Add a `DELETE /api/v1/asset/{path}?id=N` endpoint to dissociate a single
+  asset from a node. If the asset is no longer referenced by any other data
+  source, its catalog record is deleted; and, when it is internally managed,
+  the underlying data (file, directory, object, or storage-database rows) is
+  deleted as well. Mirrors node deletion: gated on `expose_raw_assets` and
+  defaults to `external_only=true`, refusing to delete internally-managed data
+  unless `external_only=false` is passed.
+- Add `Container.register`, a synchronous client method to register external,
+  server-accessible files as a single dataset (array, table, etc.).
+- Add registration support for Parquet files.
+- Documentation: a user-guide page on validating metadata against custom specs
+  via server configuration.
+- ACL filtering by access tags ids resolved from access tag names on the server.
+  The ids are passed as literals in the querries, which allows Postgres to use
+  extended statstics to plan the query.
+- `Container.search_deep(*queries, max_depth=None)` and the corresponding
+  `GET /api/v1/search-deep/{path}` HTTP endpoint, which search all
+  descendants of a node (at any depth), not just direct children. Multiple
+  queries are combined with logical AND. Results are
+  returned as a `DeepSearchResults` mapping keyed by path tuples relative
+  to the search root. Supported by both the SQL catalog and `MapAdapter`,
+  including `MapAdapter` trees with a catalog (or other container adapter)
+  mounted at a sub-path, e.g. via `trees` configuration. Results are in default
+  (database) order; sorting is not supported. Looking up a single result with
+  `results[key]` scans the results and is linear in their number.
+  Access policy is applied to every container between the search root and a
+  match, as path traversal does for other routes, so a node is not returned
+  (and its container's name not revealed) if a container above it is not
+  visible to the requesting user. See
+  [#1368](https://github.com/bluesky/tiled/issues/1368).
+- Zarr arrays are served with `dims` taken from the store: Zarr v3
+  `dimension_names`, or the `_ARRAY_DIMENSIONS` attribute on Zarr v2 arrays.
+  An array with any unnamed dimension keeps `dims=None`.
+
+### Changed
+
+- Replace catalog `access_blob` column with a normalized `access_tags` table.
+  Tags, grants, tag ownership, and node-tag associations now live in the
+  catalog database; graph entities and links share the same tags table,
+  but have their own association tables. Per-user principal tags replace
+  user-owned blobs and are granted implicitly to their principals.
+- `AccessTagsParser` and `AccessTagsCompiler` now discover and use the catalog
+  database on both SQLite and PostgreSQL. Removed tag definitions retain their
+  node associations but lose their grants, preventing transient configuration
+  failures from erasing access-control information. The server remains
+  compatible with older clients that use `access_blob`.
+- Deployment note: this change includes four sequential catalog migrations
+  (an intermediate blob-association schema, conversion to tags, a
+  parent-scoped node-tag association, and naming adjustment). Apply the full
+  migration chain without stopping at an intermediate revision. This also drops
+  the old metadata index; deploy the improved replacement index from #1521
+  as well.
+- Object-storage (S3) tests now run against an in-process `moto` S3 server
+  started automatically by the test suite, instead of requiring a MinIO
+  container (whose image was removed from Docker Hub). Set `TILED_TEST_BUCKET`
+  to point the tests at a real MinIO/S3 endpoint instead.
+- The server depends on `PyJWT` instead of `python-jose` to sign and verify
+  JSON Web Tokens.
+- Remove `curl` from the container image; it was only used for health checks.
+  The `compose.yml` and `compose.dev.yml` health checks now use `httpx`
+  instead.
+
+### Fixed
+
+- Roll back catalog node creation when SQL identifier validation fails, so a
+  corrected retry is not blocked by a partially-created node.
+- Encode `application/json-seq` table exports with the RFC 7464 record
+  separator and line-feed framing, preventing single-row sequences from being
+  mistaken for a single JSON document by browser clients.
 - Extend to zarr routes the previous fix for reads of array data whose
   on-disk shape has diverged from the shape recorded in the catalog
   structure, which can happen while an array is being extended
   (e.g. streaming appends).
+- Make retrying of non-idempotent requests (create and append) safe against duplication.
+- `distinct` on a catalog node counted nodes across the whole catalog instead of
+  only the node's children. It is now scoped to the requested node.
+- Fix the background task that purges expired Sessions and API keys. It
+  crashed on its first run and was never retried, so expired entries
+  (including the short-lived keys minted for websocket subscriptions)
+  could accumulate until a Principal hit the API-key limit. Expired entries
+  are now removed with a single bulk `DELETE`, so a large backlog is not loaded into
+  memory. The task also purges expired PendingSessions (device-code login attempts).
+- Deleting a Session is no longer blocked by a pending device-code login that
+  still references it: `pending_sessions.session_id` is now `ON DELETE SET
+  NULL`, so the reference is detached instead.
+- On shutdown, the server now stops its background tasks, and waits for them,
+  before closing the database connection pool. Closing the pool first could
+  leave a background task running and hang shutdown.
+- `from_uri` applies its `timeout` and `trust_env` arguments, or the default
+  timeouts when none are given, to the first request it makes to an `http://` URI.
 
 ## v0.2.18 (2026-09-02)
 
@@ -1366,3 +1466,6 @@ tiled catalog upgrade-database [postgresql://.. | sqlite:///...]
  - Updated the pydantic version in the pyproject.toml. Now the allowed versions are >2.0.0 - <3.0.0 .
  - Changes to prepare for upcoming numpy 2.0 release
  - Changes to address deprecations in FastAPI
+- Require `duckdb !=1.4.0` instead of `duckdb <1.4.0`.
+- `SQLAdapter.read` and `SQLAdapter.read_partition` return rows in the
+  order they were appended on DuckDB and SQLite.

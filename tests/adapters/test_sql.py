@@ -193,6 +193,47 @@ def test_psql(adapter_psql_one_partition: SQLAdapter) -> None:
     assert adapter_psql_one_partition.structure().npartitions == 1
 
 
+@pytest.mark.parametrize("strip_on_write", ["0", "1"])
+def test_psql_data_uri_query_parameters(
+    data_source_from_init_storage: Callable[[str, int], DataSource[TableStructure]],
+    postgres_uri: str,
+    monkeypatch: pytest.MonkeyPatch,
+    strip_on_write: str,
+) -> None:
+    """Assets resolve to storage regardless of how the database is reached.
+
+    Write via a storage configured with ?connect_timeout=..., then read back
+    via data_uri values carrying different (or no) query parameters and
+    different hosts, as happens when the configuration changes after Assets
+    were written.
+    """
+    monkeypatch.setenv("TILED_STRIP_STORAGE_URI_QUERY_ON_WRITE", strip_on_write)
+    configured_uri = f"{postgres_uri}?connect_timeout=5&application_name=tiled"
+    data_source = data_source_from_init_storage(configured_uri, 1)
+    (asset,) = data_source.assets
+    base, _, query = asset.data_uri.partition("?")
+    if strip_on_write == "1":
+        assert query == ""
+    else:
+        assert query == "connect_timeout=5&application_name=tiled"
+
+    adapter_from_data_source(data_source).append_partition(0, batch0)
+    dbname = base.rsplit("/", 1)[1]
+    for data_uri in [
+        base,
+        f"{base}?connect_timeout=30",
+        asset.data_uri,
+        f"postgresql://some-other-host:6543/{dbname}",
+    ]:
+        adapter = SQLAdapter(
+            data_uri,
+            data_source.structure,
+            data_source.parameters["table_name"],
+            data_source.parameters["dataset_id"],
+        )
+        assert adapter.read()["f0"].tolist() == [1, 2, 3, 4, 5]
+
+
 @pytest.mark.parametrize(
     "adapter",
     [

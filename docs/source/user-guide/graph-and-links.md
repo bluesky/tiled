@@ -73,7 +73,7 @@ query {
     predicate
     objectId
     properties
-    accessBlob
+    accessTags
     createdAt
     subject {
       id

@@ -108,5 +108,6 @@ DEFAULT_MIMETYPES_BY_FILE_EXT = {
     ".hdf5": "application/x-hdf5",
     # on opensuse csv -> text/x-comma-separated-values
     ".csv": "text/csv",
+    ".parquet": PARQUET_MIMETYPE,
     ".zarr": ZARR_MIMETYPE,
 }

@@ -299,6 +299,14 @@ class CompositeClient(Container):
         if key in self.keys():
             raise ValueError(f"Key '{key}' already exists in the composite node.")
 
+        if structure_family == StructureFamily.table:
+            # Ensure that the table columns do not overlap with existing keys.
+            for data_source in data_sources:
+                if set(data_source.structure.columns).intersection(self.keys()):
+                    raise ValueError(
+                        "Table columns must not overlap with existing keys in the composite node."
+                    )
+
         return super().new(
             structure_family,
             data_sources,
@@ -306,17 +314,6 @@ class CompositeClient(Container):
             metadata=metadata,
             specs=specs,
             access_tags=access_tags,
-        )
-
-    def write_table(
-        self, data, *, key=None, metadata=None, specs=None, access_tags=None
-    ):
-        if set(self.keys()).intersection(data.columns):
-            raise ValueError(
-                "DataFrame columns must not overlap with existing keys in the composite node."
-            )
-        return super().write_table(
-            data, key=key, metadata=metadata, specs=specs, access_tags=access_tags
         )
 
     def create_appendable_table(

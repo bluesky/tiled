@@ -28,9 +28,9 @@ is included with the tiled source code, and start a server like so.
    :caption: example_configs/toy_authentication.yml
 ```
 
-Note that you will need to run these helper tools to prep the backing databases that Tiled needs:
+Note that you will need to run these helper tools to prep the backing catalog database that Tiled needs:
 ```
-# prep the access tags and catalog databases
+# compile the access tags into the catalog database, then populate the catalog
 python example_configs/access_tags/compile_tags.py
 python example_configs/catalog/create_catalog.py
 ```
