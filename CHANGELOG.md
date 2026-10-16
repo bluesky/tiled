@@ -85,6 +85,9 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Fixed
 
+- Fix opening and registering existing Arrow tables. Infer structure from IPC
+  schemas without loading row data, preserve the partition count, and support
+  the standard `from_uris` entry point and `.arrow` file extension.
 - Roll back catalog node creation when SQL identifier validation fails, so a
   corrected retry is not blocked by a partially-created node.
 - Encode `application/json-seq` table exports with the RFC 7464 record
