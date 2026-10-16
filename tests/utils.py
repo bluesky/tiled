@@ -11,6 +11,7 @@ from pathlib import Path
 import httpx
 import pytest
 import uvicorn
+from fastapi import APIRouter
 from sqlalchemy import text
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import create_async_engine
@@ -18,6 +19,15 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from tiled.client import context
 from tiled.client.base import BaseClient
 from tiled.utils import ensure_specified_sql_driver
+
+# Mount on an app (`app.include_router(error_router)`) to get a `/error` route
+# that raises, to test the response to an unhandled server exception.
+error_router = APIRouter()
+
+
+@error_router.get("/error")
+def error():
+    1 / 0  # type: ignore error!
 
 
 @contextlib.contextmanager
