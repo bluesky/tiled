@@ -10,7 +10,6 @@ import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pytest
-from jwcrypto.jwk import JWK
 from starlette.testclient import WebSocketDenialResponse
 
 from tiled.client import from_context
@@ -924,12 +923,8 @@ def test_expired_access_token_query_param(
 
     client.write_array(np.arange(10), key="test_expired_jwt")
 
-    # Create an expired token using the same secret key.
-    private_key = (
-        JWK.generate(kty="RSA", size=2048, kid="secret", use="sig", alg="RS256")
-        .export_to_pem("private_key", password=None)
-        .decode("utf-8")
-    )
+    # Create an expired token using the same secret key, so that it is rejected
+    # for expiry and not for a bad signature.
     expired_token = jwt.encode(
         {
             "sub": "fake",
@@ -937,8 +932,8 @@ def test_expired_access_token_query_param(
             "exp": datetime.datetime.now(datetime.timezone.utc)
             - datetime.timedelta(seconds=60),
         },
-        key=private_key,
-        algorithm="RS256",
+        "SECRET",
+        algorithm="HS256",
     )
     token_param = urllib.parse.quote(expired_token, safe="")
     with _unauthenticated(context) as test_client:

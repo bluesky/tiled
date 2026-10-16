@@ -88,7 +88,9 @@ def mock_jwks_fetch(json_web_keyset: JWK):
     ).encode()
 
     mock = Mock(side_effect=lambda *args, **kwargs: io.BytesIO(payload))
-    with patch("urllib.request.urlopen", mock):
+    # Patch OpenerDirector.open: newer PyJWT uses build_opener().open() and
+    # urlopen() routes through it too.
+    with patch("urllib.request.OpenerDirector.open", mock):
         yield mock
 
 
@@ -159,6 +161,33 @@ def test_oidc_decoding(
     else:
         with pytest.raises(jwt.ExpiredSignatureError):
             authenticator.decode_token(encrypted_access_token)
+
+
+@pytest.mark.parametrize("cls", [OIDCAuthenticator, EntraAuthenticator])
+def test_verify_login(mock_oidc_server, rsa_private_key, well_known_url, cls):
+    if cls is EntraAuthenticator:
+        authenticator = EntraAuthenticator("api", "tiled", well_known_url, "tiled-cli")
+    else:
+        authenticator = OIDCAuthenticator("api", "tiled", "secret", well_known_uri=well_known_url)
+    access_token = "opaque-access-token"
+    claims = {
+        **token(expired=False),
+        "preferred_username": "jane@example.org",
+        "at_hash": authenticator._calc_at_hash(access_token, "RS256"),
+    }
+    id_token = encrypted_token(claims, rsa_private_key)
+
+    verified = authenticator.verify_login(id_token, access_token)
+    if cls is EntraAuthenticator:
+        assert verified["user"] == "jane"
+        assert verified["entra_sub"] == "Jane Doe"
+    else:
+        assert verified["sub"] == "Jane Doe"
+
+    with pytest.raises(jwt.InvalidTokenError):
+        authenticator.verify_login(id_token, "some-other-access-token")
+    with pytest.raises(jwt.InvalidTokenError):
+        authenticator.verify_login(id_token, None)
 
 
 def test_entra_decoding_ignores_unmapped_scopes(caplog):
@@ -513,3 +542,19 @@ def test_extract_scopes_empty_scope_is_empty_set():
     ) == {"read:data", "write:data"}
     # "scope" (even empty) takes precedence over "scp" and is not overridden.
     assert _extract_scopes({"scope": "", "scp": "read:data"}, None) == set()
+
+
+@pytest.mark.parametrize(
+    "error, expected",
+    [(jwt.DecodeError("bad"), HTTPException), (jwt.ExpiredSignatureError("old"), jwt.ExpiredSignatureError)],
+)
+def test_server_decode_token_proxied_errors(error, expected):
+    # Invalid provider tokens must be a 401, not an unhandled 500;
+    # expiry propagates so callers can say "refresh token".
+    from tiled.server.authentication import decode_token
+
+    proxied = Mock(decode_token=Mock(side_effect=error))
+    with pytest.raises(expected) as exc_info:
+        decode_token("not-a-tiled-token", ["x" * 32], proxied)
+    if expected is HTTPException:
+        assert exc_info.value.status_code == HTTP_401_UNAUTHORIZED

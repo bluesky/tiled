@@ -34,6 +34,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
 from sqlalchemy.sql import func
+from starlette.concurrency import run_in_threadpool
 from starlette.datastructures import URL
 from starlette.status import (
     HTTP_204_NO_CONTENT,
@@ -167,7 +168,12 @@ def decode_token(
     # If none of the tiled keys worked, try the proxied authenticator
     # (e.g. tokens issued directly by an OIDC provider in the device code flow).
     if proxied_authenticator:
-        return proxied_authenticator.decode_token(token)
+        try:
+            return proxied_authenticator.decode_token(token)
+        except ExpiredSignatureError:
+            raise
+        except jwt.PyJWTError:
+            raise credentials_exception
     raise credentials_exception
 
 
@@ -216,8 +222,8 @@ async def get_decoded_access_token(
     if not access_token:
         return None
     try:
-        payload = decode_token(
-            access_token, settings.secret_keys, settings.authenticator
+        payload = await run_in_threadpool(
+            decode_token, access_token, settings.secret_keys, settings.authenticator
         )
     except ExpiredSignatureError:
         raise HTTPException(
@@ -492,8 +498,8 @@ async def authenticate_websocket_first_message(
         return True, principal, access_tags, scopes
     elif access_token is not None:
         try:
-            decoded = decode_token(
-                access_token, settings.secret_keys, settings.authenticator
+            decoded = await run_in_threadpool(
+                decode_token, access_token, settings.secret_keys, settings.authenticator
             )
         except Exception:
             return False, None, None, NO_SCOPES
