@@ -4,8 +4,7 @@ import json
 import logging
 import os
 import time
-
-from typing import Any, Optional, Tuple
+from typing import Any, Optional
 from unittest.mock import Mock, patch
 from urllib.parse import parse_qs, urlencode
 

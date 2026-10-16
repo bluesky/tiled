@@ -230,13 +230,13 @@ properties:
         signing_key = self.py_JWK_client.get_signing_key_from_jwt(id_token)
 
         decoded = jwt.decode_complete(
-                id_token,
-                key=signing_key,
-                audience=self._client_id,
-                algorithms=self.id_token_signing_alg_values_supported,
-                # Provider and server clocks drift; accept an iat slightly in the future.
-                options={"verify_iat": False},
-            )
+            id_token,
+            key=signing_key,
+            audience=self._client_id,
+            algorithms=self.id_token_signing_alg_values_supported,
+            # Provider and server clocks drift; accept an iat slightly in the future.
+            options={"verify_iat": False},
+        )
         payload, header = decoded["payload"], decoded["header"]
         at_hash = payload.get("at_hash")
         if at_hash is None:
@@ -374,9 +374,7 @@ properties:
             combined.update(tiled_scopes)
         return sorted(combined)
 
-    def decode_token(
-        self, access_token: str
-    ) -> dict[str, Any]:
+    def decode_token(self, access_token: str) -> dict[str, Any]:
         claims = super().decode_token(access_token)
         # Translate identity-provider scopes to Tiled scopes via scopes_map.
         # The provider "scp" claim is present in access tokens but may be absent
@@ -434,9 +432,7 @@ class EntraAuthenticator(ProxiedOIDCAuthenticator):
         if client_secret:
             self._client_secret = Secret(client_secret)
 
-    def decode_token(
-        self, access_token: str
-    ) -> dict[str, Any]:
+    def decode_token(self, access_token: str) -> dict[str, Any]:
         # Handle scope translation (scp -> Tiled scopes via scopes_map) in super()
         claims = super().decode_token(access_token)
 
