@@ -13,6 +13,22 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Fixed
 
+- Accept OIDC access tokens on WebSocket connections. The handshake rejected
+  any `Authorization` header that was not `Apikey SECRET` with a 400, so no
+  externally-authenticated client could open a stream. The header is now
+  dispatched on its scheme, matching the HTTP routes: `Bearer TOKEN` is read as
+  an access token, `Apikey SECRET` as an API key. The `access_token` query
+  parameter still works, for browsers that cannot set headers. Because a
+  WebSocket handshake cannot prompt a refresh with a 401, the Python client
+  refreshes an access token that is within a minute of expiring before it
+  connects.
+- Return 401 rather than 500 for a malformed access token when a proxied OIDC
+  authenticator is configured.
+- Fix construction of the `Principal` for externally-authenticated WebSocket
+  connections, which raised `AttributeError` and surfaced as a 500.
+- Fix the client's WebSocket auth header for API-key sessions, which raised
+  `UnboundLocalError`, and ensure the short-lived API key minted for a
+  connection is revoked afterwards.
 - Improved the deletion of large subtrees with many associated assets (PostgreSQL only).
 
 ## v0.2.19 (2026-10-13)
