@@ -2669,7 +2669,12 @@ def binary_op(query, tree, operation):
     keys = query.key.split(".")
     attr = orm.Node.metadata_[keys]
     if dialect_name == "sqlite":
-        condition = operation(_sqlite_json_value(attr), query.value)
+        if query.value is None and operation in (operator.eq, operator.ne):
+            # JSON_EXTRACT gives SQL NULL both for a JSON null and for a missing
+            # key; JSON_TYPE tells them apart ('null' vs SQL NULL).
+            condition = operation(func.json_type(attr.left, attr.right), "null")
+        else:
+            condition = operation(_sqlite_json_value(attr), query.value)
     # specific case where GIN optomized index can be used to speed up POSTGRES equals queries
     elif (dialect_name == "postgresql") and (operation == operator.eq):
         condition = orm.Node.metadata_.op("@>")(
