@@ -27,7 +27,7 @@ from fastapi.security import (
 from fastapi.security.api_key import APIKeyCookie, APIKeyHeader, APIKeyQuery
 from fastapi.security.utils import get_authorization_scheme_param
 from fastapi.templating import Jinja2Templates
-from jwt import ExpiredSignatureError
+from jwt import ExpiredSignatureError, PyJWTError
 from pydantic import BaseModel
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -45,7 +45,7 @@ from starlette.status import (
 
 from tiled.access_control.scopes import NO_SCOPES, PUBLIC_SCOPES, SINGLE_USER_SCOPES
 from tiled.authenticators import ProxiedOIDCAuthenticator
-from pydantic import BaseModel
+
 from ..access_control.protocols import normalize_access_tags
 from ..authn_database import orm
 from ..authn_database.core import (
@@ -162,7 +162,7 @@ def decode_token(
             return payload
         except ExpiredSignatureError:
             raise
-        except jwt.PyJWTError:
+        except PyJWTError:
             continue
     # If none of the tiled keys worked, try the proxied authenticator
     # (e.g. tokens issued directly by an OIDC provider in the device code flow).

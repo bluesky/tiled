@@ -234,6 +234,8 @@ properties:
                 key=signing_key,
                 audience=self._client_id,
                 algorithms=self.id_token_signing_alg_values_supported,
+                # Provider and server clocks drift; accept an iat slightly in the future.
+                options={"verify_iat": False},
             )
         payload, header = decoded["payload"], decoded["header"]
         at_hash = payload.get("at_hash")
@@ -255,6 +257,8 @@ properties:
             key=signing_key,
             audience=self._audience,
             algorithms=self.id_token_signing_alg_values_supported,
+            # Provider and server clocks drift; accept an iat slightly in the future.
+            options={"verify_iat": False},
         )
 
     async def authenticate(self, request: Request) -> Optional[UserSessionState]:

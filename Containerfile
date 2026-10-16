@@ -104,17 +104,6 @@ useradd -r -u ${APP_UID} -d /app -g app -N app
 # See <https://hynek.me/articles/docker-signals/>.
 STOPSIGNAL SIGINT
 
-# Note how the runtime dependencies differ from build-time ones.
-# Notably, there is no uv either!
-RUN set -ex && \
-apt-get update -qy && \
-apt-get install -qyy \
-    -o APT::Install-Recommends=false \
-    -o APT::Install-Suggests=false \
-    curl && \
-apt-get clean && \
-rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
-
 RUN mkdir -p /deploy/config
 RUN mkdir -p /storage && chown -R app:app /storage
 COPY ./example_configs/config_for_containerfile.yml /deploy/config

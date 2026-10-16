@@ -141,6 +141,48 @@ def should_retry(exception: Exception) -> "bool | float":
     return isinstance(exception, httpx.HTTPError)
 
 
+# Transport errors that can occur only *after* the request has been handed to
+# the network layer: the server may have received and fully processed the
+# request even though the client never received the response.
+SENT_REQUEST_TRANSPORT_ERRORS = (
+    httpx.ReadTimeout,
+    httpx.ReadError,
+    httpx.WriteTimeout,
+    httpx.WriteError,
+    httpx.RemoteProtocolError,
+)
+
+
+def should_retry_if_unprocessed(exception: Exception) -> "bool | float":
+    """Retry policy for non-idempotent requests (e.g. appending table rows).
+
+    Retry only when the failure guarantees that the server never received or
+    processed the request: connection-phase transport errors (the connection
+    was never established, or the request never left the local pool) and 429
+    rate-limit rejections (the server explicitly refused without processing).
+
+    Read/write-phase transport errors (e.g. a read timeout) and 5xx responses
+    (e.g. a 502/504 from a proxy in front of a slow server) can occur *after*
+    the server has fully processed the request; retrying would apply the
+    mutation a second time (e.g. duplicate appended rows). Those errors are
+    raised to the caller instead.
+    """
+    if isinstance(exception, httpx.HTTPStatusError):
+        if exception.response.status_code == 429:
+            # Same Retry-After handling as should_retry.
+            retry_after = exception.response.headers.get("Retry-After")
+            if retry_after is not None:
+                try:
+                    return float(retry_after)
+                except (ValueError, TypeError):
+                    pass
+            return True
+        return False
+    return isinstance(
+        exception, (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout)
+    )
+
+
 # Expose the timeout and max attempts as configurable via env vars. The rest of
 # the parameters (wait_initial, wait_jitter, etc.) are intentionally not
 # included here, for simplicity and to make it more difficult to configure
@@ -197,14 +239,21 @@ class _LoggingAttempt:
         return result
 
 
-def retry_context(context=None):
-    "Iterable that yields a context manager per retry attempt"
+def retry_context(context=None, *, on=None):
+    """Iterable that yields a context manager per retry attempt.
+
+    The `on` parameter selects the retry predicate; it defaults to
+    `should_retry`. Non-idempotent requests (e.g. appending rows) should pass
+    `on=should_retry_if_unprocessed` so that errors which may have occurred
+    after the server processed the request are not retried.
+    """
+    on = on if on is not None else should_retry
     # When no context is provided (e.g. from_any_uri probing the server before
     # a Context object exists), we still want to show the retry indicator.
     # Use a standalone indicator owned by this generator so cleanup is guaranteed.
     standalone = StandaloneRetryIndicator() if context is None else None
     it = stamina.retry_context(
-        on=should_retry,
+        on=on,
         attempts=TILED_RETRY_ATTEMPTS,
         timeout=TILED_RETRY_TIMEOUT,
     ).__iter__()
