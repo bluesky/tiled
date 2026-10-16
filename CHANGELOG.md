@@ -11,6 +11,10 @@ Write the date in place of the "Unreleased" in the case a new version is release
   Also, it is now not allowed to use two storage databases with the same
   database on different hosts.
 
+### Fixed
+
+- Improved the deletion of large subtrees with many associated assets (PostgreSQL only).
+
 ## v0.2.19 (2026-10-13)
 
 ### Added

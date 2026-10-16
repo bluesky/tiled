@@ -149,6 +149,12 @@ logger = logging.getLogger(__name__)
 # streaming append from a write that was aborted and left at rest.
 ARRAY_NOT_READY_WINDOW = float(os.getenv("TILED_ARRAY_NOT_READY_WINDOW", "10.0"))
 
+# work_mem granted (per transaction, PostgreSQL only) to the asset
+# garbage-collection query in delete_tree. Its hash joins cover the deleted
+# subtree's closure and asset associations, which spill to disk at the server
+# default (typically 4 MB) when deleting large subtrees.
+DELETE_ASSETS_WORK_MEM = os.getenv("TILED_DELETE_ASSETS_WORK_MEM", "256MB")
+
 # When data is uploaded, how is it saved?
 # TODO: Make this configurable at Catalog construction time.
 DEFAULT_CREATION_MIMETYPE = {
@@ -1574,10 +1580,11 @@ class CatalogNodeAdapter:
                     FROM data_source_asset_association daa2
                     JOIN data_sources ds2 ON ds2.id = daa2.data_source_id
                     WHERE daa2.asset_id = daa.asset_id
-                    AND ds2.node_id NOT IN (
-                        SELECT descendant
-                        FROM nodes_closure
-                        WHERE ancestor = :node_id
+                    AND NOT EXISTS (
+                        SELECT 1
+                        FROM nodes_closure nc2
+                        WHERE nc2.ancestor = :node_id
+                        AND nc2.descendant = ds2.node_id
                     )
                 )
             )
@@ -1586,6 +1593,13 @@ class CatalogNodeAdapter:
             WHERE assets.id = da.id
             RETURNING assets.id, assets.data_uri, assets.is_directory, da.management;
                     """
+                )
+                # Grant this transaction more work memory. set_config(..., is_local=true)
+                # is SET LOCAL: it reverts at commit/rollback and affects nothing else.
+                await db.execute(
+                    text("SELECT set_config('work_mem', :mem, true)").bindparams(
+                        mem=DELETE_ASSETS_WORK_MEM
+                    )
                 )
                 deleted_asset_records = (
                     await db.execute(delete_assets_stmt.params(node_id=self.node.id))
