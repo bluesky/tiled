@@ -1,9 +1,12 @@
 import abc
+import base64
 import concurrent.futures
 import inspect
+import json
 import logging
 import sys
 import threading
+import time
 import weakref
 from typing import Any, Callable, Generic, List, Optional, TypeVar
 
@@ -53,11 +56,31 @@ Callback = Callable[[T], None]
 
 API_KEY_LIFETIME = TILED_RETRY_TIMEOUT + 15  # seconds
 RECEIVE_TIMEOUT = 0.1  # seconds
+# A WebSocket handshake cannot answer 401 to prompt a refresh, so the client
+# refreshes an access token itself when it is this close to expiring.
+ACCESS_TOKEN_EXPIRY_MARGIN = 60  # seconds
 
 
 logger = logging.getLogger(__name__)
 
 __all__ = ["Subscription"]
+
+
+def _expires_soon(token: str, margin: float = ACCESS_TOKEN_EXPIRY_MARGIN) -> bool:
+    """Read a JWT's 'exp' claim without verifying it; the server verifies.
+
+    A token that is not a JWT with an 'exp' claim is treated as fresh: the
+    server is the authority on it, and refreshing before every connection
+    would hammer the refresh endpoint.
+    """
+    try:
+        payload = token.split(".")[1]
+        payload += "=" * (-len(payload) % 4)
+        return (
+            json.loads(base64.urlsafe_b64decode(payload))["exp"] - time.time() < margin
+        )
+    except (IndexError, ValueError, KeyError, TypeError):
+        return False
 
 
 class _TestClientWebsocketWrapper:
@@ -71,15 +94,15 @@ class _TestClientWebsocketWrapper:
 
     def connect(
         self,
-        api_key: Optional[str],
+        auth_header: Optional[str],
         start: Optional[int] = None,
         max_size: int = 1_000_000,
     ):
         """Connect to the websocket."""
         params = self._uri.params
         headers = {}
-        if api_key:
-            headers["Authorization"] = f"Apikey {api_key}"
+        if auth_header:
+            headers["Authorization"] = auth_header
         if start is not None:
             params = params.set("start", start)
         # Note: max_size is ignored for test client websockets
@@ -391,6 +414,8 @@ class Subscription(abc.ABC):
                 access_token = context.http_client.auth.sync_get_token(
                     "access_token", reload_from_disk=True
                 )
+                if access_token is None or _expires_soon(access_token):
+                    access_token = context.force_auth_refresh()["access_token"]
                 return f"Bearer {access_token}"
             else:
                 # Request a short-lived API key to use for authenticating the WS connection.
@@ -658,6 +683,7 @@ class TableSubscription(Subscription):
 
 class UnparseableMessage(RuntimeError):
     "Message can be decoded but cannot be interpreted by the application"
+
     pass
 
 

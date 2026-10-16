@@ -758,3 +758,48 @@ def test_subscribe_no_api_key_public(tiled_websocket_context_public):
 
     with subscription.start_in_thread(0):
         assert received_event.wait(timeout=10.0), "Timeout waiting for messages"
+
+
+def test_access_token_expires_soon():
+    import base64
+    import json
+    import time
+
+    from tiled.client.stream import _expires_soon
+
+    def jwt(claims):
+        payload = base64.urlsafe_b64encode(json.dumps(claims).encode()).rstrip(b"=")
+        return f"header.{payload.decode()}.signature"
+
+    assert _expires_soon(jwt({"exp": time.time() + 10}))
+    assert not _expires_soon(jwt({"exp": time.time() + 3600}))
+    # Not a JWT, or no exp: leave it to the server.
+    assert not _expires_soon("opaque-token")
+    assert not _expires_soon(jwt({"sub": "alice"}))
+
+
+def test_subscribe_refreshes_expiring_access_token(
+    tiled_websocket_context_multiuser, monkeypatch
+):
+    "A JWT session refreshes an about-to-expire access token before connecting."
+    context = tiled_websocket_context_multiuser
+    client = from_context(context)
+    refreshes = []
+    force_auth_refresh = context.force_auth_refresh
+
+    def counting_refresh():
+        refreshes.append(None)
+        return force_auth_refresh()
+
+    monkeypatch.setattr(context, "force_auth_refresh", counting_refresh)
+    monkeypatch.setattr("tiled.client.stream._expires_soon", lambda token: True)
+    created = threading.Event()
+
+    def on_child_created(update):
+        created.set()
+
+    with client.subscribe().start_in_thread(1) as sub:
+        sub.child_created.add_callback(on_child_created)
+        client.create_container("x")
+        assert created.wait(timeout=10.0), "Timeout waiting for messages"
+    assert len(refreshes) == 1

@@ -18,7 +18,10 @@ Write the date in place of the "Unreleased" in the case a new version is release
   externally-authenticated client could open a stream. The header is now
   dispatched on its scheme, matching the HTTP routes: `Bearer TOKEN` is read as
   an access token, `Apikey SECRET` as an API key. The `access_token` query
-  parameter still works, for browsers that cannot set headers.
+  parameter still works, for browsers that cannot set headers. Because a
+  WebSocket handshake cannot prompt a refresh with a 401, the Python client
+  refreshes an access token that is within a minute of expiring before it
+  connects.
 - Return 401 rather than 500 for a malformed access token when a proxied OIDC
   authenticator is configured.
 - Fix construction of the `Principal` for externally-authenticated WebSocket
