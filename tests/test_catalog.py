@@ -21,7 +21,9 @@ import tifffile
 import xarray
 from hypothesis import given, settings
 from hypothesis import strategies as st
-from sqlalchemy import text
+from sqlalchemy import insert, select, text
+from sqlalchemy.dialects import postgresql as postgresql_dialect
+from sqlalchemy.dialects import sqlite as sqlite_dialect
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.pool import AsyncAdaptedQueuePool, QueuePool, StaticPool
 
@@ -30,7 +32,15 @@ from tiled.adapters.dataframe import ArrayAdapter
 from tiled.adapters.tiff import TiffAdapter
 from tiled.adapters.utils import DataNotReadyError, IncompatibleShapeError
 from tiled.catalog import in_memory
-from tiled.catalog.adapter import WouldDeleteData
+from tiled.access_control.protocols import compiled_tags_version
+from tiled.catalog import orm
+from tiled.catalog.adapter import (
+    WouldDeleteData,
+    _access_tags_predicate,
+    _resolve_access_tags,
+)
+from tiled.catalog.core import register_principal_tag_rows
+from tiled.queries import AccessTagsFilter
 from tiled.catalog.explain import record_explanations
 from tiled.client import Context, from_context
 from tiled.client.register import register
@@ -1486,3 +1496,136 @@ def test_pooling_config(sqlite_or_postgres_uri, sql_storage_uri, desired, expect
         assert storage._connection_pool._max_overflow == expected[3]
 
     storage.dispose()
+
+
+# ---- Resolved access-tag-id cache and compiled-tags version bumps ----
+# Companion to the granted-tags cache tests in test_access_policy.py.
+
+
+def test_access_predicate_uses_array_parameter_on_postgresql():
+    query = AccessTagsFilter(["a"])
+    query.tag_ids = (30, 10, 20, 10)
+    condition = _access_tags_predicate(query, orm.Node, 7, "postgresql")
+    sql = str(
+        condition.compile(
+            dialect=postgresql_dialect.dialect(),
+            compile_kwargs={"literal_binds": True},
+        )
+    )
+    assert "= ANY (ARRAY[10, 20, 30])" in sql  # deduplicated, sorted, one array
+    assert "IN (" not in sql
+    parameterized = str(condition.compile(dialect=postgresql_dialect.dialect()))
+    assert parameterized.count("%(") == 2  # parent id + the one array parameter
+
+
+def test_access_predicate_uses_in_list_on_sqlite():
+    query = AccessTagsFilter(["a"])
+    query.tag_ids = (2, 1)
+    condition = _access_tags_predicate(query, orm.Node, 7, "sqlite")
+    sql = str(
+        condition.compile(
+            dialect=sqlite_dialect.dialect(), compile_kwargs={"literal_binds": True}
+        )
+    )
+    assert "IN (1, 2)" in sql
+
+
+@pytest.mark.asyncio
+async def test_resolved_tag_ids_cached_per_catalog_context(tmpdir):
+    "Two catalogs with different id spaces must not share resolved ids."
+    # Distinct named in-memory databases: with the plain ':memory:' URI both
+    # adapters would share one pooled engine (and thus one database).
+    adapter_a = in_memory(
+        named_memory="acl_cache_a", writable_storage=str(tmpdir / "a")
+    )
+    adapter_b = in_memory(
+        named_memory="acl_cache_b", writable_storage=str(tmpdir / "b")
+    )
+    try:
+        for adapter, names in [
+            (adapter_a, ["tag_one", "tag_two"]),
+            (adapter_b, ["tag_two", "tag_one"]),  # reversed insert order: ids differ
+        ]:
+            await adapter.startup()
+            async with adapter.context.session() as db:
+                for name in names:
+                    await db.execute(
+                        insert(orm.AccessTag.__table__).values(
+                            name=name, is_public=False
+                        )
+                    )
+                await db.commit()
+        ids_a = await adapter_a.resolve_access_tag_ids(["tag_one"])
+        ids_b = await adapter_b.resolve_access_tag_ids(["tag_one"])
+        assert ids_a != ids_b  # different id spaces, correctly isolated
+        # Second resolution is a cache hit: the same (immutable) tuple.
+        assert await adapter_a.resolve_access_tag_ids(["tag_one"]) is ids_a
+        assert isinstance(ids_a, tuple)
+    finally:
+        await adapter_a.shutdown()
+        await adapter_b.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_register_principal_tag_rows_reports_inserts(tmpdir):
+    adapter = in_memory(writable_storage=str(tmpdir))
+    try:
+        await adapter.startup()
+        async with adapter.context.session() as db:
+            connection = await db.connection()
+            assert await register_principal_tag_rows(connection, ["user:alice"])
+            await db.commit()
+        async with adapter.context.session() as db:
+            connection = await db.connection()
+            # Already registered: no insert, so caches need no invalidation.
+            assert not await register_principal_tag_rows(connection, ["user:alice"])
+            # Non-principal names never register rows.
+            assert not await register_principal_tag_rows(connection, ["beamline_x"])
+            await db.commit()
+    finally:
+        await adapter.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_compiled_tags_version_bumped_only_after_commit(tmpdir):
+    "First-time principal-tag registration invalidates caches at COMMIT, not before."
+    adapter = in_memory(writable_storage=str(tmpdir))
+    try:
+        await adapter.startup()
+        before = compiled_tags_version()
+        async with adapter.context.session() as db:
+            await _resolve_access_tags(db, ["user:bob"])
+            # The row is not yet visible to other transactions; the version
+            # must not have moved yet.
+            assert compiled_tags_version() == before
+            await db.commit()
+        assert compiled_tags_version() == before + 1
+        # Re-registering the same principal tag changes nothing: no bump.
+        async with adapter.context.session() as db:
+            await _resolve_access_tags(db, ["user:bob"])
+            await db.commit()
+        assert compiled_tags_version() == before + 1
+        # The row really is there.
+        async with adapter.context.session() as db:
+            row = (
+                await db.execute(
+                    select(orm.AccessTag).where(orm.AccessTag.name == "user:bob")
+                )
+            ).scalar_one()
+            assert row.name == "user:bob"
+    finally:
+        await adapter.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_compiled_tags_version_not_bumped_on_rollback(tmpdir):
+    adapter = in_memory(writable_storage=str(tmpdir))
+    try:
+        await adapter.startup()
+        before = compiled_tags_version()
+        async with adapter.context.session() as db:
+            await _resolve_access_tags(db, ["user:carol"])
+            await db.rollback()
+        assert compiled_tags_version() == before
+    finally:
+        await adapter.shutdown()
