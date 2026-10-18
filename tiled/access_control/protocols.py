@@ -11,9 +11,10 @@ PRINCIPAL_TAG_PREFIXES = ("user:", "service:")
 
 # Version counter for the compiled-tag state in the database. Incremented
 # after every in-process change to the compiled tags (a compiler run, or
-# first-time registration of a principal tag row) so that caches of
-# compiled-tag data (the policy's filters cache, the catalog context's
-# resolved tag-id cache) are invalidated immediately within this process.
+# first-time registration of a principal tag row) so that caches of data
+# derived from the compiled tags (the policy's granted-tags cache, the
+# catalog context's resolved tag-id cache) are invalidated immediately
+# within this process.
 # Changes made by *other* processes are covered by those caches' TTLs
 # instead. This lives here (rather than in access_tags) because it is needed
 # by modules that cannot import access_tags without a circular import.

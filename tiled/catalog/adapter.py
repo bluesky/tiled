@@ -159,8 +159,9 @@ ARRAY_NOT_READY_WINDOW = float(os.getenv("TILED_ARRAY_NOT_READY_WINDOW", "10.0")
 
 # How long (in seconds) resolved access-tag ids (name -> id) are cached on the
 # context, and how many distinct tag sets to hold. The mapping only changes
-# when access tags are recompiled, so a short TTL bounds the staleness while
-# saving a database round trip per request. See resolve_access_tag_ids.
+# when the compiled tags change (a compiler run, or first-time registration
+# of a principal tag row), so a short TTL bounds the staleness while saving a
+# database round trip per request. See resolve_access_tag_ids.
 ACCESS_TAG_IDS_CACHE_TTL = float(os.getenv("TILED_ACCESS_TAG_IDS_CACHE_TTL", "60"))
 ACCESS_TAG_IDS_CACHE_MAX_SIZE = 64
 
@@ -653,7 +654,8 @@ class CatalogNodeAdapter:
         catalog database) for ACCESS_TAG_IDS_CACHE_TTL seconds: the ACL filter of
         a principal with many tags is resolved on every request (and several times
         per request, once per path segment), while the name -> id mapping only
-        changes when tags are recompiled.
+        changes when the compiled tags change (a compiler run, or first-time
+        registration of a principal tag row).
         """
         if not names:
             return ()

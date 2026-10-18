@@ -87,8 +87,10 @@ class TagBasedAccessPolicy(AccessPolicy):
         self.provider = provider
         self.scopes = scopes if (scopes is not None) else ALL_SCOPES
         validate_scopes(self.scopes, "TagBasedAccessPolicy 'scopes'")
-        # For how long (in seconds) the set of tags granted to a principal is reused
-        # before being recomputed in `filters`.
+        # For how long (in seconds) the set of tags granted to a principal is
+        # reused before `filters` re-derives it by querying the compiled grant
+        # tables. (Deriving it reads the output of the access tags compiler;
+        # it never runs the compiler.)
         self.granted_tags_cache_ttl = granted_tags_cache_ttl
         self._granted_tags_cache = {}
 
@@ -444,7 +446,7 @@ class TagBasedAccessPolicy(AccessPolicy):
             else:
                 identifier = self._get_id(principal)
 
-        # Cache the computed tag set, keyed by everything it depends on.
+        # Cache the derived granted-tag set, keyed by everything it depends on.
         # Return a fresh AccessTagsFilter on every call, even on a cache hit:
         # the filter instance gets mutated downstream (`tag_ids`), so it must
         # not be shared.
