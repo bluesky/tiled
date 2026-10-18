@@ -108,7 +108,7 @@ def _access_tags_match_condition(
 
 
 def _link_access_condition(query: AccessTagsFilter):
-    if not query.tags or query.tag_ids == []:
+    if not query.tags or (query.tag_ids is not None and not query.tag_ids):
         # Nothing can match an empty tag list.
         return false()
     return _access_tags_match_condition(
@@ -125,7 +125,7 @@ def _entity_access_condition(query: AccessTagsFilter):
     An entity matches if it carries one of the given tags itself, or, when it
     is node-backed (node_id set), if the referenced catalog node does.
     """
-    if not query.tags or query.tag_ids == []:
+    if not query.tags or (query.tag_ids is not None and not query.tag_ids):
         return false()
     return or_(
         and_(

@@ -33,6 +33,7 @@ from sqlalchemy import (
     Integer,
     any_,
     delete,
+    event,
     exists,
     false,
     func,
@@ -74,7 +75,11 @@ from tiled.queries import (
     StructureFamilyQuery,
 )
 
-from ..access_control.protocols import normalize_access_tags
+from ..access_control.protocols import (
+    compiled_tags_version,
+    mark_compiled_tags_changed,
+    normalize_access_tags,
+)
 from ..adapters.utils import DataNotReadyError, IncompatibleShapeError
 from ..mimetypes import (
     APACHE_ARROW_FILE_MIME_TYPE,
@@ -243,7 +248,21 @@ async def _resolve_access_tags(db, access_tag_names):
     Principal tags are slightly different: these need to exist at write,
     possibly before the access tags compiler has been able to create them.
     """
-    await register_principal_tag_rows(await db.connection(), access_tag_names)
+    inserted = await register_principal_tag_rows(
+        await db.connection(), access_tag_names
+    )
+    if inserted:
+        # A new tag row changes the name -> id mapping; the compiled-tag
+        # caches must be invalidated -- but only once the row is visible to
+        # other transactions, i.e. after COMMIT. (Invalidating now would let
+        # a concurrent request re-cache the old state under the new version;
+        # on rollback, nothing changed and no invalidation happens.)
+        event.listen(
+            db.sync_session,
+            "after_commit",
+            lambda session: mark_compiled_tags_changed(),
+            once=True,
+        )
     tag_rows = (
         (
             await db.execute(
@@ -311,7 +330,7 @@ class Context:
 
         self.key_maker = key_maker
         # TTL cache of resolved access-tag ids, shared by the adapters of this
-        # catalog: {frozenset(names): (expiry, sorted ids)}.
+        # catalog: {frozenset(names): (expiry, compiled-tags version, ids)}.
         self.access_tag_ids_cache = {}
         adapters_by_mimetype = adapters_by_mimetype or {}
         # If adapters_by_mimetype comes from a configuration file,
@@ -615,29 +634,28 @@ class CatalogNodeAdapter:
     async def resolve_access_tag_ids(self, names):
         """Resolve access-tag 'names' to their 'access_tags.id' values.
 
-        Returns a sorted list of integer ids for the names that exist (missing
-        names are simply omitted). Used to build ACL filters that reference
-        'tag_id' literals instead of joining 'access_tags' by name.
+        Returns a sorted tuple of integer ids for the names that exist (missing
+        names are simply omitted). Used to build ACL filters that reference 'tag_id'
+        literals instead of joining 'access_tags' by name.
 
-        The result is cached on the context (i.e. per catalog database) for
-        ACCESS_TAG_IDS_CACHE_TTL seconds: the ACL filter of a principal with
-        many tags is resolved on every request (and several times per request,
-        once per path segment), while the name -> id mapping only changes when
-        tags are recompiled.
+        This is a tuple because the result is cached and shared between requests,
+        so it must be immutable. The result is cached on the context (i.e. per
+        catalog database) for ACCESS_TAG_IDS_CACHE_TTL seconds: the ACL filter of
+        a principal with many tags is resolved on every request (and several times
+        per request, once per path segment), while the name -> id mapping only
+        changes when tags are recompiled.
         """
         if not names:
-            return []
-        from ..access_control.protocols import tags_generation
-
+            return ()
         key = frozenset(names)
         cache = self.context.access_tag_ids_cache
         now = time.monotonic()
-        generation = tags_generation()
+        version = compiled_tags_version()
         hit = cache.get(key)
-        if hit is not None and hit[0] > now and hit[1] == generation:
+        if hit is not None and hit[0] > now and hit[1] == version:
             return hit[2]
         async with self.context.session() as db:
-            ids = sorted(await resolve_access_tag_ids(db, names))
+            ids = tuple(sorted(await resolve_access_tag_ids(db, names)))
         if len(cache) >= ACCESS_TAG_IDS_CACHE_MAX_SIZE:
             # Drop expired entries; if nothing expired, drop the oldest.
             expired = [k for k, (expires, *_) in cache.items() if expires <= now]
@@ -645,7 +663,7 @@ class CatalogNodeAdapter:
                 del cache[k]
             while len(cache) >= ACCESS_TAG_IDS_CACHE_MAX_SIZE:
                 del cache[min(cache, key=lambda k: cache[k][0])]
-        cache[key] = (now + ACCESS_TAG_IDS_CACHE_TTL, generation, ids)
+        cache[key] = (now + ACCESS_TAG_IDS_CACHE_TTL, version, ids)
         return ids
 
     async def exact_len(self):

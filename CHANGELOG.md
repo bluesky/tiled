@@ -10,6 +10,14 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - Tiled now manages its connection pools to tabular storage more correctly.
   Also, it is now not allowed to use two storage databases with the same
   database on different hosts.
+- Greatly reduce access-control overhead for principals with many access
+  tags: on PostgreSQL the ACL filter passes tag ids as a single array
+  parameter (`tag_id = ANY(...)`) instead of one parameter per tag, and the
+  computed tag sets and resolved tag ids are cached for a short time
+  (60 s default; `filters_cache_ttl` argument of `TagBasedAccessPolicy` and
+  `TILED_ACCESS_TAG_IDS_CACHE_TTL`, `0` disables). The caches are
+  invalidated immediately within a process when the tags are recompiled;
+  recompiles by other processes are covered by the TTL.
 
 ### Fixed
 

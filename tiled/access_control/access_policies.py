@@ -12,7 +12,7 @@ from ..queries import AccessTagsFilter
 from ..server.schemas import Principal
 from ..type_aliases import AccessTags, Filters, Scopes
 from ..utils import Sentinel, import_object
-from .protocols import AccessPolicy, normalize_access_tags, tags_generation
+from .protocols import AccessPolicy, compiled_tags_version, normalize_access_tags
 from .scopes import ALL_SCOPES, NO_SCOPES, PUBLIC_SCOPES, ScopeName, validate_scopes
 
 ALL_ACCESS = []
@@ -445,12 +445,12 @@ class TagBasedAccessPolicy(AccessPolicy):
             identifier,
             frozenset(scopes),
             frozenset(authn_scopes),
-            authn_access_tags,
+            None if authn_access_tags is None else frozenset(authn_access_tags),
         )
         now = time.monotonic()
-        generation = tags_generation()
+        version = compiled_tags_version()
         cached = self._filters_cache.get(cache_key)
-        if cached is not None and cached[0] > now and cached[1] == generation:
+        if cached is not None and cached[0] > now and cached[1] == version:
             return [AccessTagsFilter(cached[2])]
 
         tag_list = set()
@@ -492,7 +492,7 @@ class TagBasedAccessPolicy(AccessPolicy):
                     del cache[min(cache, key=lambda k: cache[k][0])]
             self._filters_cache[cache_key] = (
                 now + self.filters_cache_ttl,
-                generation,
+                version,
                 tags,
             )
         return [AccessTagsFilter(tags)]

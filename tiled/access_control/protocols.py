@@ -9,25 +9,26 @@ from ..type_aliases import AccessTags, Filters, Scopes
 # nodes as owned by a single principal.
 PRINCIPAL_TAG_PREFIXES = ("user:", "service:")
 
-# Generation counter for the compiled-tag state. Bumped after every in-process
-# change to the compiled tags (a compiler run, or on-the-fly registration of a
-# principal tag row) so that caches of compiled-tag data (the policy's filters
-# cache, the catalog context's resolved tag-id cache) are invalidated
-# immediately within this process. Changes made by *other* processes are
-# covered by those caches' TTLs instead. This lives here (rather than in
-# access_tags) because it is needed by modules that cannot import access_tags
-# without a circular import.
-_TAGS_GENERATION = 0
+# Version counter for the compiled-tag state in the database. Incremented
+# after every in-process change to the compiled tags (a compiler run, or
+# first-time registration of a principal tag row) so that caches of
+# compiled-tag data (the policy's filters cache, the catalog context's
+# resolved tag-id cache) are invalidated immediately within this process.
+# Changes made by *other* processes are covered by those caches' TTLs
+# instead. This lives here (rather than in access_tags) because it is needed
+# by modules that cannot import access_tags without a circular import.
+_COMPILED_TAGS_VERSION = 0
 
 
-def tags_generation():
-    "Current compiled-tags generation; changes after each in-process compile."
-    return _TAGS_GENERATION
+def compiled_tags_version():
+    "Current version of the compiled-tag state; changes when the tags change."
+    return _COMPILED_TAGS_VERSION
 
 
-def bump_tags_generation():
-    global _TAGS_GENERATION
-    _TAGS_GENERATION += 1
+def mark_compiled_tags_changed():
+    "Invalidate caches of compiled-tag state by advancing the version."
+    global _COMPILED_TAGS_VERSION
+    _COMPILED_TAGS_VERSION += 1
 
 
 def normalize_access_tags(tags: Iterable[str] = ()) -> AccessTags:
