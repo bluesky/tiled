@@ -460,11 +460,7 @@ class TagBasedAccessPolicy(AccessPolicy):
         now = time.monotonic()
         version = compiled_tags_version()
         cached = self._granted_tags_cache.get(cache_key)
-        if (
-            cached is not None
-            and cached.expires > now
-            and cached.version == version
-        ):
+        if cached is not None and cached.expires > now and cached.version == version:
             return [AccessTagsFilter(cached.tags)]
 
         tag_list = set()

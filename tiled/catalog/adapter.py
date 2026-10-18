@@ -664,11 +664,7 @@ class CatalogNodeAdapter:
         now = time.monotonic()
         version = compiled_tags_version()
         hit = cache.get(key)
-        if (
-            hit is not None
-            and hit.expires > now
-            and hit.version == version
-        ):
+        if hit is not None and hit.expires > now and hit.version == version:
             return hit.ids
         async with self.context.session() as db:
             ids = tuple(sorted(await resolve_access_tag_ids(db, names)))
