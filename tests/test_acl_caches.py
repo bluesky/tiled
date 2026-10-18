@@ -27,7 +27,7 @@ PARSER = "tiled.access_control.access_tags:AccessTagsParser"
 def make_policy(granted_tags, ttl=60):
     "A TagBasedAccessPolicy whose database lookups are counted fakes."
     policy = TagBasedAccessPolicy(
-        provider="toy", access_tags_parser=PARSER, filters_cache_ttl=ttl
+        provider="toy", access_tags_parser=PARSER, granted_tags_cache_ttl=ttl
     )
     calls = {"grants": 0, "public": 0}
 
@@ -56,7 +56,7 @@ AUTHN_SCOPES = {"read:metadata", "read:data"}
 
 
 @pytest.mark.asyncio
-async def test_filters_cache_reuses_computed_tag_set():
+async def test_granted_tags_cache_reuses_computed_tag_set():
     policy, calls = make_policy({"beamline_x"})
     principal = make_principal()
     first = await policy.filters(NODE, principal, None, AUTHN_SCOPES, set(SCOPES))
@@ -71,7 +71,7 @@ async def test_filters_cache_reuses_computed_tag_set():
 
 
 @pytest.mark.asyncio
-async def test_filters_cache_disabled_with_zero_ttl():
+async def test_granted_tags_cache_disabled_with_zero_ttl():
     policy, calls = make_policy({"beamline_x"}, ttl=0)
     principal = make_principal()
     await policy.filters(NODE, principal, None, AUTHN_SCOPES, set(SCOPES))
@@ -80,7 +80,7 @@ async def test_filters_cache_disabled_with_zero_ttl():
 
 
 @pytest.mark.asyncio
-async def test_filters_cache_expires(monkeypatch):
+async def test_granted_tags_cache_expires(monkeypatch):
     policy, calls = make_policy({"beamline_x"}, ttl=60)
     principal = make_principal()
     fake_now = [1000.0]
@@ -97,7 +97,7 @@ async def test_filters_cache_expires(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_filters_cache_invalidated_by_version_change():
+async def test_granted_tags_cache_invalidated_by_version_change():
     policy, calls = make_policy({"beamline_x"})
     principal = make_principal()
     await policy.filters(NODE, principal, None, AUTHN_SCOPES, set(SCOPES))
@@ -107,14 +107,14 @@ async def test_filters_cache_invalidated_by_version_change():
 
 
 @pytest.mark.asyncio
-async def test_filters_cache_eviction_bounded(monkeypatch):
-    monkeypatch.setattr(TagBasedAccessPolicy, "FILTERS_CACHE_MAX_SIZE", 4)
+async def test_granted_tags_cache_eviction_bounded(monkeypatch):
+    monkeypatch.setattr(TagBasedAccessPolicy, "GRANTED_TAGS_CACHE_MAX_SIZE", 4)
     policy, _ = make_policy({"beamline_x"})
     for i in range(10):
         await policy.filters(
             NODE, make_principal(f"user{i}"), None, AUTHN_SCOPES, set(SCOPES)
         )
-    assert len(policy._filters_cache) <= 4
+    assert len(policy._granted_tags_cache) <= 4
 
 
 def test_predicate_uses_array_parameter_on_postgresql():

@@ -420,7 +420,7 @@ properties:
             # are recompiled; recompiles performed by other processes (e.g. a standalone
             # compiler service) take effect within one TTL.
             # Set to 0 to disable caching. Default: 60.
-            filters_cache_ttl: 60
+            granted_tags_cache_ttl: 60
           ```
 
           The catalog similarly caches the resolution of tag names to tag

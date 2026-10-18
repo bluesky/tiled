@@ -14,7 +14,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
   tags: on PostgreSQL the ACL filter passes tag ids as a single array
   parameter (`tag_id = ANY(...)`) instead of one parameter per tag, and the
   computed tag sets and resolved tag ids are cached for a short time
-  (60 s default; `filters_cache_ttl` argument of `TagBasedAccessPolicy` and
+  (60 s default; `granted_tags_cache_ttl` argument of `TagBasedAccessPolicy` and
   `TILED_ACCESS_TAG_IDS_CACHE_TTL`, `0` disables). The caches are
   invalidated immediately within a process when the tags are recompiled;
   recompiles by other processes are covered by the TTL.

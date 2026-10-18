@@ -21,6 +21,7 @@ from typing import (
     Dict,
     List,
     Literal,
+    NamedTuple,
     Optional,
     Union,
     cast,
@@ -162,6 +163,15 @@ ARRAY_NOT_READY_WINDOW = float(os.getenv("TILED_ARRAY_NOT_READY_WINDOW", "10.0")
 # saving a database round trip per request. See resolve_access_tag_ids.
 ACCESS_TAG_IDS_CACHE_TTL = float(os.getenv("TILED_ACCESS_TAG_IDS_CACHE_TTL", "60"))
 ACCESS_TAG_IDS_CACHE_MAX_SIZE = 64
+
+
+class _CachedTagIds(NamedTuple):
+    "An entry of the context's resolved access-tag-ids cache."
+
+    expires: float  # time.monotonic() deadline; a cache hit does not extend it
+    compiled_tags_version: int
+    ids: tuple
+
 
 # work_mem granted (per transaction, PostgreSQL only) to the asset
 # garbage-collection query in delete_tree. Its hash joins cover the deleted
@@ -330,7 +340,7 @@ class Context:
 
         self.key_maker = key_maker
         # TTL cache of resolved access-tag ids, shared by the adapters of this
-        # catalog: {frozenset(names): (expiry, compiled-tags version, ids)}.
+        # catalog: {frozenset(names): _CachedTagIds}.
         self.access_tag_ids_cache = {}
         adapters_by_mimetype = adapters_by_mimetype or {}
         # If adapters_by_mimetype comes from a configuration file,
@@ -652,18 +662,26 @@ class CatalogNodeAdapter:
         now = time.monotonic()
         version = compiled_tags_version()
         hit = cache.get(key)
-        if hit is not None and hit[0] > now and hit[1] == version:
-            return hit[2]
+        if (
+            hit is not None
+            and hit.expires > now
+            and hit.compiled_tags_version == version
+        ):
+            return hit.ids
         async with self.context.session() as db:
             ids = tuple(sorted(await resolve_access_tag_ids(db, names)))
         if len(cache) >= ACCESS_TAG_IDS_CACHE_MAX_SIZE:
             # Drop expired entries; if nothing expired, drop the oldest.
-            expired = [k for k, (expires, *_) in cache.items() if expires <= now]
+            expired = [k for k, entry in cache.items() if entry.expires <= now]
             for k in expired:
                 del cache[k]
             while len(cache) >= ACCESS_TAG_IDS_CACHE_MAX_SIZE:
-                del cache[min(cache, key=lambda k: cache[k][0])]
-        cache[key] = (now + ACCESS_TAG_IDS_CACHE_TTL, version, ids)
+                del cache[min(cache, key=lambda k: cache[k].expires)]
+        cache[key] = _CachedTagIds(
+            expires=now + ACCESS_TAG_IDS_CACHE_TTL,
+            compiled_tags_version=version,
+            ids=ids,
+        )
         return ids
 
     async def exact_len(self):
