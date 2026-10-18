@@ -169,7 +169,7 @@ class _CachedTagIds(NamedTuple):
     "An entry of the context's resolved access-tag-ids cache."
 
     expires: float  # time.monotonic() deadline; a cache hit does not extend it
-    compiled_tags_version: int
+    version: int  # compiled_tags_version() at the time the entry was computed
     ids: tuple
 
 
@@ -665,7 +665,7 @@ class CatalogNodeAdapter:
         if (
             hit is not None
             and hit.expires > now
-            and hit.compiled_tags_version == version
+            and hit.version == version
         ):
             return hit.ids
         async with self.context.session() as db:
@@ -679,7 +679,7 @@ class CatalogNodeAdapter:
                 del cache[min(cache, key=lambda k: cache[k].expires)]
         cache[key] = _CachedTagIds(
             expires=now + ACCESS_TAG_IDS_CACHE_TTL,
-            compiled_tags_version=version,
+            version=version,
             ids=ids,
         )
         return ids

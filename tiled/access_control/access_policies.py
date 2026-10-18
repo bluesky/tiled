@@ -68,7 +68,7 @@ class _CachedGrantedTags(NamedTuple):
     "An entry of TagBasedAccessPolicy's granted-tags cache."
 
     expires: float  # time.monotonic() deadline; a cache hit does not extend it
-    compiled_tags_version: int
+    version: int  # compiled_tags_version() at the time the entry was computed
     tags: AccessTags
 
 
@@ -461,7 +461,7 @@ class TagBasedAccessPolicy(AccessPolicy):
         if (
             cached is not None
             and cached.expires > now
-            and cached.compiled_tags_version == version
+            and cached.version == version
         ):
             return [AccessTagsFilter(cached.tags)]
 
@@ -504,7 +504,7 @@ class TagBasedAccessPolicy(AccessPolicy):
                     del cache[min(cache, key=lambda k: cache[k].expires)]
             cache[cache_key] = _CachedGrantedTags(
                 expires=now + self.granted_tags_cache_ttl,
-                compiled_tags_version=version,
+                version=version,
                 tags=tags,
             )
         return [AccessTagsFilter(tags)]
