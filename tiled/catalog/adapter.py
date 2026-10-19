@@ -30,6 +30,7 @@ from urllib.parse import urlparse
 import anyio
 from fastapi import HTTPException
 from sqlalchemy import (
+    and_,
     delete,
     exists,
     false,
@@ -2809,6 +2810,21 @@ def in_or_not_in_sqlite(query, tree, method):
         else:  # method == "not_in"
             # All results are always "not in" an empty list.
             condition = true()
+    elif None in query.value:
+        # SQL NULL never compares equal in IN / NOT IN, and JSON_EXTRACT gives
+        # it both for a JSON null and for a missing key, so match a JSON null
+        # with JSON_TYPE as Eq/NotEq do.
+        values = [value for value in query.value if value is not None]
+        json_type = func.json_type(attr.left, attr.right)
+        if method == "in_":
+            condition = json_type == "null"
+            if values:
+                condition = or_(condition, _sqlite_json_value(attr).in_(values))
+        else:  # method == "not_in"
+            # A missing key is excluded, as in a NotIn without None.
+            condition = json_type != "null"
+            if values:
+                condition = and_(condition, _sqlite_json_value(attr).not_in(values))
     else:
         condition = getattr(_sqlite_json_value(attr), method)(query.value)
     return tree.new_variation(conditions=tree.conditions + [condition])

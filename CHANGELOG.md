@@ -19,6 +19,8 @@ Write the date in place of the "Unreleased" in the case a new version is release
   stored `0`), and the `sqlalchemy <2.1` pin is removed.
 - `Eq(key, None)` and `NotEq(key, None)` work on SQLite (they raised an error)
   and, as on PostgreSQL, match an explicit JSON null but not a missing key.
+- On SQLite, a `None` in an `In` or `NotIn` list matches an explicit JSON null
+  but not a missing key, as `Eq`/`NotEq` and the in-memory adapter do.
 
 ## v0.2.19 (2026-10-13)
 
