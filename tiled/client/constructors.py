@@ -180,6 +180,7 @@ def from_context(
                 context.http_client.get(
                     item_uri,
                     headers={"Accept": MSGPACK_MIME_TYPE},
+                    params=params,
                 )
             ).json()
     item = content["data"]

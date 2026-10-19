@@ -604,6 +604,21 @@ def test_metadata_revisions_slice_multiple_pages(tree):
         assert revision_numbers == list(range(1, num_revisions + 1))
 
 
+def test_from_context_node_path_include_data_sources(tree):
+    # from_context passes include_data_sources through to the initial
+    # metadata fetch, so a client pointed directly at a node (via
+    # node_path_parts) sees its data sources without an extra refresh.
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        client.write_array([1, 2, 3], key="leaf_with_data_sources")
+        leaf = from_context(
+            context,
+            node_path_parts=["leaf_with_data_sources"],
+            include_data_sources=True,
+        )
+        assert leaf.data_sources()
+
+
 def test_replace_metadata(tiled_websocket_context):
     context = tiled_websocket_context
     client = from_context(context)

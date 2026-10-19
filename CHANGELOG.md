@@ -19,6 +19,9 @@ Write the date in place of the "Unreleased" in the case a new version is release
   pages as nested lists instead of revision records.
 - Fixed `CompositeClient.get_contents(maxlen=...)`, which kept requesting a
   `None` URL when the pages were exhausted before reaching `maxlen`.
+- Fixed `from_context` (and therefore `from_uri`) ignoring
+  `include_data_sources=True` in the initial metadata fetch, so a client
+  pointed directly at a node could not see its data sources.
 
 ## v0.2.19 (2026-10-13)
 
