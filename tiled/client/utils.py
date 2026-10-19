@@ -1,4 +1,5 @@
 import builtins
+import enum
 import logging
 import os
 import sys
@@ -114,33 +115,6 @@ class ClientError(httpx.HTTPStatusError):
         super().__init__(message=message, request=request, response=response)
 
 
-def should_retry(exception: Exception) -> "bool | float":
-    if isinstance(exception, httpx.HTTPStatusError):
-        if exception.response.status_code == 429:
-            # Respect Retry-After header from load balancer / server.
-            # Return the delay as a float so stamina uses it as the wait time.
-            retry_after = exception.response.headers.get("Retry-After")
-            if retry_after is not None:
-                try:
-                    return float(retry_after)
-                except (ValueError, TypeError):
-                    pass
-            # No Retry-After header; retry with default backoff.
-            return True
-        return exception.response.status_code >= 500
-
-    # do not retry for unsupported protocol errors, eg "htps://"
-    if isinstance(exception, httpx.UnsupportedProtocol):
-        return False
-
-    # do not retry for local protocol errors, eg. carriage return in header value
-    if isinstance(exception, httpx.LocalProtocolError):
-        return False
-
-    # Otherwise retry on all httpx errors.
-    return isinstance(exception, httpx.HTTPError)
-
-
 # Transport errors that can occur only *after* the request has been handed to
 # the network layer: the server may have received and fully processed the
 # request even though the client never received the response.
@@ -152,34 +126,135 @@ SENT_REQUEST_TRANSPORT_ERRORS = (
     httpx.RemoteProtocolError,
 )
 
+# Transport errors that guarantee the request never left the client: the
+# connection was never established, or the request never left the local pool.
+CONNECT_PHASE_TRANSPORT_ERRORS = (
+    httpx.ConnectError,
+    httpx.ConnectTimeout,
+    httpx.PoolTimeout,
+)
+
+
+class FailureKind(enum.Enum):
+    """Classification of a failed request, by what the server may have done.
+
+    This is the single taxonomy behind the retry policies and idempotency
+    logic below. For non-idempotent requests the central question is "may
+    the mutation have happened on the server?".
+    """
+
+    # The request never left the client (connect-phase transport error).
+    # The server did not process it.
+    NEVER_SENT = "never_sent"
+
+    # The request was handed to the network layer but the response was lost
+    # (read/write-phase transport error). The server may have received and
+    # fully processed it.
+    RESPONSE_LOST = "response_lost"
+
+    # 429 rate-limit rejection: the server explicitly refused the request
+    # without processing it. Retry, honoring Retry-After.
+    REFUSED = "refused"
+
+    # 5xx response: the server or an intermediary (e.g. a proxy's 502/504)
+    # failed; the request may have been fully processed regardless.
+    SERVER_ERROR = "server_error"
+
+    # Any other HTTP error response: the server processed the request and
+    # rejected it. Retrying the same request cannot succeed.
+    REJECTED = "rejected"
+
+    # The request itself can never succeed: unsupported protocol (e.g. a
+    # "htps://" typo) or a local protocol violation (e.g. a carriage return
+    # in a header value). Retrying is pointless.
+    MALFORMED = "malformed"
+
+    # Anything else, including failures unrelated to HTTP.
+    OTHER = "other"
+
+
+def classify_failure(exception: Exception) -> FailureKind:
+    "Classify a failed request as one of `FailureKind`."
+    if isinstance(exception, httpx.HTTPStatusError):
+        status_code = exception.response.status_code
+        if status_code == 429:
+            return FailureKind.REFUSED
+        if status_code >= 500:
+            return FailureKind.SERVER_ERROR
+        return FailureKind.REJECTED
+    if isinstance(exception, CONNECT_PHASE_TRANSPORT_ERRORS):
+        return FailureKind.NEVER_SENT
+    if isinstance(exception, SENT_REQUEST_TRANSPORT_ERRORS):
+        return FailureKind.RESPONSE_LOST
+    if isinstance(exception, (httpx.UnsupportedProtocol, httpx.LocalProtocolError)):
+        return FailureKind.MALFORMED
+    return FailureKind.OTHER
+
+
+def _retry_after_wait(response: httpx.Response) -> "bool | float":
+    """Retry decision for a 429, honoring the Retry-After header.
+
+    Returns the delay as a float so stamina uses it as the wait time, or
+    True (retry with default backoff) when the header is absent or is not
+    a number (e.g. an HTTP date).
+    """
+    retry_after = response.headers.get("Retry-After")
+    if retry_after is not None:
+        try:
+            return float(retry_after)
+        except (ValueError, TypeError):
+            pass
+    return True
+
+
+def should_retry(exception: Exception) -> "bool | float":
+    """Default retry policy, for idempotent requests.
+
+    A float return value requests a specific wait time (seconds) before the
+    next attempt; see `_retry_after_wait`.
+    """
+    kind = classify_failure(exception)
+    if kind is FailureKind.REFUSED:
+        return _retry_after_wait(exception.response)
+    if kind in (
+        FailureKind.NEVER_SENT,
+        FailureKind.RESPONSE_LOST,
+        FailureKind.SERVER_ERROR,
+    ):
+        return True
+    if kind in (FailureKind.REJECTED, FailureKind.MALFORMED):
+        return False
+    # OTHER: retry any remaining httpx error (e.g. proxy or decoding
+    # errors); never retry failures unrelated to HTTP.
+    return isinstance(exception, httpx.HTTPError)
+
 
 def should_retry_if_unprocessed(exception: Exception) -> "bool | float":
     """Retry policy for non-idempotent requests (e.g. appending table rows).
 
     Retry only when the failure guarantees that the server never received or
-    processed the request: connection-phase transport errors (the connection
-    was never established, or the request never left the local pool) and 429
-    rate-limit rejections (the server explicitly refused without processing).
+    processed the request: `NEVER_SENT` and `REFUSED` (see `FailureKind`).
 
-    Read/write-phase transport errors (e.g. a read timeout) and 5xx responses
-    (e.g. a 502/504 from a proxy in front of a slow server) can occur *after*
-    the server has fully processed the request; retrying would apply the
-    mutation a second time (e.g. duplicate appended rows). Those errors are
-    raised to the caller instead.
+    `RESPONSE_LOST` and `SERVER_ERROR` failures can occur *after* the server has
+    fully processed the request; retrying would apply the mutation a second time
+    (e.g. duplicate appended rows). Those errors are raised to the caller instead.
     """
-    if isinstance(exception, httpx.HTTPStatusError):
-        if exception.response.status_code == 429:
-            # Same Retry-After handling as should_retry.
-            retry_after = exception.response.headers.get("Retry-After")
-            if retry_after is not None:
-                try:
-                    return float(retry_after)
-                except (ValueError, TypeError):
-                    pass
-            return True
-        return False
-    return isinstance(
-        exception, (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout)
+    kind = classify_failure(exception)
+    if kind is FailureKind.REFUSED:
+        return _retry_after_wait(exception.response)
+    return kind is FailureKind.NEVER_SENT
+
+
+def request_may_have_reached_server(exception: Exception) -> bool:
+    """Whether a failed request may nonetheless have been processed by the server.
+
+    True for `RESPONSE_LOST` and `SERVER_ERROR` failures (see `FailureKind`);
+    False otherwise. Non-idempotent flows use this to recognize, across retry
+    attempts, that a later "conflict" response may refer to their own earlier attempt.
+    """
+    return classify_failure(exception) in (
+        FailureKind.RESPONSE_LOST,
+        FailureKind.SERVER_ERROR,
     )
 
 
