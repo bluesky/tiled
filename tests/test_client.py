@@ -1,3 +1,4 @@
+import contextlib
 import logging
 import threading
 from pathlib import Path
@@ -14,7 +15,7 @@ from starlette.status import HTTP_400_BAD_REQUEST
 from tiled.adapters.array import ArrayAdapter
 from tiled.adapters.dataframe import DataFrameAdapter
 from tiled.adapters.mapping import MapAdapter
-from tiled.client import Context, from_context, from_profile, record_history
+from tiled.client import Context, from_context, from_profile, from_uri, record_history
 from tiled.client.logger import hide_logs, show_logs
 from tiled.client.utils import retry_context
 from tiled.profiles import load_profiles, paths
@@ -36,6 +37,22 @@ def test_configurable_max_connections():
     "max_connections is reflected in the semaphore on the Context."
     with Context.from_app(build_app(tree), max_connections=3) as context:
         assert context.max_connections == 3
+
+
+def test_from_uri_deprecated_parameters_warn():
+    # The deprecation warnings are emitted before any connection is
+    # attempted, so an unreachable address suffices; the connection error
+    # (single attempt -- stamina is deactivated in conftest) is suppressed.
+    unreachable = "http://127.0.0.1:9/api/v1"
+    with pytest.warns(UserWarning, match="username"):
+        with contextlib.suppress(Exception):
+            from_uri(unreachable, username="user")
+    with pytest.warns(UserWarning, match="auth_provider"):
+        with contextlib.suppress(Exception):
+            from_uri(unreachable, auth_provider="orcid")
+    with pytest.warns(UserWarning, match="prompt_for_reauthentication"):
+        with contextlib.suppress(Exception):
+            from_uri(unreachable, prompt_for_reauthentication=False)
 
 
 def test_client_version_check(caplog):
