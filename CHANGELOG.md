@@ -14,6 +14,13 @@ Write the date in place of the "Unreleased" in the case a new version is release
 ### Fixed
 
 - Improved the deletion of large subtrees with many associated assets (PostgreSQL only).
+- Metadata queries on SQLite compare the stored JSON value with its own type
+  again under SQLAlchemy 2.1 (e.g. `Eq("number", "0")` no longer matches a
+  stored `0`), and the `sqlalchemy <2.1` pin is removed.
+- `Eq(key, None)` and `NotEq(key, None)` work on SQLite (they raised an error)
+  and, as on PostgreSQL, match an explicit JSON null but not a missing key.
+- On SQLite, a `None` in an `In` or `NotIn` list matches an explicit JSON null
+  but not a missing key, as `Eq`/`NotEq` and the in-memory adapter do.
 
 ## v0.2.19 (2026-10-13)
 
