@@ -17,6 +17,8 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - Fixed client-side accumulation of metadata revisions across pages: a slice
   spanning more than one page (more than 100 revisions) returned subsequent
   pages as nested lists instead of revision records.
+- Fixed `CompositeClient.get_contents(maxlen=...)`, which kept requesting a
+  `None` URL when the pages were exhausted before reaching `maxlen`.
 
 ## v0.2.19 (2026-10-13)
 
