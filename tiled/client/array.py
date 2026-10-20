@@ -4,7 +4,6 @@ from typing import TYPE_CHECKING, Optional, Union
 
 import dask
 import dask.array
-import httpx
 import numpy
 from numpy.typing import NDArray
 
@@ -92,16 +91,6 @@ class _DaskArrayClient(BaseClient):
 
     def __array__(self, *args, **kwargs):
         return self.read().__array__(*args, **kwargs)
-
-    def _send(self, draft: RequestDraft) -> httpx.Response:
-        "Dispatch a `RequestDraft` through the shared HTTP client."
-        return self.context.http_client.request(
-            draft.method,
-            draft.url,
-            params=draft.params,
-            headers=draft.headers,
-            content=draft.content,
-        )
 
     def _get_block(self, block: NDBlock, block_slice: Optional[NDSlice] = None):
         """Fetch the data for one chunk (block) in a chunked array.

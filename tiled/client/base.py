@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Dict, List, Union
 from urllib.parse import parse_qs, urlparse
 
+import httpx
 import json_merge_patch
 import jsonpatch
 import orjson
@@ -17,6 +18,7 @@ from tiled.client.context import Context
 from ..structures.core import STRUCTURE_TYPES, Spec, StructureFamily
 from ..structures.data_source import DataSource
 from ..utils import UNCHANGED, DictView, ListView, patch_mimetypes, safe_json_dump
+from ._protocol.request import RequestDraft
 from .metadata_update import apply_update_patch
 from .utils import MSGPACK_MIME_TYPE, handle_error, normalize_specs, retry_context
 
@@ -125,7 +127,6 @@ class BaseClient:
     # but a common setting is 4K or 8K (for all the headers together).
     # As another reference point, Internet Explorer imposes a
     # 2048-character limit on URLs.
-    URL_CHARACTER_LIMIT = 2_000  # number of characters
 
     def __init__(
         self,
@@ -169,6 +170,16 @@ class BaseClient:
                 "cope with that."
             )
         return self._structure
+
+    def _send(self, draft: RequestDraft) -> httpx.Response:
+        "Dispatch a `RequestDraft` through the shared HTTP client."
+        return self.context.http_client.request(
+            draft.method,
+            draft.url,
+            params=draft.params,
+            headers=draft.headers,
+            content=draft.content,
+        )
 
     def login(self):
         """

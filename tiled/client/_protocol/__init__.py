@@ -13,6 +13,10 @@ Two levels of description are used, by convention:
 - A `RequestDraft` describes exactly one HTTP request, fully determined and
   pre-encoded. Builders named `draft_*` return one; operations with nothing
   to decode and no short-circuit (typically writes) need nothing more.
+  There is exactly one draft class: family semantics live in the builder
+  modules, shared wire mechanics live on `RequestDraft` itself (query
+  folding, `get_or_post`), and nothing downstream dispatches on a draft's
+  family -- that uniformity is what allows a single executor per shell.
 - A `*Recipe` dataclass (e.g. `ArrayReadRecipe`) describes one logical
   operation as a whole: the draft(s) of request(s) to send -- keyed by their
   place in the operation -- plus the pure context needed to interpret the

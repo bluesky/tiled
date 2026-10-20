@@ -27,7 +27,7 @@ from ...structures.array import ArrayStructure
 from ...structures.core import STRUCTURE_TYPES, StructureFamily
 from ...type_aliases import Chunks
 from ..utils import params_from_slice, slices_to_dask_chunks
-from .request import RequestDraft, merged_query_params
+from .request import RequestDraft
 
 # Status codes with which the server reports that patch parameters conflict
 # with the existing array (e.g. would overwrite without `extend=True`).
@@ -125,7 +125,7 @@ class ArrayReadRecipe:
         draft = RequestDraft(
             "GET",
             link,
-            params=merged_query_params(link, params),
+            params=params,
             headers={"Accept": OCTET_STREAM_MIMETYPE},
         )
         return cls({(0,) * len(expected_shape): draft}, dtype, single_tile)
@@ -194,7 +194,7 @@ def _draft_read_slice_request(
     return RequestDraft(
         "GET",
         link,
-        params=merged_query_params(link, params),
+        params=params,
         headers={"Accept": OCTET_STREAM_MIMETYPE},
     )
 
@@ -222,7 +222,7 @@ def draft_write_request(link: str, array: Any, persist: bool = True) -> RequestD
     return RequestDraft(
         "PUT",
         link,
-        params=merged_query_params(link, params),
+        params=params,
         headers={"Content-Type": OCTET_STREAM_MIMETYPE},
         content=array.tobytes(),
     )
@@ -250,7 +250,7 @@ def draft_write_block_request(
     return RequestDraft(
         "PUT",
         url,
-        params=merged_query_params(url, params),
+        params=params,
         headers={"Content-Type": OCTET_STREAM_MIMETYPE},
         content=array.tobytes(),
     )
@@ -278,7 +278,7 @@ def draft_patch_request(
     return RequestDraft(
         "PATCH",
         link,
-        params=merged_query_params(link, params),
+        params=params,
         headers={"Content-Type": OCTET_STREAM_MIMETYPE},
         content=array_.tobytes(),
     )

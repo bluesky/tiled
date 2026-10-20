@@ -8,8 +8,14 @@ import dask
 import dask.dataframe
 import httpx
 
-from ..serialization.table import deserialize_arrow, serialize_arrow
-from ..utils import APACHE_ARROW_FILE_MIME_TYPE, UNCHANGED
+from ..serialization.table import deserialize_arrow
+from ..utils import UNCHANGED
+from ._protocol.table import (
+    draft_append_partition_request,
+    draft_read_partition_request,
+    draft_write_partition_request,
+    draft_write_request,
+)
 from .base import BaseClient
 from .utils import (
     MSGPACK_MIME_TYPE,
@@ -23,8 +29,6 @@ from .utils import (
 
 if TYPE_CHECKING:
     from .stream import TableSubscription
-
-_EXTRA_CHARS_PER_ITEM = len("&column=")
 
 
 class _DaskDataFrameClient(BaseClient):
@@ -115,37 +119,13 @@ class _DaskDataFrameClient(BaseClient):
 
         See read_partition for a public version of this.
         """
-        URL_PATH = self.item["links"]["partition"]
-        params = {**parse_qs(urlparse(URL_PATH).query), "partition": partition}
-        url_length_for_get_request = len(URL_PATH) + sum(
-            _EXTRA_CHARS_PER_ITEM + len(column) for column in (columns or ())
+        draft = draft_read_partition_request(
+            self.item["links"]["partition"], partition, columns
         )
         with self.context.throttle():
-            if url_length_for_get_request > self.URL_CHARACTER_LIMIT:
-                for attempt in retry_context(self.context):
-                    with attempt:
-                        content = handle_error(
-                            self.context.http_client.post(
-                                URL_PATH,
-                                headers={"Accept": APACHE_ARROW_FILE_MIME_TYPE},
-                                json=columns,
-                                params=params,
-                            )
-                        ).read()
-            else:
-                if columns:
-                    # Note: The singular/plural inconsistency here is because
-                    # ["A", "B"] will be encoded in the URL as column=A&column=B
-                    params["column"] = columns
-                for attempt in retry_context(self.context):
-                    with attempt:
-                        content = handle_error(
-                            self.context.http_client.get(
-                                URL_PATH,
-                                headers={"Accept": APACHE_ARROW_FILE_MIME_TYPE},
-                                params=params,
-                            )
-                        ).read()
+            for attempt in retry_context(self.context):
+                with attempt:
+                    content = handle_error(self._send(draft)).read()
         if (ps := self.context.progress_state) is not None:
             ps.advance()
         return deserialize_arrow(content)
@@ -173,8 +153,7 @@ class _DaskDataFrameClient(BaseClient):
         )
 
     def read(self, columns=None):
-        """
-        Access the entire DataFrame. Optionally select a subset of the columns.
+        """Access the entire DataFrame. Optionally select a subset of the columns.
 
         The result will be internally partitioned with dask.
         """
@@ -230,17 +209,10 @@ class _DaskDataFrameClient(BaseClient):
     # of rows" which is expensive to compute.
 
     def write(self, dataframe):
+        draft = draft_write_request(self.item["links"]["full"], dataframe)
         for attempt in retry_context():
             with attempt:
-                handle_error(
-                    self.context.http_client.put(
-                        self.item["links"]["full"],
-                        content=bytes(
-                            serialize_arrow(APACHE_ARROW_FILE_MIME_TYPE, dataframe, {})
-                        ),
-                        headers={"Content-Type": APACHE_ARROW_FILE_MIME_TYPE},
-                    )
-                )
+                handle_error(self._send(draft))
 
     def write_partition(self, partition, dataframe):
         # The order of arguments has changed; check that the user input is correct
@@ -252,17 +224,12 @@ class _DaskDataFrameClient(BaseClient):
             )
             partition, dataframe = dataframe, partition
 
+        draft = draft_write_partition_request(
+            self.item["links"]["partition"], partition, dataframe
+        )
         for attempt in retry_context():
             with attempt:
-                handle_error(
-                    self.context.http_client.put(
-                        self.item["links"]["partition"].format(index=partition),
-                        content=bytes(
-                            serialize_arrow(APACHE_ARROW_FILE_MIME_TYPE, dataframe, {})
-                        ),
-                        headers={"Content-Type": APACHE_ARROW_FILE_MIME_TYPE},
-                    )
-                )
+                handle_error(self._send(draft))
 
     def append_partition(self, partition, dataframe):
         # The order of arguments has changed; check that the user input is correct
@@ -276,6 +243,9 @@ class _DaskDataFrameClient(BaseClient):
 
         if partition > self.structure().npartitions:
             raise ValueError(f"Table has {self.structure().npartitions} partitions")
+        draft = draft_append_partition_request(
+            self.item["links"]["partition"], partition, dataframe
+        )
         # Appending rows is not idempotent: if the server processed the request
         # but the response was lost (e.g. a read timeout or a 5xx from a proxy),
         # retrying would append the same rows a second time. Only retry errors
@@ -283,15 +253,7 @@ class _DaskDataFrameClient(BaseClient):
         # caller, who can inspect the table before deciding to re-append.
         for attempt in retry_context(on=should_retry_if_unprocessed):
             with attempt:
-                handle_error(
-                    self.context.http_client.patch(
-                        self.item["links"]["partition"].format(index=partition),
-                        content=bytes(
-                            serialize_arrow(APACHE_ARROW_FILE_MIME_TYPE, dataframe, {})
-                        ),
-                        headers={"Content-Type": APACHE_ARROW_FILE_MIME_TYPE},
-                    )
-                )
+                handle_error(self._send(draft))
 
     def export(self, filepath, columns=None, *, format=None):
         """

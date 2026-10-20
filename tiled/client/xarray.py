@@ -1,6 +1,5 @@
 import math
 import threading
-from urllib.parse import parse_qs, urlparse
 
 import dask
 import dask.array
@@ -9,7 +8,7 @@ import xarray
 from ..serialization.table import deserialize_arrow
 from ..structures.core import Spec
 from ..utils import APACHE_ARROW_FILE_MIME_TYPE
-from .base import BaseClient
+from ._protocol.request import RequestDraft
 from .container import Container
 from .utils import handle_error
 
@@ -142,9 +141,6 @@ class DatasetClient(DaskDatasetClient):
             return ds.load()
 
 
-_EXTRA_CHARS_PER_ITEM = len("&field=")
-
-
 class _WideTableFetcher:
     def __init__(self, http_client, link):
         self.http_client = http_client
@@ -170,51 +166,23 @@ class _WideTableFetcher:
     def dataframe(self):
         with self._lock:
             if self._dataframe is None:
-                # If self.variables contains many and/or lengthy names,
-                # we can bump into the URI size limit commonly imposed by
-                # HTTP stacks (e.g. nginx).
-                url_length_for_get_request = len(self.link) + sum(
-                    _EXTRA_CHARS_PER_ITEM + len(variable) for variable in self.variables
+                draft = RequestDraft.get_or_post(
+                    self.link,
+                    repeated_param="field",
+                    values=list(self.variables),
+                    params={"format": APACHE_ARROW_FILE_MIME_TYPE},
                 )
-                if url_length_for_get_request > BaseClient.URL_CHARACTER_LIMIT:
-                    dataframe = self._fetch_variables(self.variables, "POST")
-                else:
-                    dataframe = self._fetch_variables(self.variables, "GET")
-                self._dataframe = dataframe.reset_index()
+                content = handle_error(
+                    self.http_client.request(
+                        draft.method,
+                        draft.url,
+                        params=draft.params,
+                        headers=draft.headers,
+                        content=draft.content,
+                    )
+                ).read()
+                self._dataframe = deserialize_arrow(content).reset_index()
         return self._dataframe
-
-    def _fetch_variables(self, variables, method="GET"):
-        if method == "GET":
-            return self._fetch_variables__get(variables)
-        if method == "POST":
-            return self._fetch_variables__post(variables)
-        raise NotImplementedError(f"Method {method} is not supported")
-
-    def _fetch_variables__get(self, variables):
-        content = handle_error(
-            self.http_client.get(
-                self.link,
-                params={
-                    **parse_qs(urlparse(self.link).query),
-                    "format": APACHE_ARROW_FILE_MIME_TYPE,
-                    "field": variables,
-                },
-            )
-        ).read()
-        return deserialize_arrow(content)
-
-    def _fetch_variables__post(self, variables):
-        content = handle_error(
-            self.http_client.post(
-                self.link,
-                json=variables,
-                params={
-                    **parse_qs(urlparse(self.link).query),
-                    "format": APACHE_ARROW_FILE_MIME_TYPE,
-                },
-            )
-        ).read()
-        return deserialize_arrow(content)
 
 
 def write_xarray_dataset(client_node, dataset, key=None):

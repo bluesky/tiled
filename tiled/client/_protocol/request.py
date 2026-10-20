@@ -15,8 +15,12 @@ response (404 and the like), which the caller handles.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Iterable, Optional
+from typing import Any, ClassVar, Optional, Sequence
 from urllib.parse import parse_qs, urlparse
+
+import orjson
+
+from ...mimetypes import JSON_MIMETYPE
 
 
 @dataclass(frozen=True)
@@ -32,9 +36,11 @@ class RequestDraft:
         (`item["links"][...]`). It may itself carry a query string; see
         `params`.
     params : dict
-        Query parameters. When non-empty, they REPLACE the URL's own query
-        string (httpx semantics), so builders that add any parameter must
-        fold the link's own query into `params` with `merged_query_params`.
+        Query parameters. The URL's own query is folded in automatically at
+        construction, with explicitly passed parameters taking precedence.
+        The folding matters because shells pass `params` to httpx
+        unconditionally, and httpx REPLACES the URL's query string whenever
+        `params` is not None -- even an empty dict strips it.
     headers : dict
         HTTP headers, including `Content-Type` for requests with a body.
     content : bytes, optional
@@ -46,37 +52,64 @@ class RequestDraft:
         never encode bodies.
     """
 
+    # The longest URL the client sends in a GET request, in characters. A wire-level
+    # policy for the whole client: HTTP stacks (e.g. nginx) commonly impose a URI size limit.
+    URL_CHARACTER_LIMIT: ClassVar[int] = 2_000
+
     method: str
     url: str
     params: dict[str, Any] = field(default_factory=dict)
     headers: dict[str, str] = field(default_factory=dict)
     content: Optional[bytes] = None
 
+    @classmethod
+    def get_or_post(
+        cls,
+        url: str,
+        *,
+        repeated_param: str,
+        values: Optional[Sequence[str]],
+        params: Optional[dict] = None,
+        headers: Optional[dict] = None,
+    ) -> "RequestDraft":
+        """A GET with one repeated query parameter, or an equivalent POST.
 
-def merged_query_params(link: str, params: Optional[dict] = None) -> dict:
-    """Query parameters for a request to a link: the link's own, plus extras.
+        Tiled endpoints that select a subset via a repeated query parameter
+        (e.g. `?column=A&column=B`) accept, interchangeably, a POST with the
+        selection as a JSON list in the body. The POST form is used when the
+        GET URL would exceed `URL_CHARACTER_LIMIT`. `values=None` means no
+        selection (the endpoint's default); a fallback POST then carries no
+        body.
 
-    Server-provided links may carry query parameters of their own. httpx
-    replaces a URL's query string entirely when `params` is passed, so the
-    link's own parameters must be folded into the `params` dict to survive.
-    Explicitly passed `params` take precedence. Values parsed from the link
-    are lists (`parse_qs` form) while passed values keep their type; httpx
-    accepts both.
-    """
-    return {**parse_qs(urlparse(link).query), **(params or {})}
+        Exactly one parameter participates in the fallback: the body is an
+        unkeyed JSON list, so it can carry only one parameter's values. Other
+        repeated parameters may be passed via `params`; they stay in the URL.
+        """
+        extra_chars_per_item = len(f"&{repeated_param}=")
+        url_length = len(url) + sum(
+            extra_chars_per_item + len(value) for value in values or ()
+        )
+        if url_length > cls.URL_CHARACTER_LIMIT:
+            content = None
+            if values is not None:
+                content = orjson.dumps(list(values))
+                headers = {**(headers or {}), "Content-Type": JSON_MIMETYPE}
+            return cls(
+                "POST", url, params=params or {}, headers=headers or {}, content=content
+            )
+        params = dict(params or {})
+        if values:
+            params[repeated_param] = values
+        return cls("GET", url, params=params, headers=headers or {})
 
-
-def url_length_for_get_request(url: str, param_name: str, values: Iterable[str]) -> int:
-    """Length of a GET request URL with one repeated query parameter.
-
-    Used to decide between a GET with repeated query parameters (e.g.
-    `?column=A&column=B`) and an equivalent POST with the values in the
-    body, which avoids the URI size limit commonly imposed by HTTP stacks
-    (e.g. nginx). Compare the result against the applicable limit
-    (`BaseClient.URL_CHARACTER_LIMIT`).
-    """
-    extra_chars_per_item = len(f"&{param_name}=")
-    return len(url) + sum(extra_chars_per_item + len(v) for v in values)
+    def __post_init__(self) -> None:
+        # Fold the URL's own query into `params` (see the class docstring).
+        # Values parsed from the link are lists (`parse_qs` form) while
+        # passed values keep their type; httpx accepts both. The dataclass
+        # is frozen, so assign through `object.__setattr__`.
+        object.__setattr__(
+            self, "params", {**parse_qs(urlparse(self.url).query), **self.params}
+        )
 
 
 # The Tiled API exposes several facets of one node on sibling endpoints.

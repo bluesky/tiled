@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from tiled import profiles
 from tiled.catalog import from_uri, in_memory
 from tiled.client import Context, from_context
-from tiled.client.base import BaseClient
+from tiled.client._protocol.request import RequestDraft
 from tiled.config import Authentication
 from tiled.server.app import build_app
 from tiled.server.settings import get_settings
@@ -343,12 +343,12 @@ def url_limit(request: pytest.FixtureRequest):
     and by equivalent POST requests when the URL_CHARACTER_LIMIT is short.
     """
     URL_CHARACTER_LIMIT = int(request.param)
-    PREVIOUS_LIMIT = BaseClient.URL_CHARACTER_LIMIT
+    PREVIOUS_LIMIT = RequestDraft.URL_CHARACTER_LIMIT
     # Temporarily adjust the URL length limit to change client behavior.
-    BaseClient.URL_CHARACTER_LIMIT = URL_CHARACTER_LIMIT
+    RequestDraft.URL_CHARACTER_LIMIT = URL_CHARACTER_LIMIT
     yield
     # Then restore the original value.
-    BaseClient.URL_CHARACTER_LIMIT = PREVIOUS_LIMIT
+    RequestDraft.URL_CHARACTER_LIMIT = PREVIOUS_LIMIT
 
 
 @pytest.fixture

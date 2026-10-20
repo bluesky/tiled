@@ -7,6 +7,7 @@ from .utils import APACHE_ARROW_FILE_MIME_TYPE, OneShotCachedMap
 # This maps MIME types (i.e. file formats) for appropriate Readers.
 # OneShotCachedMap is used to defer imports. We don't want to pay up front
 # for importing Readers that we will not actually use.
+JSON_MIMETYPE = "application/json"
 OCTET_STREAM_MIMETYPE = "application/octet-stream"
 PARQUET_MIMETYPE = "application/x-parquet"
 SPARSE_BLOCKS_PARQUET_MIMETYPE = "application/x-parquet;structure=sparse"

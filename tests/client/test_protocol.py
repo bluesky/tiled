@@ -1,4 +1,4 @@
-"""Direct unit tests for the pure protocol layer (`tiled.client._protocol`).
+"""Unit tests for the pure protocol layer (`tiled.client._protocol`).
 
 These tests exercise request builders, URL/link helpers, and failure
 predicates as plain functions, with no server and no I/O.
@@ -7,6 +7,7 @@ predicates as plain functions, with no server and no I/O.
 import dataclasses
 
 import httpx
+import orjson
 import pytest
 
 from tiled.client._protocol.request import (
@@ -14,11 +15,9 @@ from tiled.client._protocol.request import (
     asset_bytes_link,
     asset_manifest_link,
     distinct_link,
-    merged_query_params,
     register_link,
     revisions_link,
     stream_close_link,
-    url_length_for_get_request,
 )
 from tiled.client.utils import (
     ClientError,
@@ -48,12 +47,12 @@ def test_request_draft_defaults_and_immutability():
 
 
 @pytest.mark.parametrize(
-    "link, params, expected",
+    "url, params, expected",
     [
-        # A link without a query contributes nothing.
-        ("http://example.com/x", None, {}),
+        # A URL without a query contributes nothing.
+        ("http://example.com/x", {}, {}),
         ("http://example.com/x", {"a": 1}, {"a": 1}),
-        # The link's own query parameters are folded in (parse_qs form).
+        # The URL's own query parameters are folded in (parse_qs form).
         (
             "http://example.com/x?baked=1&baked=2&other=z",
             {"a": 1},
@@ -61,18 +60,42 @@ def test_request_draft_defaults_and_immutability():
         ),
         # Explicitly passed parameters take precedence over baked ones.
         ("http://example.com/x?key=baked", {"key": "explicit"}, {"key": "explicit"}),
+        # The folding is what keeps baked queries alive: httpx strips a
+        # URL's query whenever `params` is not None, even an empty dict.
+        ("http://example.com/x?partition=3", {}, {"partition": ["3"]}),
     ],
 )
-def test_merged_query_params(link, params, expected):
-    assert merged_query_params(link, params) == expected
+def test_request_draft_folds_link_query_automatically(url, params, expected):
+    assert RequestDraft("GET", url, params=params).params == expected
 
 
-def test_url_length_for_get_request():
+def test_get_or_post_threshold(monkeypatch):
+    # The URL length that decides GET vs POST counts the URL plus each
+    # repeated `&column=<value>` pair; a URL exactly at the limit is still
+    # sent as a GET, one character over falls back to POST.
     url = "http://example.com/table/partition/x"
     columns = ["A", "longer_name"]
-    expected = len(url) + (len("&column=") + 1) + (len("&column=") + 11)
-    assert url_length_for_get_request(url, "column", columns) == expected
-    assert url_length_for_get_request(url, "column", []) == len(url)
+    url_length = len(url) + (len("&column=") + 1) + (len("&column=") + 11)
+    monkeypatch.setattr(RequestDraft, "URL_CHARACTER_LIMIT", url_length)
+    draft = RequestDraft.get_or_post(url, repeated_param="column", values=columns)
+    assert draft.method == "GET"
+    assert draft.params == {"column": columns}
+    monkeypatch.setattr(RequestDraft, "URL_CHARACTER_LIMIT", url_length - 1)
+    draft = RequestDraft.get_or_post(url, repeated_param="column", values=columns)
+    assert draft.method == "POST"
+    assert draft.content == orjson.dumps(columns)
+    assert draft.headers["Content-Type"] == "application/json"
+
+
+def test_get_or_post_without_values(monkeypatch):
+    # `values=None` means no selection; a fallback POST carries no body and
+    # no `Content-Type` header.
+    url = "http://example.com/table/partition/x"
+    monkeypatch.setattr(RequestDraft, "URL_CHARACTER_LIMIT", 0)
+    draft = RequestDraft.get_or_post(url, repeated_param="column", values=None)
+    assert draft.method == "POST"
+    assert draft.content is None
+    assert "Content-Type" not in draft.headers
 
 
 @pytest.mark.parametrize(
