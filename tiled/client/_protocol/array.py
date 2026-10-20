@@ -27,7 +27,7 @@ from ...structures.array import ArrayStructure
 from ...structures.core import STRUCTURE_TYPES, StructureFamily
 from ...type_aliases import Chunks
 from ..utils import params_from_slice, slices_to_dask_chunks
-from .request import RequestDraft
+from .request import RequestDraft, filled_link_template
 
 # Status codes with which the server reports that patch parameters conflict
 # with the existing array (e.g. would overwrite without `extend=True`).
@@ -242,7 +242,7 @@ def draft_write_block_request(
     """
     if not (hasattr(array, "shape") and hasattr(array, "dtype")):
         array = numpy.asarray(array)
-    url = link_template.format(*block)
+    url = filled_link_template(link_template, *block)
     params = params_from_slice(slice)
     if persist is False:
         # Extend the query only for non-default behavior.

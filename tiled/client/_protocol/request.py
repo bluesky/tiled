@@ -14,6 +14,7 @@ response (404 and the like), which the caller handles.
 
 from __future__ import annotations
 
+import string
 from dataclasses import dataclass, field
 from typing import Any, ClassVar, Optional, Sequence
 from urllib.parse import parse_qs, urlparse
@@ -110,6 +111,28 @@ class RequestDraft:
         object.__setattr__(
             self, "params", {**parse_qs(urlparse(self.url).query), **self.params}
         )
+
+
+def filled_link_template(template: str, *args: Any, **kwargs: Any) -> str:
+    """Fill a server-provided URL template, validating its placeholders.
+
+    Some server links are URL templates (e.g. `...?block={0},{1}` or
+    `...?partition={index}`). `str.format` silently ignores surplus
+    arguments, so a link without the expected placeholders would be used
+    unchanged -- addressing the wrong resource. The placeholders present in
+    the template must exactly account for the arguments provided.
+    """
+    fields = [
+        name for _, name, _, _ in string.Formatter().parse(template) if name is not None
+    ]
+    positional = sum(1 for name in fields if name == "" or name.isdigit())
+    named = {name for name in fields if name and not name.isdigit()}
+    if positional != len(args) or named != set(kwargs):
+        raise ValueError(
+            f"Link template {template!r} does not match the expected "
+            f"placeholders: {len(args)} positional and {sorted(kwargs)} named."
+        )
+    return template.format(*args, **kwargs)
 
 
 # The Tiled API exposes several facets of one node on sibling endpoints.

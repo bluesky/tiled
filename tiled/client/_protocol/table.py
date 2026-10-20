@@ -16,7 +16,7 @@ from typing import Any, Optional, Sequence
 
 from ...serialization.table import serialize_arrow
 from ...utils import APACHE_ARROW_FILE_MIME_TYPE
-from .request import RequestDraft
+from .request import RequestDraft, filled_link_template
 
 
 def draft_read_partition_request(
@@ -64,7 +64,7 @@ def draft_write_partition_request(
     The server provides the partition link as a URL template with an `index`
     placeholder, filled in with the partition index.
     """
-    url = link_template.format(index=partition)
+    url = filled_link_template(link_template, index=partition)
     return RequestDraft(
         "PUT",
         url,
@@ -82,7 +82,7 @@ def draft_append_partition_request(
     Appending is not idempotent, so the caller chooses a suitably conservative
     retry policy; the draft itself carries no retry semantics.
     """
-    url = link_template.format(index=partition)
+    url = filled_link_template(link_template, index=partition)
     return RequestDraft(
         "PATCH",
         url,

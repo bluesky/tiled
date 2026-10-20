@@ -22,7 +22,10 @@ Two levels of description are used, by convention:
   place in the operation -- plus the pure context needed to interpret the
   responses (e.g. `dtype` and chunk tiling for decoding and assembly).
   Classmethod constructors named `for_*` (after the endpoint or operation
-  they describe) build one; the shells carry it out. A recipe holds plain
+  they describe) build one; the shells carry it out. A recipe whose decode
+  context lives wholly on itself exposes a `parse(content)` method (sparse,
+  awkward, ragged); the array decode stays a standalone function because
+  dask tasks deliberately carry per-draft primitives, not the recipe. A recipe holds plain
   `RequestDraft`s directly (possibly with no entry at all where the result
   can be constructed without a request); recipes are never nested.
 """

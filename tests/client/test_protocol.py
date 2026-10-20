@@ -15,6 +15,7 @@ from tiled.client._protocol.request import (
     asset_bytes_link,
     asset_manifest_link,
     distinct_link,
+    filled_link_template,
     register_link,
     revisions_link,
     stream_close_link,
@@ -196,3 +197,39 @@ def test_retry_after_header_sets_wait_time():
     )
     assert should_retry(exc) is True
     assert should_retry_if_unprocessed(exc) is True
+
+
+@pytest.mark.parametrize(
+    "template, args, kwargs, expected",
+    [
+        ("http://x/block/a?block={0},{1}", (1, 0), {}, "http://x/block/a?block=1,0"),
+        (
+            "http://x/partition/a?partition={index}",
+            (),
+            {"index": 2},
+            "http://x/partition/a?partition=2",
+        ),
+        # A 0-dimensional block legitimately has no placeholders.
+        ("http://x/block/a?block=", (), {}, "http://x/block/a?block="),
+    ],
+)
+def test_filled_link_template(template, args, kwargs, expected):
+    assert filled_link_template(template, *args, **kwargs) == expected
+
+
+@pytest.mark.parametrize(
+    "template, args, kwargs",
+    [
+        # A link without the expected placeholders would otherwise be used
+        # unchanged, silently addressing the wrong resource.
+        ("http://x/full/a", (1, 0), {}),
+        ("http://x/full/a", (), {"index": 2}),
+        # Too few arguments for the template's placeholders.
+        ("http://x/block/a?block={0},{1}", (1,), {}),
+        # Named/positional mismatch.
+        ("http://x/partition/a?partition={index}", (2,), {}),
+    ],
+)
+def test_filled_link_template_mismatch_raises(template, args, kwargs):
+    with pytest.raises(ValueError):
+        filled_link_template(template, *args, **kwargs)
