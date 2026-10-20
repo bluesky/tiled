@@ -89,7 +89,7 @@ For non-interactive authentication, use an API key or add custom auth
         warnings.warn(
             "Tiled no longer accepts 'auth_provider' parameter. " + EXPLAIN_LOGIN
         )
-    if auth_provider is not None:
+    if prompt_for_reauthentication is not None:
         warnings.warn(
             "Tiled no longer accepts 'prompt_for_reauthentication' parameter. "
             + EXPLAIN_LOGIN
@@ -180,6 +180,7 @@ def from_context(
                 context.http_client.get(
                     item_uri,
                     headers={"Accept": MSGPACK_MIME_TYPE},
+                    params=params,
                 )
             ).json()
     item = content["data"]

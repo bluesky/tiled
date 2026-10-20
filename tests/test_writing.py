@@ -587,6 +587,38 @@ def test_metadata_revisions_pagination(tree):
         assert revision_numbers == [1, 2, 3]
 
 
+def test_metadata_revisions_slice_multiple_pages(tree):
+    # The client fetches an unbounded revisions slice in server-sized pages
+    # (100 by default) and accumulates the revisions from all pages into a
+    # single flat list of revision records.
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        ac = client.write_array([1, 2, 3], key="paginate_revisions_client")
+        num_revisions = 102  # Two server pages: 100 + 2.
+        for i in range(num_revisions):
+            ac.replace_metadata(metadata={"a": i})
+        revisions = ac.metadata_revisions[:]
+        assert len(revisions) == num_revisions
+        assert all(isinstance(revision, dict) for revision in revisions)
+        revision_numbers = [r["revision_number"] for r in revisions]
+        assert revision_numbers == list(range(1, num_revisions + 1))
+
+
+def test_from_context_node_path_include_data_sources(tree):
+    # from_context passes include_data_sources through to the initial
+    # metadata fetch, so a client pointed directly at a node (via
+    # node_path_parts) sees its data sources without an extra refresh.
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        client.write_array([1, 2, 3], key="leaf_with_data_sources")
+        leaf = from_context(
+            context,
+            node_path_parts=["leaf_with_data_sources"],
+            include_data_sources=True,
+        )
+        assert leaf.data_sources()
+
+
 def test_replace_metadata(tiled_websocket_context):
     context = tiled_websocket_context
     client = from_context(context)
