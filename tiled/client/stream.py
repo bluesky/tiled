@@ -642,6 +642,7 @@ class TableSubscription(Subscription):
 
 class UnparseableMessage(RuntimeError):
     "Message can be decoded but cannot be interpreted by the application"
+
     pass
 
 

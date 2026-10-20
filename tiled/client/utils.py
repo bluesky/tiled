@@ -643,7 +643,7 @@ def chunks_repr(chunks: Chunks) -> str:
 
 
 def normalize_specs(
-    specs: Optional[Union[list[str], list[Spec], str]]
+    specs: Optional[Union[list[str], list[Spec], str]],
 ) -> Optional[list[dict[str, str]]]:
     "Represent a list of Spec objects or strings as a list of dicts"
 
