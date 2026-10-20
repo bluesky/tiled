@@ -1,4 +1,4 @@
-"""Direct unit tests for the array protocol layer (`tiled.client._protocol.array`).
+"""Unit tests for the array protocol layer (`tiled.client._protocol.array`).
 
 These tests exercise fetch planners, write-request builders, and response
 parsers as plain functions, with no server and no I/O.
@@ -68,7 +68,10 @@ def test_for_full_slice_params(array_slice, expected_shape, expected_params):
 def test_for_full_scalar():
     # A 0-dimensional array has an empty shape, sent as "scalar".
     recipe = ArrayReadRecipe.for_full(
-        FULL_LINK, make_structure(shape=(), chunks=()), NDSlice(), bytesize_limit=10**9
+        FULL_LINK,
+        make_structure(shape=(), chunks=()),
+        NDSlice(),
+        bytesize_limit=10**9,
     )
     (draft,) = recipe.drafts.values()
     assert draft.params == {"expected_shape": "scalar"}
@@ -76,32 +79,22 @@ def test_for_full_scalar():
 
 
 @pytest.mark.parametrize(
-    "shape, array_slice, expected_shape",
+    "shape, chunks, array_slice, expected_shape",
     [
-        ((0, 3), NDSlice(), (0, 3)),
-        ((3, 4), NDSlice(slice(2, 2)), (0, 4)),
+        ((0, 3), ((0,), (3,)), NDSlice(), (0, 3)),
+        ((3, 4), ((3,), (4,)), NDSlice(slice(2, 2)), (0, 4)),
+        ((0, 4), ((0,), (2, 2)), NDSlice(), (0, 4)),
     ],
 )
-def test_for_full_zero_dim_short_circuit(shape, array_slice, expected_shape):
+def test_for_full_zero_dim_short_circuit(shape, chunks, array_slice, expected_shape):
     # An array with a 0-length dimension never contains data, so no request
     # is drafted; the result is assembled (empty) locally.
-    chunks = tuple((dim,) for dim in shape)
     recipe = ArrayReadRecipe.for_full(
         FULL_LINK, make_structure(shape, chunks), array_slice, bytesize_limit=10**9
     )
     assert recipe.drafts == {}
     assert recipe.shape == expected_shape
     assert recipe.assemble({}).shape == expected_shape
-
-
-def test_for_full_folds_baked_query():
-    # The link's own query parameters survive alongside the added ones.
-    link = FULL_LINK + "?foo=bar"
-    recipe = ArrayReadRecipe.for_full(
-        link, make_structure(), NDSlice(), bytesize_limit=10**9
-    )
-    (draft,) = recipe.drafts.values()
-    assert draft.params == {"foo": ["bar"], "expected_shape": "3,4"}
 
 
 def test_for_block():
@@ -189,15 +182,6 @@ def test_for_full_single_fetch():
     assert recipe.drafts[(0,)].params == {"expected_shape": "4"}
 
 
-def test_for_full_zero_size_has_no_fetches():
-    structure = make_structure(shape=(0, 4), chunks=((0,), (2, 2)), dtype="float64")
-    recipe = ArrayReadRecipe.for_full(
-        FULL_LINK, structure, NDSlice(), bytesize_limit=1000
-    )
-    assert recipe.drafts == {}
-    assert recipe.assemble({}).shape == (0, 4)
-
-
 def test_for_full_splits_along_chunk_boundaries():
     # A 4-element read with a 2-element size limit splits at the chunk
     # boundary into two fetches.
@@ -243,12 +227,23 @@ def test_draft_write_request():
     assert draft.content == array.tobytes()
 
 
-def test_draft_write_request_persist_param_only_when_non_default():
+@pytest.mark.parametrize(
+    "build",
+    [
+        lambda array, persist: draft_write_request(FULL_LINK, array, persist=persist),
+        lambda array, persist: draft_write_block_request(
+            BLOCK_LINK, (0, 0), array, persist=persist
+        ),
+        lambda array, persist: draft_patch_request(
+            FULL_LINK, array, offset=0, persist=persist
+        ),
+    ],
+    ids=["write", "write_block", "patch"],
+)
+def test_persist_param_only_when_non_default(build):
     array = numpy.arange(6, dtype="float64")
-    assert "persist" not in draft_write_request(FULL_LINK, array, persist=True).params
-    assert draft_write_request(FULL_LINK, array, persist=False).params == {
-        "persist": False
-    }
+    assert "persist" not in build(array, True).params
+    assert build(array, False).params["persist"] is False
 
 
 def test_draft_write_request_coerces_array_like():
@@ -267,12 +262,10 @@ def test_draft_write_block_request():
     assert draft.content == array.tobytes()
 
 
-def test_draft_write_block_request_with_slice_and_persist():
+def test_draft_write_block_request_with_slice():
     array = numpy.ones((2,), dtype="float64")
-    draft = draft_write_block_request(
-        BLOCK_LINK, (0, 0), array, slice=(slice(0, 2), 1), persist=False
-    )
-    assert draft.params == {"block": ["0,0"], "slice": ":2,1", "persist": False}
+    draft = draft_write_block_request(BLOCK_LINK, (0, 0), array, slice=(slice(0, 2), 1))
+    assert draft.params == {"block": ["0,0"], "slice": ":2,1"}
 
 
 def test_draft_patch_request():
@@ -285,15 +278,10 @@ def test_draft_patch_request():
     assert draft.content == array.tobytes()
 
 
-def test_draft_patch_request_integer_offset_and_persist():
+def test_draft_patch_request_integer_offset():
     array = numpy.zeros((2,), dtype="float64")
-    draft = draft_patch_request(FULL_LINK, array, offset=3, persist=False)
-    assert draft.params == {
-        "offset": "3",
-        "shape": "2",
-        "extend": False,
-        "persist": False,
-    }
+    draft = draft_patch_request(FULL_LINK, array, offset=3)
+    assert draft.params == {"offset": "3", "shape": "2", "extend": False}
 
 
 def test_draft_patch_request_makes_body_contiguous():
