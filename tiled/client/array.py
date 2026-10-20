@@ -1,8 +1,6 @@
 import concurrent.futures
-import itertools
 import math
 from typing import TYPE_CHECKING, Optional, Union
-from urllib.parse import parse_qs, urlparse
 
 import dask
 import dask.array
@@ -10,8 +8,19 @@ import httpx
 import numpy
 from numpy.typing import NDArray
 
-from ..ndslice import NDBlock, NDSlice, split_slice
-from ..structures.core import STRUCTURE_TYPES
+from ..ndslice import NDBlock, NDSlice
+from ._protocol.array import (
+    PATCH_CONFLICT_STATUS_CODES,
+    ArrayReadRecipe,
+    draft_patch_request,
+    draft_write_block_request,
+    draft_write_request,
+    empty_array,
+    parse_array_response,
+    parse_patch_response,
+    patch_conflict_message,
+)
+from ._protocol.request import RequestDraft
 from .base import BaseClient
 from .utils import (
     chunks_repr,
@@ -19,7 +28,6 @@ from .utils import (
     handle_error,
     params_from_slice,
     retry_context,
-    slices_to_dask_chunks,
 )
 
 if TYPE_CHECKING:
@@ -85,6 +93,16 @@ class _DaskArrayClient(BaseClient):
     def __array__(self, *args, **kwargs):
         return self.read().__array__(*args, **kwargs)
 
+    def _send(self, draft: RequestDraft) -> httpx.Response:
+        "Dispatch a `RequestDraft` through the shared HTTP client."
+        return self.context.http_client.request(
+            draft.method,
+            draft.url,
+            params=draft.params,
+            headers=draft.headers,
+            content=draft.content,
+        )
+
     def _get_block(self, block: NDBlock, block_slice: Optional[NDSlice] = None):
         """Fetch the data for one chunk (block) in a chunked array.
 
@@ -106,91 +124,29 @@ class _DaskArrayClient(BaseClient):
         block_slice : NDSlice, optional
             A slice within this block to return.
         """
+        recipe = ArrayReadRecipe.for_block(
+            self.item["links"]["block"], self.structure(), block, block_slice
+        )
+        if not recipe.drafts:
+            # An array with 0 as one of its dimensions never contains data,
+            # so we can short-circuit here without contacting the service.
+            return empty_array(recipe.dtype, recipe.shape)
+        ((index, draft),) = recipe.drafts.items()
+        return self._fetch_one(draft, recipe.dtype, recipe.shape_of_draft(index))
 
-        media_type = "application/octet-stream"
+    def _fetch_one(self, draft: RequestDraft, dtype, expected_shape: tuple[int, ...]):
+        """Send one read request and decode the response.
 
-        # Determine the expected shape of the resulting array after slicing
-        exp_shape = []
-        # Expand the block to convert for URL
-        block = block.expand_for_shape([len(dim) for dim in self.chunks])
-        if shape := block.shape_from_chunks(self.chunks):
-            exp_shape = block_slice.shape_after_slice(shape) if block_slice else shape
-            # Check for special case of shape with 0 in it.
-            if 0 in exp_shape:
-                # This is valid, and it has come up in the wild.  An array with
-                # 0 as one of the dimensions never contains data, so we can
-                # short-circuit here without any further information from the
-                # service.
-                return numpy.array([], dtype=self.dtype).reshape(exp_shape)
-
-        url_path = self.item["links"]["block"]
-        params = {
-            **parse_qs(urlparse(url_path).query),
-            "block": block.to_numpy_str(),
-            "expected_shape": ",".join(map(str, exp_shape)) or "scalar",
-        }
-        params = params | ({"slice": block_slice.to_numpy_str()} if block_slice else {})
-        with self.context.throttle():
-            for attempt in retry_context(self.context):
-                with attempt:
-                    content = handle_error(
-                        self.context.http_client.get(
-                            url_path,
-                            headers={"Accept": media_type},
-                            params=params,
-                        )
-                    ).read()
-        if (ps := self.context.progress_state) is not None:
-            ps.advance()
-        return numpy.frombuffer(content, dtype=self.dtype).reshape(exp_shape)
-
-    def _get_slice(self, slice: NDSlice):
-        """Fetch the data for a slice of the full array
-
-        This private method is used internally by the client and requires the
-        `slice` argument to be pre-cast as an NDSlice type.
-
-        The request is made to the `/array/full` endpoint.
-
-        See read() for a public version of this.
-
-        Parameters
-        ----------
-        slice : NDSlice
-            A slice of the array to return, pass NDSlice() to return the whole array.
+        The single executor for every array fetch, standalone (`read_block`)
+        or as one task of a split read.
         """
-
-        media_type = "application/octet-stream"
-
-        # Determine the expected shape of the resulting array after slicing
-        exp_shape = slice.shape_after_slice(self.shape) if slice else self.shape
-
-        # Check for special case of shape with 0 in it.
-        if 0 in exp_shape:
-            # This is valid, and it has come up in the wild.  An array with
-            # 0 as one of the dimensions never contains data, so we can
-            # short-circuit here without any further information from the service.
-            return numpy.array([], dtype=self.dtype).reshape(exp_shape)
-
-        url_path = self.item["links"]["full"]
-        params = {
-            **parse_qs(urlparse(url_path).query),
-            "expected_shape": ",".join(map(str, exp_shape)) or "scalar",
-        }
-        params = params | ({"slice": slice.to_numpy_str()} if slice else {})
         with self.context.throttle():
             for attempt in retry_context(self.context):
                 with attempt:
-                    content = handle_error(
-                        self.context.http_client.get(
-                            url_path,
-                            headers={"Accept": media_type},
-                            params=params,
-                        )
-                    ).read()
+                    content = handle_error(self._send(draft)).read()
         if (ps := self.context.progress_state) is not None:
             ps.advance()
-        return numpy.frombuffer(content, dtype=self.dtype).reshape(exp_shape)
+        return parse_array_response(content, dtype, expected_shape)
 
     def read_block(self, block, slice=None):
         """Access the data for one block of this chunked (dask) array.
@@ -220,123 +176,78 @@ class _DaskArrayClient(BaseClient):
     def fetch_count(self, slice=None) -> int:
         """Return the number of HTTP requests that read(slice) will make.
 
-        Mirrors the split logic in read() so that callers (e.g. CompositeClient)
-        can compute an accurate progress-bar total without triggering any fetches.
+        Callers (e.g. CompositeClient) use this to compute an accurate
+        progress-bar total without triggering any fetches.
         """
-        arr_slice = NDSlice(slice).expand_for_shape(self.shape)
-        exp_shape = arr_slice.shape_after_slice(self.shape)
-        if 0 in exp_shape:
-            return 0
-        total_bytes = math.prod(exp_shape) * self.dtype.itemsize
-        if total_bytes < self.RESPONSE_BYTESIZE_LIMIT:
-            return 1
-        chunk_bounds = tuple(
-            tuple(itertools.accumulate(axis_chunks, initial=0))
-            for axis_chunks in self.chunks
+        recipe = ArrayReadRecipe.for_full(
+            self.item["links"]["full"],
+            self.structure(),
+            NDSlice(slice),
+            self.RESPONSE_BYTESIZE_LIMIT,
         )
-        indexed_slices = split_slice(
-            arr_slice,
-            max_size=self.RESPONSE_BYTESIZE_LIMIT // self.dtype.itemsize,
-            pref_splits=chunk_bounds,
-        )
-        return len(indexed_slices)
+        return len(recipe.drafts)
 
     def read(self, slice=None):
         """Access the entire array or its slice
 
         The array will be internally chunked with dask.
         """
+        recipe = ArrayReadRecipe.for_full(
+            self.item["links"]["full"],
+            self.structure(),
+            NDSlice(slice),
+            self.RESPONSE_BYTESIZE_LIMIT,
+        )
 
-        # Determine the expected shape of the resulting array after slicing
-        if arr_slice := NDSlice(slice):
-            arr_slice = arr_slice.expand_for_shape(self.shape)  # Remove "..."
-        exp_shape = arr_slice.shape_after_slice(self.shape)
-        total_bytes = math.prod(exp_shape) * self.dtype.itemsize
+        # An array with 0 as one of its dimensions never contains data, so
+        # it is constructed locally without contacting the service.
+        if not recipe.drafts:
+            return dask.array.array([], dtype=recipe.dtype).reshape(recipe.shape)
 
-        # Check for special case of shape with 0 in it.
-        if 0 in exp_shape:
-            # This is valid, and it has come up in the wild.  An array with
-            # 0 as one of the dimensions never contains data, so we can
-            # short-circuit here without any further information from the service.
-            return dask.array.array([], dtype=self.dtype).reshape(exp_shape)
-
-        # If the expected response is small, fetch it in one go.
-        if total_bytes < self.RESPONSE_BYTESIZE_LIMIT:
-            dask_array = dask.array.from_delayed(
-                dask.delayed(self._get_slice)(arr_slice),
-                dtype=self.dtype,
-                shape=exp_shape,
+        # A read expected to be small is fetched in one request.
+        if len(recipe.drafts) == 1:
+            (draft,) = recipe.drafts.values()
+            return dask.array.from_delayed(
+                dask.delayed(self._fetch_one)(draft, recipe.dtype, recipe.shape),
+                dtype=recipe.dtype,
+                shape=recipe.shape,
             )
-            return dask_array
 
-        # The response is expected to be large, subslice it and recombine with dask
-        # Build chunk boundaries along each axis to find best candidate split points
-        chunk_bounds = tuple(
-            tuple(itertools.accumulate(axis_chunks, initial=0))
-            for axis_chunks in self.chunks
-        )
-        indexed_slices = split_slice(
-            arr_slice.expand_for_shape(self.shape),
-            max_size=self.RESPONSE_BYTESIZE_LIMIT // self.dtype.itemsize,
-            pref_splits=chunk_bounds,
-        )
-
-        # Build a client-side dask array whose chunks correspond to subsplits of the slice
+        # The response is expected to be large; build a client-side dask
+        # array whose chunks correspond to the recipe's sub-fetches.
         name = "remote-dask-array-" f"{self.uri}"
         dask_tasks = {
-            (name,) + indx: (self._get_slice, slc)
-            for indx, (slc) in indexed_slices.items()
+            (name,)
+            + index: (
+                self._fetch_one,
+                draft,
+                recipe.dtype,
+                recipe.shape_of_draft(index),
+            )
+            for index, draft in recipe.drafts.items()
         }
         dask_array = dask.array.Array(
             name=name,
             dask=dask_tasks,
-            dtype=self.dtype,
-            chunks=slices_to_dask_chunks(indexed_slices, self.shape),
-            shape=exp_shape,
+            dtype=recipe.dtype,
+            chunks=recipe.tiling,
+            shape=recipe.shape,
         )
         return dask_array
 
     def write(self, array, persist=True):
-        if not (hasattr(array, "shape") and hasattr(array, "dtype")):
-            array = numpy.asarray(array)
-
-        params = {}
-        if persist is False:
-            # Extend the query only for non-default behavior.
-            params["persist"] = persist
+        draft = draft_write_request(self.item["links"]["full"], array, persist)
         for attempt in retry_context():
             with attempt:
-                handle_error(
-                    self.context.http_client.put(
-                        self.item["links"]["full"],
-                        content=array.tobytes(),
-                        headers={"Content-Type": "application/octet-stream"},
-                        params=params,
-                    )
-                )
+                handle_error(self._send(draft))
 
     def write_block(self, array, block, slice=..., persist=True):
-        if not (hasattr(array, "shape") and hasattr(array, "dtype")):
-            array = numpy.asarray(array)
-
-        url_path = self.item["links"]["block"].format(*block)
-        params = {
-            **parse_qs(urlparse(url_path).query),
-            **params_from_slice(slice),
-        }
-        if persist is False:
-            # Extend the query only for non-default behavior.
-            params["persist"] = persist
+        draft = draft_write_block_request(
+            self.item["links"]["block"], block, array, slice, persist
+        )
         for attempt in retry_context():
             with attempt:
-                handle_error(
-                    self.context.http_client.put(
-                        url_path,
-                        content=array.tobytes(),
-                        headers={"Content-Type": "application/octet-stream"},
-                        params=params,
-                    )
-                )
+                handle_error(self._send(draft))
 
     def patch(
         self,
@@ -404,44 +315,17 @@ class _DaskArrayClient(BaseClient):
                 f"Data given to patch has dtype {array.dtype} which does not "
                 f"match the dtype of this array {self.dtype}."
             )
-        array_ = numpy.ascontiguousarray(array)
-        if isinstance(offset, int):
-            offset = (offset,)
-        url_path = self.item["links"]["full"]
-        params = {
-            **parse_qs(urlparse(url_path).query),
-            "offset": ",".join(map(str, offset)),
-            "shape": ",".join(map(str, array_.shape)),
-            "extend": bool(extend),
-        }
-        if persist is False:
-            # Extend the query only for non-default behavior.
-            params["persist"] = persist
+        draft = draft_patch_request(
+            self.item["links"]["full"], array, offset, extend, persist
+        )
         for attempt in retry_context():
             with attempt:
-                response = self.context.http_client.patch(
-                    url_path,
-                    content=array_.tobytes(),
-                    headers={"Content-Type": "application/octet-stream"},
-                    params=params,
-                )
-                if response.status_code in [
-                    httpx.codes.BAD_REQUEST,
-                    httpx.codes.CONFLICT,
-                ]:
-                    raise ValueError(
-                        response.json()
-                        .get("detail", "Array parameters conflict.")
-                        .replace(
-                            "Use ?",  # URL query param
-                            "Pass keyword argument ",  # Python function argument
-                        )
-                    )
+                response = self._send(draft)
+                if response.status_code in PATCH_CONFLICT_STATUS_CODES:
+                    raise ValueError(patch_conflict_message(response.json()))
                 handle_error(response)
         # Update cached structure.
-        new_structure = response.json()
-        structure_type = STRUCTURE_TYPES[self.structure_family]
-        self._structure = structure_type.from_json(new_structure)
+        self._structure = parse_patch_response(response.json(), self.structure_family)
 
     def __getitem__(self, slice):
         return self.read(slice)

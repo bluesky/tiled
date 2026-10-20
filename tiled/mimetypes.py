@@ -7,6 +7,7 @@ from .utils import APACHE_ARROW_FILE_MIME_TYPE, OneShotCachedMap
 # This maps MIME types (i.e. file formats) for appropriate Readers.
 # OneShotCachedMap is used to defer imports. We don't want to pay up front
 # for importing Readers that we will not actually use.
+OCTET_STREAM_MIMETYPE = "application/octet-stream"
 PARQUET_MIMETYPE = "application/x-parquet"
 SPARSE_BLOCKS_PARQUET_MIMETYPE = "application/x-parquet;structure=sparse"
 ZARR_MIMETYPE = "application/x-zarr"
@@ -16,7 +17,7 @@ TILED_SQL_TABLE_MIMETYPE = "application/x-tiled-sql-table"
 # TODO: make type[Adapter] after #1047
 DEFAULT_ADAPTERS_BY_MIMETYPE = OneShotCachedMap[str, type](
     {
-        "application/octet-stream": lambda: importlib.import_module(
+        OCTET_STREAM_MIMETYPE: lambda: importlib.import_module(
             "..adapters.bytes", __name__
         ).BytesAdapter,
         "image/tiff": lambda: importlib.import_module(
