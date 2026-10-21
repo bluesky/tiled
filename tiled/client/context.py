@@ -175,6 +175,8 @@ class Context:
         *,
         headers=None,
         api_key=None,
+        auth: Optional[httpx.Auth] = None,
+        cookies=None,
         cache=UNSET,
         timeout=None,
         verify=True,
@@ -186,6 +188,11 @@ class Context:
     ):
         # The uri is expected to reach the root API route.
         uri = httpx.URL(uri)
+        if auth is not None and not isinstance(auth, httpx.Auth):
+            raise ValueError(
+                f"Tiled client auth parameter has been set with {type(auth)}. "
+                "httpx.Auth or None allowed."
+            )
         headers = headers or {}
         # Define this here instead of at module scope so that the SUPPORTED_DECODERS
         # may be modified before Context instantiation.
@@ -246,6 +253,8 @@ class Context:
                 verify=verify,
                 timeout=timeout,
                 follow_redirects=True,
+                auth=auth,
+                cookies=cookies,
             )
             # Do this in the setter to avoid being overwritten.
             client.headers = headers
@@ -317,7 +326,6 @@ class Context:
         # Make an initial "safe" request to:
         # (1) Get the server_info.
         # (2) Let the server set the CSRF cookie.
-        # No authentication has been set up yet, so these requests will be unauthenticated.
         # https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#double-submit-cookie
         for attempt in retry_context(self):
             with attempt:
@@ -352,7 +360,7 @@ class Context:
             else None
         )
         # To determine httpx.Auth used by Tiled client is TiledAuth(internal) or external Auth
-        self.has_external_auth = False
+        self.has_external_auth = auth is not None
 
     def __repr__(self):
         auth_info = []
@@ -694,6 +702,8 @@ class Context:
         *,
         headers=None,
         api_key=None,
+        auth: Optional[httpx.Auth] = None,
+        cookies=None,
         cache=UNSET,
         timeout=None,
         verify=True,
@@ -755,6 +765,8 @@ class Context:
             api_uri,
             headers=headers,
             api_key=api_key,
+            auth=auth,
+            cookies=cookies,
             cache=cache,
             timeout=timeout,
             verify=verify,
