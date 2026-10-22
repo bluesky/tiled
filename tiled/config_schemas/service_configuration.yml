@@ -412,7 +412,24 @@ properties:
             provider: "pam"
             # Access tag definitions are read from the catalog database.
             access_tags_parser: "tiled.access_control.access_tags:AccessTagsParser"
+            # Optional: for how long (in seconds) the set of tags granted to a
+            # principal is reused before being re-derived by querying the
+            # compiled grant tables -- an expensive operation for principals
+            # with many tags. (This only reads the output of the access tags
+            # compiler; the compiler itself never runs as part of a request.)
+            # A fixed window per entry (a cache hit does not extend it),
+            # shared by all requests in the server process. Within a process
+            # the cache is invalidated immediately when the compiled tags
+            # change; changes made by other processes (e.g. a standalone
+            # compiler service) take effect within one TTL.
+            # Set to 0 to disable caching. Default: 60.
+            granted_tags_cache_ttl: 60
           ```
+
+          The catalog similarly caches the resolution of tag names to tag
+          ids, per catalog database, with the same semantics; its TTL is set
+          by the environment variable `TILED_ACCESS_TAG_IDS_CACHE_TTL`
+          (seconds, default 60).
       args:
         type: object
         additionalProperties: true

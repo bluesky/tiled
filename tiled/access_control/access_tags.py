@@ -13,7 +13,7 @@ from ..graph import orm as graph_orm
 from ..server.connection_pool import get_database_engine
 from ..server.schemas import PrincipalType
 from ..utils import InterningLoader
-from .protocols import PRINCIPAL_TAG_PREFIXES
+from .protocols import PRINCIPAL_TAG_PREFIXES, mark_compiled_tags_changed
 from .scopes import validate_scopes
 
 # Name of the scope enum, shared by the PostgreSQL enum type and the SQLite
@@ -829,6 +829,7 @@ class AccessTagsCompiler:
             self.compiled_tag_owners,
             self.compiled_public,
         )
+        mark_compiled_tags_changed()
 
     def clear_raw_tags(self):
         self.roles = {}
