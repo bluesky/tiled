@@ -20,7 +20,7 @@ from tiled.structures.core import StructureFamily
 from tiled.structures.data_source import Asset, DataSource, Management
 from tiled.utils import safe_json_dump
 
-from .utils import fail_with_status_code
+from ..utils import fail_with_status_code
 
 pytestmark = pytest.mark.skipif(
     sys.platform == "win32", reason="Requires Redis service"

@@ -14,7 +14,7 @@ from tiled.config import Authentication
 from tiled.server.app import build_app
 from tiled.utils import import_object
 
-from .utils import Server
+from ..utils import Server
 
 
 @pytest.fixture(scope="module")
