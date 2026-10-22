@@ -25,12 +25,15 @@ response content back through the matching methods and functions.
 
 from __future__ import annotations
 
+import collections.abc
 import enum
 import uuid
+from copy import deepcopy
 from dataclasses import asdict, dataclass
 from typing import Any, NamedTuple, Optional, Sequence, Union
 
 import httpx
+import jsonpatch
 import orjson
 from packaging.version import Version
 
@@ -38,6 +41,7 @@ from ...structures.core import STRUCTURE_TYPES, StructureFamily, structure_from_
 from ...structures.data_source import DataSource
 from ...type_aliases import JSON
 from ...utils import patch_mimetypes, safe_json_dump
+from ..metadata_update import apply_update_patch
 from ..utils import (
     MSGPACK_MIME_TYPE,
     Specs,
@@ -97,6 +101,54 @@ def draft_request_patch_metadata(
         headers={"Content-Type": "application/json"},
         content=safe_json_dump(body),
     )
+
+
+def build_metadata_patches(
+    attributes: JSON,
+    metadata: Optional[JSON] = None,
+    specs: Optional[list] = None,
+    access_tags: Optional[list] = None,
+) -> tuple[Optional[list], Optional[list], Optional[list]]:
+    """Build JSON Patches (RFC 6902) expressing updates against `attributes`.
+
+    `metadata` is a `dict.update`-like specification (which may mark keys for
+    deletion with `tiled.client.metadata_update.DELETE_KEY`); `specs` and
+    `access_tags` are the desired complete lists. Each patch is computed by
+    diffing the node's current `attributes` against the updated state; None
+    means "do not touch this field".
+    """
+    if metadata is None:
+        metadata_patch = []
+    else:
+        if not isinstance(metadata, collections.abc.Mapping):
+            raise ValueError(
+                f"Metadata must serialize as a JSON object, cannot be {type(metadata)}."
+            )
+        md_copy = deepcopy(attributes["metadata"])
+        metadata_patch = jsonpatch.JsonPatch.from_diff(
+            attributes["metadata"],
+            apply_update_patch(md_copy, metadata),
+            dumps=orjson.dumps,
+        ).patch
+
+    if specs is None:
+        specs_patch = None
+    else:
+        sp_copy = [spec["name"] for spec in attributes["specs"]]
+        specs_patch = jsonpatch.JsonPatch.from_diff(
+            sp_copy, specs, dumps=orjson.dumps
+        ).patch
+
+    if not access_tags:
+        # An empty list of access_tags is a no-op.
+        access_tags_patch = None
+    else:
+        access_tags_copy = list(attributes["access_tags"])
+        access_tags_patch = jsonpatch.JsonPatch.from_diff(
+            access_tags_copy, access_tags, dumps=orjson.dumps
+        ).patch
+
+    return metadata_patch, specs_patch, access_tags_patch
 
 
 def merge_mutated_attributes(

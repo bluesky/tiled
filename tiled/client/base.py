@@ -1,4 +1,3 @@
-import collections.abc
 import time
 from collections.abc import MutableMapping
 from copy import deepcopy
@@ -17,6 +16,7 @@ from ..structures.core import Spec, StructureFamily, structure_from_json
 from ..structures.data_source import DataSource
 from ..utils import UNCHANGED, DictView, ListView, patch_mimetypes
 from ._protocol.node import (
+    build_metadata_patches,
     draft_request_asset_manifest,
     draft_request_patch_metadata,
     draft_request_refresh_node,
@@ -655,42 +655,9 @@ class BaseClient:
         >>> node.build_metadata_patches(metadata=md)  # Generate the patch
         """
 
-        if metadata is None:
-            metadata_patch = []
-        else:
-            if not isinstance(metadata, collections.abc.Mapping):
-                raise ValueError(
-                    f"Metadata must serialize as a JSON object, cannot be {type(metadata)}."
-                )
-            md_copy = deepcopy(self._item["attributes"]["metadata"])
-            metadata_patch = jsonpatch.JsonPatch.from_diff(
-                self._item["attributes"]["metadata"],
-                apply_update_patch(md_copy, metadata),
-                dumps=orjson.dumps,
-            ).patch
-
-        if specs is None:
-            specs_patch = None
-        else:
-            sp_copy = [spec["name"] for spec in self._item["attributes"]["specs"]]
-            specs_patch = (
-                []
-                if specs is None
-                else jsonpatch.JsonPatch.from_diff(
-                    sp_copy, specs, dumps=orjson.dumps
-                ).patch
-            )
-
-        if not access_tags:
-            # empty list of access_tags should be a no-op
-            access_tags_patch = None
-        else:
-            access_tags_copy = list(self._item["attributes"]["access_tags"])
-            access_tags_patch = jsonpatch.JsonPatch.from_diff(
-                access_tags_copy, access_tags, dumps=orjson.dumps
-            ).patch
-
-        return metadata_patch, specs_patch, access_tags_patch
+        return build_metadata_patches(
+            self._item["attributes"], metadata, specs, access_tags
+        )
 
     def _build_json_patch(self, origin, update_patch):
         """

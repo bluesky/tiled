@@ -16,6 +16,7 @@ import pytest
 from tiled.client._protocol.node import (
     CreateFailureAction,
     CreateNodeRecipe,
+    build_metadata_patches,
     draft_request_asset_manifest,
     draft_request_delete_node,
     draft_request_lookup_node,
@@ -546,3 +547,60 @@ def test_draft_request_delete_node():
     assert draft.url == f"{SELF_LINK}/c"
     assert draft.params == {"recursive": True, "external_only": False}
     assert draft.content is None
+
+
+def test_build_metadata_patches_metadata():
+    attributes = {
+        "metadata": {"a": 1, "b": {"c": 2}},
+        "specs": [{"name": "s1", "version": None}],
+        "access_tags": ["t1"],
+    }
+    metadata_patch, specs_patch, access_tags_patch = build_metadata_patches(
+        attributes, metadata={"b": {"c": 3}, "d": 4}
+    )
+    # The patch expresses a `dict.update`-like change against the current
+    # metadata: existing keys not mentioned are preserved.
+    assert apply_patch(
+        attributes["metadata"], metadata_patch, patch_mimetypes.JSON_PATCH
+    ) == {"a": 1, "b": {"c": 3}, "d": 4}
+    # Fields not submitted are not patched.
+    assert specs_patch is None
+    assert access_tags_patch is None
+
+
+def test_build_metadata_patches_delete_key():
+    from tiled.client.metadata_update import DELETE_KEY
+
+    attributes = {"metadata": {"a": 1, "b": 2}, "specs": [], "access_tags": []}
+    metadata_patch, _, _ = build_metadata_patches(
+        attributes, metadata={"b": DELETE_KEY}
+    )
+    assert apply_patch(
+        attributes["metadata"], metadata_patch, patch_mimetypes.JSON_PATCH
+    ) == {"a": 1}
+
+
+def test_build_metadata_patches_specs_and_access_tags():
+    attributes = {
+        "metadata": {},
+        "specs": [{"name": "s1", "version": None}],
+        "access_tags": ["t1"],
+    }
+    metadata_patch, specs_patch, access_tags_patch = build_metadata_patches(
+        attributes, specs=["s1", "s2"], access_tags=["t1", "t2"]
+    )
+    assert metadata_patch == []
+    # The specs patch is expressed against the current list of spec names.
+    assert apply_patch(["s1"], specs_patch, patch_mimetypes.JSON_PATCH) == ["s1", "s2"]
+    assert apply_patch(["t1"], access_tags_patch, patch_mimetypes.JSON_PATCH) == [
+        "t1",
+        "t2",
+    ]
+    # An empty list of access tags is a no-op, not a deletion.
+    _, _, empty_tags_patch = build_metadata_patches(attributes, access_tags=[])
+    assert empty_tags_patch is None
+
+
+def test_build_metadata_patches_rejects_non_mapping_metadata():
+    with pytest.raises(ValueError):
+        build_metadata_patches({"metadata": {}}, metadata=[1, 2, 3])
