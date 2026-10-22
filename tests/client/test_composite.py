@@ -21,7 +21,7 @@ from tiled.structures.data_source import Asset, DataSource, Management
 from tiled.structures.table import TableStructure
 from tiled.utils import ensure_uri
 
-from .utils import fail_with_status_code
+from ..utils import fail_with_status_code
 
 rng = numpy.random.default_rng(12345)
 
