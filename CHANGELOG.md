@@ -18,6 +18,13 @@ Write the date in place of the "Unreleased" in the case a new version is release
   Also, it is now not allowed to use two storage databases with the same
   database on different hosts.
 
+### Changed
+
+- `tiled.utils.Conflicts` now subclasses `ValueError`, and
+  `ArrayClient.patch` raises `Conflicts` when the server reports a 409
+  (e.g. the patch would overwrite data without `extend=True`), matching
+  `RaggedClient.patch`. Code catching `ValueError` keeps working.
+
 ### Fixed
 
 - Improved the deletion of large subtrees with many associated assets (PostgreSQL only).

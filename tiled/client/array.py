@@ -23,7 +23,7 @@ from .utils import (
     chunks_repr,
     export_util,
     params_from_slice,
-    patch_conflict_message,
+    patch_conflict_exception,
 )
 
 if TYPE_CHECKING:
@@ -299,7 +299,9 @@ class _DaskArrayClient(CommonArrayClient, BaseClient):
             response = self._send(draft)
         except ClientError as err:
             if err.response.status_code in PATCH_CONFLICT_STATUS_CODES:
-                raise ValueError(patch_conflict_message(err.response.json())) from err
+                raise patch_conflict_exception(
+                    err.response.status_code, err.response.json()
+                ) from err
             raise
         # Update cached structure.
         self._structure = structure_from_json(self.structure_family, response.json())
