@@ -779,9 +779,7 @@ def build_app(
                 # The scope set the catalog database enforces should match the
                 # ScopeName enum this server is running. A disagreement here
                 # points at a schema that was changed outside of a migration.
-                enforced_scopes = (
-                    await app.state.access_policy.access_tags_parser.get_enforced_scopes()
-                )
+                enforced_scopes = await app.state.access_policy.access_tags_parser.get_enforced_scopes()
                 # An empty set means the constraint is missing or could not be
                 # read. The catalog then stores any value as a scope, so this
                 # is reported on its own rather than compared: every scope

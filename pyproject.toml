@@ -272,7 +272,6 @@ test = [
     "aiohttp",
     "boto3",
     "coverage",
-    "flake8",
     "hypothesis",
     "importlib_resources;python_version < \"3.9\"",
     "ipython",
@@ -292,6 +291,7 @@ test = [
 ]
 dev = [
   { include-group = "test" },
+  "ruff==0.12.0",
 ]
 docs = [
     "ipykernel",
@@ -335,32 +335,24 @@ version-file = "tiled/_version.py"
 "share/tiled/templates" = "share/tiled/templates"
 "share/tiled/ui" = "share/tiled/ui"
 
-[tool.black]
+[tool.ruff]
 line-length = 88
-target-version = ['py37']
-include = '\.pyi?$'
-exclude = '''
+force-exclude = true
+extend-exclude = [
+    "versioneer.py",
+    "tiled/_version.py",
+    "tiled/serialization/_zipfile_py39.py",
+    "docs/source/conf.py",
+    "share",
+    "web-frontend",
+]
 
-(
-  /(
-    | \.git
-    | \.mypy_cache
-    | \.venv
-    | _build
-    | build
-    | dist
-  )/
-  | versioneer.py
-  | tiled/_version.py
-  | tiled/serialization/_zipfile_py39.py
-  | docs/source/conf.py
-  | share
-  | web-frontend
-)
-'''
+[tool.ruff.lint]
+# Match the previous flake8 (pycodestyle + pyflakes) and isort checks.
+select = ["E", "F", "W", "I"]
 
-[tool.isort]
-profile = "black"
+[tool.ruff.lint.pycodestyle]
+max-line-length = 115
 
 [tool.coverage.run]
 data_file = "/tmp/tiled.coverage"

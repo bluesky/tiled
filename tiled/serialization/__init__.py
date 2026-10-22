@@ -7,35 +7,35 @@ def register_builtin_serializers():
     """
     # Each submodule in ..serialization registers serializers on import.
     # Some are conditional on the availability of particular I/O libraries.
-    from ..serialization import container as _container  # noqa: F401
+    from ..serialization import container as _container
 
     del _container
     if modules_available("numpy", "dask.array"):
-        from ..serialization import array as _array  # noqa: F401
+        from ..serialization import array as _array
 
         del _array
     if modules_available("awkward"):
-        from ..serialization import awkward as _awkward  # noqa: F401
+        from ..serialization import awkward as _awkward
 
         del _awkward
     if modules_available("pandas", "pyarrow", "dask.dataframe"):
-        from ..serialization import table as _table  # noqa: F401
+        from ..serialization import table as _table
 
         del _table
 
     if modules_available("pandas"):
-        from ..serialization import xdi as _xdi  # noqa: F401
+        from ..serialization import xdi as _xdi
 
         del _xdi
     if modules_available("ragged"):
-        from ..serialization import ragged as _ragged  # noqa: F401
+        from ..serialization import ragged as _ragged
 
         del _ragged
     if modules_available("sparse"):
-        from ..serialization import sparse as _sparse  # noqa: F401
+        from ..serialization import sparse as _sparse
 
         del _sparse
     if modules_available("xarray"):
-        from ..serialization import xarray as _xarray  # noqa: F401
+        from ..serialization import xarray as _xarray
 
         del _xarray

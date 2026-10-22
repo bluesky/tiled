@@ -220,7 +220,7 @@ def test_duplicate_auth_providers():
 
 @respx.mock
 def test_proxied_authenticator_single_instance_required(
-    well_known_response: dict[str, Any]
+    well_known_response: dict[str, Any],
 ):
     respx.get("http://example.com").mock(
         side_effect=[

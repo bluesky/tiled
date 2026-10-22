@@ -189,7 +189,7 @@ class RaggedStructure(Structure):
                 form = awkward.forms.ListOffsetForm(
                     offsets="i64",
                     content=form,
-                    form_key=f"node{dim-1}",
+                    form_key=f"node{dim - 1}",
                 )
 
             elif form is not None:
@@ -197,7 +197,7 @@ class RaggedStructure(Structure):
                 form = awkward.forms.RegularForm(
                     content=form,
                     size=self.shape[dim],
-                    form_key=f"node{dim-1}",
+                    form_key=f"node{dim - 1}",
                 )
 
             else:

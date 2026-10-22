@@ -135,9 +135,9 @@ async def create_user(db: AsyncSession, identity_provider: str, id: str) -> Prin
             .options(selectinload(Principal.identities))
         )
     ).scalar()
-    assert (
-        refreshed_principal is not None
-    ), f"Newly created user {id} ({identity_provider}) missing from Principals table"
+    assert refreshed_principal is not None, (
+        f"Newly created user {id} ({identity_provider}) missing from Principals table"
+    )
     return refreshed_principal
 
 

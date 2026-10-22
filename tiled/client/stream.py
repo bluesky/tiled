@@ -567,9 +567,9 @@ class ContainerSubscription(Subscription):
         self.child_created: CallbackRegistry["LiveChildCreated"] = CallbackRegistry(
             self.executor
         )
-        self.child_metadata_updated: CallbackRegistry[
-            "LiveChildMetadataUpdated"
-        ] = CallbackRegistry(self.executor)
+        self.child_metadata_updated: CallbackRegistry["LiveChildMetadataUpdated"] = (
+            CallbackRegistry(self.executor)
+        )
 
     def process(self, update: Update):
         if update.type == "container-child-created":
@@ -602,9 +602,9 @@ class ArraySubscription(Subscription):
         executor: Optional[concurrent.futures.Executor] = None,
     ):
         super().__init__(context, segments, executor)
-        self.new_data: CallbackRegistry[
-            "LiveArrayData" | "LiveArrayRef"
-        ] = CallbackRegistry(self.executor)
+        self.new_data: CallbackRegistry["LiveArrayData" | "LiveArrayRef"] = (
+            CallbackRegistry(self.executor)
+        )
 
     def process(self, update: Update):
         self.new_data.process(update)
@@ -642,6 +642,7 @@ class TableSubscription(Subscription):
 
 class UnparseableMessage(RuntimeError):
     "Message can be decoded but cannot be interpreted by the application"
+
     pass
 
 

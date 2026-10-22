@@ -138,9 +138,9 @@ def test_webhooks_disabled_by_default():
             headers={"Authorization": f"Apikey {server.api_key}"},
             timeout=TIMEOUT,
         )
-        assert (
-            resp.status_code == 404
-        ), "Webhook router should not be mounted when enable_webhooks=False"
+        assert resp.status_code == 404, (
+            "Webhook router should not be mounted when enable_webhooks=False"
+        )
         assert server.webhook_secret_key is None
 
 
@@ -263,9 +263,9 @@ def test_close_with_open_streaming_subscription_does_not_hang(
     closer = threading.Thread(target=_close, daemon=True)
     closer.start()
     try:
-        assert closed.wait(
-            timeout=30
-        ), "server.close() hung with a streaming subscription"
+        assert closed.wait(timeout=30), (
+            "server.close() hung with a streaming subscription"
+        )
         if not disconnect_first:
             # With the subscription still open, uvicorn closes the websocket with
             # SERVICE_RESTART (1012) on shutdown. Wait for the closing handshake
