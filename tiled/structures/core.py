@@ -96,3 +96,8 @@ STRUCTURE_TYPES = OneShotCachedMap[StructureFamily, type](
         ),
     }
 )
+
+
+def structure_from_json(structure_family: StructureFamily, structure):
+    "Parse a structure's JSON representation into the family's structure type."
+    return STRUCTURE_TYPES[structure_family].from_json(structure)

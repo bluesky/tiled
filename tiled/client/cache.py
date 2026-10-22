@@ -228,7 +228,7 @@ class Cache:
         )
 
     def __setstate__(self, state):
-        (filepath, capacity, max_item_size, readonly, lock) = state
+        filepath, capacity, max_item_size, readonly, lock = state
         self._capacity = capacity
         self._max_item_size = max_item_size
         self._readonly = readonly
@@ -348,7 +348,7 @@ WHERE cache_key = ?""",
             total_size = total_size or 0  # If empty, total_size is None.
             while (incoming_size + total_size) > self.capacity:
                 # Cull to make space.
-                (cache_key, size) = cur.execute(
+                cache_key, size = cur.execute(
                     """SELECT
 cache_key, size
 FROM responses

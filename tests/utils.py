@@ -16,7 +16,7 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from tiled.client import context
-from tiled.client.base import BaseClient
+from tiled.client._protocol.request import RequestDraft
 from tiled.utils import ensure_specified_sql_driver
 
 
@@ -78,7 +78,7 @@ def enter_username_password(username, password):
 
 class URL_LIMITS(IntEnum):
     HUGE = 80_000
-    DEFAULT = BaseClient.URL_CHARACTER_LIMIT
+    DEFAULT = RequestDraft.URL_CHARACTER_LIMIT
     TINY = 10
 
 

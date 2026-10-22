@@ -8,8 +8,15 @@ import dask
 import dask.dataframe
 import httpx
 
-from ..serialization.table import deserialize_arrow, serialize_arrow
-from ..utils import APACHE_ARROW_FILE_MIME_TYPE, UNCHANGED
+from ..serialization.table import deserialize_arrow
+from ..utils import UNCHANGED
+from ._protocol.node import draft_request_lookup_node
+from ._protocol.table import (
+    draft_request_append_table_partition,
+    draft_request_read_table_partition,
+    draft_request_write_table_full,
+    draft_request_write_table_partition,
+)
 from .base import BaseClient
 from .utils import (
     MSGPACK_MIME_TYPE,
@@ -17,14 +24,10 @@ from .utils import (
     client_for_item,
     export_util,
     handle_error,
-    retry_context,
-    should_retry_if_unprocessed,
 )
 
 if TYPE_CHECKING:
     from .stream import TableSubscription
-
-_EXTRA_CHARS_PER_ITEM = len("&column=")
 
 
 class _DaskDataFrameClient(BaseClient):
@@ -115,37 +118,11 @@ class _DaskDataFrameClient(BaseClient):
 
         See read_partition for a public version of this.
         """
-        URL_PATH = self.item["links"]["partition"]
-        params = {**parse_qs(urlparse(URL_PATH).query), "partition": partition}
-        url_length_for_get_request = len(URL_PATH) + sum(
-            _EXTRA_CHARS_PER_ITEM + len(column) for column in (columns or ())
+        draft = draft_request_read_table_partition(
+            self.item["links"]["partition"], partition, columns
         )
         with self.context.throttle():
-            if url_length_for_get_request > self.URL_CHARACTER_LIMIT:
-                for attempt in retry_context(self.context):
-                    with attempt:
-                        content = handle_error(
-                            self.context.http_client.post(
-                                URL_PATH,
-                                headers={"Accept": APACHE_ARROW_FILE_MIME_TYPE},
-                                json=columns,
-                                params=params,
-                            )
-                        ).read()
-            else:
-                if columns:
-                    # Note: The singular/plural inconsistency here is because
-                    # ["A", "B"] will be encoded in the URL as column=A&column=B
-                    params["column"] = columns
-                for attempt in retry_context(self.context):
-                    with attempt:
-                        content = handle_error(
-                            self.context.http_client.get(
-                                URL_PATH,
-                                headers={"Accept": APACHE_ARROW_FILE_MIME_TYPE},
-                                params=params,
-                            )
-                        ).read()
+            content = self._send(draft, indicator_context=self.context).read()
         if (ps := self.context.progress_state) is not None:
             ps.advance()
         return deserialize_arrow(content)
@@ -173,8 +150,7 @@ class _DaskDataFrameClient(BaseClient):
         )
 
     def read(self, columns=None):
-        """
-        Access the entire DataFrame. Optionally select a subset of the columns.
+        """Access the entire DataFrame. Optionally select a subset of the columns.
 
         The result will be internally partitioned with dask.
         """
@@ -205,17 +181,8 @@ class _DaskDataFrameClient(BaseClient):
 
     def __getitem__(self, column):
         try:
-            self_link = self.item["links"]["self"]
-            if self_link.endswith("/"):
-                self_link = self_link[:-1]
-            for attempt in retry_context():
-                with attempt:
-                    content = handle_error(
-                        self.context.http_client.get(
-                            self_link + f"/{column}",
-                            headers={"Accept": MSGPACK_MIME_TYPE},
-                        )
-                    ).json()
+            draft = draft_request_lookup_node(self.item["links"]["self"], (column,))
+            content = self._send(draft).json()
         except ClientError as err:
             if err.response.status_code == httpx.codes.NOT_FOUND:
                 raise KeyError(column)
@@ -230,17 +197,8 @@ class _DaskDataFrameClient(BaseClient):
     # of rows" which is expensive to compute.
 
     def write(self, dataframe):
-        for attempt in retry_context():
-            with attempt:
-                handle_error(
-                    self.context.http_client.put(
-                        self.item["links"]["full"],
-                        content=bytes(
-                            serialize_arrow(APACHE_ARROW_FILE_MIME_TYPE, dataframe, {})
-                        ),
-                        headers={"Content-Type": APACHE_ARROW_FILE_MIME_TYPE},
-                    )
-                )
+        draft = draft_request_write_table_full(self.item["links"]["full"], dataframe)
+        self._send(draft)
 
     def write_partition(self, partition, dataframe):
         # The order of arguments has changed; check that the user input is correct
@@ -252,17 +210,10 @@ class _DaskDataFrameClient(BaseClient):
             )
             partition, dataframe = dataframe, partition
 
-        for attempt in retry_context():
-            with attempt:
-                handle_error(
-                    self.context.http_client.put(
-                        self.item["links"]["partition"].format(index=partition),
-                        content=bytes(
-                            serialize_arrow(APACHE_ARROW_FILE_MIME_TYPE, dataframe, {})
-                        ),
-                        headers={"Content-Type": APACHE_ARROW_FILE_MIME_TYPE},
-                    )
-                )
+        draft = draft_request_write_table_partition(
+            self.item["links"]["partition"], partition, dataframe
+        )
+        self._send(draft)
 
     def append_partition(self, partition, dataframe):
         # The order of arguments has changed; check that the user input is correct
@@ -276,22 +227,12 @@ class _DaskDataFrameClient(BaseClient):
 
         if partition > self.structure().npartitions:
             raise ValueError(f"Table has {self.structure().npartitions} partitions")
-        # Appending rows is not idempotent: if the server processed the request
-        # but the response was lost (e.g. a read timeout or a 5xx from a proxy),
-        # retrying would append the same rows a second time. Only retry errors
-        # that guarantee the request was never processed; raise the rest to the
-        # caller, who can inspect the table before deciding to re-append.
-        for attempt in retry_context(on=should_retry_if_unprocessed):
-            with attempt:
-                handle_error(
-                    self.context.http_client.patch(
-                        self.item["links"]["partition"].format(index=partition),
-                        content=bytes(
-                            serialize_arrow(APACHE_ARROW_FILE_MIME_TYPE, dataframe, {})
-                        ),
-                        headers={"Content-Type": APACHE_ARROW_FILE_MIME_TYPE},
-                    )
-                )
+        # The draft's retry policy is conservative because appending is not
+        # idempotent; see `draft_request_append_table_partition`.
+        draft = draft_request_append_table_partition(
+            self.item["links"]["partition"], partition, dataframe
+        )
+        self._send(draft)
 
     def export(self, filepath, columns=None, *, format=None):
         """
@@ -314,7 +255,7 @@ class _DaskDataFrameClient(BaseClient):
         return export_util(
             filepath,
             format,
-            self.context.http_client.get,
+            self.context,
             self.item["links"]["full"],
             params=params,
         )

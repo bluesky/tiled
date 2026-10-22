@@ -35,15 +35,15 @@ from ..stream_messages import (
     TableSchema,
     Update,
 )
-from ..structures.core import STRUCTURE_TYPES, StructureFamily
+from ..structures.core import StructureFamily, structure_from_json
+from ._protocol.array import ArrayReadRecipe, draft_request_read_referenced_array
 from .context import Context
 from .utils import (
     TILED_RETRY_ATTEMPTS,
     TILED_RETRY_TIMEOUT,
     client_for_item,
-    handle_error,
     normalize_specs,
-    retry_context,
+    send_request_draft,
 )
 
 T = TypeVar("T")
@@ -642,6 +642,7 @@ class TableSubscription(Subscription):
 
 class UnparseableMessage(RuntimeError):
     "Message can be decoded but cannot be interpreted by the application"
+
     pass
 
 
@@ -699,8 +700,9 @@ class LiveChildCreated(ChildCreated):
         else:
             (data_source,) = self.data_sources
             structure_for_item = data_source.structure
-            structure_type = STRUCTURE_TYPES[item["attributes"]["structure_family"]]
-            structure_for_links = structure_type.from_json(structure_for_item)
+            structure_for_links = structure_from_json(
+                item["attributes"]["structure_family"], structure_for_item
+            )
         item["attributes"]["structure"] = structure_for_item
         base_url = self.subscription.context.server_info.links["self"]
         path_str = "/".join(self.subscription.segments + [self.key])
@@ -751,23 +753,15 @@ class LiveArrayRef(ArrayRef):
 
     def data(self):
         "Fetch array"
-        import numpy
-
-        for attempt in retry_context():
-            with attempt:
-                content = handle_error(
-                    self.subscription.context.http_client.get(
-                        self.uri,
-                        headers={"Accept": "application/octet-stream"},
-                    )
-                ).read()
+        draft = draft_request_read_referenced_array(self.uri)
+        content = send_request_draft(self.subscription.context, draft).read()
         # Decode payload (bytes) into array.
         numpy_dtype = self.data_type.to_numpy_dtype()
         if self.patch:
             shape = self.patch.shape
         else:
             shape = self.shape
-        return numpy.frombuffer(content, dtype=numpy_dtype).reshape(shape)
+        return ArrayReadRecipe.parse(content, numpy_dtype, shape)
 
 
 class LiveTableData(TableData):

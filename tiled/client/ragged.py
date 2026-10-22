@@ -2,20 +2,26 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any, Union
-from urllib.parse import parse_qs, urlparse
 
-import httpx
 import numpy as np
-import orjson
 import ragged
 
-from ..ndslice import NDSlice
-from ..serialization.ragged import from_zipped_buffers, to_zipped_buffers
-from ..structures.core import STRUCTURE_TYPES
+from ..structures.core import structure_from_json
 from ..structures.ragged import RaggedCompatibleType, make_ragged_array
-from ..utils import Conflicts
+from ._protocol.ragged import (
+    RaggedReadRecipe,
+    draft_request_patch_ragged_full,
+    draft_request_write_ragged_block,
+    draft_request_write_ragged_full,
+)
 from .base import BaseClient
-from .utils import export_util, handle_error, params_from_slice, retry_context
+from .utils import (
+    PATCH_CONFLICT_STATUS_CODES,
+    ClientError,
+    export_util,
+    params_from_slice,
+    patch_conflict_exception,
+)
 
 
 class RaggedClient(BaseClient):
@@ -31,24 +37,10 @@ class RaggedClient(BaseClient):
             Whether to persist the changes on server storage. If False, the update is still
             streamed to subscribed listeners, but the server may choose not to save the changes.
         """
-        array = make_ragged_array(array)
-        url_path = self.item["links"]["full"]
-        params: dict[str, Any] = {**parse_qs(urlparse(url_path).query)}
-        if persist is False:
-            # Extend the query only for non-default behavior.
-            params["persist"] = persist
-        for attempt in retry_context():
-            with attempt:
-                handle_error(
-                    self.context.http_client.put(
-                        url_path,
-                        content=to_zipped_buffers(
-                            mimetype="application/zip", array=array, metadata={}
-                        ),
-                        headers={"Content-Type": "application/zip"},
-                        params=params,
-                    )
-                )
+        draft = draft_request_write_ragged_full(
+            self.item["links"]["full"], array, persist
+        )
+        self._send(draft)
 
     def write_block(
         self,
@@ -70,28 +62,10 @@ class RaggedClient(BaseClient):
             Whether to persist the changes on server storage. If False, the update is still
             streamed to subscribed listeners, but the server may choose not to save the changes.
         """
-
-        block_tuple = (block,) if isinstance(block, int) else tuple(block)
-        url_path = self.item["links"]["block"]
-        params: dict[str, Any] = {
-            **parse_qs(urlparse(url_path).query),
-            "block": ",".join(map(str, block_tuple)),
-        }
-        if persist is False:
-            params["persist"] = persist
-
-        for attempt in retry_context():
-            with attempt:
-                handle_error(
-                    self.context.http_client.put(
-                        url_path,
-                        content=to_zipped_buffers(
-                            mimetype="application/zip", array=array, metadata={}
-                        ),
-                        headers={"Content-Type": "application/zip"},
-                        params=params,
-                    )
-                )
+        draft = draft_request_write_ragged_block(
+            self.item["links"]["block"], block, array, persist
+        )
+        self._send(draft)
 
     def patch(
         self,
@@ -133,46 +107,19 @@ class RaggedClient(BaseClient):
                 f"match the dtype of this array {self.dtype}."
             )
 
-        url_path = self.item["links"]["full"]
-        params = {
-            **parse_qs(urlparse(url_path).query),
-            "shape": str(array.shape[0]),
-            "offset": ",".join(map(str, offset)),
-            "extend": bool(extend),
-        }
-        if persist is False:
-            # Extend the query only for non-default behavior.
-            params["persist"] = persist
-        for attempt in retry_context():
-            with attempt:
-                response = self.context.http_client.patch(
-                    url_path,
-                    content=to_zipped_buffers(
-                        mimetype="application/zip", array=array, metadata={}
-                    ),
-                    headers={"Content-Type": "application/zip"},
-                    params=params,
-                )
-                if response.status_code in [
-                    httpx.codes.BAD_REQUEST,
-                    httpx.codes.CONFLICT,
-                ]:
-                    detail = (
-                        response.json()
-                        .get("detail", "Array parameters conflict.")
-                        .replace(
-                            "Use ?",  # URL query param
-                            "Pass keyword argument ",  # Python function argument
-                        )
-                    )
-                    if response.status_code == httpx.codes.CONFLICT:
-                        raise Conflicts(detail)
-                    raise ValueError(detail)
-                handle_error(response)
+        draft = draft_request_patch_ragged_full(
+            self.item["links"]["full"], array, offset, extend, persist
+        )
+        try:
+            response = self._send(draft)
+        except ClientError as err:
+            if err.response.status_code in PATCH_CONFLICT_STATUS_CODES:
+                raise patch_conflict_exception(
+                    err.response.status_code, err.response.json()
+                ) from err
+            raise
         # Update cached structure.
-        new_structure = response.json()
-        structure_type = STRUCTURE_TYPES[self.structure_family]
-        self._structure = structure_type.from_json(new_structure)
+        self._structure = structure_from_json(self.structure_family, response.json())
 
     def read(self, slice: Any | None = None) -> ragged.array:
         """Read the entire array, or optionally a slice of it.
@@ -182,35 +129,14 @@ class RaggedClient(BaseClient):
         slice: Any, optional
             A numpy-style slice.
         """
-        url_path = self.item["links"]["full"]
-        url_params: dict[str, Any] = {**parse_qs(urlparse(url_path).query)}
-
-        if slice is not None:
-            url_params.update(**params_from_slice(slice))
-
-        if is_scalar := (self.ndim == 0) or NDSlice(slice).is_scalar(self.shape):
-            accept_header = "application/json"
-        else:
-            accept_header = "application/zip"
-
-        for attempt in retry_context():
-            with attempt:
-                content = handle_error(
-                    self.context.http_client.get(
-                        url_path,
-                        headers={"Accept": accept_header},
-                        params=url_params,
-                    )
-                ).read()
-
-        if is_scalar:
-            return ragged.array(orjson.loads(content))
-
-        return from_zipped_buffers(buffer=content, structure=self.structure())
+        recipe = RaggedReadRecipe.for_full(
+            self.item["links"]["full"], self.structure(), slice
+        )
+        content = self._send(recipe.draft).read()
+        return recipe.parse(content)
 
     def __getitem__(self, _slice: Any) -> ragged.array:
-        """
-        Access the array with slicing logic.
+        """Access the array with slicing logic.
 
         Parameters
         ----------
@@ -242,7 +168,7 @@ class RaggedClient(BaseClient):
         return export_util(
             filepath,
             format,
-            self.context.http_client.get,
+            self.context,
             self.item["links"]["full"],
             params=params_from_slice(slice),
         )

@@ -637,8 +637,8 @@ class UnsupportedQueryType(TypeError):
     pass
 
 
-class Conflicts(Exception):
-    "Prompts the server to send 409 Conflicts with message"
+class Conflicts(ValueError):
+    """Prompts the server to send 409 Conflicts with message"""
 
     pass
 

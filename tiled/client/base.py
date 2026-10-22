@@ -1,24 +1,44 @@
-import collections.abc
 import time
 from collections.abc import MutableMapping
-from copy import copy, deepcopy
-from dataclasses import asdict
+from copy import deepcopy
 from pathlib import Path
 from typing import Dict, List, Union
 from urllib.parse import parse_qs, urlparse
 
-import json_merge_patch
+import httpx
 import jsonpatch
 import orjson
 from httpx import URL
 
 from tiled.client.context import Context
 
-from ..structures.core import STRUCTURE_TYPES, Spec, StructureFamily
+from ..structures.core import Spec, StructureFamily, structure_from_json
 from ..structures.data_source import DataSource
-from ..utils import UNCHANGED, DictView, ListView, patch_mimetypes, safe_json_dump
+from ..utils import UNCHANGED, DictView, ListView, patch_mimetypes
+from ._protocol.node import (
+    build_metadata_patches,
+    draft_request_asset_manifest,
+    draft_request_patch_metadata,
+    draft_request_refresh_node,
+    draft_request_replace_metadata,
+    merge_mutated_attributes,
+)
+from ._protocol.request import (
+    RequestDraft,
+    asset_bytes_link,
+    asset_manifest_link,
+    draft_request_delete,
+    revisions_link,
+    stream_close_link,
+)
+from ._protocol.search import PaginatedCollectionBuilder
 from .metadata_update import apply_update_patch
-from .utils import MSGPACK_MIME_TYPE, handle_error, normalize_specs, retry_context
+from .utils import (
+    apply_patch,
+    normalize_specs,
+    normalize_specs_patch,
+    send_request_draft,
+)
 
 # TODO: Duplicated from  tiled.type_aliases to prevent importing numpy
 # After #1407 replace AnyAdapter with the BaseClass and remove this redefinition
@@ -30,6 +50,7 @@ class MetadataRevisions:
         self._cached_len = None
         self.context = context
         self._link = link
+        self._pages_builder = PaginatedCollectionBuilder(link)
 
     def __len__(self):
         LENGTH_CACHE_TTL = 1  # second
@@ -41,20 +62,12 @@ class MetadataRevisions:
                 # Used the cached value and do not make any request.
                 return length
 
-        for attempt in retry_context():
-            with attempt:
-                content = handle_error(
-                    self.context.http_client.get(
-                        self._link,
-                        headers={"Accept": MSGPACK_MIME_TYPE},
-                        params={
-                            **parse_qs(urlparse(self._link).query),
-                            "page[offset]": 0,
-                            "page[limit]": 0,
-                        },
-                    )
-                ).json()
-        length = content["meta"]["count"]
+        # A zero-length page carries the total count without any entries.
+        draft = self._pages_builder.draft_request_read_page(
+            self._pages_builder.first_page_link(0, 0)
+        )
+        content = send_request_draft(self.context, draft).json()
+        length = self._pages_builder.parse_count(content)
         self._cached_len = (length, now + LENGTH_CACHE_TTL)
         return length
 
@@ -62,22 +75,10 @@ class MetadataRevisions:
         self._cached_len = None
 
         if isinstance(item_, int):
-            offset = item_
-            limit = 1
-
-            for attempt in retry_context():
-                with attempt:
-                    content = handle_error(
-                        self.context.http_client.get(
-                            self._link,
-                            headers={"Accept": MSGPACK_MIME_TYPE},
-                            params={
-                                **parse_qs(urlparse(self._link).query),
-                                "page[offset]": offset,
-                                "page[limit]": limit,
-                            },
-                        )
-                    ).json()
+            draft = self._pages_builder.draft_request_read_page(
+                self._pages_builder.first_page_link(item_, 1)
+            )
+            content = send_request_draft(self.context, draft).json()
             (result,) = content["data"]
             return result
 
@@ -86,21 +87,17 @@ class MetadataRevisions:
             if offset is None:
                 offset = 0
             if item_.stop is None:
-                params = f"?page[offset]={offset}"
+                limit = None
             else:
                 limit = item_.stop - offset
-                params = f"?page[offset]={offset}&page[limit]={limit}"
 
-            next_page_url = self._link + params
+            next_page_url = self._pages_builder.first_page_link(offset, limit)
             result = []
             while next_page_url is not None:
-                for attempt in retry_context():
-                    with attempt:
-                        content = handle_error(
-                            self.context.http_client.get(
-                                next_page_url, headers={"Accept": MSGPACK_MIME_TYPE}
-                            )
-                        ).json()
+                content = send_request_draft(
+                    self.context,
+                    self._pages_builder.draft_request_read_page(next_page_url),
+                ).json()
                 if len(result) == 0:
                     result = content.copy()
                 else:
@@ -110,26 +107,23 @@ class MetadataRevisions:
             return result["data"]
 
     def delete_revision(self, n):
-        for attempt in retry_context():
-            with attempt:
-                handle_error(
-                    self.context.http_client.delete(
-                        self._link,
-                        params={**parse_qs(urlparse(self._link).query), "number": n},
-                    )
-                )
+        draft = draft_request_delete(self._link, params={"number": n})
+        send_request_draft(self.context, draft)
 
 
-class BaseClient:
-    # The HTTP spec does not define a size limit for URIs,
-    # but a common setting is 4K or 8K (for all the headers together).
-    # As another reference point, Internet Explorer imposes a
-    # 2048-character limit on URLs.
-    URL_CHARACTER_LIMIT = 2_000  # number of characters
+class CommonBaseClient:
+    """State and accessors shared by the synchronous and asynchronous clients.
+
+    Everything here is pure: holding the item, parsing its structure, and
+    reading its attributes. All I/O lives in the subclasses (`BaseClient`
+    and `tiled.client.aio.AsyncBaseClient`), which differ only in how they
+    send requests; what to send and how to interpret responses comes from
+    `tiled.client._protocol`.
+    """
 
     def __init__(
         self,
-        context: Context,
+        context,
         *,
         item,
         structure_clients,
@@ -140,7 +134,6 @@ class BaseClient:
         self._item = item
         self._cached_len = None  # a cache just for __len__
         self.structure_clients = structure_clients
-        self._metadata_revisions = None
         self._include_data_sources = include_data_sources
         attributes = self.item["attributes"]
         structure_family = attributes["structure_family"]
@@ -152,8 +145,9 @@ class BaseClient:
         elif structure_family == StructureFamily.container:
             self._structure = None
         else:
-            structure_type = STRUCTURE_TYPES[attributes["structure_family"]]
-            self._structure = structure_type.from_json(attributes["structure"])
+            self._structure = structure_from_json(
+                attributes["structure_family"], attributes["structure"]
+            )
 
         super().__init__()
 
@@ -170,62 +164,12 @@ class BaseClient:
             )
         return self._structure
 
-    def login(self):
-        """
-        Depending on the server's authentication method, this will prompt for username/password:
-
-        >>> c.login()
-        Username: USERNAME
-        Password: <input is hidden>
-
-        or prompt you to open a link in a web browser to login with a third party:
-
-        >>> c.login()
-        You have ... minutes visit this URL
-
-        https://...
-
-        and enter the code: XXXX-XXXX
-        """
-        self.context.authenticate()
-
-    def logout(self):
-        """
-        Log out.
-
-        This method is idempotent: if you are already logged out, it will do nothing.
-        """
-        self.context.logout()
-
     def __repr__(self):
         return f"<{type(self).__name__}>"
 
     @property
     def context(self):
         return self._context
-
-    def refresh(self):
-        params = {
-            **parse_qs(urlparse(self.uri).query),
-        }
-        if self._include_data_sources:
-            params["include_data_sources"] = self._include_data_sources
-        for attempt in retry_context():
-            with attempt:
-                content = handle_error(
-                    self.context.http_client.get(
-                        self.uri,
-                        headers={"Accept": MSGPACK_MIME_TYPE},
-                        params=params,
-                    )
-                ).json()
-        self._item = content["data"]
-        if self.structure_family != StructureFamily.container:
-            structure_type = STRUCTURE_TYPES[self.structure_family]
-            self._structure = structure_type.from_json(
-                self._item["attributes"]["structure"]
-            )
-        return self
 
     @property
     def item(self):
@@ -239,31 +183,6 @@ class BaseClient:
         # getting the wrong impression that editing this would update anything
         # persistent.
         return DictView(self._item["attributes"]["metadata"])
-
-    @property
-    def parent(self):
-        "Returns a client for the parent of this node."
-        # this import takes about 230 ns.
-        from .constructors import from_context
-
-        return from_context(
-            context=self.context,
-            structure_clients=self.structure_clients,
-            node_path_parts=self._item["attributes"]["ancestors"],
-            include_data_sources=self._include_data_sources,
-        )
-
-    def metadata_copy(self):
-        """
-        Generate a mutable copy of metadata, specs, and access_tags for
-        validating metadata (useful with update_metadata())
-        """
-        metadata = deepcopy(self._item["attributes"]["metadata"])
-        specs = [Spec.from_json(spec) for spec in self._item["attributes"]["specs"]]
-        access_tags = list(self._item["attributes"]["access_tags"])
-        return [
-            md for md in [metadata, specs, access_tags] if md is not None
-        ]  # returning as list of mutable items
 
     @property
     def specs(self) -> ListView[Spec]:
@@ -298,23 +217,17 @@ class BaseClient:
         "Quick access to this entry"
         return StructureFamily[self.item["attributes"]["structure_family"]]
 
-    def data_sources(self):
-        data_sources_json = (
-            self.include_data_sources().item["attributes"].get("data_sources")
-        )
-        if data_sources_json is None:
-            return None
-        return [DataSource.from_json(d) for d in data_sources_json]
-
-    def include_data_sources(self):
+    def metadata_copy(self):
         """
-        Ensure that data source and asset information is fetched.
-
-        If it has already been fetched, this is a no-op.
+        Generate a mutable copy of metadata, specs, and access_tags for
+        validating metadata (useful with update_metadata())
         """
-        if self._include_data_sources:
-            return self  # no op
-        return self.new_variation(include_data_sources=True).refresh()
+        metadata = deepcopy(self._item["attributes"]["metadata"])
+        specs = [Spec.from_json(spec) for spec in self._item["attributes"]["specs"]]
+        access_tags = list(self._item["attributes"]["access_tags"])
+        return [
+            md for md in [metadata, specs, access_tags] if md is not None
+        ]  # returning as list of mutable items
 
     def new_variation(
         self,
@@ -341,6 +254,193 @@ class BaseClient:
             **kwargs,
         )
 
+    @property
+    def formats(self):
+        "List formats that the server can export this data as."
+        formats = set()
+        for spec in self.item["attributes"]["specs"]:
+            formats.update(self.context.server_info.formats.get(spec["name"], []))
+        formats.update(
+            self.context.server_info.formats[
+                self.item["attributes"]["structure_family"]
+            ]
+        )
+        return sorted(formats)
+
+    def build_metadata_patches(self, metadata=None, specs=None, access_tags=None):
+        """
+        Build valid JSON Patches (RFC6902) for metadata and metadata validation
+        specs accepted by `patch_metadata`.
+
+        Parameters
+        ----------
+        metadata : dict, optional
+            User metadata. May be nested. Must contain only basic types
+            (e.g. numbers, strings, lists, dicts) that are JSON-serializable.
+
+        specs : list[Spec], optional
+            Metadata validation specifications.
+
+        access_tags: List[str], optional
+            Server-specific authZ tags in list form, used to confer access to the node.
+
+        Returns
+        -------
+        metadata_patch : list[dict]
+            A JSON serializable object representing a valid JSON patch (RFC6902)
+            for metadata.
+        specs_patch : list[dict]
+            A JSON serializable object representing a valid JSON patch (RFC6902)
+            for metadata validation specifications.
+        access_tags_patch : list[dict]
+            A JSON serializable object representing a valid JSON patch (RFC6902)
+            for access tags
+
+        See Also
+        --------
+        patch_metadata
+        update_metadata
+
+        Notes
+        -----
+        `build_metadata_patch` constructs a JSON Patch (RFC6902) by comparing user updates
+        to existing metadata/specs. It uses a slight variation of JSON Merge Patch (RFC7386)
+        as an intermediary to implement a python `dict.update`-like user-friendly
+        interface, but with additional features like key deletion (see examples) and
+        support for `None (null)` values.
+
+        Examples
+        --------
+
+        Build a patch for adding/updating a key-value pair at the top or a nested level
+
+        >>> patches = node.build_metadata_patches({'key': new_value})
+        >>> patches = node.build_metadata_patches({'top_key': {'nested_key': new_value}})
+
+        Build patches for metadata and specs ("mp", "sp")
+
+        >>> mp, sp = node.build_metadata_patches(metadata=metadata, specs=specs)
+
+        Build a patch for removing an existing key
+
+        >>> from tiled.client.metadata_update import DELETE_KEY
+        >>> node.build_metadata_patches({'key_to_be_deleted': DELETE_KEY})
+
+        Interactively build a patch for complex metadata (e.g., in iPython you may use
+        tab completion to navigate nested metadata)
+
+        >>> md = node.metadata_copy()[0]
+        >>> md['L1_key']['L2_key']['L3_key'] = new_value  # use tab completion
+        >>> md['unwanted_key'] = DELETE_KEY
+        >>> node.build_metadata_patches(metadata=md)  # Generate the patch
+        """
+
+        return build_metadata_patches(
+            self._item["attributes"], metadata, specs, access_tags
+        )
+
+    def _build_json_patch(self, origin, update_patch):
+        """
+        Lower level method to construct a JSON patch from an origin and update_patch.
+        An "update_patch" is a `dict.update`-like specification that may include
+        `DELETE_KEY` for marking a dictionary key for deletion.
+        """
+        if update_patch is None:
+            return []
+        patch = jsonpatch.JsonPatch.from_diff(
+            origin, apply_update_patch(origin, update_patch), dumps=orjson.dumps
+        )
+        return patch.patch
+
+
+class BaseClient(CommonBaseClient):
+    def __init__(self, context: Context, **kwargs):
+        super().__init__(context, **kwargs)
+        self._metadata_revisions = None
+
+    def _send(
+        self, draft: RequestDraft, *, indicator_context: "Context | None" = None
+    ) -> httpx.Response:
+        """Send a `RequestDraft`, retrying according to its retry policy.
+
+        The returned response has been vetted by `handle_error`; HTTP
+        errors surface as exceptions (after any retries the draft's policy
+        allows). `indicator_context` optionally routes the retry indicator
+        through a `Context` shared with progress reporting (data-read
+        paths); by default a standalone indicator is used.
+        """
+        return send_request_draft(
+            self.context, draft, indicator_context=indicator_context
+        )
+
+    def login(self):
+        """
+        Depending on the server's authentication method, this will prompt for username/password:
+
+        >>> c.login()
+        Username: USERNAME
+        Password: <input is hidden>
+
+        or prompt you to open a link in a web browser to login with a third party:
+
+        >>> c.login()
+        You have ... minutes visit this URL
+
+        https://...
+
+        and enter the code: XXXX-XXXX
+        """
+        self.context.authenticate()
+
+    def logout(self):
+        """
+        Log out.
+
+        This method is idempotent: if you are already logged out, it will do nothing.
+        """
+        self.context.logout()
+
+    def refresh(self):
+        draft = draft_request_refresh_node(self.uri, self._include_data_sources)
+        content = self._send(draft).json()
+        self._item = content["data"]
+        if self.structure_family != StructureFamily.container:
+            self._structure = structure_from_json(
+                self.structure_family, self._item["attributes"]["structure"]
+            )
+        return self
+
+    @property
+    def parent(self):
+        "Returns a client for the parent of this node."
+        # this import takes about 230 ns.
+        from .constructors import from_context
+
+        return from_context(
+            context=self.context,
+            structure_clients=self.structure_clients,
+            node_path_parts=self._item["attributes"]["ancestors"],
+            include_data_sources=self._include_data_sources,
+        )
+
+    def data_sources(self):
+        data_sources_json = (
+            self.include_data_sources().item["attributes"].get("data_sources")
+        )
+        if data_sources_json is None:
+            return None
+        return [DataSource.from_json(d) for d in data_sources_json]
+
+    def include_data_sources(self):
+        """
+        Ensure that data source and asset information is fetched.
+
+        If it has already been fetched, this is a no-op.
+        """
+        if self._include_data_sources:
+            return self  # no op
+        return self.new_variation(include_data_sources=True).refresh()
+
     def asset_manifest(self, data_sources):
         """
         Return a manifest of the relative paths of the contents in each asset.
@@ -358,22 +458,11 @@ class BaseClient:
         """
         manifests = {}
         for data_source in data_sources:
-            manifest_link = self.item["links"]["self"].replace(
-                "/metadata", "/asset/manifest", 1
-            )
+            manifest_link = asset_manifest_link(self.item["links"]["self"])
             for asset in data_source.assets:
                 if asset.is_directory:
-                    for attempt in retry_context():
-                        with attempt:
-                            manifest = handle_error(
-                                self.context.http_client.get(
-                                    manifest_link,
-                                    params={
-                                        **parse_qs(urlparse(manifest_link).query),
-                                        "id": asset.id,
-                                    },
-                                )
-                            ).json()["manifest"]
+                    draft = draft_request_asset_manifest(manifest_link, asset.id)
+                    manifest = self._send(draft).json()["manifest"]
                 else:
                     manifest = None
                 manifests[asset.id] = manifest
@@ -451,9 +540,7 @@ class BaseClient:
                 "Export of multiple data sources not yet supported"
             )
         for data_source in data_sources:
-            bytes_link = self.item["links"]["self"].replace(
-                "/metadata", "/asset/bytes", 1
-            )
+            bytes_link = asset_bytes_link(self.item["links"]["self"])
             for asset in data_source.assets:
                 if len(data_source.assets) == 1:
                     # Only one asset: keep the name simple.
@@ -478,7 +565,7 @@ class BaseClient:
                             for relative_path in relative_paths
                         ]
                     )
-                    # Per-file sizes within a directory asset are not known.
+                    # Sizes of the items inside the asset are not known.
                     sizes.extend([None] * len(relative_paths))
                     if in_memory:
                         targets.extend(
@@ -524,19 +611,6 @@ class BaseClient:
             totals=sizes,
             accept_encoding=accept_encoding,
         )
-
-    @property
-    def formats(self):
-        "List formats that the server can export this data as."
-        formats = set()
-        for spec in self.item["attributes"]["specs"]:
-            formats.update(self.context.server_info.formats.get(spec["name"], []))
-        formats.update(
-            self.context.server_info.formats[
-                self.item["attributes"]["structure_family"]
-            ]
-        )
-        return sorted(formats)
 
     def update_metadata(
         self, metadata=None, specs=None, access_tags=None, *, drop_revision=False
@@ -607,127 +681,9 @@ class BaseClient:
             drop_revision=drop_revision,
         )
 
-    def build_metadata_patches(self, metadata=None, specs=None, access_tags=None):
-        """
-        Build valid JSON Patches (RFC6902) for metadata and metadata validation
-        specs accepted by `patch_metadata`.
-
-        Parameters
-        ----------
-        metadata : dict, optional
-            User metadata. May be nested. Must contain only basic types
-            (e.g. numbers, strings, lists, dicts) that are JSON-serializable.
-
-        specs : list[Spec], optional
-            Metadata validation specifications.
-
-        access_tags: List[str], optional
-            Server-specific authZ tags in list form, used to confer access to the node.
-
-        Returns
-        -------
-        metadata_patch : list[dict]
-            A JSON serializable object representing a valid JSON patch (RFC6902)
-            for metadata.
-        specs_patch : list[dict]
-            A JSON serializable object representing a valid JSON patch (RFC6902)
-            for metadata validation specifications.
-        access_tags_patch : list[dict]
-            A JSON serializable object representing a valid JSON patch (RFC6902)
-            for access tags
-
-        See Also
-        --------
-        patch_metadata
-        update_metadata
-
-        Notes
-        -----
-        `build_metadata_patch` constructs a JSON Patch (RFC6902) by comparing user updates
-        to existing metadata/specs. It uses a slight variation of JSON Merge Patch (RFC7386)
-        as an intermediary to implement a python `dict.update`-like user-friendly
-        interface, but with additional features like key deletion (see examples) and
-        support for `None (null)` values.
-
-        Examples
-        --------
-
-        Build a patch for adding/updating a key-value pair at the top or a nested level
-
-        >>> patches = node.build_metadata_patches({'key': new_value})
-        >>> patches = node.build_metadata_patches({'top_key': {'nested_key': new_value}})
-
-        Build patches for metadata and specs ("mp", "sp")
-
-        >>> mp, sp = node.build_metadata_patches(metadata=metadata, specs=specs)
-
-        Build a patch for removing an existing key
-
-        >>> from tiled.client.metadata_update import DELETE_KEY
-        >>> node.build_metadata_patches({'key_to_be_deleted': DELETE_KEY})
-
-        Interactively build a patch for complex metadata (e.g., in iPython you may use
-        tab completion to navigate nested metadata)
-
-        >>> md = node.metadata_copy()[0]
-        >>> md['L1_key']['L2_key']['L3_key'] = new_value  # use tab completion
-        >>> md['unwanted_key'] = DELETE_KEY
-        >>> node.build_metadata_patches(metadata=md)  # Generate the patch
-        """
-
-        if metadata is None:
-            metadata_patch = []
-        else:
-            if not isinstance(metadata, collections.abc.Mapping):
-                raise ValueError(
-                    f"Metadata must serialize as a JSON object, cannot be {type(metadata)}."
-                )
-            md_copy = deepcopy(self._item["attributes"]["metadata"])
-            metadata_patch = jsonpatch.JsonPatch.from_diff(
-                self._item["attributes"]["metadata"],
-                apply_update_patch(md_copy, metadata),
-                dumps=orjson.dumps,
-            ).patch
-
-        if specs is None:
-            specs_patch = None
-        else:
-            sp_copy = [spec["name"] for spec in self._item["attributes"]["specs"]]
-            specs_patch = (
-                []
-                if specs is None
-                else jsonpatch.JsonPatch.from_diff(
-                    sp_copy, specs, dumps=orjson.dumps
-                ).patch
-            )
-
-        if not access_tags:
-            # empty list of access_tags should be a no-op
-            access_tags_patch = None
-        else:
-            access_tags_copy = list(self._item["attributes"]["access_tags"])
-            access_tags_patch = jsonpatch.JsonPatch.from_diff(
-                access_tags_copy, access_tags, dumps=orjson.dumps
-            ).patch
-
-        return metadata_patch, specs_patch, access_tags_patch
-
-    def _build_json_patch(self, origin, update_patch):
-        """
-        Lower level method to construct a JSON patch from an origin and update_patch.
-        An "update_patch" is a `dict.update`-like specification that may include
-        `DELETE_KEY` for marking a dictionary key for deletion.
-        """
-        if update_patch is None:
-            return []
-        patch = jsonpatch.JsonPatch.from_diff(
-            origin, apply_update_patch(origin, update_patch), dumps=orjson.dumps
-        )
-        return patch.patch
-
     def _build_metadata_revisions(self):
         if self._metadata_revisions is None:
-            link = self.item["links"]["self"].replace("/metadata", "/revisions", 1)
+            link = revisions_link(self.item["links"]["self"])
             self._metadata_revisions = MetadataRevisions(self.context, link)
 
         return self._metadata_revisions
@@ -773,87 +729,34 @@ class BaseClient:
 
         self._cached_len = None
 
-        def patcher(doc, patch, patch_type):
-            # this helper function applies a given type of patch to the document
-            # and returns the modified document
-            if patch_type == patch_mimetypes.JSON_PATCH:
-                return jsonpatch.apply_patch(
-                    doc=doc,
-                    patch=patch,
-                    in_place=False,
-                )
-            if patch_type == patch_mimetypes.MERGE_PATCH:
-                return json_merge_patch.merge(doc, patch)
-            raise ValueError(
-                f"Unsupported patch type {content_type}. "
-                f"Acceptable values are: {', '.join(patch_mimetypes)}."
+        specs_patch = normalize_specs_patch(specs_patch, content_type)
+        draft = draft_request_patch_metadata(
+            self.item["links"]["self"],
+            content_type=content_type,
+            metadata_patch=metadata_patch,
+            specs_patch=specs_patch,
+            access_tags_patch=access_tags_patch,
+            drop_revision=drop_revision,
+        )
+        content = self._send(draft).json()
+        # Compute what each submitted field looks like after the patch. The
+        # server applied the same patch to the same stored values, so local
+        # application cannot fail where the request succeeded.
+        attributes = self._item["attributes"]
+
+        def patched(doc, patch):
+            return None if patch is None else apply_patch(doc, patch, content_type)
+
+        attributes.update(
+            merge_mutated_attributes(
+                content,
+                metadata=patched(dict(attributes["metadata"]), metadata_patch),
+                specs=patched(attributes["specs"], specs_patch),
+                access_tags=patched(
+                    list(attributes["access_tags"] or []), access_tags_patch
+                ),
             )
-
-        assert content_type in patch_mimetypes
-        if specs_patch is None:
-            normalized_specs_patch = None
-        else:
-            normalized_specs_patch = []
-
-        if content_type == patch_mimetypes.JSON_PATCH:
-            if specs_patch:
-                for spec_patch in copy(specs_patch):
-                    value = spec_patch.get("value", None)
-                    if isinstance(value, str):
-                        spec_patch["value"] = asdict(Spec(value))
-                    normalized_specs_patch.append(spec_patch)
-        elif content_type == patch_mimetypes.MERGE_PATCH:
-            if specs_patch:
-                for spec in specs_patch:
-                    if isinstance(spec, str):
-                        spec = Spec(spec)
-                    normalized_specs_patch.append(asdict(spec))
-
-        data = {
-            "content-type": content_type,
-            "metadata": metadata_patch,
-            "specs": normalized_specs_patch,
-            "access_tags": access_tags_patch,
-        }
-        params = {}
-        if drop_revision:
-            params["drop_revision"] = True
-
-        for attempt in retry_context():
-            with attempt:
-                content = handle_error(
-                    self.context.http_client.patch(
-                        self.item["links"]["self"],
-                        headers={"Content-Type": "application/json"},
-                        content=safe_json_dump(data),
-                        params=params,
-                    )
-                ).json()
-
-        if metadata_patch is not None:
-            if "metadata" in content:
-                # Metadata was accepted and modified by the specs validator on the server side.
-                # It is updated locally using the new version.
-                self._item["attributes"]["metadata"] = content["metadata"]
-            else:
-                # Metadata was accepted as it is by the server.
-                # It is updated locally with the version submitted by the client.
-                self._item["attributes"]["metadata"] = patcher(
-                    dict(self.metadata), metadata_patch, content_type
-                )
-
-        if specs_patch is not None:
-            current_specs = self._item["attributes"]["specs"]
-            patched_specs = patcher(current_specs, normalized_specs_patch, content_type)
-            self._item["attributes"]["specs"] = patched_specs
-
-        if access_tags_patch is not None:
-            if "access_tags" in content:
-                self._item["attributes"]["access_tags"] = content["access_tags"]
-            else:
-                self._item["attributes"]["access_tags"] = patcher(
-                    list(self.access_tags), access_tags_patch, content_type
-                )
+        )
 
     def replace_metadata(
         self, metadata=None, specs=None, access_tags=None, drop_revision=False
@@ -885,44 +788,20 @@ class BaseClient:
 
         self._cached_len = None
 
-        data = {
-            "metadata": metadata,
-            "specs": normalize_specs(specs),
-            "access_tags": access_tags,
-        }
-        params = {}
-        if drop_revision:
-            params["drop_revision"] = True
-
-        for attempt in retry_context():
-            with attempt:
-                content = handle_error(
-                    self.context.http_client.put(
-                        self.item["links"]["self"],
-                        headers={"Content-Type": "application/json"},
-                        content=safe_json_dump(data),
-                        params=params,
-                    )
-                ).json()
-
-        if metadata is not None:
-            if "metadata" in content:
-                # Metadata was accepted and modified by the specs validator on the server side.
-                # It is updated locally using the new version.
-                self._item["attributes"]["metadata"] = content["metadata"]
-            else:
-                # Metadata was accepted as it is by the server.
-                # It is updated locally with the version submitted by the client.
-                self._item["attributes"]["metadata"] = metadata
-
-        if specs is not None:
-            self._item["attributes"]["specs"] = normalize_specs(specs)
-
-        if access_tags is not None:
-            if "access_tags" in content:
-                self._item["attributes"]["access_tags"] = content["access_tags"]
-            else:
-                self._item["attributes"]["access_tags"] = access_tags
+        specs = normalize_specs(specs)
+        draft = draft_request_replace_metadata(
+            self.item["links"]["self"],
+            metadata=metadata,
+            specs=specs,
+            access_tags=access_tags,
+            drop_revision=drop_revision,
+        )
+        content = self._send(draft).json()
+        self._item["attributes"].update(
+            merge_mutated_attributes(
+                content, metadata=metadata, specs=specs, access_tags=access_tags
+            )
+        )
 
     @property
     def metadata_revisions(self):
@@ -945,21 +824,14 @@ class BaseClient:
         """
 
         self._cached_len = None
-        for attempt in retry_context():
-            with attempt:
-                handle_error(
-                    self.context.http_client.delete(
-                        f"{self.uri}",
-                        params={"recursive": recursive, "external_only": external_only},
-                    )
-                )
+        draft = draft_request_delete(
+            self.uri, params={"recursive": recursive, "external_only": external_only}
+        )
+        self._send(draft)
 
     def close_stream(self):
         "Declare the end of a stream of writes to this node."
-        endpoint = self.uri.replace("/metadata/", "/stream/close/", 1)
-        for attempt in retry_context():
-            with attempt:
-                handle_error(self.context.http_client.delete(endpoint))
+        self._send(draft_request_delete(stream_close_link(self.uri)))
 
     def __dask_tokenize__(self):
         return (type(self), self.uri)

@@ -47,7 +47,12 @@ from tiled.structures.core import Spec, StructureFamily
 from tiled.structures.data_source import DataSource
 from tiled.structures.sparse import COOStructure
 from tiled.structures.table import TableStructure
-from tiled.utils import APACHE_ARROW_FILE_MIME_TYPE, patch_mimetypes, sanitize_uri
+from tiled.utils import (
+    APACHE_ARROW_FILE_MIME_TYPE,
+    Conflicts,
+    patch_mimetypes,
+    sanitize_uri,
+)
 from tiled.validation_registration import ValidationRegistry
 
 from .utils import fail_with_status_code
@@ -227,9 +232,11 @@ def test_extend_array(tree):
         assert ac.shape == a.shape
 
         # Patching data into a region beyond the current extent of the array
-        # raises a ValueError (catching a 409 from the server).
-        with pytest.raises(ValueError):
+        # raises Conflicts (catching a 409 from the server). Conflicts
+        # subclasses ValueError, which this operation historically raised.
+        with pytest.raises(Conflicts):
             ac.patch(new_data, offset=(3,))
+        assert issubclass(Conflicts, ValueError)
         # With extend=True, the array is expanded.
         ac.patch(new_data, offset=(3,), extend=True)
         # The local cache of the structure is updated.

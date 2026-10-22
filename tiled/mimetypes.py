@@ -1,22 +1,25 @@
 import copy
 import importlib
 
-from .serialization.table import XLSX_MIME_TYPE
-from .utils import APACHE_ARROW_FILE_MIME_TYPE, OneShotCachedMap
+from .utils import APACHE_ARROW_FILE_MIME_TYPE, XLSX_MIME_TYPE, OneShotCachedMap
 
-# This maps MIME types (i.e. file formats) for appropriate Readers.
-# OneShotCachedMap is used to defer imports. We don't want to pay up front
-# for importing Readers that we will not actually use.
+JSON_MIMETYPE = "application/json"
+MSGPACK_MIMETYPE = "application/x-msgpack"
+ZIP_MIMETYPE = "application/zip"
+OCTET_STREAM_MIMETYPE = "application/octet-stream"
 PARQUET_MIMETYPE = "application/x-parquet"
 SPARSE_BLOCKS_PARQUET_MIMETYPE = "application/x-parquet;structure=sparse"
 ZARR_MIMETYPE = "application/x-zarr"
 AWKWARD_BUFFERS_MIMETYPE = "application/x-awkward-buffers"
 RAGGED_SQL_MIMETYPE = "application/x-ragged+sql"
 TILED_SQL_TABLE_MIMETYPE = "application/x-tiled-sql-table"
+# This maps MIME types (i.e. file formats) for appropriate Readers.
+# OneShotCachedMap is used to defer imports. We don't want to pay up front
+# for importing Readers that we will not actually use.
 # TODO: make type[Adapter] after #1047
 DEFAULT_ADAPTERS_BY_MIMETYPE = OneShotCachedMap[str, type](
     {
-        "application/octet-stream": lambda: importlib.import_module(
+        OCTET_STREAM_MIMETYPE: lambda: importlib.import_module(
             "..adapters.bytes", __name__
         ).BytesAdapter,
         "image/tiff": lambda: importlib.import_module(
