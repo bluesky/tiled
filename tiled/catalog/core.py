@@ -41,7 +41,7 @@ REQUIRED_REVISION = ALL_REVISIONS[0]
 async def initialize_database(engine: AsyncEngine):
     # The definitions in .orm alter Base.metadata.
     from ..graph import orm as graph_orm  # noqa: F401
-    from . import orm  # noqa: F401
+    from . import orm
 
     async with engine.connect() as connection:
         # Install extensions

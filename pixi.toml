@@ -51,7 +51,7 @@ pyarrow-all = ">=14.0.1"  # includes fix to CVE 2023-47248
 [feature.dev.dependencies]
 aiohttp = "*"
 coverage = "*"
-flake8 = "*"
+ruff = "==0.12.0"
 hypothesis = "*"
 ipython = "*"
 ldap3 = "*"

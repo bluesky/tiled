@@ -110,7 +110,7 @@ trees:
     tree: catalog
     args:
       uri: {sqlite_or_postgres_uri}
-      writable_storage: {tmp_path / 'data'}
+      writable_storage: {tmp_path / "data"}
       init_if_not_exists: true
 """
         )

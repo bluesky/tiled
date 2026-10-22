@@ -33,7 +33,7 @@ if modules_available("blosc2"):
                 _, cbytes, _ = blosc2.get_cbuffer_sizes(view[offset:])
                 if cbytes <= 0:
                     break
-                frame = view[offset : offset + cbytes]  # noqa: E203
+                frame = view[offset : offset + cbytes]
                 chunks.append(blosc2.decompress(frame))
                 offset += cbytes
             if len(chunks) == 1:

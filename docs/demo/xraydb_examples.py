@@ -324,7 +324,7 @@ def main():
             )
 
     print(f"\nDone. Wrote {98} elements to {TILED_URI} under examples/xraydb.")
-    print("Total nodes: 98 element containers + up to 3 datasets each " "≈ ~390 nodes.")
+    print("Total nodes: 98 element containers + up to 3 datasets each ≈ ~390 nodes.")
 
 
 if __name__ == "__main__":

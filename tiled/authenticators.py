@@ -730,7 +730,7 @@ async def prepare_saml_from_fastapi_request(request: Request) -> Mapping[str, st
         "server_port": request.url.port,
         "script_name": request.url.path,
         "post_data": {},
-        "get_data": {}
+        "get_data": {},
         # Advanced request options
         # "https": "",
         # "request_uri": "",
@@ -1264,11 +1264,7 @@ class LDAPAuthenticator(InternalAuthenticator):
             found = False
             for group in self.allowed_groups:
                 group_filter = (
-                    "(|"
-                    "(member={userdn})"
-                    "(uniqueMember={userdn})"
-                    "(memberUid={uid})"
-                    ")"
+                    "(|(member={userdn})(uniqueMember={userdn})(memberUid={uid}))"
                 )
                 group_filter = group_filter.format(userdn=userdn, uid=username)
                 group_attributes = ["member", "uniqueMember", "memberUid"]

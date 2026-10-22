@@ -24,7 +24,7 @@ class IterViewBase:
         return self[:n]
 
     def tail(self, n=5):
-        return list(reversed(self[-1 : -(n + 1) : -1]))  # noqa: E203
+        return list(reversed(self[-1 : -(n + 1) : -1]))
 
     def __init_subclass__(cls, *args, **kwargs):
         cls.first.__doc__ = f"Get the first {cls._name}."

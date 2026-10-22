@@ -129,9 +129,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             server_sorting = item["attributes"].get("sorting") or []
             self._sorting = [
                 (s["key"], int(s["direction"])) for s in server_sorting
-            ] or [
-                ("", 1)
-            ]  # fall back to server default when not specified
+            ] or [("", 1)]  # fall back to server default when not specified
         sorting_list = [
             f"{'-' if item[1] < 0 else ''}{item[0]}" for item in self._sorting
         ]
@@ -319,9 +317,9 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             data = content["data"]
             if not data:
                 raise KeyError(key)
-            assert (
-                len(data) == 1
-            ), "The key lookup query must never return more than one result."
+            assert len(data) == 1, (
+                "The key lookup query must never return more than one result."
+            )
             (item,) = data
             result = client_for_item(
                 self.context,
@@ -356,9 +354,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                         item,
                         include_data_sources=self._include_data_sources,
                     )
-                    return (
-                        result[keys[i + 1 :]] if keys[i + 1 :] else result  # noqa: E203
-                    )
+                    return result[keys[i + 1 :]] if keys[i + 1 :] else result
                 else:
                     # The item was not inlined, either because nothing was inlined
                     # or because it was added after we fetched the inlined contents.
@@ -1747,12 +1743,15 @@ class DeepSearchResults(collections.abc.Mapping):
                 # `ancestors` is server-absolute; make the key relative to
                 # the Node that `search_deep` was called on.
                 full_path = tuple(item["attributes"]["ancestors"]) + (item["id"],)
-                key = full_path[len(self._root_path_parts) :]  # noqa: E203
-                yield key, client_for_item(
-                    self.context,
-                    self.structure_clients,
-                    item,
-                    include_data_sources=self._include_data_sources,
+                key = full_path[len(self._root_path_parts) :]
+                yield (
+                    key,
+                    client_for_item(
+                        self.context,
+                        self.structure_clients,
+                        item,
+                        include_data_sources=self._include_data_sources,
+                    ),
                 )
                 if stop is not None and next(item_counter) == stop - 1:
                     return

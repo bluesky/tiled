@@ -441,9 +441,9 @@ class TestWebhookIntegration:
 
         paths = [e["path"] for e in received]
         assert any(node_key in p for p in paths), "expected event for watched sub-tree"
-        assert not any(
-            sibling_key in str(p) for p in paths
-        ), "unexpected event for sibling sub-tree"
+        assert not any(sibling_key in str(p) for p in paths), (
+            "unexpected event for sibling sub-tree"
+        )
 
     @respx.mock
     def test_subnode_webhook_in_list_for_its_path(
@@ -529,9 +529,9 @@ class TestWebhookIntegration:
         event = received[0]
         assert event["type"] == EventType.container_child_metadata_updated
         # The payload must reflect the existing metadata, not an empty dict.
-        assert event.get("metadata") == {
-            "color": "blue"
-        }, "Webhook payload should include pre-existing metadata when only specs changed"
+        assert event.get("metadata") == {"color": "blue"}, (
+            "Webhook payload should include pre-existing metadata when only specs changed"
+        )
 
     @respx.mock
     def test_webhook_cascade_deleted_when_node_deleted(
@@ -728,8 +728,9 @@ def test_ssrf_check_passes_exception() -> None:
             return "example.com"
         return "example3.com"
 
-    with patch("tiled.server.webhooks.socket.getaddrinfo", side_effect=_fake), patch(
-        "tiled.server.webhooks.socket.getfqdn", side_effect=_fake2
+    with (
+        patch("tiled.server.webhooks.socket.getaddrinfo", side_effect=_fake),
+        patch("tiled.server.webhooks.socket.getfqdn", side_effect=_fake2),
     ):
         check_url_ssrf_safety(
             "https://example.com/hook", ["93.184.216.0/24"], ["example.com"]
@@ -750,8 +751,9 @@ def test_ssrf_check_blocks_custom_local_network_not_accepted() -> None:
         else:
             return "example3.com"
 
-    with patch("tiled.server.webhooks.socket.getaddrinfo", side_effect=_fake), patch(
-        "tiled.server.webhooks.socket.getfqdn", side_effect=_fake2
+    with (
+        patch("tiled.server.webhooks.socket.getaddrinfo", side_effect=_fake),
+        patch("tiled.server.webhooks.socket.getfqdn", side_effect=_fake2),
     ):
         with pytest.raises(ValueError, match="blocked network 93.184.216.0/24"):
             check_url_ssrf_safety(
@@ -771,8 +773,9 @@ def test_ssrf_check_bad_network() -> None:
         else:
             return "example3.com"
 
-    with patch("tiled.server.webhooks.socket.getaddrinfo", side_effect=_fake), patch(
-        "tiled.server.webhooks.socket.getfqdn", side_effect=_fake2
+    with (
+        patch("tiled.server.webhooks.socket.getaddrinfo", side_effect=_fake),
+        patch("tiled.server.webhooks.socket.getfqdn", side_effect=_fake2),
     ):
         with pytest.raises(
             ValueError,
@@ -797,8 +800,9 @@ def test_ssrf_check_bad_accepted_hostname() -> None:
         else:
             return "example3.com"
 
-    with patch("tiled.server.webhooks.socket.getaddrinfo", side_effect=_fake), patch(
-        "tiled.server.webhooks.socket.getfqdn", side_effect=_fake2
+    with (
+        patch("tiled.server.webhooks.socket.getaddrinfo", side_effect=_fake),
+        patch("tiled.server.webhooks.socket.getfqdn", side_effect=_fake2),
     ):
         with pytest.raises(
             ValueError,
@@ -1075,9 +1079,9 @@ def test_webhooks_disabled_router_not_mounted(tmp_path: Any) -> None:
     with Context.from_app(app_no_webhooks) as ctx:
         http = ctx.http_client
         resp = http.get("/api/v1/webhooks/target/")
-        assert (
-            resp.status_code == 404
-        ), "Webhook router should not be mounted when webhooks: is absent from config"
+        assert resp.status_code == 404, (
+            "Webhook router should not be mounted when webhooks: is absent from config"
+        )
 
 
 # ---------------------------------------------------------------------------
