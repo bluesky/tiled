@@ -958,6 +958,82 @@ async def test_delete_sql_assets(sql_storage_uri):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("recursive", [False, True])
+@pytest.mark.parametrize("written", [None, "deleted", "survivor"])
+async def test_delete_sql_table_with_remaining_reference(
+    sql_storage_uri, recursive, written
+):
+    tree = in_memory(writable_storage={"sql": sql_storage_uri})
+    storage = cast(SQLStorage, get_storage(parse_storage(sql_storage_uri).uri))
+    table = pyarrow.Table.from_pydict({"a": [1, 2, 3], "b": [4.0, 5.0, 6.0]})
+    try:
+        with Context.from_app(build_app(tree)) as context:
+            client = from_context(context)
+            survivor = client.create_appendable_table(
+                schema=table.schema, key="survivor"
+            )
+            parent = client.create_container("deleted") if recursive else client
+            deleted = parent.create_appendable_table(schema=table.schema, key="table")
+            if written == "deleted":
+                deleted.append_partition(0, table)
+            elif written == "survivor":
+                survivor.append_partition(0, table)
+            table_name = survivor.data_sources()[0].parameters["table_name"]
+            assert table_name == deleted.data_sources()[0].parameters["table_name"]
+
+            # The safety guard must still refuse deletion of internally managed data.
+            key = "deleted" if recursive else "table"
+            with pytest.raises(ClientError):
+                client.delete_contents(key, recursive=recursive)
+            client.delete_contents(key, recursive=recursive, external_only=False)
+
+            with closing(storage.connect()) as conn:
+                assert sql_table_exists(conn, storage.dialect, table_name)
+            expected = (
+                table.to_pandas() if written == "survivor" else table.to_pandas()[:0]
+            )
+            pandas.testing.assert_frame_equal(survivor.read(), expected)
+            survivor.append_partition(0, table)
+            pandas.testing.assert_frame_equal(
+                survivor.read(),
+                pandas.concat([expected, table.to_pandas()], ignore_index=True),
+            )
+            client.delete_contents("survivor", external_only=False)
+            with closing(storage.connect()) as conn:
+                assert not sql_table_exists(conn, storage.dialect, table_name)
+    finally:
+        storage.dispose()
+
+
+@pytest.mark.asyncio
+async def test_delete_multiple_empty_sql_datasets(sql_storage_uri):
+    tree = in_memory(writable_storage={"sql": sql_storage_uri})
+    storage = cast(SQLStorage, get_storage(parse_storage(sql_storage_uri).uri))
+    schema = pyarrow.schema([("a", pyarrow.int64())])
+    try:
+        with Context.from_app(build_app(tree)) as context:
+            client = from_context(context)
+            other = client.create_appendable_table(
+                schema=pyarrow.schema([("b", pyarrow.float64())]), key="other"
+            )
+            parent = client.create_container("deleted")
+            first = parent.create_appendable_table(schema=schema, key="first")
+            parent.create_appendable_table(schema=schema, key="second")
+            table_name = first.data_sources()[0].parameters["table_name"]
+            other_table_name = other.data_sources()[0].parameters["table_name"]
+
+            client.delete_contents("deleted", recursive=True, external_only=False)
+            with closing(storage.connect()) as conn:
+                assert not sql_table_exists(conn, storage.dialect, table_name)
+                assert sql_table_exists(conn, storage.dialect, other_table_name)
+            other.append_partition(0, pyarrow.Table.from_pydict({"b": [1.0]}))
+            assert other.read()["b"].tolist() == [1.0]
+            client.delete_contents("other", external_only=False)
+    finally:
+        storage.dispose()
+
+
+@pytest.mark.asyncio
 async def test_delete_internal_sql_asset(sql_storage_uri):
     "Deleting an internally-managed SQL-backed asset drops its dataset/table."
     tree = in_memory(writable_storage={"sql": sql_storage_uri})
