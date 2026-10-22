@@ -111,15 +111,19 @@ class MetadataRevisions:
         send_request_draft(self.context, draft)
 
 
-class BaseClient:
-    # The HTTP spec does not define a size limit for URIs,
-    # but a common setting is 4K or 8K (for all the headers together).
-    # As another reference point, Internet Explorer imposes a
-    # 2048-character limit on URLs.
+class CommonBaseClient:
+    """State and accessors shared by the synchronous and asynchronous clients.
+
+    Everything here is pure: holding the item, parsing its structure, and
+    reading its attributes. All I/O lives in the subclasses (`BaseClient`
+    and `tiled.client.aio.AsyncBaseClient`), which differ only in how they
+    send requests; what to send and how to interpret responses comes from
+    `tiled.client._protocol`.
+    """
 
     def __init__(
         self,
-        context: Context,
+        context,
         *,
         item,
         structure_clients,
@@ -130,7 +134,6 @@ class BaseClient:
         self._item = item
         self._cached_len = None  # a cache just for __len__
         self.structure_clients = structure_clients
-        self._metadata_revisions = None
         self._include_data_sources = include_data_sources
         attributes = self.item["attributes"]
         structure_family = attributes["structure_family"]
@@ -160,6 +163,200 @@ class BaseClient:
                 "cope with that."
             )
         return self._structure
+
+    def __repr__(self):
+        return f"<{type(self).__name__}>"
+
+    @property
+    def context(self):
+        return self._context
+
+    @property
+    def item(self):
+        "JSON payload describing this item. Mostly for internal use."
+        return self._item
+
+    @property
+    def metadata(self) -> DictView[str, JSON_ITEM]:
+        "Metadata about this data source."
+        # Ensure this is immutable (at the top level) to help the user avoid
+        # getting the wrong impression that editing this would update anything
+        # persistent.
+        return DictView(self._item["attributes"]["metadata"])
+
+    @property
+    def specs(self) -> ListView[Spec]:
+        "List of specifications describing the structure of the metadata and/or data."
+        return ListView(
+            [Spec.from_json(spec) for spec in self._item["attributes"]["specs"]]
+        )
+
+    @property
+    def access_tags(self) -> ListView[str]:
+        "Authorization information about this node, encoded as access tags."
+        access_tags = self._item["attributes"]["access_tags"]
+        if access_tags is None:
+            raise AttributeError("Node has no attribute 'access_tags'")
+        # Ensure this is immutable (at the top level) to help the user avoid
+        # getting the wrong impression that editing this would update anything
+        # persistent.
+        return ListView(access_tags)
+
+    @property
+    def uri(self):
+        "Direct link to this entry"
+        return self.item["links"]["self"]
+
+    @property
+    def path_parts(self):
+        "Location of node in tree, given as list of path segments."
+        return self._item["attributes"]["ancestors"] + [self._item["id"]]
+
+    @property
+    def structure_family(self):
+        "Quick access to this entry"
+        return StructureFamily[self.item["attributes"]["structure_family"]]
+
+    def metadata_copy(self):
+        """
+        Generate a mutable copy of metadata, specs, and access_tags for
+        validating metadata (useful with update_metadata())
+        """
+        metadata = deepcopy(self._item["attributes"]["metadata"])
+        specs = [Spec.from_json(spec) for spec in self._item["attributes"]["specs"]]
+        access_tags = list(self._item["attributes"]["access_tags"])
+        return [
+            md for md in [metadata, specs, access_tags] if md is not None
+        ]  # returning as list of mutable items
+
+    def new_variation(
+        self,
+        structure_clients=UNCHANGED,
+        include_data_sources=UNCHANGED,
+        structure=UNCHANGED,
+        **kwargs,
+    ):
+        """
+        This is intended primarily for internal use and use by subclasses.
+        """
+        if structure_clients is UNCHANGED:
+            structure_clients = self.structure_clients
+        if include_data_sources is UNCHANGED:
+            include_data_sources = self._include_data_sources
+        if structure is UNCHANGED:
+            structure = self._structure
+        return type(self)(
+            self.context,
+            item=self._item,
+            structure=structure,
+            structure_clients=structure_clients,
+            include_data_sources=include_data_sources,
+            **kwargs,
+        )
+
+    @property
+    def formats(self):
+        "List formats that the server can export this data as."
+        formats = set()
+        for spec in self.item["attributes"]["specs"]:
+            formats.update(self.context.server_info.formats.get(spec["name"], []))
+        formats.update(
+            self.context.server_info.formats[
+                self.item["attributes"]["structure_family"]
+            ]
+        )
+        return sorted(formats)
+
+    def build_metadata_patches(self, metadata=None, specs=None, access_tags=None):
+        """
+        Build valid JSON Patches (RFC6902) for metadata and metadata validation
+        specs accepted by `patch_metadata`.
+
+        Parameters
+        ----------
+        metadata : dict, optional
+            User metadata. May be nested. Must contain only basic types
+            (e.g. numbers, strings, lists, dicts) that are JSON-serializable.
+
+        specs : list[Spec], optional
+            Metadata validation specifications.
+
+        access_tags: List[str], optional
+            Server-specific authZ tags in list form, used to confer access to the node.
+
+        Returns
+        -------
+        metadata_patch : list[dict]
+            A JSON serializable object representing a valid JSON patch (RFC6902)
+            for metadata.
+        specs_patch : list[dict]
+            A JSON serializable object representing a valid JSON patch (RFC6902)
+            for metadata validation specifications.
+        access_tags_patch : list[dict]
+            A JSON serializable object representing a valid JSON patch (RFC6902)
+            for access tags
+
+        See Also
+        --------
+        patch_metadata
+        update_metadata
+
+        Notes
+        -----
+        `build_metadata_patch` constructs a JSON Patch (RFC6902) by comparing user updates
+        to existing metadata/specs. It uses a slight variation of JSON Merge Patch (RFC7386)
+        as an intermediary to implement a python `dict.update`-like user-friendly
+        interface, but with additional features like key deletion (see examples) and
+        support for `None (null)` values.
+
+        Examples
+        --------
+
+        Build a patch for adding/updating a key-value pair at the top or a nested level
+
+        >>> patches = node.build_metadata_patches({'key': new_value})
+        >>> patches = node.build_metadata_patches({'top_key': {'nested_key': new_value}})
+
+        Build patches for metadata and specs ("mp", "sp")
+
+        >>> mp, sp = node.build_metadata_patches(metadata=metadata, specs=specs)
+
+        Build a patch for removing an existing key
+
+        >>> from tiled.client.metadata_update import DELETE_KEY
+        >>> node.build_metadata_patches({'key_to_be_deleted': DELETE_KEY})
+
+        Interactively build a patch for complex metadata (e.g., in iPython you may use
+        tab completion to navigate nested metadata)
+
+        >>> md = node.metadata_copy()[0]
+        >>> md['L1_key']['L2_key']['L3_key'] = new_value  # use tab completion
+        >>> md['unwanted_key'] = DELETE_KEY
+        >>> node.build_metadata_patches(metadata=md)  # Generate the patch
+        """
+
+        return build_metadata_patches(
+            self._item["attributes"], metadata, specs, access_tags
+        )
+
+    def _build_json_patch(self, origin, update_patch):
+        """
+        Lower level method to construct a JSON patch from an origin and update_patch.
+        An "update_patch" is a `dict.update`-like specification that may include
+        `DELETE_KEY` for marking a dictionary key for deletion.
+        """
+        if update_patch is None:
+            return []
+        patch = jsonpatch.JsonPatch.from_diff(
+            origin, apply_update_patch(origin, update_patch), dumps=orjson.dumps
+        )
+        return patch.patch
+
+
+class BaseClient(CommonBaseClient):
+    def __init__(self, context: Context, **kwargs):
+        super().__init__(context, **kwargs)
+        self._metadata_revisions = None
 
     def _send(
         self, draft: RequestDraft, *, indicator_context: "Context | None" = None
@@ -203,13 +400,6 @@ class BaseClient:
         """
         self.context.logout()
 
-    def __repr__(self):
-        return f"<{type(self).__name__}>"
-
-    @property
-    def context(self):
-        return self._context
-
     def refresh(self):
         draft = draft_request_refresh_node(self.uri, self._include_data_sources)
         content = self._send(draft).json()
@@ -219,19 +409,6 @@ class BaseClient:
                 self.structure_family, self._item["attributes"]["structure"]
             )
         return self
-
-    @property
-    def item(self):
-        "JSON payload describing this item. Mostly for internal use."
-        return self._item
-
-    @property
-    def metadata(self) -> DictView[str, JSON_ITEM]:
-        "Metadata about this data source."
-        # Ensure this is immutable (at the top level) to help the user avoid
-        # getting the wrong impression that editing this would update anything
-        # persistent.
-        return DictView(self._item["attributes"]["metadata"])
 
     @property
     def parent(self):
@@ -245,51 +422,6 @@ class BaseClient:
             node_path_parts=self._item["attributes"]["ancestors"],
             include_data_sources=self._include_data_sources,
         )
-
-    def metadata_copy(self):
-        """
-        Generate a mutable copy of metadata, specs, and access_tags for
-        validating metadata (useful with update_metadata())
-        """
-        metadata = deepcopy(self._item["attributes"]["metadata"])
-        specs = [Spec.from_json(spec) for spec in self._item["attributes"]["specs"]]
-        access_tags = list(self._item["attributes"]["access_tags"])
-        return [
-            md for md in [metadata, specs, access_tags] if md is not None
-        ]  # returning as list of mutable items
-
-    @property
-    def specs(self) -> ListView[Spec]:
-        "List of specifications describing the structure of the metadata and/or data."
-        return ListView(
-            [Spec.from_json(spec) for spec in self._item["attributes"]["specs"]]
-        )
-
-    @property
-    def access_tags(self) -> ListView[str]:
-        "Authorization information about this node, encoded as access tags."
-        access_tags = self._item["attributes"]["access_tags"]
-        if access_tags is None:
-            raise AttributeError("Node has no attribute 'access_tags'")
-        # Ensure this is immutable (at the top level) to help the user avoid
-        # getting the wrong impression that editing this would update anything
-        # persistent.
-        return ListView(access_tags)
-
-    @property
-    def uri(self):
-        "Direct link to this entry"
-        return self.item["links"]["self"]
-
-    @property
-    def path_parts(self):
-        "Location of node in tree, given as list of path segments."
-        return self._item["attributes"]["ancestors"] + [self._item["id"]]
-
-    @property
-    def structure_family(self):
-        "Quick access to this entry"
-        return StructureFamily[self.item["attributes"]["structure_family"]]
 
     def data_sources(self):
         data_sources_json = (
@@ -308,31 +440,6 @@ class BaseClient:
         if self._include_data_sources:
             return self  # no op
         return self.new_variation(include_data_sources=True).refresh()
-
-    def new_variation(
-        self,
-        structure_clients=UNCHANGED,
-        include_data_sources=UNCHANGED,
-        structure=UNCHANGED,
-        **kwargs,
-    ):
-        """
-        This is intended primarily for internal use and use by subclasses.
-        """
-        if structure_clients is UNCHANGED:
-            structure_clients = self.structure_clients
-        if include_data_sources is UNCHANGED:
-            include_data_sources = self._include_data_sources
-        if structure is UNCHANGED:
-            structure = self._structure
-        return type(self)(
-            self.context,
-            item=self._item,
-            structure=structure,
-            structure_clients=structure_clients,
-            include_data_sources=include_data_sources,
-            **kwargs,
-        )
 
     def asset_manifest(self, data_sources):
         """
@@ -505,19 +612,6 @@ class BaseClient:
             accept_encoding=accept_encoding,
         )
 
-    @property
-    def formats(self):
-        "List formats that the server can export this data as."
-        formats = set()
-        for spec in self.item["attributes"]["specs"]:
-            formats.update(self.context.server_info.formats.get(spec["name"], []))
-        formats.update(
-            self.context.server_info.formats[
-                self.item["attributes"]["structure_family"]
-            ]
-        )
-        return sorted(formats)
-
     def update_metadata(
         self, metadata=None, specs=None, access_tags=None, *, drop_revision=False
     ):
@@ -586,91 +680,6 @@ class BaseClient:
             access_tags_patch=access_tags_patch,
             drop_revision=drop_revision,
         )
-
-    def build_metadata_patches(self, metadata=None, specs=None, access_tags=None):
-        """
-        Build valid JSON Patches (RFC6902) for metadata and metadata validation
-        specs accepted by `patch_metadata`.
-
-        Parameters
-        ----------
-        metadata : dict, optional
-            User metadata. May be nested. Must contain only basic types
-            (e.g. numbers, strings, lists, dicts) that are JSON-serializable.
-
-        specs : list[Spec], optional
-            Metadata validation specifications.
-
-        access_tags: List[str], optional
-            Server-specific authZ tags in list form, used to confer access to the node.
-
-        Returns
-        -------
-        metadata_patch : list[dict]
-            A JSON serializable object representing a valid JSON patch (RFC6902)
-            for metadata.
-        specs_patch : list[dict]
-            A JSON serializable object representing a valid JSON patch (RFC6902)
-            for metadata validation specifications.
-        access_tags_patch : list[dict]
-            A JSON serializable object representing a valid JSON patch (RFC6902)
-            for access tags
-
-        See Also
-        --------
-        patch_metadata
-        update_metadata
-
-        Notes
-        -----
-        `build_metadata_patch` constructs a JSON Patch (RFC6902) by comparing user updates
-        to existing metadata/specs. It uses a slight variation of JSON Merge Patch (RFC7386)
-        as an intermediary to implement a python `dict.update`-like user-friendly
-        interface, but with additional features like key deletion (see examples) and
-        support for `None (null)` values.
-
-        Examples
-        --------
-
-        Build a patch for adding/updating a key-value pair at the top or a nested level
-
-        >>> patches = node.build_metadata_patches({'key': new_value})
-        >>> patches = node.build_metadata_patches({'top_key': {'nested_key': new_value}})
-
-        Build patches for metadata and specs ("mp", "sp")
-
-        >>> mp, sp = node.build_metadata_patches(metadata=metadata, specs=specs)
-
-        Build a patch for removing an existing key
-
-        >>> from tiled.client.metadata_update import DELETE_KEY
-        >>> node.build_metadata_patches({'key_to_be_deleted': DELETE_KEY})
-
-        Interactively build a patch for complex metadata (e.g., in iPython you may use
-        tab completion to navigate nested metadata)
-
-        >>> md = node.metadata_copy()[0]
-        >>> md['L1_key']['L2_key']['L3_key'] = new_value  # use tab completion
-        >>> md['unwanted_key'] = DELETE_KEY
-        >>> node.build_metadata_patches(metadata=md)  # Generate the patch
-        """
-
-        return build_metadata_patches(
-            self._item["attributes"], metadata, specs, access_tags
-        )
-
-    def _build_json_patch(self, origin, update_patch):
-        """
-        Lower level method to construct a JSON patch from an origin and update_patch.
-        An "update_patch" is a `dict.update`-like specification that may include
-        `DELETE_KEY` for marking a dictionary key for deletion.
-        """
-        if update_patch is None:
-            return []
-        patch = jsonpatch.JsonPatch.from_diff(
-            origin, apply_update_patch(origin, update_patch), dumps=orjson.dumps
-        )
-        return patch.patch
 
     def _build_metadata_revisions(self):
         if self._metadata_revisions is None:

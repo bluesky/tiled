@@ -136,8 +136,7 @@ class RaggedClient(BaseClient):
         return recipe.parse(content)
 
     def __getitem__(self, _slice: Any) -> ragged.array:
-        """
-        Access the array with slicing logic.
+        """Access the array with slicing logic.
 
         Parameters
         ----------

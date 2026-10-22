@@ -30,17 +30,18 @@ if TYPE_CHECKING:
     from .stream import ArraySubscription
 
 
-class _DaskArrayClient(BaseClient):
-    "Client-side wrapper around an array-like that returns dask arrays"
+class CommonArrayClient:
+    """Pure array accessors shared by the synchronous and asynchronous clients.
+
+    A mixin over `CommonBaseClient`: everything here reads the cached
+    structure; nothing performs I/O.
+    """
 
     # The limit on the expected size of the response body (before compression).
     # This will be used to determine how to combine multiple requests when fetching
     # data in blocks. If set to None, the client will not attempt to combine
     # requests and will fetch each chunk separately as determiied by the structure.
     RESPONSE_BYTESIZE_LIMIT = 100 * 1024 * 1024  # 100 MiB
-
-    def __init__(self, *args, item, **kwargs):
-        super().__init__(*args, item=item, **kwargs)
 
     @property
     def dims(self):
@@ -72,6 +73,10 @@ class _DaskArrayClient(BaseClient):
     def ndim(self):
         return len(self.structure().shape)
 
+    def __len__(self):
+        # As with numpy, len(arr) is the size of the zeroth axis.
+        return self.structure().shape[0]
+
     def __repr__(self):
         attrs = {
             "shape": self.shape,
@@ -85,6 +90,10 @@ class _DaskArrayClient(BaseClient):
             + "".join(f" {k}={v}" for k, v in attrs.items())
             + ">"
         )
+
+
+class _DaskArrayClient(CommonArrayClient, BaseClient):
+    "Client-side wrapper around an array-like that returns dask arrays"
 
     def __array__(self, *args, **kwargs):
         return self.read().__array__(*args, **kwargs)
@@ -300,10 +309,6 @@ class _DaskArrayClient(BaseClient):
 
     # The default object.__iter__ works as expected here, no need to
     # implemented it specifically.
-
-    def __len__(self):
-        # As with numpy, len(arr) is the size of the zeroth axis.
-        return self.structure().shape[0]
 
     def export(
         self, filepath, *, format=None, slice=None, link=None, template_vars=None
