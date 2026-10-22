@@ -7,6 +7,10 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Changed
 
+- Internal: the Python client's protocol knowledge -- request building,
+  response parsing, retry policies, and failure classification -- now lives
+  in pure, I/O-free modules under `tiled.client._protocol`, with the client
+  classes reduced to thin shells. Groundwork for an async client (#116).
 - Tiled now manages its connection pools to tabular storage more correctly.
   Also, it is now not allowed to use two storage databases with the same
   database on different hosts.
@@ -14,6 +18,17 @@ Write the date in place of the "Unreleased" in the case a new version is release
 ### Fixed
 
 - Improved the deletion of large subtrees with many associated assets (PostgreSQL only).
+- The xarray wide-table fetch (reading a dataset of many scalar/short
+  variables in one request) now retries on transient failures like all other read paths.
+- The guard that lets a retried create adopt a node made by its own earlier
+  attempt now compares specs in order. Spec order is significant, so a node
+  with the same specs in a different order is a genuine conflict (409).
+- `write_array` now builds its structure with `ArrayStructure.from_array`,
+  the canonical constructor, so arrays with structured (record) dtypes are
+  described field-by-field instead of as an opaque void type.
+- `Container.export` with a long `fields` selection now switches to an
+  equivalent POST when the URL would exceed the client's URL length limit,
+  as table reads already did, instead of sending an over-long URL.
 - Fixed client-side accumulation of metadata revisions across pages: a slice
   spanning more than one page (more than 100 revisions) returned subsequent
   pages as nested lists instead of revision records.

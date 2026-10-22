@@ -8,25 +8,22 @@ import numpy
 from numpy.typing import NDArray
 
 from ..ndslice import NDBlock, NDSlice
+from ..structures.core import structure_from_json
 from ._protocol.array import (
-    PATCH_CONFLICT_STATUS_CODES,
     ArrayReadRecipe,
-    draft_patch_request,
-    draft_write_block_request,
-    draft_write_request,
-    empty_array,
-    parse_array_response,
-    parse_patch_response,
-    patch_conflict_message,
+    draft_request_patch_array_full,
+    draft_request_write_array_block,
+    draft_request_write_array_full,
 )
 from ._protocol.request import RequestDraft
 from .base import BaseClient
 from .utils import (
+    PATCH_CONFLICT_STATUS_CODES,
+    ClientError,
     chunks_repr,
     export_util,
-    handle_error,
     params_from_slice,
-    retry_context,
+    patch_conflict_message,
 )
 
 if TYPE_CHECKING:
@@ -119,7 +116,7 @@ class _DaskArrayClient(BaseClient):
         if not recipe.drafts:
             # An array with 0 as one of its dimensions never contains data,
             # so we can short-circuit here without contacting the service.
-            return empty_array(recipe.dtype, recipe.shape)
+            return recipe.empty()
         ((index, draft),) = recipe.drafts.items()
         return self._fetch_one(draft, recipe.dtype, recipe.shape_of_draft(index))
 
@@ -130,12 +127,10 @@ class _DaskArrayClient(BaseClient):
         or as one task of a split read.
         """
         with self.context.throttle():
-            for attempt in retry_context(self.context):
-                with attempt:
-                    content = handle_error(self._send(draft)).read()
+            content = self._send(draft, indicator_context=self.context).read()
         if (ps := self.context.progress_state) is not None:
             ps.advance()
-        return parse_array_response(content, dtype, expected_shape)
+        return ArrayReadRecipe.parse(content, dtype, expected_shape)
 
     def read_block(self, block, slice=None):
         """Access the data for one block of this chunked (dask) array.
@@ -225,18 +220,16 @@ class _DaskArrayClient(BaseClient):
         return dask_array
 
     def write(self, array, persist=True):
-        draft = draft_write_request(self.item["links"]["full"], array, persist)
-        for attempt in retry_context():
-            with attempt:
-                handle_error(self._send(draft))
+        draft = draft_request_write_array_full(
+            self.item["links"]["full"], array, persist
+        )
+        self._send(draft)
 
     def write_block(self, array, block, slice=..., persist=True):
-        draft = draft_write_block_request(
+        draft = draft_request_write_array_block(
             self.item["links"]["block"], block, array, slice, persist
         )
-        for attempt in retry_context():
-            with attempt:
-                handle_error(self._send(draft))
+        self._send(draft)
 
     def patch(
         self,
@@ -304,17 +297,17 @@ class _DaskArrayClient(BaseClient):
                 f"Data given to patch has dtype {array.dtype} which does not "
                 f"match the dtype of this array {self.dtype}."
             )
-        draft = draft_patch_request(
+        draft = draft_request_patch_array_full(
             self.item["links"]["full"], array, offset, extend, persist
         )
-        for attempt in retry_context():
-            with attempt:
-                response = self._send(draft)
-                if response.status_code in PATCH_CONFLICT_STATUS_CODES:
-                    raise ValueError(patch_conflict_message(response.json()))
-                handle_error(response)
+        try:
+            response = self._send(draft)
+        except ClientError as err:
+            if err.response.status_code in PATCH_CONFLICT_STATUS_CODES:
+                raise ValueError(patch_conflict_message(err.response.json())) from err
+            raise
         # Update cached structure.
-        self._structure = parse_patch_response(response.json(), self.structure_family)
+        self._structure = structure_from_json(self.structure_family, response.json())
 
     def __getitem__(self, slice):
         return self.read(slice)
@@ -369,7 +362,7 @@ class _DaskArrayClient(BaseClient):
         return export_util(
             filepath,
             format,
-            self.context.http_client.get,
+            self.context,
             self.item["links"][link].format(**template_vars),
             params=params,
         )

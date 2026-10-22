@@ -15,23 +15,19 @@ from __future__ import annotations
 import itertools
 import math
 from dataclasses import dataclass
-from typing import Any, Optional, Union
+from typing import Any, Optional, Sequence, Union
 
-import httpx
 import numpy
 from numpy.typing import DTypeLike, NDArray
 
 from ...mimetypes import OCTET_STREAM_MIMETYPE
 from ...ndslice import NDBlock, NDSlice, split_slice
 from ...structures.array import ArrayStructure
-from ...structures.core import STRUCTURE_TYPES, StructureFamily
+from ...structures.core import StructureFamily
+from ...structures.data_source import DataSource
 from ...type_aliases import Chunks
 from ..utils import params_from_slice, slices_to_dask_chunks
-from .request import RequestDraft, filled_link_template
-
-# Status codes with which the server reports that patch parameters conflict
-# with the existing array (e.g. would overwrite without `extend=True`).
-PATCH_CONFLICT_STATUS_CODES = (httpx.codes.BAD_REQUEST, httpx.codes.CONFLICT)
+from .request import RequestDraft, fill_link_template
 
 
 @dataclass(frozen=True)
@@ -152,7 +148,7 @@ class ArrayReadRecipe:
             return cls({}, dtype, single_tile)
         total_bytes = math.prod(expected_shape) * dtype.itemsize
         if total_bytes < bytesize_limit:
-            draft = _draft_read_slice_request(link, array_slice, expected_shape)
+            draft = cls._draft_request_read_full(link, array_slice, expected_shape)
             return cls({(0,) * len(expected_shape): draft}, dtype, single_tile)
         chunk_bounds = tuple(
             tuple(itertools.accumulate(axis_chunks, initial=0))
@@ -166,7 +162,7 @@ class ArrayReadRecipe:
             pref_splits=chunk_bounds,
         )
         drafts = {
-            index: _draft_read_slice_request(
+            index: cls._draft_request_read_full(
                 link, subslice, subslice.shape_after_slice(structure.shape)
             )
             for index, subslice in indexed_slices.items()
@@ -179,39 +175,59 @@ class ArrayReadRecipe:
             slices_to_dask_chunks(indexed_slices, structure.shape),
         )
 
+    @staticmethod
+    def _draft_request_read_full(
+        link: str,
+        array_slice: NDSlice,
+        expected_shape: tuple[int, ...],
+    ) -> RequestDraft:
+        "Draft the request fetching one (sub-)slice of the array, via `/array/full`."
+        params: dict[str, Any] = {
+            "expected_shape": ",".join(map(str, expected_shape)) or "scalar"
+        }
+        if array_slice:
+            params["slice"] = array_slice.to_numpy_str()
+        return RequestDraft(
+            "GET",
+            link,
+            params=params,
+            headers={"Accept": OCTET_STREAM_MIMETYPE},
+        )
 
-def _draft_read_slice_request(
-    link: str,
-    array_slice: NDSlice,
-    expected_shape: tuple[int, ...],
+    @staticmethod
+    def parse(content: bytes, dtype: DTypeLike, shape: tuple[int, ...]) -> NDArray[Any]:
+        """Convert a raw `octet-stream` response body into a numpy array.
+
+        A staticmethod, unlike the sibling recipes' `parse`: the decode
+        parameters are passed as arguments so that dask tasks can carry
+        primitives and reference this function by qualified name, without
+        embedding the recipe.
+        """
+        return numpy.frombuffer(content, dtype=dtype).reshape(shape)
+
+    def empty(self) -> NDArray[Any]:
+        """The (empty) result of a read short-circuited client-side.
+
+        An array with 0 in its shape contains no data, so no request is
+        needed (`drafts` is empty).
+        """
+        return numpy.array([], dtype=self.dtype).reshape(self.shape)
+
+
+def draft_request_read_referenced_array(uri: str) -> RequestDraft:
+    """Draft the request fetching the array that a stream update references.
+
+    Streaming updates may reference array data by URI (`array-ref` messages)
+    instead of carrying an inline payload. The URI arrives complete, with any
+    selection already baked in by the server, so it is fetched as-is, as raw
+    octet-stream bytes (see `ArrayReadRecipe.parse`).
+    """
+    return RequestDraft("GET", uri, headers={"Accept": OCTET_STREAM_MIMETYPE})
+
+
+def draft_request_write_array_full(
+    link: str, array: Any, persist: bool = True
 ) -> RequestDraft:
-    "Draft the request fetching one (sub-)slice of the array, via `/array/full`."
-    params: dict[str, Any] = {
-        "expected_shape": ",".join(map(str, expected_shape)) or "scalar"
-    }
-    if array_slice:
-        params["slice"] = array_slice.to_numpy_str()
-    return RequestDraft(
-        "GET",
-        link,
-        params=params,
-        headers={"Accept": OCTET_STREAM_MIMETYPE},
-    )
-
-
-def parse_array_response(
-    content: bytes, dtype: DTypeLike, shape: tuple[int, ...]
-) -> NDArray[Any]:
-    "Convert a raw `octet-stream` response body into a numpy array."
-    return numpy.frombuffer(content, dtype=dtype).reshape(shape)
-
-
-def empty_array(dtype: DTypeLike, shape: tuple[int, ...]) -> NDArray[Any]:
-    "Construct the (empty) result of a fetch short-circuited client-side."
-    return numpy.array([], dtype=dtype).reshape(shape)
-
-
-def draft_write_request(link: str, array: Any, persist: bool = True) -> RequestDraft:
     "Draft a request overwriting the full array, via `PUT /array/full`."
     if not (hasattr(array, "shape") and hasattr(array, "dtype")):
         array = numpy.asarray(array)
@@ -228,7 +244,7 @@ def draft_write_request(link: str, array: Any, persist: bool = True) -> RequestD
     )
 
 
-def draft_write_block_request(
+def draft_request_write_array_block(
     link_template: str,
     block: tuple[int, ...],
     array: Any,
@@ -242,7 +258,7 @@ def draft_write_block_request(
     """
     if not (hasattr(array, "shape") and hasattr(array, "dtype")):
         array = numpy.asarray(array)
-    url = filled_link_template(link_template, *block)
+    url = fill_link_template(link_template, *block)
     params = params_from_slice(slice)
     if persist is False:
         # Extend the query only for non-default behavior.
@@ -256,7 +272,7 @@ def draft_write_block_request(
     )
 
 
-def draft_patch_request(
+def draft_request_patch_array_full(
     link: str,
     array: NDArray[Any],
     offset: Union[int, tuple[int, ...]],
@@ -284,17 +300,30 @@ def draft_patch_request(
     )
 
 
-def patch_conflict_message(body: dict[str, Any]) -> str:
-    "Render the server's patch-conflict response body as a client-side message."
-    return body.get("detail", "Array parameters conflict.").replace(
-        "Use ?",  # URL query param
-        "Pass keyword argument ",  # Python function argument
+def data_source_from_array(
+    array: Any, dims: Optional[Sequence[str]], max_chunk_bytes: int
+) -> DataSource:
+    """The data source describing an array upload.
+
+    Chunks are chosen such that each chunk is not too large to upload
+    (`max_chunk_bytes`), taking any existing chunking into account. If the
+    array is small, there will be only one chunk. `array` must expose `shape`,
+    `dtype`, and optionally `chunks`. The dask import is deferred: it is only
+    needed when writing.
+    """
+    from dask.array.core import normalize_chunks
+
+    # Take any existing chunking into account; otherwise let dask choose.
+    requested = (
+        array.chunks if hasattr(array, "chunks") else tuple("auto" for _ in array.shape)
     )
-
-
-def parse_patch_response(
-    body: dict[str, Any], structure_family: StructureFamily
-) -> Any:
-    "Parse the updated structure returned by a successful patch request."
-    structure_type = STRUCTURE_TYPES[structure_family]
-    return structure_type.from_json(body)
+    chunks = normalize_chunks(
+        requested,
+        limit=max_chunk_bytes,
+        dtype=array.dtype,
+        shape=array.shape,
+    )
+    return DataSource(
+        structure=ArrayStructure.from_array(array, chunks=chunks, dims=dims),
+        structure_family=StructureFamily.array,
+    )

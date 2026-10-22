@@ -14,6 +14,7 @@ response (404 and the like), which the caller handles.
 
 from __future__ import annotations
 
+import enum
 import string
 from dataclasses import dataclass, field
 from typing import Any, ClassVar, Optional, Sequence
@@ -21,7 +22,31 @@ from urllib.parse import parse_qs, urlparse
 
 import orjson
 
-from ...mimetypes import JSON_MIMETYPE
+from ...mimetypes import JSON_MIMETYPE, MSGPACK_MIMETYPE
+
+
+class RetryPolicy(enum.Enum):
+    """How the sending shell may retry a request that fails.
+
+    The policy is wire-level knowledge -- whether repeating the request is
+    safe follows from what the request does on the server -- so builders
+    declare it on the draft, and the shells' send loop acts on it.
+
+    IDEMPOTENT
+        Repeating the request is always safe. Retried on any failure where
+        a retry could plausibly succeed (the `should_retry` predicate).
+    IF_UNPROCESSED
+        Repeating is safe only if the server never processed the request
+        (e.g. appending rows); retried only on failures that guarantee
+        non-processing (the `should_retry_if_unprocessed` predicate).
+    NONE
+        Single attempt; the caller orchestrates any retries itself (e.g.
+        the create flow, which tracks state across attempts).
+    """
+
+    IDEMPOTENT = "idempotent"
+    IF_UNPROCESSED = "if_unprocessed"
+    NONE = "none"
 
 
 @dataclass(frozen=True)
@@ -51,6 +76,8 @@ class RequestDraft:
         which also set the matching `Content-Type` header. This keeps
         builders byte-deterministic and directly unit-testable; shells
         never encode bodies.
+    retry_policy : RetryPolicy
+        Whether and when the sending shell may retry this request.
     """
 
     # The longest URL the client sends in a GET request, in characters. A wire-level
@@ -62,6 +89,7 @@ class RequestDraft:
     params: dict[str, Any] = field(default_factory=dict)
     headers: dict[str, str] = field(default_factory=dict)
     content: Optional[bytes] = None
+    retry_policy: RetryPolicy = RetryPolicy.IDEMPOTENT
 
     @classmethod
     def get_or_post(
@@ -113,7 +141,36 @@ class RequestDraft:
         )
 
 
-def filled_link_template(template: str, *args: Any, **kwargs: Any) -> str:
+def draft_request_get_item(
+    link: str, params: Optional[dict[str, Any]] = None
+) -> RequestDraft:
+    """Draft a GET of one item (msgpack-encoded JSON on the wire).
+
+    The generic shape of single-item reads in the Tiled API: the item
+    describing a node, a metadata revision, and the like. Operations with
+    more to say have named builders that delegate here.
+    """
+    return RequestDraft(
+        "GET",
+        link,
+        params=params or {},
+        headers={"Accept": MSGPACK_MIMETYPE},
+    )
+
+
+def draft_request_delete(
+    link: str, params: Optional[dict[str, Any]] = None
+) -> RequestDraft:
+    """Draft a DELETE of the resource a link addresses.
+
+    The generic shape of all deletions in the Tiled API: nothing is parsed
+    from the response; parameters select or scope what is deleted (e.g. a
+    revision `number`, or `recursive` for a node's contents).
+    """
+    return RequestDraft("DELETE", link, params=params or {})
+
+
+def fill_link_template(template: str, *args: Any, **kwargs: Any) -> str:
     """Fill a server-provided URL template, validating its placeholders.
 
     Some server links are URL templates (e.g. `...?block={0},{1}` or
@@ -156,7 +213,7 @@ def revisions_link(self_link: str) -> str:
 
 
 def asset_manifest_link(self_link: str) -> str:
-    "Endpoint listing the files inside a node's directory assets."
+    "Endpoint serving the manifests of a node's assets."
     return self_link.replace("/metadata", "/asset/manifest", 1)
 
 

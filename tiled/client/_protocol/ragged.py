@@ -12,39 +12,24 @@ response content back through the parsers.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Iterable, Union
+from typing import Any, Iterable, Optional, Sequence, Union
 
-import httpx
 import orjson
 import ragged
 
 from ...mimetypes import JSON_MIMETYPE, ZIP_MIMETYPE
 from ...ndslice import NDSlice
 from ...serialization.ragged import from_zipped_buffers, to_zipped_buffers
+from ...structures.core import StructureFamily
+from ...structures.data_source import DataSource
 from ...structures.ragged import (
     CanonicalRaggedArray,
     RaggedCompatibleType,
     RaggedStructure,
     make_ragged_array,
 )
-from ...utils import Conflicts
 from ..utils import params_from_slice
-from .array import parse_patch_response, patch_conflict_message
 from .request import RequestDraft
-
-__all__ = [
-    "PATCH_CONFLICT_STATUS_CODES",
-    "RaggedReadRecipe",
-    "draft_patch_request",
-    "draft_write_block_request",
-    "draft_write_request",
-    "parse_patch_response",
-    "patch_conflict_exception",
-]
-
-# Status codes with which the server reports that patch parameters conflict
-# with the existing array (e.g. would overwrite without `extend=True`).
-PATCH_CONFLICT_STATUS_CODES = (httpx.codes.BAD_REQUEST, httpx.codes.CONFLICT)
 
 
 @dataclass(frozen=True)
@@ -98,7 +83,7 @@ def _zipped_buffers_body(array: CanonicalRaggedArray) -> bytes:
     return to_zipped_buffers(mimetype=ZIP_MIMETYPE, array=array, metadata={})
 
 
-def draft_write_request(
+def draft_request_write_ragged_full(
     link: str, array: RaggedCompatibleType, persist: bool = True
 ) -> RequestDraft:
     "Draft a request overwriting the array in full, via `PUT /ragged/full`."
@@ -116,7 +101,7 @@ def draft_write_request(
     )
 
 
-def draft_write_block_request(
+def draft_request_write_ragged_block(
     link: str,
     block: Union[int, Iterable[int]],
     array: CanonicalRaggedArray,
@@ -140,7 +125,7 @@ def draft_write_block_request(
     )
 
 
-def draft_patch_request(
+def draft_request_patch_ragged_full(
     link: str,
     array: CanonicalRaggedArray,
     offset: Union[int, tuple[int, ...]],
@@ -171,12 +156,20 @@ def draft_patch_request(
     )
 
 
-def patch_conflict_exception(status_code: int, body: dict[str, Any]) -> Exception:
-    """Translate a patch-conflict response into the exception to raise.
+def data_source_from_ragged(
+    array: Any, dims: Optional[Sequence[str]], max_partition_bytes: int
+) -> DataSource:
+    """The data source describing a ragged array upload.
 
-    A 409 (Conflict) maps to `Conflicts`; a 400 (Bad Request) maps to
-    `ValueError`. The message rewrite is shared with the array protocol:
-    the server phrases patch conflicts identically for both families.
+    `array` must already be in canonical ragged form (`make_ragged_array`).
+    Chunks are chosen such that each partition is not too large to upload
+    (`max_partition_bytes`).
     """
-    exception_type = Conflicts if status_code == httpx.codes.CONFLICT else ValueError
-    return exception_type(patch_conflict_message(body))
+    from ...structures.ragged import make_ragged_chunks
+
+    chunks = make_ragged_chunks(array, max_partition_bytes)
+    return DataSource(
+        structure=RaggedStructure.from_array(array, chunks=chunks, dims=dims),
+        structure_family=StructureFamily.ragged,
+        mimetype="application/x-ragged+sql",
+    )

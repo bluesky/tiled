@@ -6,21 +6,24 @@ import sys
 import uuid
 from collections import defaultdict
 from collections.abc import Hashable
+from copy import copy
 from dataclasses import asdict
 from pathlib import Path
 from threading import Lock
 from typing import Optional, Union
-from urllib.parse import parse_qs, urlparse
 from weakref import WeakValueDictionary
 
 import httpx
+import json_merge_patch
+import jsonpatch
 import msgpack
 import stamina
 import stamina.instrumentation
 
 from ..structures.core import Spec
 from ..type_aliases import Chunks
-from ..utils import path_from_uri
+from ..utils import Conflicts, patch_mimetypes, path_from_uri
+from ._protocol.request import RequestDraft, RetryPolicy
 
 # Disable stamina's default retry logging hook.  Tiled handles its own retry
 # messages via the _LoggingAttempt wrapper (routed to tiled.client at DEBUG).
@@ -366,6 +369,70 @@ def retry_context(context=None, *, on=None):
             context.signal_retry_resolved()
 
 
+# Status codes with which the server reports that patch parameters conflict
+# with the existing array (e.g. would overwrite without `extend=True`).
+PATCH_CONFLICT_STATUS_CODES = (httpx.codes.BAD_REQUEST, httpx.codes.CONFLICT)
+
+
+def patch_conflict_message(body):
+    "Render the server's patch-conflict response body as a client-side message."
+    return body.get("detail", "Array parameters conflict.").replace(
+        "Use ?",  # URL query param
+        "Pass keyword argument ",  # Python function argument
+    )
+
+
+def patch_conflict_exception(status_code, body):
+    """Translate a patch-conflict response into the exception to raise.
+
+    A 409 (Conflict) maps to `Conflicts`; a 400 (Bad Request) maps to
+    `ValueError`. The server phrases patch conflicts identically for the
+    array-like families (see `patch_conflict_message`).
+    """
+    exception_type = Conflicts if status_code == httpx.codes.CONFLICT else ValueError
+    return exception_type(patch_conflict_message(body))
+
+
+def collapse_key_segments(keys):
+    """Normalize a lookup of one or more keys into a tuple of path segments.
+
+    Each key may itself contain slashes (`node["a/b", "c"]` is equivalent to
+    `node["a", "b", "c"]`); leading and trailing slashes are dropped.
+    """
+    return tuple("/".join(keys).strip("/").split("/"))
+
+
+def send_request_draft(context, draft, *, indicator_context=None):
+    """Send a `RequestDraft` through a context's HTTP client.
+
+    The request is retried according to the draft's retry policy, and the
+    returned response has been vetted by `handle_error`; HTTP errors surface
+    as exceptions (after any retries the policy allows). `indicator_context`
+    optionally routes the retry indicator through a `Context` shared with progress
+    reporting (data-read paths); by default a standalone indicator is used.
+    """
+
+    def send_once():
+        return context.http_client.request(
+            draft.method,
+            draft.url,
+            params=draft.params,
+            headers=draft.headers,
+            content=draft.content,
+        )
+
+    if draft.retry_policy is RetryPolicy.NONE:
+        return handle_error(send_once())
+    on = (
+        should_retry_if_unprocessed
+        if draft.retry_policy is RetryPolicy.IF_UNPROCESSED
+        else None
+    )
+    for attempt in retry_context(indicator_context, on=on):
+        with attempt:
+            return handle_error(send_once())
+
+
 def should_poll_for_tokens(exception: Exception) -> bool:
     # Retry on transient network errors during device flow polling.
     if isinstance(exception, (httpx.ConnectError, httpx.TimeoutException)):
@@ -396,7 +463,25 @@ class UnknownStructureFamily(KeyError):
     pass
 
 
-def export_util(file, format, get, link, params):
+def resolve_export_format(file, format):
+    """Resolve the export format from the target file when not given explicitly.
+
+    The resulting value is interpreted by the server (see
+    `tiled.media_type_registration`), which accepts a media type like
+    "text/csv" or a file extension like "csv" (no dot). When `file` is a
+    path, an unspecified format is inferred from its suffixes; a writeable
+    buffer carries no name to infer from, so the format must be given.
+    """
+    if isinstance(format, str) and format.startswith("."):
+        format = format[1:]  # e.g. ".csv" -> "csv"
+    if format is None:
+        if not isinstance(file, (str, Path)):
+            raise ValueError("format must be specified when file is writeable buffer")
+        format = ".".join(suffix[1:] for suffix in Path(file).suffixes)  # e.g. "csv"
+    return format
+
+
+def export_util(file, format, context, link, params, *, repeated_param=None):
     """
     Download client data in some format and write to a file.
 
@@ -410,58 +495,38 @@ def export_util(file, format, get, link, params):
         If format is None and `file` is a filepath, the format is inferred
         from the name, like 'table.csv' implies format="text/csv". The format
         may be given as a file extension ("csv") or a media type ("text/csv").
-    get : callable
-        Client's internal GET method
+    context : tiled.client.context.Context
+        The connection through which to download.
     link: str
         URL to download full data
     params : dict
         Additional parameters for the request, which may be used to subselect
         or slice, for example.
+    repeated_param : str, optional
+        The name of one parameter in `params` whose (possibly many) values
+        select a subset of the export (e.g. `field`). It is lifted out of the
+        URL into the body of an equivalent POST when the URL would be too
+        long; see `RequestDraft.get_or_post`.
     """
-
-    # The server accpets a media type like "text/csv" or a file extension like
-    # "csv" (no dot) as a "format".
     if "format" in params:
         raise ValueError("params may not include 'format'. Use the format parameter.")
-    if isinstance(format, str) and format.startswith("."):
-        format = format[1:]  # e.g. ".csv" -> "csv"
+    format = resolve_export_format(file, format)
+    if repeated_param is not None:
+        params = dict(params)
+        values = params.pop(repeated_param, None)
+        draft = RequestDraft.get_or_post(
+            link,
+            repeated_param=repeated_param,
+            values=values,
+            params={"format": format, **params},
+        )
+    else:
+        draft = RequestDraft("GET", link, params={"format": format, **params})
+    content = send_request_draft(context, draft).read()
     if isinstance(file, (str, Path)):
-        # Infer that `file` is a filepath.
-        if format is None:
-            format = ".".join(
-                suffix[1:] for suffix in Path(file).suffixes
-            )  # e.g. "csv"
-        for attempt in retry_context():
-            with attempt:
-                content = handle_error(
-                    get(
-                        link,
-                        params={
-                            **parse_qs(urlparse(link).query),
-                            "format": format,
-                            **params,
-                        },
-                    )
-                ).read()
         with open(file, "wb") as buffer:
             buffer.write(content)
     else:
-        # Infer that `file` is a writeable buffer.
-        if format is None:
-            # We have no filepath to infer to format from.
-            raise ValueError("format must be specified when file is writeable buffer")
-        for attempt in retry_context():
-            with attempt:
-                content = handle_error(
-                    get(
-                        link,
-                        params={
-                            **parse_qs(urlparse(link).query),
-                            "format": format,
-                            **params,
-                        },
-                    )
-                ).read()
         file.write(content)
 
 
@@ -642,9 +707,11 @@ def chunks_repr(chunks: Chunks) -> str:
     return result
 
 
-def normalize_specs(
-    specs: Optional[Union[list[str], list[Spec], str]],
-) -> Optional[list[dict[str, str]]]:
+# The forms in which a caller may supply specs to the writing methods.
+Specs = Optional[Union[list[str], list[Spec], str]]
+
+
+def normalize_specs(specs: Specs) -> Optional[list[dict[str, str]]]:
     "Represent a list of Spec objects or strings as a list of dicts"
 
     if specs is None:
@@ -655,6 +722,40 @@ def normalize_specs(
             spec = Spec(spec)
         normalized_specs.append(asdict(spec))
     return normalized_specs
+
+
+def apply_patch(doc, patch, content_type):
+    "Apply a JSON patch (RFC 6902) or merge patch (RFC 7386) to `doc`."
+    if content_type == patch_mimetypes.JSON_PATCH:
+        return jsonpatch.apply_patch(doc=doc, patch=patch, in_place=False)
+    if content_type == patch_mimetypes.MERGE_PATCH:
+        return json_merge_patch.merge(doc, patch)
+    raise ValueError(
+        f"Unsupported patch type {content_type}. "
+        f"Acceptable values are: {', '.join(patch_mimetypes)}."
+    )
+
+
+def normalize_specs_patch(
+    specs_patch: Optional[list], content_type: str
+) -> Optional[list]:
+    """Normalize string specs inside a specs patch to `{"name", "version"}` dicts.
+
+    The two patch representations carry specs differently: a merge patch
+    lists the specs themselves (normalized by `normalize_specs`), while a
+    JSON patch wraps each spec in an operation's `value`.
+    """
+    if specs_patch is None:
+        return None
+    if content_type == patch_mimetypes.MERGE_PATCH:
+        return normalize_specs(specs_patch)
+    normalized: list = []
+    for spec_patch in copy(specs_patch):
+        value = spec_patch.get("value", None)
+        if isinstance(value, str):
+            spec_patch["value"] = asdict(Spec(value))
+        normalized.append(spec_patch)
+    return normalized
 
 
 def slices_to_dask_chunks(slice_dict, shape):

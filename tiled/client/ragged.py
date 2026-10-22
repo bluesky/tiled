@@ -6,18 +6,22 @@ from typing import Any, Union
 import numpy as np
 import ragged
 
+from ..structures.core import structure_from_json
 from ..structures.ragged import RaggedCompatibleType, make_ragged_array
 from ._protocol.ragged import (
-    PATCH_CONFLICT_STATUS_CODES,
     RaggedReadRecipe,
-    draft_patch_request,
-    draft_write_block_request,
-    draft_write_request,
-    parse_patch_response,
-    patch_conflict_exception,
+    draft_request_patch_ragged_full,
+    draft_request_write_ragged_block,
+    draft_request_write_ragged_full,
 )
 from .base import BaseClient
-from .utils import export_util, handle_error, params_from_slice, retry_context
+from .utils import (
+    PATCH_CONFLICT_STATUS_CODES,
+    ClientError,
+    export_util,
+    params_from_slice,
+    patch_conflict_exception,
+)
 
 
 class RaggedClient(BaseClient):
@@ -33,10 +37,10 @@ class RaggedClient(BaseClient):
             Whether to persist the changes on server storage. If False, the update is still
             streamed to subscribed listeners, but the server may choose not to save the changes.
         """
-        draft = draft_write_request(self.item["links"]["full"], array, persist)
-        for attempt in retry_context():
-            with attempt:
-                handle_error(self._send(draft))
+        draft = draft_request_write_ragged_full(
+            self.item["links"]["full"], array, persist
+        )
+        self._send(draft)
 
     def write_block(
         self,
@@ -58,12 +62,10 @@ class RaggedClient(BaseClient):
             Whether to persist the changes on server storage. If False, the update is still
             streamed to subscribed listeners, but the server may choose not to save the changes.
         """
-        draft = draft_write_block_request(
+        draft = draft_request_write_ragged_block(
             self.item["links"]["block"], block, array, persist
         )
-        for attempt in retry_context():
-            with attempt:
-                handle_error(self._send(draft))
+        self._send(draft)
 
     def patch(
         self,
@@ -105,19 +107,19 @@ class RaggedClient(BaseClient):
                 f"match the dtype of this array {self.dtype}."
             )
 
-        draft = draft_patch_request(
+        draft = draft_request_patch_ragged_full(
             self.item["links"]["full"], array, offset, extend, persist
         )
-        for attempt in retry_context():
-            with attempt:
-                response = self._send(draft)
-                if response.status_code in PATCH_CONFLICT_STATUS_CODES:
-                    raise patch_conflict_exception(
-                        response.status_code, response.json()
-                    )
-                handle_error(response)
+        try:
+            response = self._send(draft)
+        except ClientError as err:
+            if err.response.status_code in PATCH_CONFLICT_STATUS_CODES:
+                raise patch_conflict_exception(
+                    err.response.status_code, err.response.json()
+                ) from err
+            raise
         # Update cached structure.
-        self._structure = parse_patch_response(response.json(), self.structure_family)
+        self._structure = structure_from_json(self.structure_family, response.json())
 
     def read(self, slice: Any | None = None) -> ragged.array:
         """Read the entire array, or optionally a slice of it.
@@ -130,9 +132,7 @@ class RaggedClient(BaseClient):
         recipe = RaggedReadRecipe.for_full(
             self.item["links"]["full"], self.structure(), slice
         )
-        for attempt in retry_context():
-            with attempt:
-                content = handle_error(self._send(recipe.draft)).read()
+        content = self._send(recipe.draft).read()
         return recipe.parse(content)
 
     def __getitem__(self, _slice: Any) -> ragged.array:
@@ -169,7 +169,7 @@ class RaggedClient(BaseClient):
         return export_util(
             filepath,
             format,
-            self.context.http_client.get,
+            self.context,
             self.item["links"]["full"],
             params=params_from_slice(slice),
         )

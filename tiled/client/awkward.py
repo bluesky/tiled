@@ -1,8 +1,8 @@
 import awkward
 
-from ._protocol.awkward import AwkwardReadRecipe, draft_write_request
+from ._protocol.awkward import AwkwardReadRecipe, draft_request_write_awkward_full
 from .base import BaseClient
-from .utils import export_util, handle_error, retry_context
+from .utils import export_util
 
 
 class AwkwardClient(BaseClient):
@@ -35,20 +35,16 @@ class AwkwardClient(BaseClient):
         return f"<{type(self).__name__}>"
 
     def write(self, container):
-        draft = draft_write_request(
+        draft = draft_request_write_awkward_full(
             self.item["links"]["full"], self.structure(), container
         )
-        for attempt in retry_context():
-            with attempt:
-                handle_error(self._send(draft))
+        self._send(draft)
 
     def read(self, slice=...):
         recipe = AwkwardReadRecipe.for_buffers(
             self.item["links"]["buffers"], self.structure(), slice
         )
-        for attempt in retry_context():
-            with attempt:
-                content = handle_error(self._send(recipe.draft)).read()
+        content = self._send(recipe.draft).read()
         projected_array = recipe.parse(content)
         return projected_array[slice]
 
@@ -83,7 +79,7 @@ class AwkwardClient(BaseClient):
         return export_util(
             filepath,
             format,
-            self.context.http_client.get,
+            self.context,
             self.item["links"]["full"],
             params={},
         )

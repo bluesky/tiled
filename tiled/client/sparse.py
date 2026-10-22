@@ -1,10 +1,10 @@
 from ._protocol.sparse import (
     SparseReadRecipe,
-    draft_write_block_request,
-    draft_write_request,
+    draft_request_write_sparse_block,
+    draft_request_write_sparse_full,
 )
 from .base import BaseClient
-from .utils import export_util, handle_error, params_from_slice, retry_context
+from .utils import export_util, params_from_slice
 
 
 class SparseClient(BaseClient):
@@ -46,33 +46,27 @@ class SparseClient(BaseClient):
         recipe = SparseReadRecipe.for_block(
             self.item["links"]["block"], self.structure(), block, slice
         )
-        for attempt in retry_context():
-            with attempt:
-                content = handle_error(self._send(recipe.draft)).read()
+        content = self._send(recipe.draft).read()
         return recipe.parse(content)
 
     def read(self, slice=None):
         recipe = SparseReadRecipe.for_full(
             self.item["links"]["full"], self.structure(), slice
         )
-        for attempt in retry_context():
-            with attempt:
-                content = handle_error(self._send(recipe.draft)).read()
+        content = self._send(recipe.draft).read()
         return recipe.parse(content)
 
     def write(self, coords, data):
-        draft = draft_write_request(self.item["links"]["full"], coords, data)
-        for attempt in retry_context():
-            with attempt:
-                handle_error(self._send(draft))
+        draft = draft_request_write_sparse_full(
+            self.item["links"]["full"], coords, data
+        )
+        self._send(draft)
 
     def write_block(self, coords, data, block):
-        draft = draft_write_block_request(
+        draft = draft_request_write_sparse_block(
             self.item["links"]["block"], block, coords, data
         )
-        for attempt in retry_context():
-            with attempt:
-                handle_error(self._send(draft))
+        self._send(draft)
 
     def __getitem__(self, slice):
         return self.read(slice)
@@ -109,7 +103,7 @@ class SparseClient(BaseClient):
         return export_util(
             filepath,
             format,
-            self.context.http_client.get,
+            self.context,
             self.item["links"]["full"],
             params=params,
         )

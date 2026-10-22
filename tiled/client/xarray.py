@@ -7,10 +7,9 @@ import xarray
 
 from ..serialization.table import deserialize_arrow
 from ..structures.core import Spec
-from ..utils import APACHE_ARROW_FILE_MIME_TYPE
-from ._protocol.request import RequestDraft
+from ._protocol.table import draft_request_read_wide_table
 from .container import Container
-from .utils import handle_error
+from .utils import send_request_draft
 
 LENGTH_LIMIT_FOR_WIDE_TABLE_OPTIMIZATION = 1_000_000
 
@@ -42,14 +41,8 @@ class DaskDatasetClient(Container):
         direct_fetch_names = set()
         # Optimization: Download scalar columns in batch as DataFrame.
         # on first access.
-        coords_fetcher = _WideTableFetcher(
-            self.context.http_client,
-            self.item["links"]["full"],
-        )
-        data_vars_fetcher = _WideTableFetcher(
-            self.context.http_client,
-            self.item["links"]["full"],
-        )
+        coords_fetcher = _WideTableFetcher(self.context, self.item["links"]["full"])
+        data_vars_fetcher = _WideTableFetcher(self.context, self.item["links"]["full"])
         array_clients = {}
         array_structures = {}
         first_dims = []
@@ -142,8 +135,8 @@ class DatasetClient(DaskDatasetClient):
 
 
 class _WideTableFetcher:
-    def __init__(self, http_client, link):
-        self.http_client = http_client
+    def __init__(self, context, link):
+        self.context = context
         self.link = link
         self.variables = []
         self._dataframe = None
@@ -166,21 +159,8 @@ class _WideTableFetcher:
     def dataframe(self):
         with self._lock:
             if self._dataframe is None:
-                draft = RequestDraft.get_or_post(
-                    self.link,
-                    repeated_param="field",
-                    values=list(self.variables),
-                    params={"format": APACHE_ARROW_FILE_MIME_TYPE},
-                )
-                content = handle_error(
-                    self.http_client.request(
-                        draft.method,
-                        draft.url,
-                        params=draft.params,
-                        headers=draft.headers,
-                        content=draft.content,
-                    )
-                ).read()
+                draft = draft_request_read_wide_table(self.link, self.variables)
+                content = send_request_draft(self.context, draft).read()
                 self._dataframe = deserialize_arrow(content).reset_index()
         return self._dataframe
 

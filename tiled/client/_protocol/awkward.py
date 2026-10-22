@@ -47,8 +47,11 @@ class AwkwardReadRecipe:
     length: int
 
     def parse(self, content: bytes) -> awkward.Array:
-        "Decode the response for this read."
-        return parse_buffers_response(content, self.form, self.length)
+        "Decode a zipped-buffers response into an awkward array with the projected form."
+        container = from_zipped_buffers(content, self.form, self.length)
+        return awkward.from_buffers(
+            self.form, self.length, container, allow_noncanonical_form=True
+        )
 
     @classmethod
     def for_buffers(
@@ -77,15 +80,7 @@ class AwkwardReadRecipe:
         return cls(draft, projected_form, structure.length)
 
 
-def parse_buffers_response(
-    content: bytes, form: awkward.forms.Form, length: int
-) -> awkward.Array:
-    "Decode a zipped-buffers response into an awkward array with the given form."
-    container = from_zipped_buffers(content, form, length)
-    return awkward.from_buffers(form, length, container, allow_noncanonical_form=True)
-
-
-def draft_write_request(
+def draft_request_write_awkward_full(
     link: str, structure: AwkwardStructure, container: Any
 ) -> RequestDraft:
     "Draft a request overwriting the array in full, via `PUT /awkward/full`."

@@ -14,17 +14,19 @@ response content back through the parser function.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Iterable, Optional
+from typing import Any, Iterable, Optional, Sequence
 
 import numpy
 import sparse
 from ndindex import ndindex
 
 from ...serialization.table import deserialize_arrow, serialize_arrow
+from ...structures.core import StructureFamily
+from ...structures.data_source import DataSource
 from ...structures.sparse import COOStructure
 from ...utils import APACHE_ARROW_FILE_MIME_TYPE
 from ..utils import params_from_slice
-from .request import RequestDraft, filled_link_template
+from .request import RequestDraft, fill_link_template
 
 
 @dataclass(frozen=True)
@@ -45,8 +47,23 @@ class SparseReadRecipe:
     shape: tuple[int, ...]
 
     def parse(self, content: bytes) -> sparse.COO:
-        "Decode the response for this read."
-        return parse_coo_response(content, self.shape)
+        """Convert an Arrow response body into a `sparse.COO` array.
+
+        The table has columns named `dim0, dim1, ..., dimN, data`.
+        """
+        df = deserialize_arrow(content)
+        return sparse.COO(
+            data=df["data"].values,
+            coords=numpy.stack([df[f"dim{i}"].values for i in range(len(self.shape))]),
+            shape=self.shape,
+        )
+
+    @staticmethod
+    def _sliced_shape(shape: tuple[int, ...], slice: Optional[Any]) -> tuple[int, ...]:
+        "Shape of the given array shape narrowed by a (possibly absent) slice."
+        if slice is None:
+            return shape
+        return ndindex(slice).newshape(shape)
 
     @classmethod
     def for_full(
@@ -59,7 +76,7 @@ class SparseReadRecipe:
             params=params_from_slice(slice),
             headers={"Accept": APACHE_ARROW_FILE_MIME_TYPE},
         )
-        return cls(draft, _sliced_shape(structure.shape, slice))
+        return cls(draft, cls._sliced_shape(structure.shape, slice))
 
     @classmethod
     def for_block(
@@ -84,27 +101,7 @@ class SparseReadRecipe:
             params=params,
             headers={"Accept": APACHE_ARROW_FILE_MIME_TYPE},
         )
-        return cls(draft, _sliced_shape(structure.shape, slice))
-
-
-def _sliced_shape(shape: tuple[int, ...], slice: Optional[Any]) -> tuple[int, ...]:
-    "Shape of the given array shape narrowed by a (possibly absent) slice."
-    if slice is None:
-        return shape
-    return ndindex(slice).newshape(shape)
-
-
-def parse_coo_response(content: bytes, shape: tuple[int, ...]) -> sparse.COO:
-    """Convert an Arrow response body into a `sparse.COO` array.
-
-    The table has columns named `dim0, dim1, ..., dimN, data`.
-    """
-    df = deserialize_arrow(content)
-    return sparse.COO(
-        data=df["data"].values,
-        coords=numpy.stack([df[f"dim{i}"].values for i in range(len(shape))]),
-        shape=shape,
-    )
+        return cls(draft, cls._sliced_shape(structure.shape, slice))
 
 
 def _coo_arrow_body(coords: Any, data: Any) -> bytes:
@@ -122,7 +119,7 @@ def _coo_arrow_body(coords: Any, data: Any) -> bytes:
     return bytes(serialize_arrow(APACHE_ARROW_FILE_MIME_TYPE, df, {}))
 
 
-def draft_write_request(link: str, coords: Any, data: Any) -> RequestDraft:
+def draft_request_write_sparse_full(link: str, coords: Any, data: Any) -> RequestDraft:
     "Draft a request overwriting the full array, via `PUT /array/full`."
     return RequestDraft(
         "PUT",
@@ -132,7 +129,7 @@ def draft_write_request(link: str, coords: Any, data: Any) -> RequestDraft:
     )
 
 
-def draft_write_block_request(
+def draft_request_write_sparse_block(
     link_template: str, block: Iterable[int], coords: Any, data: Any
 ) -> RequestDraft:
     """Draft a request overwriting one block of the array, via `PUT /array/block`.
@@ -143,7 +140,24 @@ def draft_write_block_request(
     """
     return RequestDraft(
         "PUT",
-        filled_link_template(link_template, *block),
+        fill_link_template(link_template, *block),
         headers={"Content-Type": APACHE_ARROW_FILE_MIME_TYPE},
         content=_coo_arrow_body(coords, data),
     )
+
+
+def data_source_from_coo(
+    coords: Any, data: Any, shape: tuple[int, ...], dims: Optional[Sequence[str]]
+) -> DataSource:
+    "The data source describing a single-chunk sparse (COO) array upload."
+    from ...structures.array import BuiltinDtype
+
+    structure = COOStructure(
+        shape=shape,
+        # This describes a single-chunk COO array.
+        chunks=tuple((dim,) for dim in shape),
+        dims=dims,
+        data_type=BuiltinDtype.from_numpy_dtype(data.dtype),
+        coord_data_type=BuiltinDtype.from_numpy_dtype(coords.dtype),
+    )
+    return DataSource(structure=structure, structure_family=StructureFamily.sparse)

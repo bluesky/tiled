@@ -2,11 +2,10 @@ import itertools as it
 import time
 import warnings
 from typing import TYPE_CHECKING, Iterable, Optional, Union
-from urllib.parse import parse_qs, urlparse
 
 from ..structures.core import StructureFamily
+from ._protocol.search import PaginatedCollectionBuilder
 from .container import LENGTH_CACHE_TTL, Container
-from .utils import MSGPACK_MIME_TYPE, handle_error, retry_context
 
 if TYPE_CHECKING:
     import pyarrow
@@ -14,27 +13,18 @@ if TYPE_CHECKING:
 
 class CompositeClient(Container):
     def get_contents(self, maxlen=None, include_metadata=False):
+        fixed_params = dict(self._queries_as_params)
+        if not include_metadata:
+            fixed_params["select_metadata"] = False
+        if self._include_data_sources:
+            fixed_params["include_data_sources"] = True
+        builder = PaginatedCollectionBuilder(
+            self.item["links"]["search"], fixed_params=fixed_params
+        )
         result = {}
-        next_page_url = f"{self.item['links']['search']}"
+        next_page_url = builder.link
         while (next_page_url is not None) and (maxlen is None or len(result) < maxlen):
-            for attempt in retry_context():
-                with attempt:
-                    content = handle_error(
-                        self.context.http_client.get(
-                            next_page_url,
-                            headers={"Accept": MSGPACK_MIME_TYPE},
-                            params={
-                                **parse_qs(urlparse(next_page_url).query),
-                                **self._queries_as_params,
-                            }
-                            | ({} if include_metadata else {"select_metadata": False})
-                            | (
-                                {}
-                                if not self._include_data_sources
-                                else {"include_data_sources": True}
-                            ),
-                        )
-                    ).json()
+            content = self._send(builder.draft_request_read_page(next_page_url)).json()
             result.update({item["id"]: item for item in content["data"]})
 
             next_page_url = content["links"]["next"]
