@@ -12,10 +12,13 @@ import pytest
 
 from tiled.client._protocol.request import (
     RequestDraft,
+    RetryPolicy,
     asset_bytes_link,
     asset_manifest_link,
     distinct_link,
-    filled_link_template,
+    draft_request_delete,
+    draft_request_get_item,
+    fill_link_template,
     register_link,
     revisions_link,
     stream_close_link,
@@ -43,8 +46,24 @@ def test_request_draft_defaults_and_immutability():
     assert draft.params == {}
     assert draft.headers == {}
     assert draft.content is None
+    assert draft.retry_policy is RetryPolicy.IDEMPOTENT
     with pytest.raises(dataclasses.FrozenInstanceError):
         draft.method = "POST"
+
+
+def test_retry_policy_declared_by_builders():
+    # Appending rows is not idempotent; the builder declares the
+    # conservative policy so every sending shell honors it.
+    import pandas
+
+    from tiled.client._protocol.table import draft_request_append_table_partition
+
+    draft = draft_request_append_table_partition(
+        "http://example.com/api/v1/table/partition/x?partition={index}",
+        0,
+        pandas.DataFrame({"a": [1]}),
+    )
+    assert draft.retry_policy is RetryPolicy.IF_UNPROCESSED
 
 
 @pytest.mark.parametrize(
@@ -213,8 +232,8 @@ def test_retry_after_header_sets_wait_time():
         ("http://x/block/a?block=", (), {}, "http://x/block/a?block="),
     ],
 )
-def test_filled_link_template(template, args, kwargs, expected):
-    assert filled_link_template(template, *args, **kwargs) == expected
+def test_fill_link_template(template, args, kwargs, expected):
+    assert fill_link_template(template, *args, **kwargs) == expected
 
 
 @pytest.mark.parametrize(
@@ -230,6 +249,23 @@ def test_filled_link_template(template, args, kwargs, expected):
         ("http://x/partition/a?partition={index}", (2,), {}),
     ],
 )
-def test_filled_link_template_mismatch_raises(template, args, kwargs):
+def test_fill_link_template_mismatch_raises(template, args, kwargs):
     with pytest.raises(ValueError):
-        filled_link_template(template, *args, **kwargs)
+        fill_link_template(template, *args, **kwargs)
+
+
+def test_draft_request_get_item():
+    draft = draft_request_get_item(SELF_LINK, {"fields": "structure"})
+    assert draft.method == "GET"
+    assert draft.url == SELF_LINK
+    assert draft.params == {"fields": "structure"}
+    assert draft.headers == {"Accept": "application/x-msgpack"}
+
+
+def test_draft_request_delete():
+    draft = draft_request_delete(SELF_LINK + "?a=1", {"number": 3})
+    assert draft.method == "DELETE"
+    # The link's own query participates alongside the passed parameters.
+    assert draft.params == {"a": ["1"], "number": 3}
+    assert draft.headers == {}
+    assert draft.content is None

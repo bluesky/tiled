@@ -1,7 +1,8 @@
 """Unit tests for the ragged protocol layer (`tiled.client._protocol.ragged`).
 
-These tests exercise read recipes, write-request builders, response parsers,
-and failure classifiers as plain functions, with no server and no I/O.
+These tests exercise read recipes, write-request builders, data-source
+builders, response parsers, and failure classifiers as plain functions, with
+no server and no I/O.
 """
 
 import httpx
@@ -11,13 +12,13 @@ import ragged
 
 from tiled.client._protocol.ragged import (
     RaggedReadRecipe,
-    draft_patch_request,
-    draft_write_block_request,
-    draft_write_request,
-    parse_patch_response,
-    patch_conflict_exception,
+    data_source_from_ragged,
+    draft_request_patch_ragged_full,
+    draft_request_write_ragged_block,
+    draft_request_write_ragged_full,
 )
-from tiled.structures.core import StructureFamily
+from tiled.client.utils import patch_conflict_exception
+from tiled.structures.core import StructureFamily, structure_from_json
 from tiled.structures.ragged import RaggedStructure, make_ragged_array
 from tiled.utils import Conflicts
 
@@ -37,30 +38,25 @@ def make_structure(array=None):
     return RaggedStructure.from_array(array if array is not None else make_array())
 
 
-def test_for_full_zipped():
-    recipe = RaggedReadRecipe.for_full(FULL_LINK, make_structure())
+@pytest.mark.parametrize(
+    "array_slice, expected_params, scalar, accept",
+    [
+        # A non-scalar read negotiates zipped buffers ...
+        (None, {}, False, ZIP_MIMETYPE),
+        ((slice(0, 1),), {"slice": ":1"}, False, ZIP_MIMETYPE),
+        # ... while a slice selecting a single element negotiates JSON.
+        ((0, 1), {"slice": "0,1"}, True, JSON_MIMETYPE),
+    ],
+    ids=["full", "slice", "scalar"],
+)
+def test_for_full(array_slice, expected_params, scalar, accept):
+    recipe = RaggedReadRecipe.for_full(FULL_LINK, make_structure(), array_slice)
     assert recipe.draft.method == "GET"
     assert recipe.draft.url == FULL_LINK
-    assert recipe.draft.params == {}
-    # A non-scalar read negotiates zipped buffers.
-    assert recipe.draft.headers == {"Accept": ZIP_MIMETYPE}
+    assert recipe.draft.params == expected_params
+    assert recipe.draft.headers == {"Accept": accept}
     assert recipe.draft.content is None
-    assert recipe.scalar is False
-
-
-def test_for_full_with_slice():
-    recipe = RaggedReadRecipe.for_full(FULL_LINK, make_structure(), (slice(0, 1),))
-    assert recipe.draft.params == {"slice": ":1"}
-    assert recipe.scalar is False
-    assert recipe.draft.headers == {"Accept": ZIP_MIMETYPE}
-
-
-def test_for_full_scalar_slice():
-    # A slice selecting a single element negotiates JSON instead.
-    recipe = RaggedReadRecipe.for_full(FULL_LINK, make_structure(), (0, 1))
-    assert recipe.draft.params == {"slice": "0,1"}
-    assert recipe.scalar is True
-    assert recipe.draft.headers == {"Accept": JSON_MIMETYPE}
+    assert recipe.scalar is scalar
 
 
 def test_parse_zipped_round_trip():
@@ -68,7 +64,7 @@ def test_parse_zipped_round_trip():
     structure = make_structure(array)
     recipe = RaggedReadRecipe.for_full(FULL_LINK, structure)
     # A write body and a read response use the same zipped-buffers encoding.
-    body = draft_write_request(FULL_LINK, array, persist=True).content
+    body = draft_request_write_ragged_full(FULL_LINK, array, persist=True).content
     parsed = recipe.parse(body)
     assert isinstance(parsed, ragged.array)
     assert parsed.tolist() == array.tolist()
@@ -82,9 +78,9 @@ def test_parse_scalar_json():
     assert float(parsed) == 3.5
 
 
-def test_draft_write_request():
+def test_draft_request_write_ragged_full():
     array = make_array()
-    draft = draft_write_request(FULL_LINK, array)
+    draft = draft_request_write_ragged_full(FULL_LINK, array)
     assert draft.method == "PUT"
     assert draft.url == FULL_LINK
     assert draft.params == {}
@@ -92,8 +88,8 @@ def test_draft_write_request():
     assert draft.content is not None
 
 
-def test_draft_write_request_converts_list_of_lists():
-    draft = draft_write_request(FULL_LINK, [[1.0, 2.0], [3.0]])
+def test_draft_request_write_ragged_full_converts_list_of_lists():
+    draft = draft_request_write_ragged_full(FULL_LINK, [[1.0, 2.0], [3.0]])
     recipe = RaggedReadRecipe.for_full(FULL_LINK, make_structure())
     assert recipe.parse(draft.content).tolist() == [[1.0, 2.0], [3.0]]
 
@@ -101,11 +97,13 @@ def test_draft_write_request_converts_list_of_lists():
 @pytest.mark.parametrize(
     "build",
     [
-        lambda array, persist: draft_write_request(FULL_LINK, array, persist=persist),
-        lambda array, persist: draft_write_block_request(
+        lambda array, persist: draft_request_write_ragged_full(
+            FULL_LINK, array, persist=persist
+        ),
+        lambda array, persist: draft_request_write_ragged_block(
             BLOCK_LINK, (0,), array, persist=persist
         ),
-        lambda array, persist: draft_patch_request(
+        lambda array, persist: draft_request_patch_ragged_full(
             FULL_LINK, array, offset=2, persist=persist
         ),
     ],
@@ -126,9 +124,9 @@ def test_persist_param_only_when_non_default(build):
         ((0,), "0"),
     ],
 )
-def test_draft_write_block_request(block, expected_block_param):
+def test_draft_request_write_ragged_block(block, expected_block_param):
     array = make_array()
-    draft = draft_write_block_request(BLOCK_LINK, block, array)
+    draft = draft_request_write_ragged_block(BLOCK_LINK, block, array)
     assert draft.method == "PUT"
     # The URL template is left as-is; the explicit `block` parameter
     # overrides the baked template in the link's query.
@@ -137,9 +135,9 @@ def test_draft_write_block_request(block, expected_block_param):
     assert draft.headers == {"Content-Type": ZIP_MIMETYPE}
 
 
-def test_draft_patch_request():
+def test_draft_request_patch_ragged_full():
     array = make_array([[4.0], [5.0, 6.0]])
-    draft = draft_patch_request(FULL_LINK, array, offset=(2,), extend=True)
+    draft = draft_request_patch_ragged_full(FULL_LINK, array, offset=(2,), extend=True)
     assert draft.method == "PATCH"
     assert draft.url == FULL_LINK
     # `shape` carries only the leading dimension.
@@ -150,9 +148,9 @@ def test_draft_patch_request():
     assert recipe.parse(draft.content).tolist() == array.tolist()
 
 
-def test_draft_patch_request_integer_offset():
+def test_draft_request_patch_ragged_full_integer_offset():
     array = make_array([[4.0], [5.0, 6.0]])
-    draft = draft_patch_request(FULL_LINK, array, offset=2)
+    draft = draft_request_patch_ragged_full(FULL_LINK, array, offset=2)
     assert draft.params == {"shape": "2", "offset": "2", "extend": False}
 
 
@@ -192,8 +190,21 @@ def test_parse_patch_response():
         "dims": None,
         "resizable": False,
     }
-    structure = parse_patch_response(body, StructureFamily.ragged)
+    structure = structure_from_json(StructureFamily.ragged, body)
     assert isinstance(structure, RaggedStructure)
     assert structure.shape == (3, None)
     assert structure.chunks == ((3,), None)
     assert structure.size == 5
+
+
+# Data source submitted when creating a ragged node
+
+
+def test_data_source_from_ragged():
+    array = make_ragged_array([[1.0, 2.0], [3.0]])
+    data_source = data_source_from_ragged(array, None, 100_000_000)
+    assert data_source.structure_family == StructureFamily.ragged
+    assert data_source.mimetype == "application/x-ragged+sql"
+    assert data_source.structure == RaggedStructure.from_array(
+        array, chunks=((2,), None), dims=None
+    )

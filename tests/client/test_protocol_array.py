@@ -1,25 +1,24 @@
 """Unit tests for the array protocol layer (`tiled.client._protocol.array`).
 
-These tests exercise fetch planners, write-request builders, and response
-parsers as plain functions, with no server and no I/O.
+These tests exercise fetch planners, write-request builders, data-source
+builders, and response parsers as plain functions, with no server and no I/O.
 """
+
 
 import numpy
 import pytest
 
 from tiled.client._protocol.array import (
     ArrayReadRecipe,
-    draft_patch_request,
-    draft_write_block_request,
-    draft_write_request,
-    empty_array,
-    parse_array_response,
-    parse_patch_response,
-    patch_conflict_message,
+    data_source_from_array,
+    draft_request_patch_array_full,
+    draft_request_write_array_block,
+    draft_request_write_array_full,
 )
+from tiled.client.utils import patch_conflict_message
 from tiled.ndslice import NDBlock, NDSlice
 from tiled.structures.array import ArrayStructure, BuiltinDtype
-from tiled.structures.core import StructureFamily
+from tiled.structures.core import StructureFamily, structure_from_json
 
 FULL_LINK = "http://localhost:8000/api/v1/array/full/a/b"
 # The server provides the block link with the `block` query parameter as a
@@ -97,41 +96,53 @@ def test_for_full_zero_dim_short_circuit(shape, chunks, array_slice, expected_sh
     assert recipe.assemble({}).shape == expected_shape
 
 
-def test_for_block():
-    recipe = ArrayReadRecipe.for_block(BLOCK_LINK, make_structure(), NDBlock(0, 1))
+@pytest.mark.parametrize(
+    "structure_kwargs, block, block_slice, expected_params, expected_shape",
+    [
+        # The baked `block` template in the link's query is overridden by
+        # the actual block index.
+        ({}, NDBlock(0, 1), None, {"block": "0,1", "expected_shape": "2,2"}, (2, 2)),
+        # An Ellipsis block expands to slices over the full chunk grid.
+        (
+            {},
+            NDBlock(...),
+            None,
+            {"block": "0:2:1,0:2:1", "expected_shape": "3,4"},
+            (3, 4),
+        ),
+        # A slice within the block narrows the expected shape.
+        (
+            {},
+            NDBlock(0, 1),
+            NDSlice(slice(0, 1), slice(0, 2)),
+            {"block": "0,1", "expected_shape": "1,2", "slice": "0:1,0:2"},
+            (1, 2),
+        ),
+        # A 0-dimensional array has one (index-less) block and an empty
+        # shape, sent as "scalar".
+        (
+            {"shape": (), "chunks": ()},
+            NDBlock(),
+            None,
+            {"block": "", "expected_shape": "scalar"},
+            (),
+        ),
+    ],
+    ids=["block", "ellipsis", "slice", "scalar"],
+)
+def test_for_block(
+    structure_kwargs, block, block_slice, expected_params, expected_shape
+):
+    recipe = ArrayReadRecipe.for_block(
+        BLOCK_LINK, make_structure(**structure_kwargs), block, block_slice
+    )
     ((index, draft),) = recipe.drafts.items()
     assert draft.method == "GET"
     assert draft.url == BLOCK_LINK
-    # The baked `block` template in the link's query is overridden by the
-    # actual block index.
-    assert draft.params == {"block": "0,1", "expected_shape": "2,2"}
+    assert draft.params == expected_params
     assert draft.headers == {"Accept": OCTET_STREAM_MIMETYPE}
-    assert recipe.dtype == numpy.dtype("int32")
-    assert recipe.shape == (2, 2)
-    assert recipe.shape_of_draft(index) == (2, 2)
-
-
-def test_for_block_expands_block():
-    # An Ellipsis block expands to slices over the full chunk grid.
-    recipe = ArrayReadRecipe.for_block(BLOCK_LINK, make_structure(), NDBlock(...))
-    (draft,) = recipe.drafts.values()
-    assert draft.params["block"] == "0:2:1,0:2:1"
-    assert draft.params["expected_shape"] == "3,4"
-    assert recipe.shape == (3, 4)
-
-
-def test_for_block_with_slice():
-    block_slice = NDSlice(slice(0, 1), slice(0, 2))
-    recipe = ArrayReadRecipe.for_block(
-        BLOCK_LINK, make_structure(), NDBlock(0, 1), block_slice
-    )
-    (draft,) = recipe.drafts.values()
-    assert draft.params == {
-        "block": "0,1",
-        "expected_shape": "1,2",
-        "slice": "0:1,0:2",
-    }
-    assert recipe.shape == (1, 2)
+    assert recipe.shape == expected_shape
+    assert recipe.shape_of_draft(index) == expected_shape
 
 
 def test_for_block_zero_dim_short_circuit():
@@ -143,29 +154,24 @@ def test_for_block_zero_dim_short_circuit():
     assert recipe.shape == (0, 2)
 
 
-def test_for_block_scalar():
-    link = "http://localhost:8000/api/v1/array/block/a/b?block="
-    recipe = ArrayReadRecipe.for_block(
-        link, make_structure(shape=(), chunks=()), NDBlock()
-    )
-    (draft,) = recipe.drafts.values()
-    assert draft.params == {"block": "", "expected_shape": "scalar"}
-    assert recipe.shape == ()
-
-
 @pytest.mark.parametrize("shape", [(6,), (2, 3), ()])
 def test_parse_array_response_round_trip(shape):
     array = numpy.arange(numpy.prod(shape, dtype=int), dtype="int32").reshape(shape)
-    parsed = parse_array_response(array.tobytes(), array.dtype, shape)
+    parsed = ArrayReadRecipe.parse(array.tobytes(), array.dtype, shape)
     assert parsed.shape == shape
     assert numpy.array_equal(parsed, array)
 
 
 @pytest.mark.parametrize("shape", [(0,), (0, 3), (3, 0, 2)])
-def test_empty_array(shape):
-    array = empty_array(numpy.dtype("float64"), shape)
+def test_empty(shape):
+    structure = make_structure(shape=shape, chunks=tuple((s,) for s in shape))
+    recipe = ArrayReadRecipe.for_full(
+        FULL_LINK, structure, NDSlice(), bytesize_limit=10**9
+    )
+    assert not recipe.drafts
+    array = recipe.empty()
     assert array.shape == shape
-    assert array.dtype == numpy.dtype("float64")
+    assert array.dtype == structure.data_type.to_numpy_dtype()
     assert array.size == 0
 
 
@@ -217,9 +223,9 @@ def test_read_recipe_assemble():
     numpy.testing.assert_array_equal(recipe.assemble(results), expected)
 
 
-def test_draft_write_request():
+def test_draft_request_write_array_full():
     array = numpy.arange(6, dtype="float64")
-    draft = draft_write_request(FULL_LINK, array)
+    draft = draft_request_write_array_full(FULL_LINK, array)
     assert draft.method == "PUT"
     assert draft.url == FULL_LINK
     assert draft.params == {}
@@ -230,11 +236,13 @@ def test_draft_write_request():
 @pytest.mark.parametrize(
     "build",
     [
-        lambda array, persist: draft_write_request(FULL_LINK, array, persist=persist),
-        lambda array, persist: draft_write_block_request(
+        lambda array, persist: draft_request_write_array_full(
+            FULL_LINK, array, persist=persist
+        ),
+        lambda array, persist: draft_request_write_array_block(
             BLOCK_LINK, (0, 0), array, persist=persist
         ),
-        lambda array, persist: draft_patch_request(
+        lambda array, persist: draft_request_patch_array_full(
             FULL_LINK, array, offset=0, persist=persist
         ),
     ],
@@ -246,14 +254,14 @@ def test_persist_param_only_when_non_default(build):
     assert build(array, False).params["persist"] is False
 
 
-def test_draft_write_request_coerces_array_like():
-    draft = draft_write_request(FULL_LINK, [1, 2, 3])
+def test_draft_request_write_array_full_coerces_array_like():
+    draft = draft_request_write_array_full(FULL_LINK, [1, 2, 3])
     assert draft.content == numpy.asarray([1, 2, 3]).tobytes()
 
 
-def test_draft_write_block_request():
+def test_draft_request_write_array_block():
     array = numpy.ones((2, 2), dtype="float64")
-    draft = draft_write_block_request(BLOCK_LINK, (1, 0), array)
+    draft = draft_request_write_array_block(BLOCK_LINK, (1, 0), array)
     # The block index fills the URL template and is folded back into params.
     assert draft.method == "PUT"
     assert draft.url == BLOCK_LINK.format(1, 0)
@@ -262,15 +270,17 @@ def test_draft_write_block_request():
     assert draft.content == array.tobytes()
 
 
-def test_draft_write_block_request_with_slice():
+def test_draft_request_write_array_block_with_slice():
     array = numpy.ones((2,), dtype="float64")
-    draft = draft_write_block_request(BLOCK_LINK, (0, 0), array, slice=(slice(0, 2), 1))
+    draft = draft_request_write_array_block(
+        BLOCK_LINK, (0, 0), array, slice=(slice(0, 2), 1)
+    )
     assert draft.params == {"block": ["0,0"], "slice": ":2,1"}
 
 
-def test_draft_patch_request():
+def test_draft_request_patch_array_full():
     array = numpy.zeros((1, 2, 2), dtype="float64")
-    draft = draft_patch_request(FULL_LINK, array, offset=(3,), extend=True)
+    draft = draft_request_patch_array_full(FULL_LINK, array, offset=(3,), extend=True)
     assert draft.method == "PATCH"
     assert draft.url == FULL_LINK
     assert draft.params == {"offset": "3", "shape": "1,2,2", "extend": True}
@@ -278,15 +288,15 @@ def test_draft_patch_request():
     assert draft.content == array.tobytes()
 
 
-def test_draft_patch_request_integer_offset():
+def test_draft_request_patch_array_full_integer_offset():
     array = numpy.zeros((2,), dtype="float64")
-    draft = draft_patch_request(FULL_LINK, array, offset=3)
+    draft = draft_request_patch_array_full(FULL_LINK, array, offset=3)
     assert draft.params == {"offset": "3", "shape": "2", "extend": False}
 
 
-def test_draft_patch_request_makes_body_contiguous():
+def test_draft_request_patch_array_full_makes_body_contiguous():
     array = numpy.arange(6, dtype="int32").reshape(2, 3).T  # not C-contiguous
-    draft = draft_patch_request(FULL_LINK, array, offset=(0, 0))
+    draft = draft_request_patch_array_full(FULL_LINK, array, offset=(0, 0))
     assert draft.content == numpy.ascontiguousarray(array).tobytes()
     assert draft.params["shape"] == "3,2"
 
@@ -320,8 +330,42 @@ def test_parse_patch_response():
         "dims": None,
         "resizable": False,
     }
-    structure = parse_patch_response(body, StructureFamily.array)
+    structure = structure_from_json(StructureFamily.array, body)
     assert isinstance(structure, ArrayStructure)
     assert structure.shape == (4, 4)
     assert structure.chunks == ((3, 1), (2, 2))
     assert structure.data_type.to_numpy_dtype() == numpy.dtype("float64")
+
+
+# Data source submitted when creating an array node
+
+
+def test_data_source_from_array():
+    data_source = data_source_from_array(
+        numpy.arange(10, dtype="float64"), ["x"], 100_000_000
+    )
+    assert data_source.structure_family == StructureFamily.array
+    structure = data_source.structure
+    assert structure.shape == (10,)
+    assert structure.chunks == ((10,),)  # small: a single chunk
+    assert structure.dims == ["x"]
+    assert structure.data_type.to_numpy_dtype() == numpy.dtype("float64")
+
+
+def test_data_source_from_array_splits_large_upload():
+    # Chunks are chosen such that each chunk is not too large to upload.
+    data_source = data_source_from_array(
+        numpy.zeros(1000, dtype="float64"), None, max_chunk_bytes=800
+    )
+    (axis_chunks,) = data_source.structure.chunks
+    assert len(axis_chunks) > 1
+    assert sum(axis_chunks) == 1000
+    assert max(axis_chunks) * 8 <= 800
+
+
+def test_data_source_from_array_respects_existing_chunks():
+    import dask.array
+
+    array = dask.array.zeros(4, dtype="uint8", chunks=(2,))
+    data_source = data_source_from_array(array, None, 100_000_000)
+    assert data_source.structure.chunks == ((2, 2),)

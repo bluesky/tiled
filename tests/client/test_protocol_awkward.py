@@ -10,8 +10,7 @@ import pytest
 
 from tiled.client._protocol.awkward import (
     AwkwardReadRecipe,
-    draft_write_request,
-    parse_buffers_response,
+    draft_request_write_awkward_full,
 )
 from tiled.structures.awkward import AwkwardStructure
 
@@ -78,14 +77,14 @@ def test_for_buffers_projection_touches_only_needed_keys():
 def test_write_body_round_trip(data):
     array = awkward.Array(data)
     structure, container = make_structure_and_container(array)
-    draft = draft_write_request(FULL_LINK, structure, container)
+    draft = draft_request_write_awkward_full(FULL_LINK, structure, container)
     assert draft.method == "PUT"
     assert draft.url == FULL_LINK
     assert draft.params == {}
     assert draft.headers == {"Content-Type": ZIP_MIMETYPE}
     # The body is zipped buffers; decoding with the structure's own form
     # recovers the array.
-    parsed = parse_buffers_response(
-        draft.content, structure.awkward_form, structure.length
+    parsed = AwkwardReadRecipe(draft, structure.awkward_form, structure.length).parse(
+        draft.content
     )
     assert parsed.tolist() == array.tolist()

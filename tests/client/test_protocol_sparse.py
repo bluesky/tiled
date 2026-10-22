@@ -1,7 +1,7 @@
 """Unit tests for the sparse protocol layer (`tiled.client._protocol.sparse`).
 
-These tests exercise read recipes, write-request builders, and response
-parsers as plain functions, with no server and no I/O.
+These tests exercise read recipes, write-request builders, data-source
+builders, and response parsers as plain functions, with no server and no I/O.
 """
 
 import numpy
@@ -10,10 +10,11 @@ import sparse
 
 from tiled.client._protocol.sparse import (
     SparseReadRecipe,
-    draft_write_block_request,
-    draft_write_request,
-    parse_coo_response,
+    data_source_from_coo,
+    draft_request_write_sparse_block,
+    draft_request_write_sparse_full,
 )
+from tiled.structures.core import StructureFamily
 from tiled.structures.sparse import COOStructure
 from tiled.utils import APACHE_ARROW_FILE_MIME_TYPE
 
@@ -75,25 +76,41 @@ def test_for_block_with_slice():
     assert recipe.shape == (2, 4)
 
 
-def test_draft_write_request():
+def test_draft_request_write_sparse_full():
     coo = make_coo()
-    draft = draft_write_request(FULL_LINK, coo.coords, coo.data)
+    draft = draft_request_write_sparse_full(FULL_LINK, coo.coords, coo.data)
     assert draft.method == "PUT"
     assert draft.url == FULL_LINK
     assert draft.params == {}
     assert draft.headers == {"Content-Type": APACHE_ARROW_FILE_MIME_TYPE}
     # The body is Arrow bytes encoding the coordinates and values.
-    parsed = parse_coo_response(draft.content, coo.shape)
+    parsed = SparseReadRecipe(draft, coo.shape).parse(draft.content)
     numpy.testing.assert_array_equal(parsed.todense(), coo.todense())
 
 
-def test_draft_write_block_request():
+def test_draft_request_write_sparse_block():
     coo = make_coo(shape=(2, 2))
-    draft = draft_write_block_request(BLOCK_LINK, (1, 0), coo.coords, coo.data)
+    draft = draft_request_write_sparse_block(BLOCK_LINK, (1, 0), coo.coords, coo.data)
     # The block index fills the URL template and is folded back into params.
     assert draft.method == "PUT"
     assert draft.url == BLOCK_LINK.format(1, 0)
     assert draft.params == {"block": ["1,0"]}
     assert draft.headers == {"Content-Type": APACHE_ARROW_FILE_MIME_TYPE}
-    parsed = parse_coo_response(draft.content, coo.shape)
+    parsed = SparseReadRecipe(draft, coo.shape).parse(draft.content)
     numpy.testing.assert_array_equal(parsed.todense(), coo.todense())
+
+
+# Data source submitted when creating a sparse node
+
+
+def test_data_source_from_coo():
+    coords = numpy.array([[2, 5]], dtype="int64")
+    data = numpy.array([1.3, 7.5], dtype="float64")
+    data_source = data_source_from_coo(coords, data, (10,), ["x"])
+    assert data_source.structure_family == StructureFamily.sparse
+    structure = data_source.structure
+    assert structure.shape == (10,)
+    assert structure.chunks == ((10,),)  # a single chunk
+    assert structure.dims == ["x"]
+    assert structure.data_type.to_numpy_dtype() == numpy.dtype("float64")
+    assert structure.coord_data_type.to_numpy_dtype() == numpy.dtype("int64")
