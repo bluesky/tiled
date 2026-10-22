@@ -7,11 +7,10 @@ import xarray
 
 from ..serialization.table import deserialize_arrow
 from ..structures.core import Spec
+from ._protocol.dataset import wide_table_batch, xarray_variable_role
 from ._protocol.table import draft_request_read_wide_table
 from .container import Container
 from .utils import send_request_draft
-
-LENGTH_LIMIT_FOR_WIDE_TABLE_OPTIMIZATION = 1_000_000
 
 
 class DaskDatasetClient(Container):
@@ -39,74 +38,34 @@ class DaskDatasetClient(Container):
         # Returned as a value (not stored on self) to avoid shared-state issues
         # if two threads call read() on the same client concurrently.
         direct_fetch_names = set()
-        # Optimization: Download scalar columns in batch as DataFrame.
-        # on first access.
-        coords_fetcher = _WideTableFetcher(self.context, self.item["links"]["full"])
-        data_vars_fetcher = _WideTableFetcher(self.context, self.item["links"]["full"])
+        # Optimization: download scalar/short variables batched as one
+        # DataFrame, fetched on first access.
+        fetchers = {
+            "coord": _WideTableFetcher(self.context, self.item["links"]["full"]),
+            "data_var": _WideTableFetcher(self.context, self.item["links"]["full"]),
+        }
         array_clients = {}
         array_structures = {}
-        first_dims = []
         for name, array_client in self.items():
             if (variables is not None) and (name not in variables):
                 continue
             array_clients[name] = array_client
-            array_structure = array_client.structure()
-            array_structures[name] = array_structure
-            if array_structure.shape:
-                first_dims.append(array_structure.shape[0])
-            else:
-                first_dims.append(None)
-        if len(set(first_dims)) > 1:
-            # ragged, not tabular
-            optimize_wide_table = False
+            array_structures[name] = array_client.structure()
+        batched = wide_table_batch(
+            {name: structure.shape for name, structure in array_structures.items()},
+            enabled=optimize_wide_table,
+        )
         for name, array_client in array_clients.items():
-            array_structure = array_structures[name]
-            shape = array_structure.shape
-            spec_names = set(spec.name for spec in array_client.specs)
-
-            if optimize_wide_table and (
-                (not shape)  # empty
-                or (
-                    (shape[0] < LENGTH_LIMIT_FOR_WIDE_TABLE_OPTIMIZATION)
-                    and (len(shape) < 2)
+            role = xarray_variable_role(set(spec.name for spec in array_client.specs))
+            if name in batched:
+                values = fetchers[role].register(
+                    name, array_client, array_structures[name]
                 )
-            ):
-                if "xarray_coord" in spec_names:
-                    coords[name] = (
-                        array_client.dims,
-                        coords_fetcher.register(name, array_client, array_structure),
-                        array_client.metadata["attrs"],
-                    )
-                elif "xarray_data_var" in spec_names:
-                    data_vars[name] = (
-                        array_client.dims,
-                        data_vars_fetcher.register(name, array_client, array_structure),
-                        array_client.metadata["attrs"],
-                    )
-                else:
-                    raise ValueError(
-                        "Child nodes of xarray_dataset should include spec "
-                        "'xarray_coord' or 'xarray_data_var'."
-                    )
             else:
                 direct_fetch_names.add(name)
-                if "xarray_coord" in spec_names:
-                    coords[name] = (
-                        array_client.dims,
-                        array_client.read(),
-                        array_client.metadata["attrs"],
-                    )
-                elif "xarray_data_var" in spec_names:
-                    data_vars[name] = (
-                        array_client.dims,
-                        array_client.read(),
-                        array_client.metadata["attrs"],
-                    )
-                else:
-                    raise ValueError(
-                        "Child nodes of xarray_dataset should include spec "
-                        "'xarray_coord' or 'xarray_data_var'."
-                    )
+                values = array_client.read()
+            target = coords if role == "coord" else data_vars
+            target[name] = (array_client.dims, values, array_client.metadata["attrs"])
         return data_vars, coords, direct_fetch_names
 
     def read(self, variables=None, *, optimize_wide_table=True):

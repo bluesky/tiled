@@ -50,6 +50,7 @@ Three levels of description are used, by convention:
 Module map: `request.py` (the draft, retry policy, link derivation, generic
 GET/DELETE builders), `search.py` (paginated collections, query encoding,
 children search), `node.py` (node fetch/metadata mutation, create,
-assets), and one module per structure family (`array.py`,
+assets), `dataset.py` (pure planning for assembling xarray datasets from
+a node's children), and one module per structure family (`array.py`,
 `table.py`, `sparse.py`, `awkward.py`, `ragged.py`).
 """

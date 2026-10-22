@@ -4,6 +4,7 @@ import warnings
 from typing import TYPE_CHECKING, Iterable, Optional, Union
 
 from ..structures.core import StructureFamily
+from ._protocol.dataset import assign_dataset_dims
 from ._protocol.search import PaginatedCollectionBuilder
 from .container import LENGTH_CACHE_TTL, Container
 
@@ -252,32 +253,10 @@ class CompositeClient(Container):
                     )
 
         # Create xarray.Dataset from the data_vars dictionary
-        is_dim0_consistent = (
-            len(
-                set(
-                    [
-                        arr.shape[0]
-                        for var_name, arr in data_vars.items()
-                        if arr.ndim > 0 and not array_dims.get(var_name)
-                    ]
-                )
-            )
-            <= 1
+        dims = assign_dataset_dims(
+            {name: arr.shape for name, arr in data_vars.items()}, array_dims, dim0
         )
-        if dim0 is not None and not is_dim0_consistent:
-            raise ValueError(
-                "Cannot specify dim0 when the arrays have different left-most dimensions."
-            )
-
-        for var_name, arr in data_vars.items():
-            if is_dim0_consistent:
-                dims = (dim0 or "dim0",) + tuple(
-                    f"{var_name}_dim{i+1}" for i in range(len(arr.shape) - 1)
-                )
-            else:
-                dims = tuple(f"{var_name}_dim{i}" for i in range(len(arr.shape)))
-            data_vars[var_name] = array_dims.get(var_name) or dims, arr
-
+        data_vars = {name: (dims[name], arr) for name, arr in data_vars.items()}
         return xarray.Dataset(data_vars=data_vars)
 
     def new(
