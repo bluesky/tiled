@@ -157,20 +157,6 @@ class _DaskArrayClient(BaseClient):
         )
         return dask_array
 
-    def fetch_count(self, slice=None) -> int:
-        """Return the number of HTTP requests that read(slice) will make.
-
-        Callers (e.g. CompositeClient) use this to compute an accurate
-        progress-bar total without triggering any fetches.
-        """
-        recipe = ArrayReadRecipe.for_full(
-            self.item["links"]["full"],
-            self.structure(),
-            NDSlice(slice),
-            self.RESPONSE_BYTESIZE_LIMIT,
-        )
-        return len(recipe.drafts)
-
     def read(self, slice=None):
         """Access the entire array or its slice
 
@@ -399,7 +385,9 @@ class DaskArrayClient(_DaskArrayClient):
     def compute(self):
         "Alias to client.read().compute()"
         dask_arr = self.read()
-        n = math.prod(len(c) for c in dask_arr.chunks)
+        # One fetch per chunk: the lazy array is chunked by sub-fetch.
+        # A zero-size array is constructed locally, with no fetches at all.
+        n = 0 if dask_arr.size == 0 else math.prod(len(c) for c in dask_arr.chunks)
         with self.context.tracking_progress(total=n):
             return dask_arr.compute()
 
@@ -412,7 +400,9 @@ class ArrayClient(DaskArrayClient):
         Access the entire array or a slice.
         """
         dask_arr = super().read(slice)
-        n = self.fetch_count(slice)
+        # One fetch per chunk: the lazy array is chunked by sub-fetch.
+        # A zero-size array is constructed locally, with no fetches at all.
+        n = 0 if dask_arr.size == 0 else math.prod(len(c) for c in dask_arr.chunks)
         with self.context.tracking_progress(total=n):
             return dask_arr.compute()
 

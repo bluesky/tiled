@@ -144,10 +144,12 @@ class CompositeClient(Container):
         -------
         xarray.Dataset: The dataset containing the requested variables.
         """
+        import math
+
         import pandas
         import xarray
 
-        from .array import ArrayClient
+        from .array import ArrayClient, DaskArrayClient
 
         contents = self.get_contents()
 
@@ -155,9 +157,9 @@ class CompositeClient(Container):
         # Array/sparse: eager when the client is ArrayClient (the numpy subclass);
         # DaskArrayClient (the base) returns a lazy dask array — nothing fetched yet.
         # Note: ArrayClient inherits DaskArrayClient, so check the eager subclass first.
-        # ArrayClient.fetch_count() mirrors read()'s split_slice logic exactly,
-        # giving the true number of HTTP requests (1 for small arrays, N sub-slices
-        # for large ones), rather than the dask chunk-boundary count.
+        # The lazy read is chunked by sub-fetch, so its chunk count is the
+        # number of HTTP requests (1 for small arrays, N sub-slices for large
+        # ones) — and building it fetches nothing.
         # Table: always eager (npartitions fetches).
         # Awkward: always eager (1 fetch).
         total_fetches = 0
@@ -167,7 +169,11 @@ class CompositeClient(Container):
                 if (variables is None) or (part in variables):
                     array_client = self.base[part]
                     if isinstance(array_client, ArrayClient):
-                        total_fetches += array_client.fetch_count()
+                        # One fetch per chunk of the lazy read; a zero-size
+                        # array is constructed locally, with no fetches.
+                        lazy = DaskArrayClient.read(array_client)
+                        if lazy.size:
+                            total_fetches += math.prod(len(c) for c in lazy.chunks)
             elif sf in (StructureFamily.awkward, StructureFamily.ragged):
                 if (variables is None) or (part in variables):
                     total_fetches += 1

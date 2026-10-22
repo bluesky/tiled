@@ -1,3 +1,5 @@
+import math
+
 import awkward
 import numpy
 import pandas
@@ -747,11 +749,24 @@ def test_composite_validator(tree):
 # ---------------------------------------------------------------------------
 
 
+def _fetch_count(array_client):
+    """The number of HTTP requests an eager read will make.
+
+    The lazy (dask) read is chunked by sub-fetch, so its chunk count is the
+    number of requests, and building it fetches nothing. A zero-size array
+    is constructed locally, with no fetches.
+    """
+    from tiled.client.array import DaskArrayClient
+
+    lazy = DaskArrayClient.read(array_client)
+    return 0 if lazy.size == 0 else math.prod(len(c) for c in lazy.chunks)
+
+
 def test_array_fetch_count(tmp_path):
-    """ArrayClient.fetch_count() returns the correct number of HTTP requests.
+    """The lazy read is chunked into the correct number of HTTP requests.
 
     Small arrays (below RESPONSE_BYTESIZE_LIMIT) always need 1 request.
-    Large arrays are split by split_slice, so fetch_count() > 1.
+    Large arrays are split by split_slice into multiple requests.
     We patch RESPONSE_BYTESIZE_LIMIT to a small value to exercise both paths
     without allocating large arrays.
     """
@@ -770,18 +785,18 @@ def test_array_fetch_count(tmp_path):
         client.write_array(rng.random((10, 10)), key="large")  # 800 B > 100
 
         with patch.object(ArrayClient, "RESPONSE_BYTESIZE_LIMIT", SMALL_LIMIT):
-            assert client["small"].fetch_count() == 1
-            assert client["large"].fetch_count() > 1
+            assert _fetch_count(client["small"]) == 1
+            assert _fetch_count(client["large"]) > 1
 
 
 def test_composite_progress_total_mixed_small_and_large_arrays(tmp_path):
-    """Progress bar total equals sum of fetch_count() across all arrays in a composite.
+    """Progress bar total equals the per-array request counts, summed.
 
-    Covers both small arrays (1 request each) and large arrays (multiple requests),
-    ensuring the composite uses fetch_count() rather than dask chunk-boundary counts.
-    We patch RESPONSE_BYTESIZE_LIMIT to 100 bytes so the large/small boundary is
-    reachable with small test arrays.  Also verifies that when a subset of variables
-    is requested, only those variables are counted.
+    Covers both small arrays (1 request each) and large arrays (multiple
+    requests). We patch RESPONSE_BYTESIZE_LIMIT to 100 bytes so the
+    large/small boundary is reachable with small test arrays. Also verifies
+    that when a subset of variables is requested, only those variables are
+    counted.
     """
     from contextlib import contextmanager
     from unittest.mock import patch
@@ -829,12 +844,12 @@ def test_composite_progress_total_mixed_small_and_large_arrays(tmp_path):
 
             # All four arrays
             all_keys = ("small_a", "small_b", "large_a", "large_b")
-            expected_all = sum(composite.base[k].fetch_count() for k in all_keys)
+            expected_all = sum(_fetch_count(composite.base[k]) for k in all_keys)
             assert capture_outermost_total() == [expected_all]
 
             # Subset: one small, one large
             subset = ["small_a", "large_b"]
-            expected_subset = sum(composite.base[k].fetch_count() for k in subset)
+            expected_subset = sum(_fetch_count(composite.base[k]) for k in subset)
             assert capture_outermost_total(variables=subset) == [expected_subset]
 
             # Single variable

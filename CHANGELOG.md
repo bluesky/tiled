@@ -12,6 +12,9 @@ Write the date in place of the "Unreleased" in the case a new version is release
   in pure, I/O-free modules under `tiled.client._protocol`, with the client
   classes reduced to thin shells. Groundwork for an async client (#116).
 - Tiled now manages its connection pools to tabular storage more correctly.
+- Removed `ArrayClient.fetch_count`, which existed to compute progress-bar
+  totals. Totals are now derived from the chunking of the lazy (dask) read,
+  which is one chunk per HTTP request.
   Also, it is now not allowed to use two storage databases with the same
   database on different hosts.
 
