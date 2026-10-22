@@ -28,7 +28,7 @@ tiled serve config config.yml
 import io
 
 import h5py
-import httpx
+import httpx2 as httpx
 import numpy as np
 
 from tiled.adapters.hdf5 import HDF5Adapter

@@ -7,7 +7,7 @@ import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
-import httpx
+import httpx2 as httpx
 import pyarrow
 import pytest
 from websockets.frames import CloseCode

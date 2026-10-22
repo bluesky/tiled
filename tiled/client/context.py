@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import List, Literal, Optional
 from urllib.parse import parse_qs, urlparse
 
-import httpx
+import httpx2 as httpx
 import platformdirs
 from pydantic import TypeAdapter
 

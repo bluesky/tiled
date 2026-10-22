@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 
 import pytest
 import respx
-from httpx import Response
+from httpx2 import Response
 from pydantic import HttpUrl, SecretStr
 
 from tiled.access_control.access_policies import ExternalPolicyDecisionPoint
