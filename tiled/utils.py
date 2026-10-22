@@ -638,12 +638,7 @@ class UnsupportedQueryType(TypeError):
 
 
 class Conflicts(ValueError):
-    """Prompts the server to send 409 Conflicts with message.
-
-    Subclasses `ValueError` so that client code catching `ValueError` around
-    operations that report conflicts (e.g. `ArrayClient.patch` without
-    `extend=True`) keeps working.
-    """
+    """Prompts the server to send 409 Conflicts with message"""
 
     pass
 
