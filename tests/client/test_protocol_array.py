@@ -5,6 +5,8 @@ builders, and response parsers as plain functions, with no server and no I/O.
 """
 
 
+import math
+
 import numpy
 import pytest
 
@@ -202,14 +204,24 @@ def test_for_full_splits_along_chunk_boundaries():
     assert recipe.drafts[(1,)].params["slice"] == "2:4:1"
 
 
-def test_read_recipe_assemble():
-    # Sub-results keyed by tile index are placed at the offsets
-    # implied by the recipe tiling.
-    structure = make_structure(shape=(4, 3), chunks=((2, 2), (3,)), dtype="int32")
+@pytest.mark.parametrize(
+    "shape, chunks, bytesize_limit, expected_num_tiles",
+    [
+        ((4, 3), ((2, 2), (3,)), 6 * 4, 2),  # split: one request per two rows
+        ((4, 3), ((2, 2), (3,)), 10**9, 1),  # small enough for one request
+        ((0, 3), ((0,), (3,)), 10**9, 0),  # zero-size: no requests at all
+    ],
+)
+def test_read_recipe_assemble(shape, chunks, bytesize_limit, expected_num_tiles):
+    # Sub-results keyed by tile index are placed at the offsets implied by
+    # the recipe tiling. The degenerate tilings need no stitching: a single
+    # sub-result is returned as-is (no copy) and a zero-size result is
+    # constructed locally from no sub-results.
+    structure = make_structure(shape=shape, chunks=chunks, dtype="int32")
     recipe = ArrayReadRecipe.for_full(
-        FULL_LINK, structure, NDSlice(), bytesize_limit=6 * 4  # 6 elements
+        FULL_LINK, structure, NDSlice(), bytesize_limit=bytesize_limit
     )
-    expected = numpy.arange(12, dtype="int32").reshape((4, 3))
+    expected = numpy.arange(math.prod(shape), dtype="int32").reshape(shape)
     results = {
         index: expected[
             tuple(
@@ -219,8 +231,13 @@ def test_read_recipe_assemble():
         ]
         for index in recipe.drafts
     }
-    assert len(results) > 1
-    numpy.testing.assert_array_equal(recipe.assemble(results), expected)
+    assert len(results) == expected_num_tiles
+    assembled = recipe.assemble(results)
+    numpy.testing.assert_array_equal(assembled, expected)
+    assert assembled.dtype == expected.dtype
+    if expected_num_tiles == 1:
+        (sub_result,) = results.values()
+        assert assembled is sub_result
 
 
 def test_draft_request_write_array_full():

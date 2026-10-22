@@ -70,7 +70,18 @@ class ArrayReadRecipe:
         return tuple(self.tiling[dim][i] for dim, i in enumerate(index))
 
     def assemble(self, results: dict[tuple[int, ...], NDArray[Any]]) -> NDArray[Any]:
-        "Place the fetched sub-results, keyed by tile index, into one array."
+        """Place the fetched sub-results, keyed by tile index, into one array.
+
+        `results` must hold one sub-result per draft. The degenerate tilings
+        require no stitching: with no tiles (a zero-size read) the empty
+        result is constructed locally, and with a single tile the one
+        sub-result is the result (returned as-is, without a copy).
+        """
+        if not results:
+            return self.empty()
+        if len(results) == 1:
+            (result,) = results.values()
+            return result
         out = numpy.empty(self.shape, dtype=self.dtype)
         starts = tuple(
             tuple(itertools.accumulate(axis_sizes, initial=0))
