@@ -33,6 +33,7 @@ from starlette.status import (
     HTTP_403_FORBIDDEN,
     HTTP_404_NOT_FOUND,
     HTTP_409_CONFLICT,
+    HTTP_410_GONE,
     HTTP_422_UNPROCESSABLE_CONTENT,
     HTTP_500_INTERNAL_SERVER_ERROR,
 )
@@ -59,7 +60,13 @@ from ..media_type_registration import (
 )
 from ..query_registration import QueryRegistry, default_query_registry
 from ..type_aliases import AppTask, TaskMap
-from ..utils import SHARE_TILED_PATH, Conflicts, UnsafeIdentifier, UnsupportedQueryType
+from ..utils import (
+    SHARE_TILED_PATH,
+    BrokenLink,
+    Conflicts,
+    UnsafeIdentifier,
+    UnsupportedQueryType,
+)
 from ..validation_registration import ValidationRegistry, default_validation_registry
 from ._backcompat import raw_python_tiled_client_version
 from .authentication import move_api_key
@@ -402,6 +409,13 @@ def build_app(
     ):
         return JSONResponse(
             status_code=HTTP_409_CONFLICT,
+            content={"detail": exc.args[0]},
+        )
+
+    @app.exception_handler(BrokenLink)
+    async def broken_link_exception_handler(request: Request, exc: BrokenLink):
+        return JSONResponse(
+            status_code=HTTP_410_GONE,
             content={"detail": exc.args[0]},
         )
 
