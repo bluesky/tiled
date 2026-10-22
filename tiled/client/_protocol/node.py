@@ -34,11 +34,7 @@ import httpx
 import orjson
 from packaging.version import Version
 
-from ...structures.core import (
-    STRUCTURE_TYPES,
-    StructureFamily,
-    structure_from_json,
-)
+from ...structures.core import STRUCTURE_TYPES, StructureFamily, structure_from_json
 from ...structures.data_source import DataSource
 from ...type_aliases import JSON
 from ...utils import patch_mimetypes, safe_json_dump
@@ -48,12 +44,7 @@ from ..utils import (
     normalize_specs,
     request_may_have_reached_server,
 )
-from .request import (
-    RequestDraft,
-    RetryPolicy,
-    draft_request_get_item,
-    register_link,
-)
+from .request import RequestDraft, RetryPolicy, draft_request_get_item, register_link
 
 
 def draft_request_refresh_node(

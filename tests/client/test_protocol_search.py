@@ -147,7 +147,9 @@ def test_children_draft_request_count():
 def test_draft_request_read_page_keys_only():
     # A keys-only page requests no attribute fields: only the entry ids.
     builder = ChildrenSearchBuilder.from_queries(SEARCH_LINK, QUERIES, SORTING)
-    draft = builder.draft_request_read_page(builder.first_page_link(10, 5), keys_only=True)
+    draft = builder.draft_request_read_page(
+        builder.first_page_link(10, 5), keys_only=True
+    )
     assert draft.method == "GET"
     # The pagination query baked into the page link is preserved.
     assert draft.params == {
