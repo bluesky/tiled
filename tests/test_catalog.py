@@ -1010,6 +1010,21 @@ def sqlite_adapter_for_hypothesis(tmp_path_factory):
     loop.close()
 
 
+def test_failed_init_does_not_leak_password():
+    # Init fails (nothing listens on port 1); the error must not echo the URI.
+    import traceback
+
+    from tiled.catalog import from_uri
+
+    password = "leaky-secret"
+    uri = f"postgresql+asyncpg://user:{password}@127.0.0.1:1/db"
+
+    with pytest.raises(Exception) as excinfo:
+        from_uri(uri, init_if_not_exists=True)
+
+    assert password not in "".join(traceback.format_exception(excinfo.value))
+
+
 @pytest.fixture(scope="module")
 def postgresql_adapter_for_hypothesis(tmp_path_factory):
     from tiled.catalog import from_uri

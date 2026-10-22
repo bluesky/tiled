@@ -173,6 +173,7 @@ async def _policy_access_filters(info: Info, scope: str) -> object:
             raise GraphQLError(
                 f"Unsupported access-policy filter in graph queries: {type(query).__name__}"
             )
+        query.tag_ids = await _store(info).resolve_access_tag_ids_for_read(query.tags)
     return queries
 
 
