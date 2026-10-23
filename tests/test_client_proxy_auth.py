@@ -23,6 +23,7 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 from tiled.catalog import in_memory
 from tiled.client import from_uri
+from tiled.client.context import Context
 from tiled.config import Authentication
 from tiled.server.app import build_app
 from tiled.server.logging_config import LOGGING_CONFIG
@@ -194,3 +195,13 @@ def test_csrf_cookie_still_set_on_authenticated_discovery(proxy_url):
     """
     client = from_uri(proxy_url, api_key=API_KEY, auth=TokenAuth(PROXY_TOKEN))
     assert "tiled_csrf" in client.context.http_client.cookies
+
+
+def test_context_rejects_non_httpx_auth():
+    """
+    ``auth=`` must be an ``httpx.Auth`` or ``None``. Anything else raises a
+    ``TypeError`` so that the mistake surfaces immediately rather than being
+    silently ignored.
+    """
+    with pytest.raises(TypeError, match="httpx.Auth or None allowed"):
+        Context("http://localhost:8000", auth="not-an-httpx-auth")
