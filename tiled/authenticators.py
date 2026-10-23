@@ -308,9 +308,7 @@ properties:
         access_token, i.e. the OIDC provider issued both tokens as a pair.
         See https://openid.net/specs/openid-connect-core-1_0.html#CodeIDToken
         """
-        signing_key = self._signing_key(
-            jwt.get_unverified_header(id_token).get("kid")
-        )
+        signing_key = self._signing_key(jwt.get_unverified_header(id_token).get("kid"))
         decoded = jwt.decode_complete(
             id_token,
             key=signing_key,
