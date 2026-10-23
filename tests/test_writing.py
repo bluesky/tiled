@@ -47,7 +47,12 @@ from tiled.structures.core import Spec, StructureFamily
 from tiled.structures.data_source import DataSource
 from tiled.structures.sparse import COOStructure
 from tiled.structures.table import TableStructure
-from tiled.utils import APACHE_ARROW_FILE_MIME_TYPE, patch_mimetypes, sanitize_uri
+from tiled.utils import (
+    APACHE_ARROW_FILE_MIME_TYPE,
+    Conflicts,
+    patch_mimetypes,
+    sanitize_uri,
+)
 from tiled.validation_registration import ValidationRegistry
 
 from .utils import fail_with_status_code
@@ -227,9 +232,11 @@ def test_extend_array(tree):
         assert ac.shape == a.shape
 
         # Patching data into a region beyond the current extent of the array
-        # raises a ValueError (catching a 409 from the server).
-        with pytest.raises(ValueError):
+        # raises Conflicts (catching a 409 from the server). Conflicts
+        # subclasses ValueError, which this operation historically raised.
+        with pytest.raises(Conflicts):
             ac.patch(new_data, offset=(3,))
+        assert issubclass(Conflicts, ValueError)
         # With extend=True, the array is expanded.
         ac.patch(new_data, offset=(3,), extend=True)
         # The local cache of the structure is updated.
@@ -585,6 +592,38 @@ def test_metadata_revisions_pagination(tree):
             revision_numbers += [r["revision_number"] for r in page["data"]]
             url = page["links"]["next"]
         assert revision_numbers == [1, 2, 3]
+
+
+def test_metadata_revisions_slice_multiple_pages(tree):
+    # The client fetches an unbounded revisions slice in server-sized pages
+    # (100 by default) and accumulates the revisions from all pages into a
+    # single flat list of revision records.
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        ac = client.write_array([1, 2, 3], key="paginate_revisions_client")
+        num_revisions = 102  # Two server pages: 100 + 2.
+        for i in range(num_revisions):
+            ac.replace_metadata(metadata={"a": i})
+        revisions = ac.metadata_revisions[:]
+        assert len(revisions) == num_revisions
+        assert all(isinstance(revision, dict) for revision in revisions)
+        revision_numbers = [r["revision_number"] for r in revisions]
+        assert revision_numbers == list(range(1, num_revisions + 1))
+
+
+def test_from_context_node_path_include_data_sources(tree):
+    # from_context passes include_data_sources through to the initial
+    # metadata fetch, so a client pointed directly at a node (via
+    # node_path_parts) sees its data sources without an extra refresh.
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        client.write_array([1, 2, 3], key="leaf_with_data_sources")
+        leaf = from_context(
+            context,
+            node_path_parts=["leaf_with_data_sources"],
+            include_data_sources=True,
+        )
+        assert leaf.data_sources()
 
 
 def test_replace_metadata(tiled_websocket_context):

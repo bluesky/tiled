@@ -11,6 +11,13 @@ Write the date in place of the "Unreleased" in the case a new version is release
   Also, it is now not allowed to use two storage databases with the same
   database on different hosts.
 
+### Changed
+
+- `tiled.utils.Conflicts` now subclasses `ValueError`, and
+  `ArrayClient.patch` raises `Conflicts` when the server reports a 409
+  (e.g. the patch would overwrite data without `extend=True`), matching
+  `RaggedClient.patch`. Code catching `ValueError` keeps working.
+
 ### Fixed
 
 - Accept OIDC access tokens on WebSocket connections. The handshake rejected
@@ -30,6 +37,16 @@ Write the date in place of the "Unreleased" in the case a new version is release
   `UnboundLocalError`, and ensure the short-lived API key minted for a
   connection is revoked afterwards.
 - Improved the deletion of large subtrees with many associated assets (PostgreSQL only).
+- Fixed client-side accumulation of metadata revisions across pages: a slice
+  spanning more than one page (more than 100 revisions) returned subsequent
+  pages as nested lists instead of revision records.
+- Fixed `CompositeClient.get_contents(maxlen=...)`, which kept requesting a
+  `None` URL when the pages were exhausted before reaching `maxlen`.
+- Fixed `from_context` (and therefore `from_uri`) ignoring
+  `include_data_sources=True` in the initial metadata fetch, so a client
+  pointed directly at a node could not see its data sources.
+- Fixed the deprecation warning for the removed `prompt_for_reauthentication`
+  parameter of `from_uri`, which was never emitted.
 
 ## v0.2.19 (2026-10-13)
 

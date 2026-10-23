@@ -104,7 +104,7 @@ class MetadataRevisions:
                 if len(result) == 0:
                     result = content.copy()
                 else:
-                    result["data"].append(content["data"])
+                    result["data"].extend(content["data"])
                 next_page_url = content["links"]["next"]
 
             return result["data"]
