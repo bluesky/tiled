@@ -7,6 +7,8 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Changed
 
+- OIDC authenticators now verify id_tokens (and their `at_hash`) at login via
+  `verify_login`, while `decode_token` only decodes access tokens.
 - Tiled now manages its connection pools to tabular storage more correctly.
   Also, it is now not allowed to use two storage databases with the same
   database on different hosts.

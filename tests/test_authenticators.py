@@ -159,32 +159,36 @@ def test_oidc_decoding(
             authenticator.decode_token(encrypted_access_token)
 
 
-@pytest.mark.parametrize(
-    "paired_access_token, error",
-    [
-        ("access-token", None),
-        ("other-access-token", jwt.InvalidTokenError),
-        (None, jwt.InvalidTokenError),
-    ],
-)
-def test_oidc_decoding_checks_at_hash(
+@pytest.mark.parametrize("cls", [OIDCAuthenticator, EntraAuthenticator])
+def test_verify_login(
     mock_oidc_server: MockRouter,
     well_known_url: str,
     keys: Tuple[rsa.RSAPrivateKey, rsa.RSAPublicKey],
-    paired_access_token: Optional[str],
-    error: Optional[type[Exception]],
+    cls,
 ):
-    """Accept an id_token only with the access_token its at_hash was computed from."""
-    authenticator = OIDCAuthenticator("tiled", "tiled", "secret", well_known_uri=well_known_url)
-    # at_hash of "access-token" under RS256: left half of its SHA-256, base64url.
-    claims = {**token(issued=True, expired=False), "at_hash": "Pxa-1wifRlPl7yG_0oJNfw"}
+    if cls is EntraAuthenticator:
+        authenticator = EntraAuthenticator("api", "tiled", well_known_url, "tiled-cli")
+    else:
+        authenticator = OIDCAuthenticator("api", "tiled", "secret", well_known_uri=well_known_url)
+    access_token = "opaque-access-token"
+    claims = {
+        **token(issued=True, expired=False),
+        "preferred_username": "jane@example.org",
+        "at_hash": authenticator._calc_at_hash(access_token, "RS256"),
+    }
     id_token = encrypted_token(claims, keys[0])
 
-    if error is None:
-        assert authenticator.decode_token(id_token, paired_access_token) == claims
+    verified = authenticator.verify_login(id_token, access_token)
+    if cls is EntraAuthenticator:
+        assert verified["user"] == "jane"
+        assert verified["entra_sub"] == "Jane Doe"
     else:
-        with pytest.raises(error):
-            authenticator.decode_token(id_token, paired_access_token)
+        assert verified["sub"] == "Jane Doe"
+
+    with pytest.raises(jwt.InvalidTokenError):
+        authenticator.verify_login(id_token, "some-other-access-token")
+    with pytest.raises(jwt.InvalidTokenError):
+        authenticator.verify_login(id_token, None)
 
 
 @pytest.mark.parametrize("kid", ["rotated-out", None])
@@ -403,7 +407,7 @@ def test_oidc_jwks_too_stale_does_not_fall_back(
 
 
 def test_entra_decoding_ignores_unmapped_scopes(caplog):
-    def mock_decode_token(self, id_token, access_token):
+    def mock_decode_token(self, token):
         return {
             "iss": "https://login.microsoftonline.com/example-tenant/v2.0",
             "sub": "opaque-sub",
@@ -418,7 +422,7 @@ def test_entra_decoding_ignores_unmapped_scopes(caplog):
 
         authenticator = object.__new__(EntraAuthenticator)
         authenticator._scopes_map = {"known.scope": ["read:metadata"]}
-        claims = authenticator.decode_token("id-token", "access-token")
+        claims = authenticator.decode_token("id-token")
 
         assert claims["entra_sub"] == "opaque-sub"
         assert claims["entra_username"] == "alice@example.org"
@@ -697,7 +701,7 @@ def test_EntraAuthenticator_scopes_derived_from_scopes_map(mock_oidc_server, wel
 
 def test_ProxiedOIDCAuthenticator_decode_token_maps_scopes():
     # scopes_map translates provider scopes ("scp") into Tiled scopes ("scope").
-    def mock_decode_token(self, id_token, access_token=None):
+    def mock_decode_token(self, token):
         return {"sub": "abc", "scp": "provider.read provider.unknown"}
 
     original = OIDCAuthenticator.decode_token
@@ -705,7 +709,7 @@ def test_ProxiedOIDCAuthenticator_decode_token_maps_scopes():
     try:
         authenticator = object.__new__(ProxiedOIDCAuthenticator)
         authenticator._scopes_map = {"provider.read": ["read:metadata"]}
-        claims = authenticator.decode_token("id-token", "access-token")
+        claims = authenticator.decode_token("id-token")
         # Mapped scope is translated; unmapped provider scope is dropped.
         assert claims["scope"] == "read:metadata"
     finally:
@@ -714,7 +718,7 @@ def test_ProxiedOIDCAuthenticator_decode_token_maps_scopes():
 
 def test_ProxiedOIDCAuthenticator_decode_token_no_map_leaves_scopes():
     # Without scopes_map, the token's native scopes are left untouched.
-    def mock_decode_token(self, id_token, access_token=None):
+    def mock_decode_token(self, token):
         return {"sub": "abc", "scp": ["read:data"]}
 
     original = OIDCAuthenticator.decode_token
@@ -722,7 +726,7 @@ def test_ProxiedOIDCAuthenticator_decode_token_no_map_leaves_scopes():
     try:
         authenticator = object.__new__(ProxiedOIDCAuthenticator)
         authenticator._scopes_map = {}
-        claims = authenticator.decode_token("id-token", "access-token")
+        claims = authenticator.decode_token("id-token")
         assert "scope" not in claims
         assert claims["scp"] == ["read:data"]
     finally:
@@ -733,7 +737,7 @@ def test_ProxiedOIDCAuthenticator_decode_token_all_unmapped_empty_scope():
     # When scopes_map is configured but nothing maps, "scope" is set to an empty
     # string (not left unset) so downstream extraction does not fall back to the
     # raw, unmapped provider "scp" claim.
-    def mock_decode_token(self, id_token, access_token=None):
+    def mock_decode_token(self, token):
         return {"sub": "abc", "scp": "provider.unknown"}
 
     original = OIDCAuthenticator.decode_token
@@ -741,7 +745,7 @@ def test_ProxiedOIDCAuthenticator_decode_token_all_unmapped_empty_scope():
     try:
         authenticator = object.__new__(ProxiedOIDCAuthenticator)
         authenticator._scopes_map = {"provider.read": ["read:metadata"]}
-        claims = authenticator.decode_token("id-token", "access-token")
+        claims = authenticator.decode_token("id-token")
         assert claims["scope"] == ""
     finally:
         OIDCAuthenticator.decode_token = original
