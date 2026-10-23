@@ -10,6 +10,7 @@ tiled.server.authentication.websocket_credentials.
 from unittest.mock import MagicMock, patch
 
 import httpx
+import pytest
 
 from tiled.client.auth import TiledAuth
 from tiled.client.stream import API_KEY_LIFETIME, Subscription, _RegularWebsocketWrapper
@@ -115,6 +116,16 @@ def test_connect_requests_and_revokes_short_lived_key_for_other_auth():
     sub._websocket.connect.assert_called_once_with(
         "Apikey short-lived-secret", None, max_size=1_000_000
     )
-    # Regression: should_revoke_api_key/key_info are assigned inside a nested
-    # function and need `nonlocal`, or the key leaks unrevoked.
+    sub.context.revoke_api_key.assert_called_once_with("12345678")
+
+
+def test_connect_revokes_short_lived_key_when_connect_fails():
+    # Each retried attempt mints a key; a failed attempt must not leave it live.
+    sub = make_subscription_double(is_tiled_auth=False)
+    sub.context.authenticated = True
+    sub._websocket.connect.side_effect = OSError("connection refused")
+
+    with pytest.raises(OSError):
+        Subscription._connect.__wrapped__(sub)
+
     sub.context.revoke_api_key.assert_called_once_with("12345678")

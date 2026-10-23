@@ -83,6 +83,28 @@ def _expires_soon(token: str, margin: float = ACCESS_TOKEN_EXPIRY_MARGIN) -> boo
         return False
 
 
+def _auth_header(context: Context) -> tuple[Optional[str], Optional[dict]]:
+    """Return (Authorization header, key_info of an API key minted for it).
+
+    key_info is None unless a short-lived API key was minted, which the caller
+    must revoke.
+    """
+    if not context.authenticated:
+        return None, None
+    if context.api_key is not None:
+        return f"Apikey {context.api_key}", None
+    if isinstance(context.http_client.auth, TiledAuth):
+        access_token = context.http_client.auth.sync_get_token(
+            "access_token", reload_from_disk=True
+        )
+        if access_token is None or _expires_soon(access_token):
+            access_token = context.force_auth_refresh()["access_token"]
+        return f"Bearer {access_token}", None
+    # Request a short-lived API key to use for authenticating the WS connection.
+    key_info = context.create_api_key(expires_in=API_KEY_LIFETIME, note="websocket")
+    return f"Apikey {key_info['secret']}", key_info
+
+
 class _TestClientWebsocketWrapper:
     """Wrapper for TestClient websockets."""
 
@@ -399,43 +421,17 @@ class Subscription(abc.ABC):
 
         # Reset schema so first message on new connection is parsed as schema
         self._schema = None
-        should_revoke_api_key = False
-        key_info = None
-
-        def _get_auth_header(context: Context):
-            nonlocal should_revoke_api_key, key_info
-            if not context.authenticated:
-                return None
-            elif context.api_key is not None:
-                return f"Apikey {context.api_key}"
-            elif context.http_client and isinstance(
-                context.http_client.auth, TiledAuth
-            ):
-                access_token = context.http_client.auth.sync_get_token(
-                    "access_token", reload_from_disk=True
-                )
-                if access_token is None or _expires_soon(access_token):
-                    access_token = context.force_auth_refresh()["access_token"]
-                return f"Bearer {access_token}"
-            else:
-                # Request a short-lived API key to use for authenticating the WS connection.
-                key_info = self.context.create_api_key(
-                    expires_in=API_KEY_LIFETIME, note="websocket"
-                )
-                should_revoke_api_key = True
-                return f"Apikey {key_info['secret']}"
-
-        # Connect using the websocket wrapper
-        self._websocket.connect(
-            _get_auth_header(self.context), start, max_size=max_size
-        )
+        auth_header, key_info = _auth_header(self.context)
+        try:
+            self._websocket.connect(auth_header, start, max_size=max_size)
+        finally:
+            if key_info is not None:
+                # Connected or not, this attempt is done with the API key; a
+                # retry mints its own.
+                # TODO: Implement single-use API keys so that revoking is not
+                # necessary.
+                self.context.revoke_api_key(key_info["first_eight"])
         self._connected_event.set()
-
-        if should_revoke_api_key:
-            # The connection is made, so we no longer need the API key.
-            # TODO: Implement single-use API keys so that revoking is not
-            # necessary.
-            self.context.revoke_api_key(key_info["first_eight"])
 
     def _receive(self) -> None:
         """Receive and process websocket messages."""
