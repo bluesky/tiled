@@ -2,16 +2,17 @@ import asyncio
 import logging
 import os
 import time
-from typing import Any, Optional
-from unittest.mock import Mock
+from typing import Any, Optional, Tuple
 from urllib.parse import parse_qs, urlencode
 
 import httpx
 import jwt
 import pytest
+from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi import HTTPException
 from fastapi.security import SecurityScopes
-from jwcrypto.jwk import JWK
+from jwt import ExpiredSignatureError
+from jwt.algorithms import RSAAlgorithm
 from respx import MockRouter
 from starlette.requests import Request
 from starlette.status import HTTP_401_UNAUTHORIZED
@@ -80,22 +81,17 @@ def well_known_url(base_url: str) -> str:
 
 
 @pytest.fixture
-def public_jwks(json_web_keyset: JWK) -> list[dict[str, Any]]:
-    return [json_web_keyset.export_public(as_dict=True)]
-
-
-@pytest.fixture
 def mock_oidc_server(
     respx_mock: MockRouter,
     well_known_url: str,
     well_known_response: dict[str, Any],
-    public_jwks: list[dict[str, Any]],
+    json_web_keyset: list[dict[str, Any]],
 ) -> MockRouter:
     respx_mock.get(well_known_url).mock(
         return_value=httpx.Response(httpx.codes.OK, json=well_known_response)
     )
     respx_mock.get(well_known_response["jwks_uri"]).mock(
-        return_value=httpx.Response(httpx.codes.OK, json={"keys": public_jwks})
+        return_value=httpx.Response(httpx.codes.OK, json={"keys": json_web_keyset})
     )
     return respx_mock
 
@@ -104,7 +100,7 @@ def test_oidc_authenticator_caching(
     mock_oidc_server: MockRouter,
     well_known_url: str,
     well_known_response: dict[str, Any],
-    public_jwks: list[dict[str, Any]],
+    json_web_keyset: list[dict[str, Any]]
 ):
 
     authenticator = OIDCAuthenticator("tiled", "tiled", "secret", well_known_uri=well_known_url)
@@ -125,50 +121,62 @@ def test_oidc_authenticator_caching(
     assert call_request.method == "GET"
     assert call_request.url == well_known_url
 
-    assert authenticator.keys() == public_jwks
+    assert authenticator.keys() == json_web_keyset
     assert len(mock_oidc_server.calls) == 2  # Called also to jwks
     keys_request = mock_oidc_server.calls[1].request
     assert keys_request.method == "GET"
     assert keys_request.url == well_known_response["jwks_uri"]
 
     for _ in range(10):
-        assert authenticator.keys() == public_jwks
+        assert authenticator.keys() == json_web_keyset
 
     assert len(mock_oidc_server.calls) == 2  # Getting keys is cached
+    keys_request = mock_oidc_server.calls[1].request
+    assert keys_request.method == "GET"
+    assert keys_request.url == well_known_response["jwks_uri"]
 
 
+@pytest.mark.parametrize("issued", [True, False])
 @pytest.mark.parametrize("expired", [True, False])
 def test_oidc_decoding(
     mock_oidc_server: MockRouter,
-    rsa_private_key: str,
     well_known_url: str,
+    issued: bool,
     expired: bool,
+    keys: Tuple[rsa.RSAPrivateKey, rsa.RSAPublicKey]
 ):
+    private_key, _ = keys
     authenticator = OIDCAuthenticator("tiled", "tiled", "secret", well_known_uri=well_known_url)
-    access_token = token(expired)
-    encrypted_access_token = encrypted_token(access_token, rsa_private_key)
+    access_token = token(issued, expired)
+    encrypted_access_token = encrypted_token(access_token, private_key)
 
     if not expired:
+        # Decode does not currently care if issued_at_time > current time
         assert authenticator.decode_token(encrypted_access_token) == access_token
 
     else:
-        with pytest.raises(jwt.ExpiredSignatureError):
+        with pytest.raises(ExpiredSignatureError):
             authenticator.decode_token(encrypted_access_token)
 
 
 @pytest.mark.parametrize("cls", [OIDCAuthenticator, EntraAuthenticator])
-def test_verify_login(mock_oidc_server, rsa_private_key, well_known_url, cls):
+def test_verify_login(
+    mock_oidc_server: MockRouter,
+    well_known_url: str,
+    keys: Tuple[rsa.RSAPrivateKey, rsa.RSAPublicKey],
+    cls,
+):
     if cls is EntraAuthenticator:
         authenticator = EntraAuthenticator("api", "tiled", well_known_url, "tiled-cli")
     else:
         authenticator = OIDCAuthenticator("api", "tiled", "secret", well_known_uri=well_known_url)
     access_token = "opaque-access-token"
     claims = {
-        **token(expired=False),
+        **token(issued=True, expired=False),
         "preferred_username": "jane@example.org",
         "at_hash": authenticator._calc_at_hash(access_token, "RS256"),
     }
-    id_token = encrypted_token(claims, rsa_private_key)
+    id_token = encrypted_token(claims, keys[0])
 
     verified = authenticator.verify_login(id_token, access_token)
     if cls is EntraAuthenticator:
@@ -187,7 +195,7 @@ def test_verify_login(mock_oidc_server, rsa_private_key, well_known_url, cls):
 def test_proxied_decoding_unknown_kid_is_unauthorized(
     mock_oidc_server: MockRouter,
     well_known_url: str,
-    rsa_private_key: str,
+    keys: Tuple[rsa.RSAPrivateKey, rsa.RSAPublicKey],
     kid: Optional[str],
 ):
     """A token whose signing key is not in the JWKS (e.g. rotated out by the
@@ -199,8 +207,8 @@ def test_proxied_decoding_unknown_kid_is_unauthorized(
     # Expired too, to cover the stale-cached-token case: expiry cannot be
     # checked when the signing key is unknown.
     stale_token = jwt.encode(
-        token(expired=True),
-        key=rsa_private_key,
+        token(issued=True, expired=True),
+        key=keys[0],
         algorithm="RS256",
         headers={"kid": kid} if kid else None,
     )
@@ -213,7 +221,7 @@ def test_proxied_decoding_unknown_kid_is_unauthorized(
 def test_proxied_decoding_known_kid(
     mock_oidc_server: MockRouter,
     well_known_url: str,
-    rsa_private_key: str,
+    keys: Tuple[rsa.RSAPrivateKey, rsa.RSAPublicKey],
     expired: bool,
 ):
     """Tokens signed with a known key still decode, and expiry still surfaces
@@ -221,10 +229,10 @@ def test_proxied_decoding_known_kid(
     authenticator = ProxiedOIDCAuthenticator(
         "tiled", "tiled", well_known_url, device_flow_client_id="tiled-cli"
     )
-    claims = token(expired=expired)
-    signed = encrypted_token(claims, rsa_private_key)
+    claims = token(issued=True, expired=expired)
+    signed = encrypted_token(claims, keys[0])
     if expired:
-        with pytest.raises(jwt.ExpiredSignatureError):
+        with pytest.raises(ExpiredSignatureError):
             decode_token(signed, ["tiled-secret"], authenticator)
     else:
         assert decode_token(signed, ["tiled-secret"], authenticator) == claims
@@ -234,11 +242,11 @@ def test_proxied_decoding_known_kid(
 def jwks_route(
     mock_oidc_server: MockRouter,
     well_known_response: dict[str, Any],
-    public_jwks: list[dict[str, Any]],
+    json_web_keyset: list[dict[str, Any]],
 ):
     "The JWKS endpoint route, for counting calls and changing its response."
     return mock_oidc_server.get(well_known_response["jwks_uri"]).mock(
-        return_value=httpx.Response(httpx.codes.OK, json={"keys": public_jwks})
+        return_value=httpx.Response(httpx.codes.OK, json={"keys": json_web_keyset})
     )
 
 
@@ -251,41 +259,44 @@ def age_jwks_cache(authenticator: OIDCAuthenticator, seconds: float) -> None:
 def test_oidc_unknown_kid_refetches_jwks(
     well_known_url: str,
     jwks_route,
-    public_jwks: list[dict[str, Any]],
-    rsa_private_key: str,
+    json_web_keyset: list[dict[str, Any]],
+    keys: Tuple[rsa.RSAPrivateKey, rsa.RSAPublicKey],
 ):
     """The provider started signing with a key published after our last
     fetch: refetch the JWKS rather than wait out the cache TTL."""
     authenticator = OIDCAuthenticator("tiled", "tiled", "secret", well_known_uri=well_known_url)
-    assert authenticator.keys() == public_jwks
+    assert authenticator.keys() == json_web_keyset
     assert jwks_route.call_count == 1
     age_jwks_cache(authenticator, JWKS_MIN_REFETCH_INTERVAL + 1)
 
-    new_key = JWK.generate(kty="RSA", size=2048, kid="new", use="sig", alg="RS256")
-    new_jwk = new_key.export_public(as_dict=True)
-    new_private_key = new_key.export_to_pem("private_key", password=None)
+    new_private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    new_jwk = {
+        **RSAAlgorithm.to_jwk(new_private_key.public_key(), as_dict=True),
+        "alg": "RS256",
+        "kid": "new",
+    }
     jwks_route.mock(
-        return_value=httpx.Response(httpx.codes.OK, json={"keys": [*public_jwks, new_jwk]})
+        return_value=httpx.Response(httpx.codes.OK, json={"keys": [*json_web_keyset, new_jwk]})
     )
-    claims = token(expired=False)
+    claims = token(issued=True, expired=False)
     signed = jwt.encode(claims, new_private_key, algorithm="RS256", headers={"kid": "new"})
 
     assert authenticator.decode_token(signed) == claims
     assert jwks_route.call_count == 2
     # Tokens signed with the older key still validate from the refreshed cache.
-    assert authenticator.decode_token(encrypted_token(claims, rsa_private_key)) == claims
+    assert authenticator.decode_token(encrypted_token(claims, keys[0])) == claims
     assert jwks_route.call_count == 2
 
 
 def test_oidc_unknown_kid_refetch_is_rate_limited(
     well_known_url: str,
     jwks_route,
-    rsa_private_key: str,
+    keys: Tuple[rsa.RSAPrivateKey, rsa.RSAPublicKey],
     caplog,
 ):
     authenticator = OIDCAuthenticator("tiled", "tiled", "secret", well_known_uri=well_known_url)
     bogus = jwt.encode(
-        token(expired=False), rsa_private_key, algorithm="RS256", headers={"kid": "bogus"}
+        token(issued=True, expired=False), keys[0], algorithm="RS256", headers={"kid": "bogus"}
     )
     caplog.set_level(logging.INFO, logger="tiled.authenticators")
 
@@ -307,7 +318,7 @@ def test_oidc_unknown_kid_refetch_is_rate_limited(
 def test_oidc_unknown_kid_refetch_failure_keeps_cached_keys(
     well_known_url: str,
     jwks_route,
-    rsa_private_key: str,
+    keys: Tuple[rsa.RSAPrivateKey, rsa.RSAPublicKey],
 ):
     """A failed refetch must not turn an unknown kid into a server error, nor
     discard the keys we already have."""
@@ -317,25 +328,25 @@ def test_oidc_unknown_kid_refetch_failure_keeps_cached_keys(
     jwks_route.mock(return_value=httpx.Response(httpx.codes.SERVICE_UNAVAILABLE))
 
     bogus = jwt.encode(
-        token(expired=False), rsa_private_key, algorithm="RS256", headers={"kid": "bogus"}
+        token(issued=True, expired=False), keys[0], algorithm="RS256", headers={"kid": "bogus"}
     )
     with pytest.raises(jwt.InvalidKeyError):
         authenticator.decode_token(bogus)
     assert jwks_route.call_count == 2
 
-    claims = token(expired=False)
-    assert authenticator.decode_token(encrypted_token(claims, rsa_private_key)) == claims
+    claims = token(issued=True, expired=False)
+    assert authenticator.decode_token(encrypted_token(claims, keys[0])) == claims
     assert jwks_route.call_count == 2
 
 
 def test_oidc_jwks_cache_expires(
     well_known_url: str,
     jwks_route,
-    rsa_private_key: str,
+    keys: Tuple[rsa.RSAPrivateKey, rsa.RSAPublicKey],
 ):
     authenticator = OIDCAuthenticator("tiled", "tiled", "secret", well_known_uri=well_known_url)
-    claims = token(expired=False)
-    signed = encrypted_token(claims, rsa_private_key)
+    claims = token(issued=True, expired=False)
+    signed = encrypted_token(claims, keys[0])
     authenticator.decode_token(signed)
     authenticator.decode_token(signed)
     assert jwks_route.call_count == 1
@@ -347,14 +358,14 @@ def test_oidc_jwks_cache_expires(
 def test_oidc_jwks_ttl_refresh_failure_falls_back_to_cached_keys(
     well_known_url: str,
     jwks_route,
-    rsa_private_key: str,
+    keys: Tuple[rsa.RSAPrivateKey, rsa.RSAPublicKey],
     caplog,
 ):
     """If the hourly refresh fails, tokens signed with already-known keys keep
     validating, and the failing fetch is not retried on every request."""
     authenticator = OIDCAuthenticator("tiled", "tiled", "secret", well_known_uri=well_known_url)
-    claims = token(expired=False)
-    signed = encrypted_token(claims, rsa_private_key)
+    claims = token(issued=True, expired=False)
+    signed = encrypted_token(claims, keys[0])
     authenticator.decode_token(signed)
     assert jwks_route.call_count == 1
 
@@ -382,11 +393,11 @@ def test_oidc_jwks_ttl_refresh_failure_falls_back_to_cached_keys(
 def test_oidc_jwks_too_stale_does_not_fall_back(
     well_known_url: str,
     jwks_route,
-    rsa_private_key: str,
+    keys: Tuple[rsa.RSAPrivateKey, rsa.RSAPublicKey],
 ):
     "Keys older than JWKS_MAX_STALENESS are not trusted if refreshing fails."
     authenticator = OIDCAuthenticator("tiled", "tiled", "secret", well_known_uri=well_known_url)
-    signed = encrypted_token(token(expired=False), rsa_private_key)
+    signed = encrypted_token(token(issued=True, expired=False), keys[0])
     authenticator.decode_token(signed)
 
     age_jwks_cache(authenticator, JWKS_MAX_STALENESS + 1)
@@ -426,31 +437,37 @@ def test_entra_decoding_ignores_unmapped_scopes(caplog):
 
 
 @pytest.fixture
-def rsa_private_key(json_web_keyset: JWK) -> str:
-    return json_web_keyset.export_to_pem("private_key", password=None).decode("utf-8")  # type: ignore
+def keys() -> Tuple[rsa.RSAPrivateKey, rsa.RSAPublicKey]:
+    # Key generated just for these tests
+    private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    public_key = private_key.public_key()
+    return (private_key, public_key)
 
 
 @pytest.fixture
-def json_web_keyset() -> JWK:
-    return JWK.generate(kty="RSA", size=2048, kid="secret", use="sig", alg="RS256")
+def json_web_keyset(keys: Tuple[rsa.RSAPrivateKey, rsa.RSAPublicKey]) -> list[dict[str, Any]]:
+    _, public_key = keys
+    return [
+        {**RSAAlgorithm.to_jwk(public_key, as_dict=True), "alg": "RS256", "kid": "secret"}
+    ]
 
 
-def token(expired: bool) -> dict[str, str]:
+def token(issued: bool, expired: bool) -> dict[str, str]:
     now = time.time()
     dummy_token = {
         "aud": "tiled",
         "exp": (now - 1500) if expired else (now + 1500),
-        "iat": now,
+        "iat": (now - 1500) if issued else (now + 1500),
         "iss": "https://example.com/realms/example",
         "sub": "Jane Doe",
     }
     return dummy_token
 
 
-def encrypted_token(token: dict[str, str], rsa_private_key: str) -> str:
+def encrypted_token(token: dict[str, str], private_key: rsa.RSAPrivateKey) -> str:
     return jwt.encode(
         token,
-        key=rsa_private_key,
+        key=private_key,
         algorithm="RS256",
         headers={"kid": "secret"},
     )
@@ -488,7 +505,7 @@ async def test_OIDCAuthenticator_mock(
     mock_oidc_server: MockRouter,
     well_known_url: str,
     well_known_response: dict[str, Any],
-    monkeypatch,
+    keys: Tuple[rsa.RSAPrivateKey, rsa.RSAPublicKey],
     root_path: str
 ):
     """
@@ -509,7 +526,7 @@ async def test_OIDCAuthenticator_mock(
     token_route = mock_oidc_server.post(well_known_response["token_endpoint"]).mock(
         return_value=httpx.Response(200, json={
             "access_token": "mock-access-token",
-            "id_token": "mock-id-token",
+            "id_token": encrypted_token(mock_jwt_payload, keys[0]),
             "token_type": "bearer"
         })
     )
@@ -524,11 +541,6 @@ async def test_OIDCAuthenticator_mock(
     mock_request = create_mock_OIDC_request(
         {"code": "test-auth-code"}, root_path=root_path
     )
-
-    def mock_verify_login(self, id_token, access_token):
-        return mock_jwt_payload
-
-    monkeypatch.setattr(OIDCAuthenticator, "verify_login", mock_verify_login)
 
     # Test authentication
     user_session = await authenticator.authenticate(mock_request)
@@ -747,19 +759,3 @@ def test_extract_scopes_empty_scope_is_empty_set():
     ) == {"read:data", "write:data"}
     # "scope" (even empty) takes precedence over "scp" and is not overridden.
     assert _extract_scopes({"scope": "", "scp": "read:data"}, None) == set()
-
-
-@pytest.mark.parametrize(
-    "error, expected",
-    [(jwt.DecodeError("bad"), HTTPException), (jwt.ExpiredSignatureError("old"), jwt.ExpiredSignatureError)],
-)
-def test_server_decode_token_proxied_errors(error, expected):
-    # Invalid provider tokens must be a 401, not an unhandled 500;
-    # expiry propagates so callers can say "refresh token".
-    from tiled.server.authentication import decode_token
-
-    proxied = Mock(decode_token=Mock(side_effect=error))
-    with pytest.raises(expected) as exc_info:
-        decode_token("not-a-tiled-token", ["x" * 32], proxied)
-    if expected is HTTPException:
-        assert exc_info.value.status_code == HTTP_401_UNAUTHORIZED

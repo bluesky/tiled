@@ -914,8 +914,7 @@ def test_query_param_access_token(tiled_websocket_context_multiuser, envelope_fo
 
 @pytest.mark.parametrize("envelope_format", (["msgpack", "json"]))
 def test_expired_access_token_query_param(
-    tiled_websocket_context_multiuser,
-    envelope_format,
+    tiled_websocket_context_multiuser, envelope_format
 ):
     """Test that an expired JWT in the query parameter is rejected with 401."""
     context = tiled_websocket_context_multiuser
@@ -923,8 +922,7 @@ def test_expired_access_token_query_param(
 
     client.write_array(np.arange(10), key="test_expired_jwt")
 
-    # Create an expired token using the same secret key, so that it is rejected
-    # for expiry and not for a bad signature.
+    # Create an expired token using the same secret key.
     expired_token = jwt.encode(
         {
             "sub": "fake",
