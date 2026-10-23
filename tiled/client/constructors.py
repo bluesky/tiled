@@ -29,7 +29,7 @@ def from_uri(
     timeout=None,
     include_data_sources=False,
     auth: Optional[httpx.Auth] = None,
-    cookies=None,
+    cookies: Optional[httpx.Cookies | dict] = None,
     max_connections: int = MAX_CONCURRENT_CONNECTIONS,
     show_progress=None,
     trust_env=True,

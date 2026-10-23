@@ -131,9 +131,7 @@ class JupyterServerProxyMiddleware:
 def make_proxy_app(*, requires_token=PROXY_TOKEN):
     catalog = in_memory(writable_storage=None)
     app = build_app(catalog, Authentication(single_user_api_key=API_KEY))
-    return JupyterServerProxyMiddleware(
-        app, prefix=PROXY_PREFIX, token=requires_token
-    )
+    return JupyterServerProxyMiddleware(app, prefix=PROXY_PREFIX, token=requires_token)
 
 
 @contextlib.contextmanager

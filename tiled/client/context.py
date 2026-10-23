@@ -176,7 +176,7 @@ class Context:
         headers=None,
         api_key=None,
         auth: Optional[httpx.Auth] = None,
-        cookies=None,
+        cookies: Optional[httpx.Cookies | dict] = None,
         cache=UNSET,
         timeout=None,
         verify=True,
@@ -189,7 +189,7 @@ class Context:
         # The uri is expected to reach the root API route.
         uri = httpx.URL(uri)
         if auth is not None and not isinstance(auth, httpx.Auth):
-            raise ValueError(
+            raise TypeError(
                 f"Tiled client auth parameter has been set with {type(auth)}. "
                 "httpx.Auth or None allowed."
             )
@@ -281,6 +281,8 @@ class Context:
             )
             client.timeout = timeout
             client.headers = headers
+            client.auth = auth
+            client.cookies = cookies
             # Do this in the setter to avoid being overwritten.
             client.follow_redirects = True
             client._transport = Transport(transport=client._transport, cache=cache)
@@ -703,7 +705,7 @@ class Context:
         headers=None,
         api_key=None,
         auth: Optional[httpx.Auth] = None,
-        cookies=None,
+        cookies: Optional[httpx.Cookies | dict] = None,
         cache=UNSET,
         timeout=None,
         verify=True,
