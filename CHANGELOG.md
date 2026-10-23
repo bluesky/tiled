@@ -20,6 +20,23 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Fixed
 
+- Accept `Authorization: Bearer TOKEN` on WebSocket connections. The handshake
+  rejected any `Authorization` header that was not `Apikey SECRET` with a 400,
+  so a client holding an access token could not send it as a header. The
+  header is now dispatched on its scheme, matching the HTTP routes: `Bearer` is
+  read as an access token, `Apikey` as an API key, and any other scheme is
+  rejected with a 400 that is also logged on the server. The `access_token`
+  query parameter still works, for browsers that cannot set headers, and an
+  `api_key` query parameter is now accepted too, as on the HTTP routes.
+- Fix construction of the `Principal` for WebSocket connections authenticated
+  with an access token from an external (OIDC) provider, which raised
+  `AttributeError` and surfaced as a 500.
+- The Python client's subscriptions now authenticate the WebSocket with the
+  session's own credentials: its API key if it has one, otherwise its access
+  token as `Bearer`. Because a WebSocket handshake cannot prompt a refresh with
+  a 401, an access token within a minute of expiring is refreshed before
+  connecting. Only a session with neither falls back to minting a short-lived
+  API key per connection, and only a key minted this way is revoked afterwards.
 - Improved the deletion of large subtrees with many associated assets (PostgreSQL only).
 - Fixed client-side accumulation of metadata revisions across pages: a slice
   spanning more than one page (more than 100 revisions) returned subsequent
