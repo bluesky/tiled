@@ -34,7 +34,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
 from sqlalchemy.sql import func
-from starlette.concurrency import run_in_threadpool
 from starlette.datastructures import URL
 from starlette.status import (
     HTTP_204_NO_CONTENT,
@@ -225,8 +224,8 @@ async def get_decoded_access_token(
     if not access_token:
         return None
     try:
-        payload = await run_in_threadpool(
-            decode_token, access_token, settings.secret_keys, settings.authenticator
+        payload = decode_token(
+            access_token, settings.secret_keys, settings.authenticator
         )
     except ExpiredSignatureError:
         raise HTTPException(
@@ -501,8 +500,8 @@ async def authenticate_websocket_first_message(
         return True, principal, access_tags, scopes
     elif access_token is not None:
         try:
-            decoded = await run_in_threadpool(
-                decode_token, access_token, settings.secret_keys, settings.authenticator
+            decoded = decode_token(
+                access_token, settings.secret_keys, settings.authenticator
             )
         except Exception:
             return False, None, None, NO_SCOPES
