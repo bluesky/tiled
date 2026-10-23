@@ -71,7 +71,9 @@ all = [
     "dask",
     "dask[array]",
     "dask[dataframe]",
-    "duckdb!=1.4.0",  # https://github.com/bluesky/tiled/issues/1144
+    # !=1.4.0: https://github.com/bluesky/tiled/issues/1144
+    # <2: duckdb 2.0.0 (2026-10) breaks ADBC with "INVALID_STATE: Failed to commit"
+    "duckdb!=1.4.0,<2",
     "entrypoints",
     "fastapi >=0.132.0",
     "h5netcdf",
@@ -210,7 +212,9 @@ server = [
     "dask",
     "dask[array]",
     "dask[dataframe]",
-    "duckdb!=1.4.0",  # https://github.com/bluesky/tiled/issues/1144
+    # !=1.4.0: https://github.com/bluesky/tiled/issues/1144
+    # <2: duckdb 2.0.0 (2026-10) breaks ADBC with "INVALID_STATE: Failed to commit"
+    "duckdb!=1.4.0,<2",
     "entrypoints",
     "fastapi >=0.132.0",
     "h5netcdf",

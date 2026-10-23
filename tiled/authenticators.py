@@ -4,8 +4,10 @@ import functools
 import logging
 import re
 import secrets
+import time
 import uuid
 from collections.abc import Iterable
+from datetime import timedelta
 from typing import Any, Dict, List, Mapping, Optional, cast
 
 import httpx
@@ -24,6 +26,16 @@ from .server.utils import get_current_url
 from .utils import modules_available
 
 logger = logging.getLogger(__name__)
+
+# OIDC signing keys (JWKS) caching, in seconds. See
+# https://learn.microsoft.com/en-us/entra/identity-platform/signing-key-rollover
+# Refetch keys this often...
+JWKS_CACHE_TTL = timedelta(hours=1).total_seconds()
+# ...but if refetching fails, keep using the last fetched keys up to this age...
+JWKS_MAX_STALENESS = timedelta(hours=24).total_seconds()
+# ...and do not attempt fetches more often than this (applies to retrying after
+# a failure and to early refetches triggered by a token with an unknown kid).
+JWKS_MIN_REFETCH_INTERVAL = timedelta(minutes=5).total_seconds()
 
 
 class DummyAuthenticator(InternalAuthenticator):
@@ -203,18 +215,75 @@ properties:
     def end_session_endpoint(self) -> str:
         return cast(str, self._config_from_oidc_url.get("end_session_endpoint"))
 
-    @functools.cached_property
-    def py_JWK_client(self) -> jwt.PyJWKClient:
-        return jwt.PyJWKClient(self.jwks_uri)
+    # JWKS cache state. Class-level defaults so that instances created without
+    # __init__ (e.g. object.__new__ in tests) still behave.
+    _jwks: Optional[List[dict[str, Any]]] = None
+    _jwks_fetched_at: float = float("-inf")  # last successful fetch
+    _jwks_attempted_at: float = float("-inf")  # last fetch attempt
 
-    def _signing_key(self, token: str) -> jwt.PyJWK:
-        # PyJWKClient caches the JWKS and rate-limits refetches for unknown kids.
-        if jwt.get_unverified_header(token).get("kid") is None:
-            # ponytail: no-kid tokens only work with a single-key JWKS.
-            keys = self.py_JWK_client.get_signing_keys()
-            if len(keys) == 1:
-                return keys[0]
-        return self.py_JWK_client.get_signing_key_from_jwt(token)
+    def _fetch_keys(self) -> List[dict[str, Any]]:
+        self._jwks_attempted_at = time.monotonic()
+        keys = httpx.get(self.jwks_uri).raise_for_status().json().get("keys", [])
+        self._jwks = keys
+        self._jwks_fetched_at = time.monotonic()
+        return keys
+
+    def _try_fetch_keys(self) -> bool:
+        """Fetch keys, but on failure log and keep the last known good keys.
+
+        Returns True if fresh keys were fetched.
+        """
+        try:
+            self._fetch_keys()
+        except (httpx.HTTPError, ValueError):
+            logger.warning(
+                "Failed to fetch JWKS from %s; keeping keys fetched %.0f s ago",
+                self.jwks_uri,
+                time.monotonic() - self._jwks_fetched_at,
+                exc_info=True,
+            )
+            return False
+        return True
+
+    def _fetch_attempted_recently(self) -> bool:
+        return time.monotonic() - self._jwks_attempted_at < JWKS_MIN_REFETCH_INTERVAL
+
+    def keys(self) -> List[dict[str, Any]]:
+        age = time.monotonic() - self._jwks_fetched_at
+        if self._jwks is None or age > JWKS_MAX_STALENESS:
+            # Nothing usable to fall back on, so fetch errors propagate.
+            return self._fetch_keys()
+        if age > JWKS_CACHE_TTL and not self._fetch_attempted_recently():
+            self._try_fetch_keys()
+        return self._jwks
+
+    def _refetch_keys_for_unknown_kid(self) -> bool:
+        """Refetch the JWKS early, because a token named a kid we lack.
+
+        The provider may have started signing with a new key since our last
+        fetch. Rate-limited, so that tokens with bogus kids cannot make us
+        hammer the provider. On failure, keep the last known good keys.
+
+        Returns True if fresh keys were fetched.
+        """
+        if self._fetch_attempted_recently():
+            return False
+        return self._try_fetch_keys()
+
+    def _signing_key(self, kid: Optional[str]) -> jwt.PyJWK:
+        try:
+            return jwt.PyJWKSet.from_dict({"keys": self.keys()})[kid]
+        except KeyError:
+            pass
+        if self._refetch_keys_for_unknown_kid():
+            try:
+                return jwt.PyJWKSet.from_dict({"keys": self.keys()})[kid]
+            except KeyError:
+                pass
+        # Typically a stale token signed with a key the provider has since
+        # retired, so neither its signature nor its expiry can be checked.
+        logger.info("No JWKS key matches kid %r", kid)
+        raise jwt.InvalidKeyError(f"No JWKS key matches kid {kid!r}")
 
     def _calc_at_hash(self, access_token: str, algorithm: str):
         """
@@ -239,7 +308,9 @@ properties:
         access_token, i.e. the OIDC provider issued both tokens as a pair.
         See https://openid.net/specs/openid-connect-core-1_0.html#CodeIDToken
         """
-        signing_key = self._signing_key(id_token)
+        signing_key = self._signing_key(
+            jwt.get_unverified_header(id_token).get("kid")
+        )
         decoded = jwt.decode_complete(
             id_token,
             key=signing_key,
@@ -259,7 +330,9 @@ properties:
         return payload
 
     def decode_token(self, access_token: str) -> dict[str, Any]:
-        signing_key = self._signing_key(access_token)
+        signing_key = self._signing_key(
+            jwt.get_unverified_header(access_token).get("kid")
+        )
         return jwt.decode(
             access_token,
             key=signing_key,
