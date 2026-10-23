@@ -657,12 +657,16 @@ async def get_current_principal_websocket(
     websocket: WebSocket,
     api_key: Optional[str] = Depends(get_api_key_websocket),
     access_token: Optional[str] = Query(None),
+    authorization: Annotated[Optional[str], Header()] = None,
     decoded_access_token: Optional[dict] = Depends(get_decoded_access_token_websocket),
     settings: Settings = Depends(get_settings),
     db_factory: Callable[[], Optional[AsyncSession]] = Depends(
         get_database_session_factory
     ),
 ):
+    # Same precedence as get_decoded_access_token_websocket, so the raw token
+    # handed to the access policy is the one that was decoded.
+    access_token = websocket_credentials(authorization)[1] or access_token
     if api_key is not None:
         async with db_factory() as db:
             principal = await get_current_principal_from_api_key(

@@ -6,6 +6,7 @@ can send one), a query parameter, or a first message on the open connection.
 These tests cover the first two, which are resolved by FastAPI dependencies
 before the handshake completes.
 """
+import uuid
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -132,3 +133,46 @@ def test_expired_token_still_propagates_for_refresh():
 
     with pytest.raises(ExpiredSignatureError):
         decode_token("expired.jwt.token", ["secret-key"], proxied)
+
+
+@pytest.mark.parametrize(
+    "access_token, authorization, expected",
+    [
+        (None, "Bearer from-header", "from-header"),
+        ("from-query", None, "from-query"),
+        ("from-query", "Bearer from-header", "from-header"),
+    ],
+)
+async def test_external_principal_carries_raw_access_token(
+    access_token, authorization, expected
+):
+    """Access policies forward principal.access_token to a PDP.
+
+    Regression: only the query parameter was copied, so a token sent as a
+    Bearer header (as the Python client does) left it None.
+    """
+    from contextlib import asynccontextmanager
+    from unittest.mock import AsyncMock
+
+    from tiled.server.authentication import get_current_principal_websocket
+
+    @asynccontextmanager
+    async def db_factory():
+        yield MagicMock()
+
+    websocket = MagicMock()
+    websocket.app.state.provider = "oidc"
+    with patch(
+        "tiled.server.authentication.get_or_create_principal",
+        AsyncMock(return_value=MagicMock(uuid=uuid.uuid4())),
+    ):
+        principal = await get_current_principal_websocket(
+            websocket,
+            api_key=None,
+            access_token=access_token,
+            authorization=authorization,
+            decoded_access_token={"sub": "alice"},
+            settings=MagicMock(),
+            db_factory=db_factory,
+        )
+    assert principal.access_token.get_secret_value() == expected
