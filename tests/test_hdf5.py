@@ -187,6 +187,24 @@ def test_from_file(example_file, buffer):
         assert file["a"]["b"]["c"]["d"] is not None
 
 
+def test_from_file_with_empty_and_non_utf8_attrs(tmp_path):
+    """An empty or non-UTF-8 attribute anywhere should not break the file."""
+    h5py = pytest.importorskip("h5py")
+    file_path = tmp_path / "attrs.h5"
+    with h5py.File(file_path, "w") as file:
+        file["x"] = numpy.arange(3)
+        file["x"].attrs["units"] = numpy.bytes_("µm".encode("latin-1"))
+        file["x"].attrs["comment"] = h5py.Empty("S1")
+        file.attrs["empty"] = h5py.Empty("f")
+    tree = HDF5Adapter.from_uris(ensure_uri(file_path))
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        assert client.metadata["empty"] is None
+        assert client["x"].metadata["units"] == "µm"
+        assert client["x"].metadata["comment"] is None
+        numpy.testing.assert_equal(client["x"].read(), numpy.arange(3))
+
+
 @pytest.mark.filterwarnings("ignore: The dataset")
 @pytest.mark.parametrize("key", ["d", "e", "f", "g", "h", "i"])
 def test_from_file_with_empty_data(example_file_with_empty_data, buffer, key):
