@@ -166,7 +166,9 @@ class ZarrArrayAdapter(Adapter[ArrayStructure]):
             If slice does not fit wholly with the shape of the existing array
             and extend is False
         """
-        current_shape = self._array.shape
+        # Use the shape from the structure, not from the Zarr array, which
+        # init_storage may have padded out to a whole number of chunks.
+        current_shape = tuple(self.structure().shape)
         normalized_offset = [0] * len(current_shape)
         normalized_offset[: len(offset)] = list(offset)
         new_shape = []
