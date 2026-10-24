@@ -81,9 +81,16 @@ def get_hdf5_attrs(
     ) as node:
         d = dict(getattr(node, "attrs", {}))
         for k, v in d.items():
-            # Convert any bytes to str.
-            if isinstance(v, bytes):
-                d[k] = v.decode()
+            if isinstance(v, h5py.Empty):
+                # An attribute with a null dataspace has no value.
+                d[k] = None
+            elif isinstance(v, bytes):
+                # Convert any bytes to str. Fixed-length strings written by
+                # older instrument software are often Latin-1, not UTF-8.
+                try:
+                    d[k] = v.decode()
+                except UnicodeDecodeError:
+                    d[k] = v.decode("latin-1")
     return d
 
 
