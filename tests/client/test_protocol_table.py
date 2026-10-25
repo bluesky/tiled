@@ -147,7 +147,9 @@ def test_data_source_for_appendable_table(table_name, expected_parameters):
 def test_wide_table_recipe():
     # The selection rides as a repeated `field` parameter; the Arrow encoding
     # is negotiated via the `format` parameter.
-    recipe = TableReadRecipe.for_wide_table("http://x/api/v1/container/full/a", ["u", "v"])
+    recipe = TableReadRecipe.for_wide_table(
+        "http://x/api/v1/container/full/a", ["u", "v"]
+    )
     assert recipe.draft.method == "GET"
     assert recipe.draft.params == {
         "field": ["u", "v"],
