@@ -535,13 +535,12 @@ class Container(CommonContainer, BaseClient, collections.abc.Mapping, IndexersMi
         Returns a `DeepSearchResults` mapping, not a `Node`: it is not
         chainable via further `.search()`/`.search_deep()` calls,
         because matches at different depths do not share a single parent.
-        To narrow a search, pass several queries; they are combined with
-        logical AND.
+        To narrow a search, pass several queries; they are combined with logical AND.
 
         Parameters
         ----------
         *queries : query objects, e.g. from tiled.queries
-            At least one is required. All must match.
+            At least one is required. All must match for a node to appear in the search results.
         max_depth : int, optional
             Only descend this many levels below this Node.
 
@@ -569,8 +568,7 @@ class Container(CommonContainer, BaseClient, collections.abc.Mapping, IndexersMi
             include_data_sources=self._include_data_sources,
             # The server reports `ancestors` relative to the true root, like
             # every other endpoint; strip this Node's own path so that result
-            # keys/paths stay relative to the root that `search_deep`
-            # was called on.
+            # keys/paths stay relative to the root that `search_deep` was called on.
             root_path_parts=[part for part in self.path_parts if part],
         )
 
