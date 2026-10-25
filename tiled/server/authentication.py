@@ -167,7 +167,15 @@ def decode_token(
     # If none of the tiled keys worked, try the proxied authenticator
     # (e.g. tokens issued directly by an OIDC provider in the device code flow).
     if proxied_authenticator:
-        return proxied_authenticator.decode_token(token)
+        try:
+            return proxied_authenticator.decode_token(token)
+        except ExpiredSignatureError:
+            raise
+        except PyJWTError as exc:
+            # e.g. the token was signed by a key the provider has since
+            # rotated out of its JWKS, so its expiry cannot even be checked.
+            # Respond 401 (not 500) so that clients fall back to refreshing.
+            raise credentials_exception from exc
     raise credentials_exception
 
 
