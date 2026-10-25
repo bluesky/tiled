@@ -84,7 +84,7 @@ def test_write_body_round_trip(data):
     assert draft.headers == {"Content-Type": ZIP_MIMETYPE}
     # The body is zipped buffers; decoding with the structure's own form
     # recovers the array.
-    parsed = AwkwardReadRecipe(draft, structure.awkward_form, structure.length).parse_response(
-        draft.content
-    )
+    parsed = AwkwardReadRecipe(
+        draft, structure.awkward_form, structure.length
+    ).parse_response(draft.content)
     assert parsed.tolist() == array.tolist()

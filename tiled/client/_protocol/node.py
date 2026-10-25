@@ -61,7 +61,9 @@ def draft_request_refresh_node(
     return draft_request_get_item(self_link, params)
 
 
-def draft_request_read_asset_manifest(manifest_link: str, asset_id: int) -> RequestDraft:
+def draft_request_read_asset_manifest(
+    manifest_link: str, asset_id: int
+) -> RequestDraft:
     """Draft the request that fetches the manifest of one asset, via `/asset/manifest`.
 
     Only assets marked `is_directory` (backed by a collection of items

@@ -429,7 +429,9 @@ class CommonBaseClient(LengthCacheMixin):
             )
         )
 
-    def _draft_request_replace_metadata(self, metadata, specs, access_tags, drop_revision):
+    def _draft_request_replace_metadata(
+        self, metadata, specs, access_tags, drop_revision
+    ):
         "Draft the request that replaces this node's metadata (specs normalized)."
         return draft_request_replace_metadata(
             self.item["links"]["self"],
