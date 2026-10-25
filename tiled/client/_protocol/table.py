@@ -1,65 +1,86 @@
-"""Pure request builders for the table (dataframe) client.
+"""Pure request builders and response parsers for the table (dataframe) client.
 
-The table endpoints serve one partition per request and the responses decode
-with `deserialize_arrow` without further context, so reads and writes alike
-are described by plain `RequestDraft`s (see the package docstring for the
-convention); reading a full table is one request per partition, orchestrated
-by the client classes.
+Each read is one request whose Arrow response decodes with no further
+context (`TableReadRecipe`); reading a full table is one request per
+partition, orchestrated by the client classes. Writes are plain
+`RequestDraft`s (see the package docstring for the convention).
 
 No I/O happens in this module; the client classes send the drafts and feed
-response content back through the parser functions.
+response content back through the parsers.
 """
 
 from __future__ import annotations
 
-from typing import Any, Optional, Sequence
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any, Optional, Sequence
 
-from ...serialization.table import serialize_arrow
+from ...serialization.table import deserialize_arrow, serialize_arrow
 from ...structures.core import StructureFamily
 from ...structures.data_source import DataSource
 from ...utils import APACHE_ARROW_FILE_MIME_TYPE
 from .request import RequestDraft, RetryPolicy, fill_link_template
 
+if TYPE_CHECKING:
+    import pandas
 
-def draft_request_read_table_partition(
-    link: str,
-    partition: int,
-    columns: Optional[Sequence[str]],
-) -> RequestDraft:
-    """Draft the request fetching one partition, via `/table/partition`.
 
-    Selected columns ride in the URL as a repeated `column` parameter, or in
-    the body of an equivalent POST when the URL would be too long (see
-    `RequestDraft.get_or_post`).
+@dataclass(frozen=True)
+class TableReadRecipe:
+    """A recipe for one read of tabular data: the request plus its decoding.
+
+    The Arrow response decodes with no further context, so `parse_response` is a
+    staticmethod (and dask tasks can reference it by qualified name without
+    embedding the recipe).
     """
-    # Note: The singular/plural inconsistency here is because ["A", "B"]
-    # will be encoded in the URL as column=A&column=B
-    return RequestDraft.get_or_post(
-        link,
-        repeated_param="column",
-        values=columns,
-        params={"partition": partition},
-        headers={"Accept": APACHE_ARROW_FILE_MIME_TYPE},
-    )
 
+    draft: RequestDraft
 
-def draft_request_read_wide_table(
-    full_link: str, fields: Sequence[str]
-) -> RequestDraft:
-    """Draft the request fetching selected fields of a node as one Arrow table.
+    @staticmethod
+    def parse_response(content: bytes) -> "pandas.DataFrame":
+        "Decode an Arrow IPC response body into a pandas DataFrame."
+        return deserialize_arrow(content)
 
-    Used by the xarray wide-table optimization: many scalar/short variables
-    of one dataset are fetched in a single request against the container's
-    `full` link. The selection rides in the URL as a repeated `field` parameter,
-    or in the body of an equivalent POST when the URL would be too long (see
-    `RequestDraft.get_or_post`); the Arrow encoding is negotiated via the `format` parameter.
-    """
-    return RequestDraft.get_or_post(
-        full_link,
-        repeated_param="field",
-        values=list(fields),
-        params={"format": APACHE_ARROW_FILE_MIME_TYPE},
-    )
+    @classmethod
+    def for_partition(
+        cls,
+        link: str,
+        partition: int,
+        columns: Optional[Sequence[str]],
+    ) -> "TableReadRecipe":
+        """A recipe that reads one partition, via `/table/partition`.
+
+        Selected columns ride in the URL as a repeated `column` parameter, or in
+        the body of an equivalent POST when the URL would be too long (see
+        `RequestDraft.get_or_post`).
+        """
+        # Note: The singular/plural inconsistency here is because ["A", "B"]
+        # will be encoded in the URL as column=A&column=B
+        draft = RequestDraft.get_or_post(
+            link,
+            repeated_param="column",
+            values=columns,
+            params={"partition": partition},
+            headers={"Accept": APACHE_ARROW_FILE_MIME_TYPE},
+        )
+        return cls(draft)
+
+    @classmethod
+    def for_wide_table(cls, full_link: str, fields: Sequence[str]) -> "TableReadRecipe":
+        """A recipe that reads selected fields of a node as one Arrow table.
+
+        Used by the xarray wide-table optimization: many scalar/short variables
+        of one dataset are fetched in a single request against the container's
+        `full` link. The selection rides in the URL as a repeated `field` parameter,
+        or in the body of an equivalent POST when the URL would be too long (see
+        `RequestDraft.get_or_post`); the Arrow encoding is negotiated via the `format` parameter.
+        """
+        draft = RequestDraft.get_or_post(
+            full_link,
+            repeated_param="field",
+            values=list(fields),
+            params={"format": APACHE_ARROW_FILE_MIME_TYPE},
+        )
+        return cls(draft)
 
 
 def _arrow_file_body(dataframe: Any) -> bytes:
@@ -68,7 +89,7 @@ def _arrow_file_body(dataframe: Any) -> bytes:
 
 
 def draft_request_write_table_full(link: str, dataframe: Any) -> RequestDraft:
-    "Draft a request overwriting the full table, via `PUT /table/full`."
+    "Draft the request that overwrites the full table, via `PUT /table/full`."
     return RequestDraft(
         "PUT",
         link,
@@ -80,7 +101,7 @@ def draft_request_write_table_full(link: str, dataframe: Any) -> RequestDraft:
 def draft_request_write_table_partition(
     link_template: str, partition: int, dataframe: Any
 ) -> RequestDraft:
-    """Draft a request overwriting one partition, via `PUT /table/partition`.
+    """Draft the request that overwrites one partition, via `PUT /table/partition`.
 
     The server provides the partition link as a URL template with an `index`
     placeholder, filled in with the partition index.
@@ -97,7 +118,7 @@ def draft_request_write_table_partition(
 def draft_request_append_table_partition(
     link_template: str, partition: int, dataframe: Any
 ) -> RequestDraft:
-    """Draft a request appending rows to one partition, via `PATCH /table/partition`.
+    """Draft the request that appends rows to one partition, via `PATCH /table/partition`.
 
     The partition link is a URL template, as in
     `draft_request_write_table_partition`. Appending is not idempotent: if the
@@ -123,7 +144,7 @@ def draft_request_append_table_partition(
 
 
 def data_source_from_table(data: Any) -> DataSource:
-    """The data source describing a table upload.
+    """The data source that describes a table upload.
 
     `data` may be a dask or pandas DataFrame, or a dict of columns
     (e.g. `{"a": [1, 2, 3], "b": [4, 5, 6]}`).
@@ -144,11 +165,10 @@ def data_source_from_table(data: Any) -> DataSource:
 def data_source_for_appendable_table(
     schema: Any, npartitions: int, table_name: Optional[str] = None
 ) -> DataSource:
-    """The data source describing an appendable (SQL-backed) table.
+    """The data source that describes an appendable (SQL-backed) table.
 
-    `schema` is a `pyarrow.Schema`. `table_name` optionally names the SQL
-    table this is stored in; by default the server chooses a name unique to
-    the schema.
+    `schema` is a `pyarrow.Schema`. `table_name` optionally names the SQL table
+    this is stored in; by default the server chooses a name unique to the schema.
     """
     from ...structures.table import TableStructure
 

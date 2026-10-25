@@ -761,7 +761,7 @@ class LiveArrayRef(ArrayRef):
             shape = self.patch.shape
         else:
             shape = self.shape
-        return ArrayReadRecipe.parse(content, numpy_dtype, shape)
+        return ArrayReadRecipe.parse_response(content, numpy_dtype, shape)
 
 
 class LiveTableData(TableData):

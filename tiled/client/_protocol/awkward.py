@@ -46,7 +46,7 @@ class AwkwardReadRecipe:
     form: awkward.forms.Form
     length: int
 
-    def parse(self, content: bytes) -> awkward.Array:
+    def parse_response(self, content: bytes) -> awkward.Array:
         "Decode a zipped-buffers response into an awkward array with the projected form."
         container = from_zipped_buffers(content, self.form, self.length)
         return awkward.from_buffers(
@@ -57,7 +57,7 @@ class AwkwardReadRecipe:
     def for_buffers(
         cls, link: str, structure: AwkwardStructure, slice: Any = ...
     ) -> "AwkwardReadRecipe":
-        """Recipe reading the buffers one slice touches, via `POST /awkward/buffers`.
+        """A recipe that reads the buffers touched by one slice, via `POST /awkward/buffers`.
 
         A typetracer pass over the slice determines which form keys (buffers)
         it touches. Only those buffers are requested, and the form is
@@ -83,7 +83,7 @@ class AwkwardReadRecipe:
 def draft_request_write_awkward_full(
     link: str, structure: AwkwardStructure, container: Any
 ) -> RequestDraft:
-    "Draft a request overwriting the array in full, via `PUT /awkward/full`."
+    "Draft the request that overwrites the array in full, via `PUT /awkward/full`."
     components = (structure.form, structure.length, container)
     return RequestDraft(
         "PUT",

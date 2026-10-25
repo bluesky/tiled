@@ -10,6 +10,7 @@ import httpx
 import orjson
 import pytest
 
+from tiled.client._protocol.node import CreateNodeRecipe
 from tiled.client._protocol.request import (
     RequestDraft,
     RetryPolicy,
@@ -27,7 +28,6 @@ from tiled.client.utils import (
     ClientError,
     FailureKind,
     classify_failure,
-    request_may_have_reached_server,
     should_retry,
     should_retry_if_unprocessed,
 )
@@ -147,7 +147,7 @@ def test_link_derivation_replaces_first_occurrence_only():
 
 # One matrix covering the failure taxonomy and all three predicates built on
 # it. Columns: expected FailureKind, should_retry, should_retry_if_unprocessed,
-# request_may_have_reached_server.
+# CreateNodeRecipe.request_may_have_reached_server.
 @pytest.mark.parametrize(
     "exception, kind, retry, retry_if_unprocessed, reached",
     [
@@ -202,7 +202,7 @@ def test_failure_taxonomy(exception, kind, retry, retry_if_unprocessed, reached)
     assert classify_failure(exception) is kind
     assert should_retry(exception) is retry
     assert should_retry_if_unprocessed(exception) is retry_if_unprocessed
-    assert request_may_have_reached_server(exception) is reached
+    assert CreateNodeRecipe.request_may_have_reached_server(exception) is reached
 
 
 def test_retry_after_header_sets_wait_time():

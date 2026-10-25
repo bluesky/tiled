@@ -5,10 +5,9 @@ import dask
 import dask.array
 import xarray
 
-from ..serialization.table import deserialize_arrow
 from ..structures.core import Spec
 from ._protocol.dataset import wide_table_batch, xarray_variable_role
-from ._protocol.table import draft_request_read_wide_table
+from ._protocol.table import TableReadRecipe
 from .container import Container
 from .utils import send_request_draft
 
@@ -118,9 +117,9 @@ class _WideTableFetcher:
     def dataframe(self):
         with self._lock:
             if self._dataframe is None:
-                draft = draft_request_read_wide_table(self.link, self.variables)
-                content = send_request_draft(self.context, draft).read()
-                self._dataframe = deserialize_arrow(content).reset_index()
+                recipe = TableReadRecipe.for_wide_table(self.link, self.variables)
+                content = send_request_draft(self.context, recipe.draft).read()
+                self._dataframe = recipe.parse_response(content).reset_index()
         return self._dataframe
 
 

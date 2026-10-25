@@ -7,7 +7,13 @@ from .base import BaseClient
 from .utils import export_util, params_from_slice
 
 
-class SparseClient(BaseClient):
+class CommonSparseClient:
+    """Pure sparse-array accessors and glue shared by the sync and async clients.
+
+    A mixin over `CommonBaseClient`: everything here reads the cached
+    structure; nothing performs I/O.
+    """
+
     @property
     def dims(self):
         return self.structure().dims
@@ -35,6 +41,29 @@ class SparseClient(BaseClient):
             + ">"
         )
 
+    # -- Glue between instance state and the protocol layer ------------------
+    # Pure methods that bind this client's state (item, structure) to the
+    # builders and parsers in `tiled.client._protocol`. The sync and async
+    # shells share them; only the sends in between differ.
+
+    def _read_recipe(self, slice=None):
+        "A recipe that reads the whole array or a slice of it."
+        return SparseReadRecipe.for_full(
+            self.item["links"]["full"], self.structure(), slice
+        )
+
+    def _draft_request_write(self, coords, data):
+        "Draft the request that overwrites the array in full."
+        return draft_request_write_sparse_full(self.item["links"]["full"], coords, data)
+
+
+class SparseClient(CommonSparseClient, BaseClient):
+    def _read_block_recipe(self, block, slice=None):
+        "A recipe that reads one block (chunk) of the array."
+        return SparseReadRecipe.for_block(
+            self.item["links"]["block"], self.structure(), block, slice
+        )
+
     def __array__(self, *args, **kwargs):
         return self.read().__array__(*args, **kwargs)
 
@@ -43,24 +72,17 @@ class SparseClient(BaseClient):
         return self.read().todense(*args, **kwargs)
 
     def read_block(self, block, slice=None):
-        recipe = SparseReadRecipe.for_block(
-            self.item["links"]["block"], self.structure(), block, slice
-        )
+        recipe = self._read_block_recipe(block, slice)
         content = self._send(recipe.draft).read()
-        return recipe.parse(content)
+        return recipe.parse_response(content)
 
     def read(self, slice=None):
-        recipe = SparseReadRecipe.for_full(
-            self.item["links"]["full"], self.structure(), slice
-        )
+        recipe = self._read_recipe(slice)
         content = self._send(recipe.draft).read()
-        return recipe.parse(content)
+        return recipe.parse_response(content)
 
     def write(self, coords, data):
-        draft = draft_request_write_sparse_full(
-            self.item["links"]["full"], coords, data
-        )
-        self._send(draft)
+        self._send(self._draft_request_write(coords, data))
 
     def write_block(self, coords, data, block):
         draft = draft_request_write_sparse_block(

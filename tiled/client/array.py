@@ -18,12 +18,10 @@ from ._protocol.array import (
 from ._protocol.request import RequestDraft
 from .base import BaseClient
 from .utils import (
-    PATCH_CONFLICT_STATUS_CODES,
-    ClientError,
     chunks_repr,
     export_util,
     params_from_slice,
-    patch_conflict_exception,
+    translating_patch_conflicts,
 )
 
 if TYPE_CHECKING:
@@ -91,9 +89,57 @@ class CommonArrayClient:
             + ">"
         )
 
+    # -- Glue between instance state and the protocol layer ------------------
+    # Pure methods that bind this client's state (item, structure) to the
+    # builders and parsers in `tiled.client._protocol`. The sync and async
+    # shells share them; only the sends in between differ.
+
+    def _read_recipe(self, slice):
+        "A recipe that reads the whole array or a slice of it."
+        return ArrayReadRecipe.for_full(
+            self.item["links"]["full"],
+            self.structure(),
+            NDSlice(slice),
+            self.RESPONSE_BYTESIZE_LIMIT,
+        )
+
+    def _draft_request_write(self, array, persist):
+        "Draft the request that overwrites the whole array."
+        return draft_request_write_array_full(
+            self.item["links"]["full"], array, persist
+        )
+
+    def _draft_request_write_block(self, array, block, slice, persist):
+        "Draft the request that overwrites one block of the array."
+        return draft_request_write_array_block(
+            self.item["links"]["block"], block, array, slice, persist
+        )
+
+    def _draft_request_patch(self, array, offset, extend, persist):
+        "Draft the request that patches a slice of the array, checking the dtype."
+        if array.dtype != self.dtype:
+            raise ValueError(
+                f"Data given to patch has dtype {array.dtype} which does not "
+                f"match the dtype of this array {self.dtype}."
+            )
+        return draft_request_patch_array_full(
+            self.item["links"]["full"], array, offset, extend, persist
+        )
+
 
 class _DaskArrayClient(CommonArrayClient, BaseClient):
     "Client-side wrapper around an array-like that returns dask arrays"
+
+    def _read_block_recipe(self, block, slice=None):
+        "A recipe that reads one block (chunk), checking the index is in range."
+        block, block_slice = NDBlock(block), NDSlice(slice)
+        try:
+            block.shape_from_chunks(self.chunks)
+        except IndexError:
+            raise IndexError(f"Block index {block} out of range")
+        return ArrayReadRecipe.for_block(
+            self.item["links"]["block"], self.structure(), block, block_slice
+        )
 
     def __array__(self, *args, **kwargs):
         return self.read().__array__(*args, **kwargs)
@@ -119,15 +165,13 @@ class _DaskArrayClient(CommonArrayClient, BaseClient):
         block_slice : NDSlice, optional
             A slice within this block to return.
         """
-        recipe = ArrayReadRecipe.for_block(
-            self.item["links"]["block"], self.structure(), block, block_slice
-        )
-        if not recipe.drafts:
-            # An array with 0 as one of its dimensions never contains data,
-            # so we can short-circuit here without contacting the service.
-            return recipe.empty()
-        ((index, draft),) = recipe.drafts.items()
-        return self._fetch_one(draft, recipe.dtype, recipe.shape_of_draft(index))
+        recipe = self._read_block_recipe(block, block_slice)
+        # One fetch, or none for a zero-size block; `assemble` handles both.
+        results = {
+            index: self._fetch_one(draft, recipe.dtype, recipe.shape_of_draft(index))
+            for index, draft in recipe.drafts.items()
+        }
+        return recipe.assemble(results)
 
     def _fetch_one(self, draft: RequestDraft, dtype, expected_shape: tuple[int, ...]):
         """Send one read request and decode the response.
@@ -139,7 +183,7 @@ class _DaskArrayClient(CommonArrayClient, BaseClient):
             content = self._send(draft, indicator_context=self.context).read()
         if (ps := self.context.progress_state) is not None:
             ps.advance()
-        return ArrayReadRecipe.parse(content, dtype, expected_shape)
+        return ArrayReadRecipe.parse_response(content, dtype, expected_shape)
 
     def read_block(self, block, slice=None):
         """Access the data for one block of this chunked (dask) array.
@@ -152,31 +196,19 @@ class _DaskArrayClient(CommonArrayClient, BaseClient):
         """
 
         block, block_slice = NDBlock(block), NDSlice(slice)
-
-        try:
-            shape = block.shape_from_chunks(self.chunks)
-        except IndexError:
-            raise IndexError(f"Block index {block} out of range")
-
-        exp_shape = block_slice.shape_after_slice(shape) if block_slice else shape
-        dask_array = dask.array.from_delayed(
+        recipe = self._read_block_recipe(block, block_slice)
+        return dask.array.from_delayed(
             dask.delayed(self._get_block)(block, block_slice),
-            dtype=self.dtype,
-            shape=exp_shape,
+            dtype=recipe.dtype,
+            shape=recipe.shape,
         )
-        return dask_array
 
     def read(self, slice=None):
         """Access the entire array or its slice
 
         The array will be internally chunked with dask.
         """
-        recipe = ArrayReadRecipe.for_full(
-            self.item["links"]["full"],
-            self.structure(),
-            NDSlice(slice),
-            self.RESPONSE_BYTESIZE_LIMIT,
-        )
+        recipe = self._read_recipe(slice)
 
         # An array with 0 as one of its dimensions never contains data, so
         # it is constructed locally without contacting the service.
@@ -215,16 +247,10 @@ class _DaskArrayClient(CommonArrayClient, BaseClient):
         return dask_array
 
     def write(self, array, persist=True):
-        draft = draft_request_write_array_full(
-            self.item["links"]["full"], array, persist
-        )
-        self._send(draft)
+        self._send(self._draft_request_write(array, persist))
 
     def write_block(self, array, block, slice=..., persist=True):
-        draft = draft_request_write_array_block(
-            self.item["links"]["block"], block, array, slice, persist
-        )
-        self._send(draft)
+        self._send(self._draft_request_write_block(array, block, slice, persist))
 
     def patch(
         self,
@@ -287,22 +313,9 @@ class _DaskArrayClient(CommonArrayClient, BaseClient):
                    [[0., 0.],
                     [0., 0.]]])
         """
-        if array.dtype != self.dtype:
-            raise ValueError(
-                f"Data given to patch has dtype {array.dtype} which does not "
-                f"match the dtype of this array {self.dtype}."
-            )
-        draft = draft_request_patch_array_full(
-            self.item["links"]["full"], array, offset, extend, persist
-        )
-        try:
+        draft = self._draft_request_patch(array, offset, extend, persist)
+        with translating_patch_conflicts():
             response = self._send(draft)
-        except ClientError as err:
-            if err.response.status_code in PATCH_CONFLICT_STATUS_CODES:
-                raise patch_conflict_exception(
-                    err.response.status_code, err.response.json()
-                ) from err
-            raise
         # Update cached structure.
         self._structure = structure_from_json(self.structure_family, response.json())
 

@@ -20,11 +20,11 @@ LENGTH_LIMIT_FOR_WIDE_TABLE_OPTIMIZATION = 1_000_000
 def wide_table_batch(
     shapes: Mapping[str, tuple[int, ...]], enabled: bool = True
 ) -> set[str]:
-    """The names of the variables to fetch batched as one wide table.
+    """The names of the variables to fetch together, as one wide table.
 
     Scalar and short one-dimensional variables of one dataset can be fetched
     in a single request against the container's `full` link instead of one
-    request each (see `draft_request_read_wide_table`). Batching applies
+    request each (see `TableReadRecipe.for_wide_table`). Batching applies
     only when every variable shares the same first-dimension length;
     otherwise the children are ragged, not tabular, and no variable is
     batched.

@@ -65,14 +65,14 @@ def test_parse_zipped_round_trip():
     recipe = RaggedReadRecipe.for_full(FULL_LINK, structure)
     # A write body and a read response use the same zipped-buffers encoding.
     body = draft_request_write_ragged_full(FULL_LINK, array, persist=True).content
-    parsed = recipe.parse(body)
+    parsed = recipe.parse_response(body)
     assert isinstance(parsed, ragged.array)
     assert parsed.tolist() == array.tolist()
 
 
 def test_parse_scalar_json():
     recipe = RaggedReadRecipe.for_full(FULL_LINK, make_structure(), (0, 1))
-    parsed = recipe.parse(orjson.dumps(3.5))
+    parsed = recipe.parse_response(orjson.dumps(3.5))
     assert isinstance(parsed, ragged.array)
     assert parsed.ndim == 0
     assert float(parsed) == 3.5
@@ -91,7 +91,7 @@ def test_draft_request_write_ragged_full():
 def test_draft_request_write_ragged_full_converts_list_of_lists():
     draft = draft_request_write_ragged_full(FULL_LINK, [[1.0, 2.0], [3.0]])
     recipe = RaggedReadRecipe.for_full(FULL_LINK, make_structure())
-    assert recipe.parse(draft.content).tolist() == [[1.0, 2.0], [3.0]]
+    assert recipe.parse_response(draft.content).tolist() == [[1.0, 2.0], [3.0]]
 
 
 @pytest.mark.parametrize(
@@ -145,7 +145,7 @@ def test_draft_request_patch_ragged_full():
     assert draft.headers == {"Content-Type": ZIP_MIMETYPE}
     # The body is zipped buffers encoding the appended rows.
     recipe = RaggedReadRecipe.for_full(FULL_LINK, make_structure(array))
-    assert recipe.parse(draft.content).tolist() == array.tolist()
+    assert recipe.parse_response(draft.content).tolist() == array.tolist()
 
 
 def test_draft_request_patch_ragged_full_integer_offset():
@@ -163,12 +163,11 @@ def test_draft_request_patch_ragged_full_integer_offset():
     ],
 )
 def test_patch_conflict_exception(status_code, expected_type):
-    # The server phrases conflicts in terms of URL query parameters; the
-    # client rephrases them in terms of Python keyword arguments.
-    body = {"detail": "Use ?extend=true to extend array dimension."}
+    # The server's detail message is surfaced as-is.
+    body = {"detail": "Set extend=true to extend array dimension."}
     exc = patch_conflict_exception(status_code, body)
     assert isinstance(exc, expected_type)
-    assert str(exc) == "Pass keyword argument extend=true to extend array dimension."
+    assert str(exc) == "Set extend=true to extend array dimension."
 
 
 def test_patch_conflict_exception_default_message():

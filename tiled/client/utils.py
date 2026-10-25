@@ -6,6 +6,7 @@ import sys
 import uuid
 from collections import defaultdict
 from collections.abc import Hashable
+from contextlib import contextmanager
 from copy import copy
 from dataclasses import asdict
 from pathlib import Path
@@ -248,19 +249,6 @@ def should_retry_if_unprocessed(exception: Exception) -> "bool | float":
     return kind is FailureKind.NEVER_SENT
 
 
-def request_may_have_reached_server(exception: Exception) -> bool:
-    """Whether a failed request may nonetheless have been processed by the server.
-
-    True for `RESPONSE_LOST` and `SERVER_ERROR` failures (see `FailureKind`);
-    False otherwise. Non-idempotent flows use this to recognize, across retry
-    attempts, that a later "conflict" response may refer to their own earlier attempt.
-    """
-    return classify_failure(exception) in (
-        FailureKind.RESPONSE_LOST,
-        FailureKind.SERVER_ERROR,
-    )
-
-
 # Expose the timeout and max attempts as configurable via env vars. The rest of
 # the parameters (wait_initial, wait_jitter, etc.) are intentionally not
 # included here, for simplicity and to make it more difficult to configure
@@ -374,23 +362,32 @@ def retry_context(context=None, *, on=None):
 PATCH_CONFLICT_STATUS_CODES = (httpx.codes.BAD_REQUEST, httpx.codes.CONFLICT)
 
 
-def patch_conflict_message(body):
-    "Render the server's patch-conflict response body as a client-side message."
-    return body.get("detail", "Array parameters conflict.").replace(
-        "Use ?",  # URL query param
-        "Pass keyword argument ",  # Python function argument
-    )
-
-
 def patch_conflict_exception(status_code, body):
     """Translate a patch-conflict response into the exception to raise.
 
     A 409 (Conflict) maps to `Conflicts`; a 400 (Bad Request) maps to
-    `ValueError`. The server phrases patch conflicts identically for the
-    array-like families (see `patch_conflict_message`).
+    `ValueError`. The server's `detail` message is surfaced as-is: the server
+    phrases it in interface-neutral terms (NB servers older than 0.2.21
+    phrased it in terms of URL query parameters).
     """
     exception_type = Conflicts if status_code == httpx.codes.CONFLICT else ValueError
-    return exception_type(patch_conflict_message(body))
+    return exception_type(body.get("detail", "Array parameters conflict."))
+
+
+@contextmanager
+def translating_patch_conflicts():
+    """Translate patch-conflict error responses into the exceptions to raise.
+
+    Wraps the send of an array-like `patch` request.
+    """
+    try:
+        yield
+    except ClientError as err:
+        if err.response.status_code in PATCH_CONFLICT_STATUS_CODES:
+            raise patch_conflict_exception(
+                err.response.status_code, err.response.json()
+            ) from err
+        raise
 
 
 def collapse_key_segments(keys):
@@ -712,7 +709,7 @@ Specs = Optional[Union[list[str], list[Spec], str]]
 
 
 def normalize_specs(specs: Specs) -> Optional[list[dict[str, str]]]:
-    "Represent a list of Spec objects or strings as a list of dicts"
+    "Represent a list of Spec objects, strings, or dicts as a list of dicts."
 
     if specs is None:
         return None
@@ -720,7 +717,9 @@ def normalize_specs(specs: Specs) -> Optional[list[dict[str, str]]]:
     for spec in specs:
         if isinstance(spec, str):
             spec = Spec(spec)
-        normalized_specs.append(asdict(spec))
+        # Idempotent: already-normalized dicts pass through, so callers may
+        # normalize independently without coordinating.
+        normalized_specs.append(spec if isinstance(spec, dict) else asdict(spec))
     return normalized_specs
 
 

@@ -5,7 +5,13 @@ from .base import BaseClient
 from .utils import export_util
 
 
-class AwkwardClient(BaseClient):
+class CommonAwkwardClient:
+    """Pure awkward-array accessors and glue shared by the sync and async clients.
+
+    A mixin over `CommonBaseClient`: everything here reads the cached
+    structure; nothing performs I/O.
+    """
+
     def __repr__(self):
         # TODO Include some summary of the structure. Probably
         # lift __repr__ code from awkward itself here.
@@ -34,18 +40,29 @@ class AwkwardClient(BaseClient):
 
         return f"<{type(self).__name__}>"
 
-    def write(self, container):
-        draft = draft_request_write_awkward_full(
+    # -- Glue between instance state and the protocol layer ------------------
+
+    def _draft_request_write(self, container):
+        "Draft the request that overwrites the array in full."
+        return draft_request_write_awkward_full(
             self.item["links"]["full"], self.structure(), container
         )
-        self._send(draft)
 
-    def read(self, slice=...):
-        recipe = AwkwardReadRecipe.for_buffers(
+    def _read_recipe(self, slice=...):
+        "A recipe that reads the buffers touched by `slice`."
+        return AwkwardReadRecipe.for_buffers(
             self.item["links"]["buffers"], self.structure(), slice
         )
+
+
+class AwkwardClient(CommonAwkwardClient, BaseClient):
+    def write(self, container):
+        self._send(self._draft_request_write(container))
+
+    def read(self, slice=...):
+        recipe = self._read_recipe(slice)
         content = self._send(recipe.draft).read()
-        projected_array = recipe.parse(content)
+        projected_array = recipe.parse_response(content)
         return projected_array[slice]
 
     def __getitem__(self, slice):

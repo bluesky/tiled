@@ -1,19 +1,29 @@
 """Request builders for paginated collections, and query-parameter encoding.
 
 Several Tiled endpoints serve collections the same way: `GET` a collection
-link with per-collection query parameters, page with `page[offset]` /
-`page[limit]`, follow the response's `links.next` to subsequent pages, and
-report the total in `meta.count`. `PaginatedCollectionBuilder` drafts the
-requests for one such collection; the endpoint link and the parameters that
-apply to every request against it are fixed at construction. Consumers
-include deep search results, composite contents, and metadata revisions.
-The page-following loops are I/O-driven and live in the client classes.
+link with per-collection query parameters, follow the response's
+`links.next` to subsequent pages, and report the total in `meta.count`.
+`PaginatedCollectionBuilder` drafts the requests for one such collection;
+the endpoint link and the parameters that apply to every request against it
+are fixed at construction. Consumers include deep search results, composite
+contents, and metadata revisions. The page-following loops are I/O-driven
+and live in the client classes.
+
+The server supports two pagination schemes: offset (`page[offset]`) and
+cursor (`page[cursor]`). The client addresses only the FIRST page itself,
+by offset; the server hands back `links.next` in whichever scheme it
+prefers (it upgrades to cursors when the backend supports them), and the
+client follows that link verbatim -- the draft's query folding preserves
+whatever pagination parameters the link carries. The server's `next` links
+carry pagination parameters only, so each page's draft re-applies the
+non-pagination parameters (encoded queries, sorting, field selection).
 
 A container's children are the richest such collection: their search and
 navigation requests carry encoded queries and (per-direction) sorting, so
 `ChildrenSearchBuilder` specializes `PaginatedCollectionBuilder` with the
 parameter encoding and the container-specific drafts (key lookup within
-search results, `/distinct`).
+search results, `/distinct`). `DeepSearchBuilder` is the specialization
+for a deep search of a container's descendants, via `/search-deep`.
 
 The query encoding itself (`tiled.queries.queries_to_params`) is shared
 client/server knowledge and lives with the query types; the encoded form is
@@ -29,6 +39,25 @@ from ...queries import KeyLookup, queries_to_params
 from ...type_aliases import JSON
 from ..utils import MSGPACK_MIME_TYPE
 from .request import RequestDraft, distinct_link
+
+
+def _reject_pagination_params(params: dict[str, Any]) -> dict[str, Any]:
+    """Reject explicitly passed pagination parameters.
+
+    Pagination parameters (`page[offset]`, `page[cursor]`, `page[limit]`)
+    belong to the page link itself: the client constructs only the first
+    page's link and follows the server's `next` links verbatim. Passing one
+    explicitly would override the link (explicit parameters takeprecedence
+    in the draft's query folding) and desynchronize the pagination position.
+    """
+    for key in params:
+        if key.startswith("page["):
+            raise ValueError(
+                f"Pagination parameter {key!r} may not be passed explicitly; "
+                "pagination belongs to the page link (see `first_page_link` "
+                "and the server-provided `links['next']`)."
+            )
+    return params
 
 
 @dataclass(frozen=True)
@@ -47,19 +76,15 @@ class PaginatedCollectionBuilder:
     link: str
     fixed_params: dict[str, Any] = field(default_factory=dict)
 
-    def _draft(self, url: str, params: dict[str, Any]) -> RequestDraft:
-        return RequestDraft(
-            "GET",
-            url,
-            params={**self.fixed_params, **params},
-            headers={"Accept": MSGPACK_MIME_TYPE},
-        )
+    def __post_init__(self) -> None:
+        _reject_pagination_params(self.fixed_params)
 
     def first_page_link(self, offset: int, limit: Optional[int] = None) -> str:
         """The link to the first page of the collection, starting at `offset`.
 
         Each page of results links to the next, so only the first page's link
-        is constructed client-side.
+        is constructed client-side (the server may link subsequent pages by
+        offset or by cursor; see the module docstring).
         """
         link = f"{self.link}?page[offset]={offset}"
         if limit is not None:
@@ -69,23 +94,68 @@ class PaginatedCollectionBuilder:
     def draft_request_read_page(
         self, page_link: str, extra_params: Optional[dict[str, Any]] = None
     ) -> RequestDraft:
-        """Draft the request fetching one page of the collection.
+        """Draft the request that fetches one page of the collection.
 
         `page_link` is the first page's link (see `first_page_link`) or a
         server-provided `links["next"]`; its baked pagination query is
         preserved by the draft's query folding. The fixed parameters are
         re-applied to every page.
         """
-        return self._draft(page_link, extra_params or {})
+        return RequestDraft(
+            "GET",
+            page_link,
+            params={
+                **self.fixed_params,
+                **_reject_pagination_params(extra_params or {}),
+            },
+            headers={"Accept": MSGPACK_MIME_TYPE},
+        )
 
     def draft_request_count(self) -> RequestDraft:
-        "Draft the request counting the collection's entries."
-        return self._draft(self.link, {"fields": "count"})
+        "Draft the request that counts the collection's entries, exactly."
+        return RequestDraft(
+            "GET",
+            self.link,
+            params={**self.fixed_params, "fields": "count"},
+            headers={"Accept": MSGPACK_MIME_TYPE},
+        )
 
     @staticmethod
-    def parse_count(content: JSON) -> int:
-        "Extract the entry count from a collection response."
+    def parse_response_count(content: JSON) -> int:
+        """Extract the entry count from a collection response.
+
+        NB: in page responses the count may be approximate (the server
+        computes an exact count only when `fields=count` is requested, as
+        `draft_request_count` does).
+        """
         return content["meta"]["count"]
+
+
+@dataclass(frozen=True)
+class DeepSearchBuilder(PaginatedCollectionBuilder):
+    """The request builders for a deep search of one container's descendants.
+
+    A deep search (via `/search-deep`) pages like any other collection; only
+    its fixed parameters are specific: the encoded queries, an optional
+    depth limit, and the data-sources flag.
+    """
+
+    @classmethod
+    def from_queries(
+        cls,
+        search_deep_link: str,
+        queries: Sequence[Any],
+        *,
+        max_depth: Optional[int] = None,
+        include_data_sources: bool = False,
+    ) -> "DeepSearchBuilder":
+        "Encode the queries (and options) once, for all drafts built from them."
+        fixed_params = queries_to_params(*queries)
+        if max_depth is not None:
+            fixed_params["max_depth"] = max_depth
+        if include_data_sources:
+            fixed_params["include_data_sources"] = True
+        return cls(link=search_deep_link, fixed_params=fixed_params)
 
 
 @dataclass(frozen=True)
@@ -97,19 +167,16 @@ class ChildrenSearchBuilder(PaginatedCollectionBuilder):
     search/navigation requests are drafted from them. The inherited `link` is
     the container's search link, and the inherited `fixed_params` hold the
     queries encoded as `filter[...]` parameters -- they apply to every
-    request. Sorting participates per draft (reversed for backwards
-    iteration), so it is held separately.
+    request. The sorting is held as-is and encoded per draft, because its
+    direction can vary (reversed for backwards iteration).
 
     Attributes
     ----------
-    sorting_params : dict
-        The sorting encoded as the `sort` query parameter.
-    reversed_sorting_params : dict
-        The reverse of the sorting, for iterating entries backwards.
+    sorting : tuple
+        The container's sorting, as (key, direction) tuples.
     """
 
-    sorting_params: dict[str, Any] = field(default_factory=dict)
-    reversed_sorting_params: dict[str, Any] = field(default_factory=dict)
+    sorting: tuple[tuple[str, int], ...] = ()
 
     @classmethod
     def from_queries(
@@ -118,36 +185,38 @@ class ChildrenSearchBuilder(PaginatedCollectionBuilder):
         queries: Sequence[Any],
         sorting: Sequence[tuple[str, int]],
     ) -> "ChildrenSearchBuilder":
-        "Encode the queries and sorting once, for all drafts built from them."
+        "Encode the queries once, for all drafts built from them."
         return cls(
             link=search_link,
             fixed_params=queries_to_params(*queries),
-            sorting_params=cls._sorting_params(sorting),
-            reversed_sorting_params=cls._reversed_sorting_params(sorting),
+            sorting=tuple(sorting),
         )
 
-    @staticmethod
-    def _encoded_sorting(sorting: Sequence[tuple[str, int]]) -> list[str]:
-        # In the Python API sorting is encoded as (key, direction) tuples; in the
-        # HTTP API each becomes "key" (ascending) or "-key" (descending).
-        return [f"{'-' if direction < 0 else ''}{key}" for key, direction in sorting]
+    def _directed_sorting_params(self, direction: int) -> dict[str, list[str]]:
+        """Encode the sorting as the `sort` query parameter.
 
-    @staticmethod
-    def _sorting_params(sorting: Sequence[tuple[str, int]]) -> dict[str, list[str]]:
-        "Encode a [(key, direction), ...] sorting as the `sort` query parameter."
-        sorting_list = ChildrenSearchBuilder._encoded_sorting(sorting)
-        return {"sort": sorting_list} if "".join(sorting_list) else {}
-
-    @staticmethod
-    def _reversed_sorting_params(
-        sorting: Sequence[tuple[str, int]],
-    ) -> dict[str, list[str]]:
-        "Encode the reverse of `sorting`, for iterating a node's entries backwards."
-        reversed_sorting_list = [
-            item[1:] if item.startswith("-") else f"-{item.lstrip('+')}"
-            for item in ChildrenSearchBuilder._encoded_sorting(sorting)
+        In the Python API sorting is given as (key, direction) tuples; in the
+        HTTP API each becomes "key" (ascending) or "-key" (descending). A
+        negative `direction` reverses every key's direction, for iterating
+        the entries backwards. The server-default sorting encodes to nothing.
+        An explicit "+" key prefix means ascending in the HTTP API, the same
+        as no prefix; it is normalized away.
+        """
+        encoded = [
+            f"{'-' if key_direction * direction < 0 else ''}{key.removeprefix('+')}"
+            for key, key_direction in self.sorting
         ]
-        return {"sort": reversed_sorting_list} if "".join(reversed_sorting_list) else {}
+        return {"sort": encoded} if "".join(encoded) else {}
+
+    @property
+    def sorting_params(self) -> dict[str, list[str]]:
+        "The sorting encoded as the `sort` query parameter."
+        return self._directed_sorting_params(1)
+
+    @property
+    def reversed_sorting_params(self) -> dict[str, list[str]]:
+        "The reverse of the sorting, for iterating a node's entries backwards."
+        return self._directed_sorting_params(-1)
 
     @staticmethod
     def may_serve_from_inlined_contents(
@@ -168,12 +237,14 @@ class ChildrenSearchBuilder(PaginatedCollectionBuilder):
             and ((not sorting) or (list(sorting) == [("_", 1)]))
         )
 
-    def _directed_sorting_params(self, direction: int) -> dict[str, Any]:
-        return self.sorting_params if direction > 0 else self.reversed_sorting_params
-
     def draft_request_count(self) -> RequestDraft:
-        "Draft the request counting the container's (filtered) entries."
-        return self._draft(self.link, {"fields": "count", **self.sorting_params})
+        "Draft the request that counts the container's (filtered) entries, exactly."
+        return RequestDraft(
+            "GET",
+            self.link,
+            params={**self.fixed_params, "fields": "count", **self.sorting_params},
+            headers={"Accept": MSGPACK_MIME_TYPE},
+        )
 
     def draft_request_read_page(
         self,
@@ -183,7 +254,7 @@ class ChildrenSearchBuilder(PaginatedCollectionBuilder):
         include_data_sources: bool = False,
         direction: int = 1,
     ) -> RequestDraft:
-        """Draft the request fetching one page of the container's entries.
+        """Draft the request that fetches one page of the container's entries.
 
         `page_link` is the first page's link (see `first_page_link`) or a
         server-provided `links["next"]`; its baked pagination query is
@@ -191,17 +262,19 @@ class ChildrenSearchBuilder(PaginatedCollectionBuilder):
         fields are requested: only the entry ids are needed. A negative
         `direction` iterates the entries backwards (reversed sorting).
         """
-        params = dict(self._directed_sorting_params(direction))
+        params = {**self.fixed_params, **self._directed_sorting_params(direction)}
         if keys_only:
             params["fields"] = ""
         if include_data_sources:
             params["include_data_sources"] = True
-        return self._draft(page_link, params)
+        return RequestDraft(
+            "GET", page_link, params=params, headers={"Accept": MSGPACK_MIME_TYPE}
+        )
 
     def draft_request_lookup_key(
         self, key: str, *, include_data_sources: bool = False
     ) -> RequestDraft:
-        """Draft the request looking up `key` within the search results.
+        """Draft the request that looks up `key` within the search results.
 
         Used when queries apply to the container: the lookup must only return
         a result if the key is contained in the search results, so it is
@@ -214,7 +287,9 @@ class ChildrenSearchBuilder(PaginatedCollectionBuilder):
         }
         if include_data_sources:
             params["include_data_sources"] = True
-        return self._draft(self.link, params)
+        return RequestDraft(
+            "GET", self.link, params=params, headers={"Accept": MSGPACK_MIME_TYPE}
+        )
 
     def draft_request_read_distinct(
         self,
@@ -224,13 +299,16 @@ class ChildrenSearchBuilder(PaginatedCollectionBuilder):
         specs: bool,
         counts: bool,
     ) -> RequestDraft:
-        "Draft the request fetching distinct metadata values, via `/distinct`."
-        return self._draft(
+        "Draft the request that fetches distinct metadata values, via `/distinct`."
+        return RequestDraft(
+            "GET",
             distinct_link(self_link),
-            {
+            params={
+                **self.fixed_params,
                 "metadata": metadata_keys,
                 "structure_families": structure_families,
                 "specs": specs,
                 "counts": counts,
             },
+            headers={"Accept": MSGPACK_MIME_TYPE},
         )

@@ -14,13 +14,12 @@ import orjson
 import pytest
 
 from tiled.client._protocol.node import (
-    CreateFailureAction,
     CreateNodeRecipe,
     build_metadata_patches,
-    draft_request_asset_manifest,
     draft_request_delete_node,
     draft_request_lookup_node,
     draft_request_patch_metadata,
+    draft_request_read_asset_manifest,
     draft_request_refresh_node,
     draft_request_replace_metadata,
     merge_mutated_attributes,
@@ -33,7 +32,6 @@ from tiled.client.utils import (
     normalize_specs_patch,
 )
 from tiled.structures.array import ArrayStructure, BuiltinDtype
-from tiled.structures.container import ContainerStructure
 from tiled.structures.core import Spec, StructureFamily
 from tiled.structures.data_source import Asset, DataSource
 from tiled.utils import patch_mimetypes
@@ -57,9 +55,9 @@ def test_draft_request_refresh_node(include_data_sources, expected_params):
     assert draft.headers == {"Accept": MSGPACK_MIMETYPE}
 
 
-def test_draft_request_asset_manifest():
+def test_draft_request_read_asset_manifest():
     manifest_link = SELF_LINK.replace("/metadata", "/asset/manifest", 1)
-    draft = draft_request_asset_manifest(manifest_link, 7)
+    draft = draft_request_read_asset_manifest(manifest_link, 7)
     assert draft.method == "GET"
     assert draft.url == manifest_link
     assert draft.params == {"id": 7}
@@ -90,7 +88,10 @@ def test_draft_request_asset_manifest():
     ],
 )
 def test_normalize_specs_patch(content_type, specs_patch, expected):
-    assert normalize_specs_patch(specs_patch, content_type) == expected
+    normalized = normalize_specs_patch(specs_patch, content_type)
+    assert normalized == expected
+    # Idempotent: callers may normalize independently without coordinating.
+    assert normalize_specs_patch(normalized, content_type) == expected
 
 
 def test_apply_patch_rejects_unknown_content_type():
@@ -337,43 +338,49 @@ def _http_status_error(status_code, cls=httpx.HTTPStatusError):
 
 
 @pytest.mark.parametrize(
-    "exc, flag_in, expected_flag, expected_action",
+    "exc, reached",
     [
-        # Response lost after the request was sent: set the flag, raise into
-        # the retry machinery.
-        (httpx.ReadTimeout("x"), False, True, CreateFailureAction.RAISE),
-        (httpx.WriteError("x"), False, True, CreateFailureAction.RAISE),
-        (httpx.RemoteProtocolError("x"), False, True, CreateFailureAction.RAISE),
-        # Request never sent: flag unchanged, raise (retry machinery decides).
-        (httpx.ConnectError("x"), False, False, CreateFailureAction.RAISE),
-        (httpx.ConnectTimeout("x"), False, False, CreateFailureAction.RAISE),
-        # 5xx sets the flag but never adopts on the same attempt.
-        (_http_status_error(500), False, True, CreateFailureAction.RAISE),
-        (_http_status_error(502), False, True, CreateFailureAction.RAISE),
-        (_http_status_error(502), True, True, CreateFailureAction.RAISE),
-        # A clean 409 (no attempt may have reached the server) raises ...
-        (_http_status_error(409), False, False, CreateFailureAction.RAISE),
-        # ... but a 409 after a possibly-received attempt offers adoption,
-        # including for the ClientError subclass that handle_error raises.
-        (_http_status_error(409), True, True, CreateFailureAction.TRY_ADOPT),
-        (
-            _http_status_error(409, ClientError),
-            True,
-            True,
-            CreateFailureAction.TRY_ADOPT,
-        ),
-        # Other 4xx never adopt, and never set or clear the flag.
-        (_http_status_error(400), True, True, CreateFailureAction.RAISE),
-        (_http_status_error(400), False, False, CreateFailureAction.RAISE),
-        # Arbitrary exceptions: flag unchanged (in particular, never reset).
-        (ValueError("x"), False, False, CreateFailureAction.RAISE),
-        (ValueError("x"), True, True, CreateFailureAction.RAISE),
+        # Response lost after the request was sent: it may have been received.
+        (httpx.ReadTimeout("x"), True),
+        (httpx.WriteError("x"), True),
+        (httpx.RemoteProtocolError("x"), True),
+        # 5xx: the server/an intermediary may have processed the request.
+        (_http_status_error(500), True),
+        (_http_status_error(502), True),
+        # Request never sent.
+        (httpx.ConnectError("x"), False),
+        (httpx.ConnectTimeout("x"), False),
+        # Processed and rejected -- the response arrived. In particular a 409
+        # is NOT a may-have-reached-server failure: it cannot enable its own
+        # adoption (only an *earlier* attempt's failure can).
+        (_http_status_error(409), False),
+        (_http_status_error(400), False),
+        # Failures unrelated to HTTP.
+        (ValueError("x"), False),
     ],
 )
-def test_classify_failure(exc, flag_in, expected_flag, expected_action):
-    decision = CreateNodeRecipe.classify_failure(exc, flag_in)
-    assert decision.may_have_reached_server is expected_flag
-    assert decision.action is expected_action
+def test_request_may_have_reached_server(exc, reached):
+    assert CreateNodeRecipe.request_may_have_reached_server(exc) is reached
+
+
+@pytest.mark.parametrize(
+    "exc, may_have_reached_server, expected",
+    [
+        # Only a 409 after a possibly-received attempt offers adoption,
+        # including for the ClientError subclass that handle_error raises.
+        (_http_status_error(409), True, True),
+        (_http_status_error(409, ClientError), True, True),
+        # A clean 409 (no attempt may have reached the server) does not.
+        (_http_status_error(409), False, False),
+        # Nothing else offers adoption, flag or no flag.
+        (_http_status_error(400), True, False),
+        (_http_status_error(500), True, False),
+        (httpx.ReadTimeout("x"), True, False),
+        (ValueError("x"), True, False),
+    ],
+)
+def test_should_try_adopt(exc, may_have_reached_server, expected):
+    assert CreateNodeRecipe.should_try_adopt(exc, may_have_reached_server) is expected
 
 
 EXISTING_ATTRS = {
@@ -451,38 +458,32 @@ def test_merge_container_defaults():
         specs=None,
     )
     content = {"id": "x", "links": {"self": SELF_LINK + "/x"}}
-    created_node = recipe.merge(content)
-    assert created_node.item is recipe.item  # merged in place
-    assert created_node.structure == {"contents": None, "count": None}
-    assert created_node.item["attributes"]["structure"] == created_node.structure
-    assert created_node.item["attributes"]["metadata"] == {"count": 3}
-    assert created_node.item["id"] == "x"
-    assert created_node.item["links"] == {"self": SELF_LINK + "/x"}
+    item = recipe.merge(content)
+    assert item is recipe.item  # merged in place
+    assert item["attributes"]["structure"] == {"contents": None, "count": None}
+    assert item["attributes"]["metadata"] == {"count": 3}
+    assert item["id"] == "x"
+    assert item["links"] == {"self": SELF_LINK + "/x"}
 
 
 def test_merge_server_overrides():
-    # Metadata, structure, data sources, and access tags returned by the
-    # server (e.g. filled in by a validator) replace the submitted copies.
+    # Metadata, data sources, and access tags returned by the server (e.g.
+    # filled in by a validator) replace the submitted copies. (The create
+    # response never includes a structure; see `PostMetadataResponse`.)
     recipe = make_create_recipe(structure_family="container")
-    raw_structure = {"keys": ["c"]}
     content = {
         "id": "x",
         "links": {"self": SELF_LINK + "/x"},
         "metadata": {"color": "blue", "server_added": 1},
-        "structure": raw_structure,
         "data_sources": [{"id": 7}],
         "access_tags": ["tag"],
     }
-    created_node = recipe.merge(content)
-    attributes = created_node.item["attributes"]
+    item = recipe.merge(content)
+    attributes = item["attributes"]
     assert attributes["metadata"] == {"color": "blue", "server_added": 1}
-    # The response's structure is handed to the family's structure type as is.
-    assert attributes["structure"] == ContainerStructure(raw_structure)
+    assert attributes["structure"] == {"contents": None, "count": None}
     assert attributes["data_sources"] == [{"id": 7}]
     assert attributes["access_tags"] == ["tag"]
-    # The returned structure, used for client dispatch, is still the
-    # container default; only the item records the server's version.
-    assert created_node.structure == {"contents": None, "count": None}
 
 
 def test_merge_coerces_structure_dataclass():
@@ -498,15 +499,15 @@ def test_merge_coerces_structure_dataclass():
     )
     recipe = make_create_recipe(data_sources=[data_source])
     content = {"id": "x", "links": {}}
-    created_node = recipe.merge(content)
-    assert created_node.structure == structure
-    assert isinstance(created_node.structure, ArrayStructure)
+    item = recipe.merge(content)
+    assert item["attributes"]["structure"] == structure
+    assert isinstance(item["attributes"]["structure"], ArrayStructure)
 
 
 def test_merge_keeps_structure_dataclass():
     recipe = make_create_recipe()
-    created_node = recipe.merge({"id": "x"})
-    assert isinstance(created_node.structure, ArrayStructure)
+    item = recipe.merge({"id": "x"})
+    assert isinstance(item["attributes"]["structure"], ArrayStructure)
 
 
 @pytest.mark.parametrize(

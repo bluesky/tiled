@@ -84,7 +84,7 @@ def test_draft_request_write_sparse_full():
     assert draft.params == {}
     assert draft.headers == {"Content-Type": APACHE_ARROW_FILE_MIME_TYPE}
     # The body is Arrow bytes encoding the coordinates and values.
-    parsed = SparseReadRecipe(draft, coo.shape).parse(draft.content)
+    parsed = SparseReadRecipe(draft, coo.shape).parse_response(draft.content)
     numpy.testing.assert_array_equal(parsed.todense(), coo.todense())
 
 
@@ -96,7 +96,7 @@ def test_draft_request_write_sparse_block():
     assert draft.url == BLOCK_LINK.format(1, 0)
     assert draft.params == {"block": ["1,0"]}
     assert draft.headers == {"Content-Type": APACHE_ARROW_FILE_MIME_TYPE}
-    parsed = SparseReadRecipe(draft, coo.shape).parse(draft.content)
+    parsed = SparseReadRecipe(draft, coo.shape).parse_response(draft.content)
     numpy.testing.assert_array_equal(parsed.todense(), coo.todense())
 
 

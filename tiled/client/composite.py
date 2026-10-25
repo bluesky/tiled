@@ -1,12 +1,11 @@
 import itertools as it
-import time
 import warnings
 from typing import TYPE_CHECKING, Iterable, Optional, Union
 
 from ..structures.core import StructureFamily
 from ._protocol.dataset import assign_dataset_dims
 from ._protocol.search import PaginatedCollectionBuilder
-from .container import LENGTH_CACHE_TTL, Container
+from .container import Container
 
 if TYPE_CHECKING:
     import pyarrow
@@ -42,7 +41,7 @@ class CompositeClient(Container):
             else:
                 result[item["id"]] = item["id"]
 
-        self._cached_len = (len(result), time.monotonic() + LENGTH_CACHE_TTL)
+        self._cache_length(len(result))
 
         return result
 
@@ -69,12 +68,9 @@ class CompositeClient(Container):
         yield from self._keys_slice(0, None, 1)
 
     def __len__(self):
-        if self._cached_len is not None:
-            length, deadline = self._cached_len
-            if time.monotonic() < deadline:
-                # Used the cached value and do not make any request.
-                return length
-
+        if (length := self._length_from_cache()) is not None:
+            # Use the cached value and do not make any request.
+            return length
         return len(self._flat_keys_mapping)
 
     def __getitem__(self, key: str, _ignore_inlined_contents=False):

@@ -39,12 +39,12 @@ class RaggedReadRecipe:
     The server content-negotiates ragged reads: a scalar result -- a 0-dimensional
     array, or a slice selecting a single element -- is served as JSON, anything
     else as zipped awkward buffers. The `Accept` header in the draft and the decoding
-    in `parse` reflect one decision, made when the recipe is built.
+    in `parse_response` reflect one decision, made when the recipe is built.
 
     Attributes
     ----------
     draft : RequestDraft
-        The request fetching the data.
+        The request that fetches the data.
     scalar : bool
         Whether the result is a scalar, served as JSON.
     structure : RaggedStructure
@@ -59,7 +59,7 @@ class RaggedReadRecipe:
     def for_full(
         cls, link: str, structure: RaggedStructure, slice: Any = None
     ) -> "RaggedReadRecipe":
-        "Recipe reading the whole array or a slice of it, via `/ragged/full`."
+        "A recipe that reads the whole array or a slice of it, via `/ragged/full`."
         scalar = (len(structure.shape) == 0) or NDSlice(slice).is_scalar(
             structure.shape
         )
@@ -71,8 +71,8 @@ class RaggedReadRecipe:
         )
         return cls(draft, scalar, structure)
 
-    def parse(self, content: bytes) -> ragged.array:
-        "Decode the response matching this recipe's content negotiation."
+    def parse_response(self, content: bytes) -> ragged.array:
+        "Decode the response according to this recipe's content negotiation."
         if self.scalar:
             return ragged.array(orjson.loads(content))
         return from_zipped_buffers(buffer=content, structure=self.structure)
@@ -86,7 +86,7 @@ def _zipped_buffers_body(array: CanonicalRaggedArray) -> bytes:
 def draft_request_write_ragged_full(
     link: str, array: RaggedCompatibleType, persist: bool = True
 ) -> RequestDraft:
-    "Draft a request overwriting the array in full, via `PUT /ragged/full`."
+    "Draft the request that overwrites the array in full, via `PUT /ragged/full`."
     array = make_ragged_array(array)
     params: dict[str, Any] = {}
     if persist is False:
@@ -107,7 +107,7 @@ def draft_request_write_ragged_block(
     array: CanonicalRaggedArray,
     persist: bool = True,
 ) -> RequestDraft:
-    """Draft a request overwriting one block of the array, via `PUT /ragged/block`.
+    """Draft the request that overwrites one block of the array, via `PUT /ragged/block`.
 
     The block index is sent as a comma-joined `block` query parameter,
     overriding the placeholder template baked into the server-provided link.
@@ -132,7 +132,7 @@ def draft_request_patch_ragged_full(
     extend: bool = False,
     persist: bool = True,
 ) -> RequestDraft:
-    """Draft a request writing into a slice of the array, via `PATCH /ragged/full`.
+    """Draft the request that writes into a slice of the array, via `PATCH /ragged/full`.
 
     `shape` carries only the leading dimension: a ragged array grows along
     dimension 0 and its inner dimensions are variable.
@@ -159,7 +159,7 @@ def draft_request_patch_ragged_full(
 def data_source_from_ragged(
     array: Any, dims: Optional[Sequence[str]], max_partition_bytes: int
 ) -> DataSource:
-    """The data source describing a ragged array upload.
+    """The data source that describes a ragged array upload.
 
     `array` must already be in canonical ragged form (`make_ragged_array`).
     Chunks are chosen such that each partition is not too large to upload

@@ -41,7 +41,7 @@ class ArrayReadRecipe:
     Attributes
     ----------
     drafts : dict
-        Maps a tile index to the request fetching the sub-result for that
+        Maps a tile index to the request that fetches the sub-result for that
         tile. A read small enough for a single request has one entry; a read
         whose expected size exceeds the byte-size limit is split into several;
         a read whose shape contains 0 has none (an array with a 0-length
@@ -103,7 +103,7 @@ class ArrayReadRecipe:
         block: NDBlock,
         block_slice: Optional[NDSlice] = None,
     ) -> "ArrayReadRecipe":
-        """Recipe reading one block (chunk) of an array, via `/array/block`.
+        """A recipe that reads one block (chunk) of an array, via `/array/block`.
 
         The block boundaries are determined by `structure.chunks`, and usually
         correspond to the chunking of the array on the server side. Optionally,
@@ -145,7 +145,7 @@ class ArrayReadRecipe:
         array_slice: NDSlice,
         bytesize_limit: int,
     ) -> "ArrayReadRecipe":
-        """Recipe reading the whole array or a slice of it, via `/array/full`.
+        """A recipe that reads the whole array or a slice of it, via `/array/full`.
 
         If a read is expected to exceed `bytesize_limit`, it is split into multiple fetches,
         using chunk boundaries along each axis as the best candidate split points.
@@ -192,7 +192,7 @@ class ArrayReadRecipe:
         array_slice: NDSlice,
         expected_shape: tuple[int, ...],
     ) -> RequestDraft:
-        "Draft the request fetching one (sub-)slice of the array, via `/array/full`."
+        "Draft the request that fetches one (sub-)slice of the array, via `/array/full`."
         params: dict[str, Any] = {
             "expected_shape": ",".join(map(str, expected_shape)) or "scalar"
         }
@@ -206,10 +206,12 @@ class ArrayReadRecipe:
         )
 
     @staticmethod
-    def parse(content: bytes, dtype: DTypeLike, shape: tuple[int, ...]) -> NDArray[Any]:
+    def parse_response(
+        content: bytes, dtype: DTypeLike, shape: tuple[int, ...]
+    ) -> NDArray[Any]:
         """Convert a raw `octet-stream` response body into a numpy array.
 
-        A staticmethod, unlike the sibling recipes' `parse`: the decode
+        A staticmethod, unlike the sibling recipes' `parse_response`: the decode
         parameters are passed as arguments so that dask tasks can carry
         primitives and reference this function by qualified name, without
         embedding the recipe.
@@ -226,12 +228,12 @@ class ArrayReadRecipe:
 
 
 def draft_request_read_referenced_array(uri: str) -> RequestDraft:
-    """Draft the request fetching the array that a stream update references.
+    """Draft the request that fetches the array referenced by a stream update.
 
     Streaming updates may reference array data by URI (`array-ref` messages)
     instead of carrying an inline payload. The URI arrives complete, with any
     selection already baked in by the server, so it is fetched as-is, as raw
-    octet-stream bytes (see `ArrayReadRecipe.parse`).
+    octet-stream bytes (see `ArrayReadRecipe.parse_response`).
     """
     return RequestDraft("GET", uri, headers={"Accept": OCTET_STREAM_MIMETYPE})
 
@@ -239,7 +241,7 @@ def draft_request_read_referenced_array(uri: str) -> RequestDraft:
 def draft_request_write_array_full(
     link: str, array: Any, persist: bool = True
 ) -> RequestDraft:
-    "Draft a request overwriting the full array, via `PUT /array/full`."
+    "Draft the request that overwrites the full array, via `PUT /array/full`."
     if not (hasattr(array, "shape") and hasattr(array, "dtype")):
         array = numpy.asarray(array)
     params: dict[str, Any] = {}
@@ -262,7 +264,7 @@ def draft_request_write_array_block(
     slice: Any = ...,
     persist: bool = True,
 ) -> RequestDraft:
-    """Draft a request overwriting one block of the array, via `PUT /array/block`.
+    """Draft the request that overwrites one block of the array, via `PUT /array/block`.
 
     The server provides the block link as a URL template with one positional
     placeholder per dimension, filled in with the block index.
@@ -290,7 +292,7 @@ def draft_request_patch_array_full(
     extend: bool = False,
     persist: bool = True,
 ) -> RequestDraft:
-    "Draft a request writing into a slice of the array, via `PATCH /array/full`."
+    "Draft the request that writes into a slice of the array, via `PATCH /array/full`."
     array_ = numpy.ascontiguousarray(array)
     if isinstance(offset, int):
         offset = (offset,)
@@ -314,7 +316,7 @@ def draft_request_patch_array_full(
 def data_source_from_array(
     array: Any, dims: Optional[Sequence[str]], max_chunk_bytes: int
 ) -> DataSource:
-    """The data source describing an array upload.
+    """The data source that describes an array upload.
 
     Chunks are chosen such that each chunk is not too large to upload
     (`max_chunk_bytes`), taking any existing chunking into account. If the

@@ -17,8 +17,8 @@ from ..structures.data_source import DataSource
 from ..utils import UNCHANGED, DictView, ListView, patch_mimetypes
 from ._protocol.node import (
     build_metadata_patches,
-    draft_request_asset_manifest,
     draft_request_patch_metadata,
+    draft_request_read_asset_manifest,
     draft_request_refresh_node,
     draft_request_replace_metadata,
     merge_mutated_attributes,
@@ -45,31 +45,48 @@ from .utils import (
 JSON_ITEM = Union[str, int, float, bool, Dict[str, "JSON_ITEM"], List["JSON_ITEM"]]
 
 
-class MetadataRevisions:
+# How long a fetched collection length may be served from cache.
+LENGTH_CACHE_TTL = 1  # second
+
+
+class LengthCacheMixin:
+    """Maintain a cached collection length with a TTL.
+
+    Mutating operations invalidate it by setting `_cached_len = None`.
+    """
+
+    _cached_len = None  # (length, monotonic deadline) or None
+
+    def _length_from_cache(self):
+        "The cached collection length, or None if it has expired or was never set."
+        if self._cached_len is not None:
+            length, deadline = self._cached_len
+            if time.monotonic() < deadline:
+                return length
+        return None
+
+    def _cache_length(self, length):
+        "Cache a collection length (with a TTL) and return it."
+        self._cached_len = (length, time.monotonic() + LENGTH_CACHE_TTL)
+        return length
+
+
+class MetadataRevisions(LengthCacheMixin):
     def __init__(self, context, link):
-        self._cached_len = None
         self.context = context
         self._link = link
         self._pages_builder = PaginatedCollectionBuilder(link)
 
     def __len__(self):
-        LENGTH_CACHE_TTL = 1  # second
-
-        now = time.monotonic()
-        if self._cached_len is not None:
-            length, deadline = self._cached_len
-            if now < deadline:
-                # Used the cached value and do not make any request.
-                return length
-
+        if (length := self._length_from_cache()) is not None:
+            # Use the cached value and do not make any request.
+            return length
         # A zero-length page carries the total count without any entries.
         draft = self._pages_builder.draft_request_read_page(
             self._pages_builder.first_page_link(0, 0)
         )
         content = send_request_draft(self.context, draft).json()
-        length = self._pages_builder.parse_count(content)
-        self._cached_len = (length, now + LENGTH_CACHE_TTL)
-        return length
+        return self._cache_length(self._pages_builder.parse_response_count(content))
 
     def __getitem__(self, item_):
         self._cached_len = None
@@ -111,11 +128,11 @@ class MetadataRevisions:
         send_request_draft(self.context, draft)
 
 
-class CommonBaseClient:
+class CommonBaseClient(LengthCacheMixin):
     """State and accessors shared by the synchronous and asynchronous clients.
 
-    Everything here is pure: holding the item, parsing its structure, and
-    reading its attributes. All I/O lives in the subclasses (`BaseClient`
+    Everything here is pure: it holds the item, parses its structure, and
+    reads its attributes. All I/O lives in the subclasses (`BaseClient`
     and `tiled.client.aio.AsyncBaseClient`), which differ only in how they
     send requests; what to send and how to interpret responses comes from
     `tiled.client._protocol`.
@@ -132,7 +149,6 @@ class CommonBaseClient:
     ):
         self._context = context
         self._item = item
-        self._cached_len = None  # a cache just for __len__
         self.structure_clients = structure_clients
         self._include_data_sources = include_data_sources
         attributes = self.item["attributes"]
@@ -214,7 +230,7 @@ class CommonBaseClient:
 
     @property
     def structure_family(self):
-        "Quick access to this entry"
+        "The structure family of this node, as the enum."
         return StructureFamily[self.item["attributes"]["structure_family"]]
 
     def metadata_copy(self):
@@ -352,6 +368,104 @@ class CommonBaseClient:
         )
         return patch.patch
 
+    # -- Glue between instance state and the protocol layer ------------------
+    # Pure methods that bind this client's state (item, structure) to the
+    # builders and parsers in `tiled.client._protocol`. The sync and async
+    # shells share them; only the sends in between differ.
+
+    def _draft_request_refresh(self):
+        "Draft the request that refetches the item describing this node."
+        return draft_request_refresh_node(self.uri, self._include_data_sources)
+
+    def _merge_refreshed_item(self, content):
+        "Replace the local item (and cached structure) from a refresh response."
+        self._item = content["data"]
+        if self.structure_family != StructureFamily.container:
+            self._structure = structure_from_json(
+                self.structure_family, self._item["attributes"]["structure"]
+            )
+
+    def _draft_request_patch_metadata(
+        self,
+        metadata_patch,
+        specs_patch,
+        access_tags_patch,
+        content_type,
+        drop_revision,
+    ):
+        "Draft the request that patches this node's metadata (specs normalized)."
+        return draft_request_patch_metadata(
+            self.item["links"]["self"],
+            content_type=content_type,
+            metadata_patch=metadata_patch,
+            specs_patch=normalize_specs_patch(specs_patch, content_type),
+            access_tags_patch=access_tags_patch,
+            drop_revision=drop_revision,
+        )
+
+    def _merge_patched_metadata(
+        self, content, metadata_patch, specs_patch, access_tags_patch, content_type
+    ):
+        """Update the local item from a patch-metadata response.
+
+        Computes what each submitted field looks like after the patch. The
+        server applied the same patch to the same stored values, so local
+        application cannot fail where the request succeeded.
+        """
+        specs_patch = normalize_specs_patch(specs_patch, content_type)
+        attributes = self._item["attributes"]
+
+        def patched(doc, patch):
+            return None if patch is None else apply_patch(doc, patch, content_type)
+
+        attributes.update(
+            merge_mutated_attributes(
+                content,
+                metadata=patched(dict(attributes["metadata"]), metadata_patch),
+                specs=patched(attributes["specs"], specs_patch),
+                access_tags=patched(
+                    list(attributes["access_tags"] or []), access_tags_patch
+                ),
+            )
+        )
+
+    def _draft_request_replace_metadata(self, metadata, specs, access_tags, drop_revision):
+        "Draft the request that replaces this node's metadata (specs normalized)."
+        return draft_request_replace_metadata(
+            self.item["links"]["self"],
+            metadata=metadata,
+            specs=normalize_specs(specs),
+            access_tags=access_tags,
+            drop_revision=drop_revision,
+        )
+
+    def _draft_request_delete(self, recursive, external_only):
+        "Draft the request that deletes this node (and, optionally, its contents)."
+        return draft_request_delete(
+            self.uri, params={"recursive": recursive, "external_only": external_only}
+        )
+
+    def _draft_request_close_stream(self):
+        "Draft the request that declares the end of a stream of writes to this node."
+        return draft_request_delete(stream_close_link(self.uri))
+
+    def _draft_request_read_asset_manifest(self, asset_id):
+        "Draft the request that fetches the manifest of one directory asset."
+        return draft_request_read_asset_manifest(
+            asset_manifest_link(self.item["links"]["self"]), asset_id
+        )
+
+    def _merge_replaced_metadata(self, content, metadata, specs, access_tags):
+        "Update the local item from a replace-metadata response (specs normalized)."
+        self._item["attributes"].update(
+            merge_mutated_attributes(
+                content,
+                metadata=metadata,
+                specs=normalize_specs(specs),
+                access_tags=access_tags,
+            )
+        )
+
 
 class BaseClient(CommonBaseClient):
     def __init__(self, context: Context, **kwargs):
@@ -401,13 +515,8 @@ class BaseClient(CommonBaseClient):
         self.context.logout()
 
     def refresh(self):
-        draft = draft_request_refresh_node(self.uri, self._include_data_sources)
-        content = self._send(draft).json()
-        self._item = content["data"]
-        if self.structure_family != StructureFamily.container:
-            self._structure = structure_from_json(
-                self.structure_family, self._item["attributes"]["structure"]
-            )
+        content = self._send(self._draft_request_refresh()).json()
+        self._merge_refreshed_item(content)
         return self
 
     @property
@@ -458,10 +567,9 @@ class BaseClient(CommonBaseClient):
         """
         manifests = {}
         for data_source in data_sources:
-            manifest_link = asset_manifest_link(self.item["links"]["self"])
             for asset in data_source.assets:
                 if asset.is_directory:
-                    draft = draft_request_asset_manifest(manifest_link, asset.id)
+                    draft = self._draft_request_read_asset_manifest(asset.id)
                     manifest = self._send(draft).json()["manifest"]
                 else:
                     manifest = None
@@ -728,34 +836,12 @@ class BaseClient(CommonBaseClient):
         """
 
         self._cached_len = None
-
-        specs_patch = normalize_specs_patch(specs_patch, content_type)
-        draft = draft_request_patch_metadata(
-            self.item["links"]["self"],
-            content_type=content_type,
-            metadata_patch=metadata_patch,
-            specs_patch=specs_patch,
-            access_tags_patch=access_tags_patch,
-            drop_revision=drop_revision,
+        draft = self._draft_request_patch_metadata(
+            metadata_patch, specs_patch, access_tags_patch, content_type, drop_revision
         )
         content = self._send(draft).json()
-        # Compute what each submitted field looks like after the patch. The
-        # server applied the same patch to the same stored values, so local
-        # application cannot fail where the request succeeded.
-        attributes = self._item["attributes"]
-
-        def patched(doc, patch):
-            return None if patch is None else apply_patch(doc, patch, content_type)
-
-        attributes.update(
-            merge_mutated_attributes(
-                content,
-                metadata=patched(dict(attributes["metadata"]), metadata_patch),
-                specs=patched(attributes["specs"], specs_patch),
-                access_tags=patched(
-                    list(attributes["access_tags"] or []), access_tags_patch
-                ),
-            )
+        self._merge_patched_metadata(
+            content, metadata_patch, specs_patch, access_tags_patch, content_type
         )
 
     def replace_metadata(
@@ -787,21 +873,11 @@ class BaseClient(CommonBaseClient):
         """
 
         self._cached_len = None
-
-        specs = normalize_specs(specs)
-        draft = draft_request_replace_metadata(
-            self.item["links"]["self"],
-            metadata=metadata,
-            specs=specs,
-            access_tags=access_tags,
-            drop_revision=drop_revision,
+        draft = self._draft_request_replace_metadata(
+            metadata, specs, access_tags, drop_revision
         )
         content = self._send(draft).json()
-        self._item["attributes"].update(
-            merge_mutated_attributes(
-                content, metadata=metadata, specs=specs, access_tags=access_tags
-            )
-        )
+        self._merge_replaced_metadata(content, metadata, specs, access_tags)
 
     @property
     def metadata_revisions(self):
@@ -824,14 +900,11 @@ class BaseClient(CommonBaseClient):
         """
 
         self._cached_len = None
-        draft = draft_request_delete(
-            self.uri, params={"recursive": recursive, "external_only": external_only}
-        )
-        self._send(draft)
+        self._send(self._draft_request_delete(recursive, external_only))
 
     def close_stream(self):
         "Declare the end of a stream of writes to this node."
-        self._send(draft_request_delete(stream_close_link(self.uri)))
+        self._send(self._draft_request_close_stream())
 
     def __dask_tokenize__(self):
         return (type(self), self.uri)

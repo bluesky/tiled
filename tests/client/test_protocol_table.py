@@ -12,10 +12,10 @@ import pytest
 
 from tiled.client._protocol.request import RequestDraft
 from tiled.client._protocol.table import (
+    TableReadRecipe,
     data_source_for_appendable_table,
     data_source_from_table,
     draft_request_append_table_partition,
-    draft_request_read_table_partition,
     draft_request_write_table_full,
     draft_request_write_table_partition,
 )
@@ -44,8 +44,8 @@ def make_dataframe(start=0, stop=3):
         (None, {}),
     ],
 )
-def test_draft_request_read_table_partition_get(columns, expected_column_param):
-    draft = draft_request_read_table_partition(PARTITION_LINK, 2, columns)
+def test_read_partition_recipe_get(columns, expected_column_param):
+    draft = TableReadRecipe.for_partition(PARTITION_LINK, 2, columns).draft
     assert draft.method == "GET"
     assert draft.url == PARTITION_LINK
     # The baked `partition` template in the link's query is overridden by the
@@ -55,10 +55,10 @@ def test_draft_request_read_table_partition_get(columns, expected_column_param):
     assert draft.content is None
 
 
-def test_draft_request_read_table_partition_post(monkeypatch):
+def test_read_partition_recipe_post(monkeypatch):
     monkeypatch.setattr(RequestDraft, "URL_CHARACTER_LIMIT", 0)
     columns = ["A", "B"]
-    draft = draft_request_read_table_partition(PARTITION_LINK, 1, columns)
+    draft = TableReadRecipe.for_partition(PARTITION_LINK, 1, columns).draft
     assert draft.method == "POST"
     assert draft.url == PARTITION_LINK
     # The columns move to the body; `partition` stays a query parameter.
@@ -70,11 +70,11 @@ def test_draft_request_read_table_partition_post(monkeypatch):
     assert draft.content == orjson.dumps(columns)
 
 
-def test_draft_request_read_table_partition_post_without_columns(monkeypatch):
+def test_read_partition_recipe_post_without_columns(monkeypatch):
     # With no column selection there is nothing to move to the body: the
     # fallback POST carries no body and no `Content-Type` header.
     monkeypatch.setattr(RequestDraft, "URL_CHARACTER_LIMIT", 0)
-    draft = draft_request_read_table_partition(PARTITION_LINK, 0, None)
+    draft = TableReadRecipe.for_partition(PARTITION_LINK, 0, None).draft
     assert draft.method == "POST"
     assert draft.params == {"partition": 0}
     assert draft.headers == {"Accept": APACHE_ARROW_FILE_MIME_TYPE}
@@ -142,3 +142,24 @@ def test_data_source_for_appendable_table(table_name, expected_parameters):
     assert data_source.parameters == expected_parameters
     assert data_source.structure.columns == ["a", "b"]
     assert data_source.structure.npartitions == 2
+
+
+def test_wide_table_recipe():
+    # The selection rides as a repeated `field` parameter; the Arrow encoding
+    # is negotiated via the `format` parameter.
+    recipe = TableReadRecipe.for_wide_table("http://x/api/v1/container/full/a", ["u", "v"])
+    assert recipe.draft.method == "GET"
+    assert recipe.draft.params == {
+        "field": ["u", "v"],
+        "format": APACHE_ARROW_FILE_MIME_TYPE,
+    }
+
+
+def test_read_recipe_parse_round_trip():
+    import pandas
+
+    from tiled.serialization.table import serialize_arrow
+
+    expected = pandas.DataFrame({"a": [1, 2, 3]})
+    content = bytes(serialize_arrow(APACHE_ARROW_FILE_MIME_TYPE, expected, {}))
+    pandas.testing.assert_frame_equal(TableReadRecipe.parse_response(content), expected)

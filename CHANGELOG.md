@@ -24,6 +24,11 @@ Write the date in place of the "Unreleased" in the case a new version is release
   `ArrayClient.patch` raises `Conflicts` when the server reports a 409
   (e.g. the patch would overwrite data without `extend=True`), matching
   `RaggedClient.patch`. Code catching `ValueError` keeps working.
+- The server's array-patch conflict message is now phrased in
+  interface-neutral terms ("Set extend=true ...") and the Python client
+  surfaces it as-is, instead of rewriting URL-query phrasing into Python
+  keyword phrasing. Against servers older than this release, the client
+  now shows the server's original ("Use ?extend=true ...") message.
 
 ### Fixed
 

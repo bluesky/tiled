@@ -18,8 +18,8 @@ from typing import Any, Iterable, Optional, Sequence
 
 import numpy
 import sparse
-from ndindex import ndindex
 
+from ...ndslice import NDSlice
 from ...serialization.table import deserialize_arrow, serialize_arrow
 from ...structures.core import StructureFamily
 from ...structures.data_source import DataSource
@@ -36,7 +36,7 @@ class SparseReadRecipe:
     Attributes
     ----------
     draft : RequestDraft
-        The request fetching the COO coordinates and values as Arrow bytes.
+        The request that fetches the COO coordinates and values as Arrow bytes.
     shape : tuple
         Shape of the resulting `sparse.COO` array: the array's shape, narrowed by
         the slice when one is requested. The response carries only coordinates and
@@ -46,7 +46,7 @@ class SparseReadRecipe:
     draft: RequestDraft
     shape: tuple[int, ...]
 
-    def parse(self, content: bytes) -> sparse.COO:
+    def parse_response(self, content: bytes) -> sparse.COO:
         """Convert an Arrow response body into a `sparse.COO` array.
 
         The table has columns named `dim0, dim1, ..., dimN, data`.
@@ -58,25 +58,18 @@ class SparseReadRecipe:
             shape=self.shape,
         )
 
-    @staticmethod
-    def _sliced_shape(shape: tuple[int, ...], slice: Optional[Any]) -> tuple[int, ...]:
-        "Shape of the given array shape narrowed by a (possibly absent) slice."
-        if slice is None:
-            return shape
-        return ndindex(slice).newshape(shape)
-
     @classmethod
     def for_full(
         cls, link: str, structure: COOStructure, slice: Any = None
     ) -> "SparseReadRecipe":
-        "Recipe reading the whole array or a slice of it, via `/array/full`."
+        "A recipe that reads the whole array or a slice of it, via `/array/full`."
         draft = RequestDraft(
             "GET",
             link,
             params=params_from_slice(slice),
             headers={"Accept": APACHE_ARROW_FILE_MIME_TYPE},
         )
-        return cls(draft, cls._sliced_shape(structure.shape, slice))
+        return cls(draft, NDSlice(slice).shape_after_slice(structure.shape))
 
     @classmethod
     def for_block(
@@ -86,7 +79,7 @@ class SparseReadRecipe:
         block: Iterable[int],
         slice: Any = None,
     ) -> "SparseReadRecipe":
-        """Recipe reading one block (chunk) of the array, via `/array/block`.
+        """A recipe that reads one block (chunk) of the array, via `/array/block`.
 
         The block index is sent as a comma-joined `block` query parameter,
         overriding the placeholder template baked into the server-provided
@@ -101,7 +94,7 @@ class SparseReadRecipe:
             params=params,
             headers={"Accept": APACHE_ARROW_FILE_MIME_TYPE},
         )
-        return cls(draft, cls._sliced_shape(structure.shape, slice))
+        return cls(draft, NDSlice(slice).shape_after_slice(structure.shape))
 
 
 def _coo_arrow_body(coords: Any, data: Any) -> bytes:
@@ -120,7 +113,7 @@ def _coo_arrow_body(coords: Any, data: Any) -> bytes:
 
 
 def draft_request_write_sparse_full(link: str, coords: Any, data: Any) -> RequestDraft:
-    "Draft a request overwriting the full array, via `PUT /array/full`."
+    "Draft the request that overwrites the full array, via `PUT /array/full`."
     return RequestDraft(
         "PUT",
         link,
@@ -132,7 +125,7 @@ def draft_request_write_sparse_full(link: str, coords: Any, data: Any) -> Reques
 def draft_request_write_sparse_block(
     link_template: str, block: Iterable[int], coords: Any, data: Any
 ) -> RequestDraft:
-    """Draft a request overwriting one block of the array, via `PUT /array/block`.
+    """Draft the request that overwrites one block of the array, via `PUT /array/block`.
 
     The server provides the block link as a URL template with one positional
     placeholder per dimension, filled in with the block index. (Unlike reads,
@@ -149,7 +142,7 @@ def draft_request_write_sparse_block(
 def data_source_from_coo(
     coords: Any, data: Any, shape: tuple[int, ...], dims: Optional[Sequence[str]]
 ) -> DataSource:
-    "The data source describing a single-chunk sparse (COO) array upload."
+    "The data source that describes a single-chunk sparse (COO) array upload."
     from ...structures.array import BuiltinDtype
 
     structure = COOStructure(

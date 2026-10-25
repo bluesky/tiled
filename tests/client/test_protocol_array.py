@@ -17,7 +17,6 @@ from tiled.client._protocol.array import (
     draft_request_write_array_block,
     draft_request_write_array_full,
 )
-from tiled.client.utils import patch_conflict_message
 from tiled.ndslice import NDBlock, NDSlice
 from tiled.structures.array import ArrayStructure, BuiltinDtype
 from tiled.structures.core import StructureFamily, structure_from_json
@@ -159,7 +158,7 @@ def test_for_block_zero_dim_short_circuit():
 @pytest.mark.parametrize("shape", [(6,), (2, 3), ()])
 def test_parse_array_response_round_trip(shape):
     array = numpy.arange(numpy.prod(shape, dtype=int), dtype="int32").reshape(shape)
-    parsed = ArrayReadRecipe.parse(array.tobytes(), array.dtype, shape)
+    parsed = ArrayReadRecipe.parse_response(array.tobytes(), array.dtype, shape)
     assert parsed.shape == shape
     assert numpy.array_equal(parsed, array)
 
@@ -316,22 +315,6 @@ def test_draft_request_patch_array_full_makes_body_contiguous():
     draft = draft_request_patch_array_full(FULL_LINK, array, offset=(0, 0))
     assert draft.content == numpy.ascontiguousarray(array).tobytes()
     assert draft.params["shape"] == "3,2"
-
-
-@pytest.mark.parametrize(
-    "body, expected",
-    [
-        # The server phrases conflicts in terms of URL query parameters;
-        # the client rephrases them in terms of Python keyword arguments.
-        (
-            {"detail": "Use ?extend=true to extend array dimension."},
-            "Pass keyword argument extend=true to extend array dimension.",
-        ),
-        ({}, "Array parameters conflict."),
-    ],
-)
-def test_patch_conflict_message(body, expected):
-    assert patch_conflict_message(body) == expected
 
 
 def test_parse_patch_response():

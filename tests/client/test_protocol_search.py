@@ -9,13 +9,15 @@ import pytest
 
 from tiled.client._protocol.search import (
     ChildrenSearchBuilder,
+    DeepSearchBuilder,
     PaginatedCollectionBuilder,
 )
-from tiled.queries import FullText, queries_to_params
+from tiled.queries import FullText, Key, queries_to_params
 
 LINK = "http://localhost:8000/api/v1/revisions/a/b"
 SELF_LINK = "http://localhost:8000/api/v1/metadata/a/b"
 SEARCH_LINK = "http://localhost:8000/api/v1/search/a/b"
+SEARCH_DEEP_LINK = "http://localhost:8000/api/v1/search-deep/a/b"
 MSGPACK_MIMETYPE = "application/x-msgpack"
 
 QUERIES = [FullText("hello")]
@@ -62,8 +64,8 @@ def test_draft_request_count():
     assert draft.headers == {"Accept": MSGPACK_MIMETYPE}
 
 
-def test_parse_count():
-    assert PaginatedCollectionBuilder.parse_count({"meta": {"count": 7}}) == 7
+def test_parse_response_count():
+    assert PaginatedCollectionBuilder.parse_response_count({"meta": {"count": 7}}) == 7
 
 
 def test_queries_to_params():
@@ -89,9 +91,9 @@ def test_from_queries():
             {"sort": ["color", "-height"]},
             {"sort": ["-color", "height"]},
         ),
-        # An explicit "+" prefix is kept as-is, and dropped when flipping
-        # to descending.
-        ([("+color", 1)], {"sort": ["+color"]}, {"sort": ["-color"]}),
+        # An explicit "+" prefix means ascending in the HTTP API, the same
+        # as no prefix; it is normalized away in either direction.
+        ([("+color", 1)], {"sort": ["color"]}, {"sort": ["-color"]}),
         # The server-default sorting encodes to nothing (no `sort`
         # parameter); its reverse is expressed as "-".
         ([("", 1)], {}, {"sort": ["-"]}),
@@ -214,3 +216,32 @@ def test_draft_request_read_distinct():
         **QUERIES_AS_PARAMS,
     }
     assert draft.headers == {"Accept": MSGPACK_MIMETYPE}
+
+
+def test_deep_search_builder_from_queries():
+    # The encoded queries, the optional depth limit, and the data-sources
+    # flag are fixed at construction and applied to every draft.
+    builder = DeepSearchBuilder.from_queries(
+        SEARCH_DEEP_LINK,
+        [Key("color") == "red"],
+        max_depth=2,
+        include_data_sources=True,
+    )
+    draft = builder.draft_request_read_page(builder.first_page_link(0, 10))
+    assert draft.params["filter[eq][condition][key]"] == ["color"]
+    assert draft.params["max_depth"] == 2
+    assert draft.params["include_data_sources"] is True
+    # Both options are omitted by default.
+    builder = DeepSearchBuilder.from_queries(SEARCH_DEEP_LINK, [])
+    assert builder.fixed_params == {}
+
+
+@pytest.mark.parametrize("param", ["page[offset]", "page[cursor]", "page[limit]"])
+def test_explicit_pagination_params_are_rejected(param):
+    # Pagination belongs to the page link; an explicitly passed pagination
+    # parameter would override the link's and desynchronize the position.
+    builder = PaginatedCollectionBuilder(SEARCH_LINK)
+    with pytest.raises(ValueError):
+        builder.draft_request_read_page(SEARCH_LINK, extra_params={param: 0})
+    with pytest.raises(ValueError):
+        PaginatedCollectionBuilder(SEARCH_LINK, fixed_params={param: 0})

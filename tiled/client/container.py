@@ -4,7 +4,6 @@ import functools
 import importlib
 import itertools
 import logging
-import time
 import warnings
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterable, Optional, Union
@@ -13,7 +12,6 @@ import entrypoints
 import httpx
 
 from ..iterviews import ItemsView, KeysView, ValuesView
-from ..queries import queries_to_params
 from ..structures.core import Spec, StructureFamily, structure_from_json
 from ..structures.data_source import DataSource
 from ..utils import (
@@ -25,13 +23,12 @@ from ..utils import (
     node_repr,
 )
 from ._protocol.node import (
-    CreateFailureAction,
     CreateNodeRecipe,
     draft_request_delete_node,
     draft_request_lookup_node,
 )
-from ._protocol.search import ChildrenSearchBuilder, PaginatedCollectionBuilder
-from .base import BaseClient
+from ._protocol.search import ChildrenSearchBuilder, DeepSearchBuilder
+from .base import BaseClient, CommonBaseClient, LengthCacheMixin
 from .utils import (
     ClientError,
     client_for_item,
@@ -50,7 +47,171 @@ if TYPE_CHECKING:
 logger = logging.getLogger("tiled.client")
 
 
-class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
+class CommonContainer(CommonBaseClient):
+    """Pure container state and glue shared by the sync and async clients.
+
+    Holds the active queries and sorting (and the search builder they
+    define) and binds instance state to the protocol layer. No I/O; see
+    `Container` and `tiled.client.aio.AsyncContainer`.
+    """
+
+    # When (re)chunking arrays for upload, we use this limit
+    # to attempt to avoid bumping into size limits.
+    _SUGGESTED_MAX_UPLOAD_SIZE = 100_000_000  # 100 MB
+
+    def __init__(
+        self,
+        context,
+        *,
+        item,
+        structure_clients,
+        queries=None,
+        sorting=None,
+        structure=None,
+        include_data_sources=False,
+    ):
+        "This is not user-facing. Use Node.from_uri."
+
+        self._queries = list(queries or [])
+        # If the user has not specified a sorting, give the server the opportunity
+        # to tell us the default sorting.
+        if sorting:
+            self._sorting = sorting
+        else:
+            # In the Python API we encode sorting as (key, direction).
+            # This order-based "record" notion does not play well with OpenAPI.
+            # In the HTTP API, therefore, we use {"key": key, "direction": direction}.
+            server_sorting = item["attributes"].get("sorting") or []
+            self._sorting = [
+                (s["key"], int(s["direction"])) for s in server_sorting
+            ] or [
+                ("", 1)
+            ]  # fall back to server default when not specified
+        self._children_search_builder = ChildrenSearchBuilder.from_queries(
+            item["links"]["search"], self._queries, self._sorting
+        )
+        # Expose the encoded parameters as plain attributes; subclasses
+        # (e.g. `composite.py`) read them directly.
+        self._queries_as_params = self._children_search_builder.fixed_params
+        self._sorting_params = self._children_search_builder.sorting_params
+        self._reversed_sorting_params = (
+            self._children_search_builder.reversed_sorting_params
+        )
+
+        super().__init__(
+            context=context,
+            item=item,
+            structure_clients=structure_clients,
+            include_data_sources=include_data_sources,
+        )
+
+    @property
+    def sorting(self):
+        """
+        The current sorting of this Node
+
+        Given as a list of tuples where the first entry is the sorting key
+        and the second entry indicates ASCENDING (or 1) or DESCENDING (or -1).
+        """
+        return list(self._sorting)
+
+    def new_variation(self, *, queries=UNCHANGED, sorting=UNCHANGED, **kwargs):
+        """
+        Create a copy of this Node, optionally varying some parameters.
+
+        This is intended primarily for internal use and use by subclasses.
+        """
+        if queries is UNCHANGED:
+            queries = self._queries
+        if sorting is UNCHANGED:
+            sorting = self._sorting
+        return super().new_variation(queries=queries, sorting=sorting, **kwargs)
+
+    def search(self, query):
+        """
+        Make a Node with a subset of this Node's entries, filtered by query.
+
+        Examples
+        --------
+
+        >>> from tiled.queries import FullText
+        >>> tree.search(FullText("hello"))
+        """
+        return self.new_variation(queries=self._queries + [query])
+
+    def sort(self, *sorting):
+        """
+        Make a Node with the same entries but sorted according to `sorting`.
+
+        Examples
+        --------
+
+        Sort by "color" in ascending order, and then by "height" in descending order.
+
+        >>> from tiled.client import ASCENDING, DESCENDING
+        >>> tree.sort(("color", ASCENDING), ("height", DESCENDING))
+
+        Note that ``1`` may be used as a synonym for ``ASCENDING``, and ``-1``
+        may be used as a synonym for ``DESCENDING``.
+        """
+        return self.new_variation(sorting=sorting)
+
+    def _create_node_recipe(
+        self, structure_family, data_sources, *, key, metadata, specs, access_tags
+    ):
+        "A recipe that creates a new node under this container."
+        return CreateNodeRecipe.for_new_node(
+            self.uri,
+            self.path_parts,
+            structure_family,
+            data_sources,
+            key=key,
+            metadata=metadata,
+            specs=specs,
+            access_tags=access_tags,
+            library_version=self.context.server_info.library_version,
+        )
+
+    def _adopt_if_matching(self, create_recipe, existing):
+        """Decide whether an existing node is adoptable as the result of a create.
+
+        `existing` is the client fetched for the conflicting key, or None if
+        the fetch failed. Returns the client to adopt, or None (logging the
+        decision either way). The match itself is pure and shared, in
+        `CreateNodeRecipe.matches_existing`; see
+        `Container._adopt_after_retried_create_conflict` for the conditions
+        and trade-offs.
+        """
+        if existing is None:
+            logger.warning(
+                "Create of %r returned 409 Conflict after a retried request, "
+                "but the existing item could not be fetched; treating as a "
+                "genuine conflict.",
+                create_recipe.key,
+            )
+            return None
+
+        mismatch = create_recipe.matches_existing(existing.item["attributes"])
+        if mismatch is not None:
+            logger.warning(
+                "Create of %r returned 409 Conflict after a retried request, "
+                "but the existing item does not match the request (%s); "
+                "treating as a genuine conflict.",
+                create_recipe.key,
+                mismatch,
+            )
+            return None
+
+        logger.warning(
+            "Create of %r returned 409 Conflict after a retried request that "
+            "may have reached the server; adopting the existing (matching) "
+            "item as the result of this create.",
+            create_recipe.key,
+        )
+        return existing
+
+
+class Container(CommonContainer, BaseClient, collections.abc.Mapping, IndexersMixin):
     # This maps the structure_family sent by the server to a client-side object that
     # can interpret the structure_family's structure and content. OneShotCachedMap is used to
     # defer imports.
@@ -92,96 +253,25 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                 DEFAULT_STRUCTURE_CLIENT_DISPATCH["numpy"].set(name, entrypoint.load)
                 DEFAULT_STRUCTURE_CLIENT_DISPATCH["dask"].set(name, entrypoint.load)
 
-    def __init__(
-        self,
-        context,
-        *,
-        item,
-        structure_clients,
-        queries=None,
-        sorting=None,
-        structure=None,
-        include_data_sources=False,
-    ):
-        "This is not user-facing. Use Node.from_uri."
-
-        self.structure_clients = structure_clients
-        self._queries = list(queries or [])
-        # If the user has not specified a sorting, give the server the opportunity
-        # to tell us the default sorting.
-        if sorting:
-            self._sorting = sorting
-        else:
-            # In the Python API we encode sorting as (key, direction).
-            # This order-based "record" notion does not play well with OpenAPI.
-            # In the HTTP API, therefore, we use {"key": key, "direction": direction}.
-            server_sorting = item["attributes"].get("sorting") or []
-            self._sorting = [
-                (s["key"], int(s["direction"])) for s in server_sorting
-            ] or [
-                ("", 1)
-            ]  # fall back to server default when not specified
-        self._children_search_builder = ChildrenSearchBuilder.from_queries(
-            item["links"]["search"], self._queries, self._sorting
-        )
-        # Expose the encoded parameters as plain attributes; subclasses
-        # (e.g. `composite.py`) read them directly.
-        self._queries_as_params = self._children_search_builder.fixed_params
-        self._sorting_params = self._children_search_builder.sorting_params
-        self._reversed_sorting_params = (
-            self._children_search_builder.reversed_sorting_params
-        )
-
-        super().__init__(
-            context=context,
-            item=item,
-            structure_clients=structure_clients,
-            include_data_sources=include_data_sources,
-        )
-
     def __repr__(self):
         # Display up to the first N keys to avoid making a giant service
         # request. Use _keys_slicer because it is unauthenticated.
         N = 10
         return node_repr(self, self._keys_slice(0, N, direction=1))
 
-    @property
-    def sorting(self):
-        """
-        The current sorting of this Node
-
-        Given as a list of tuples where the first entry is the sorting key
-        and the second entry indicates ASCENDING (or 1) or DESCENDING (or -1).
-        """
-        return list(self._sorting)
-
-    def new_variation(
-        self,
-        *,
-        structure_clients=UNCHANGED,
-        queries=UNCHANGED,
-        sorting=UNCHANGED,
-        **kwargs,
-    ):
+    def new_variation(self, *, structure_clients=UNCHANGED, **kwargs):
         """
         Create a copy of this Node, optionally varying some parameters.
 
         This is intended primarily for internal use and use by subclasses.
+        In the synchronous client, `structure_clients` may also be given as
+        a registry name ("numpy" or "dask").
         """
         if isinstance(structure_clients, str):
             structure_clients = DEFAULT_STRUCTURE_CLIENT_DISPATCH[structure_clients]
         if structure_clients is UNCHANGED:
             structure_clients = self.structure_clients
-        if queries is UNCHANGED:
-            queries = self._queries
-        if sorting is UNCHANGED:
-            sorting = self._sorting
-        return super().new_variation(
-            structure_clients=structure_clients,
-            queries=queries,
-            sorting=sorting,
-            **kwargs,
-        )
+        return super().new_variation(structure_clients=structure_clients, **kwargs)
 
     def __len__(self):
         # If the contents of this node was provided in-line, there is an
@@ -190,16 +280,11 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         if contents := self.item["attributes"]["structure"]["contents"]:
             return len(contents)
 
-        now = time.monotonic()
-        if self._cached_len is not None:
-            length, deadline = self._cached_len
-            if now < deadline:
-                # Used the cached value and do not make any request.
-                return length
+        if (length := self._length_from_cache()) is not None:
+            # Use the cached value and do not make any request.
+            return length
         content = self._send(self._children_search_builder.draft_request_count()).json()
-        length = ChildrenSearchBuilder.parse_count(content)
-        self._cached_len = (length, now + LENGTH_CACHE_TTL)
-        return length
+        return self._cache_length(ChildrenSearchBuilder.parse_response_count(content))
 
     def __length_hint__(self):
         # TODO The server should provide an estimated count.
@@ -207,27 +292,9 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         return len(self)
 
     def __iter__(self, _ignore_inlined_contents=False):
-        # If the contents of this node was provided in-line, and we don't need
-        # to apply any filtering or sorting, we can slice the in-lined data
-        # without fetching anything from the server.
-        contents = self.item["attributes"]["structure"]["contents"]
-        if ChildrenSearchBuilder.may_serve_from_inlined_contents(
-            contents, self._queries, self.sorting
-        ) and (not _ignore_inlined_contents):
-            return (yield from contents)
-        next_page_url = self.item["links"]["search"]
-        while next_page_url is not None:
-            draft = self._children_search_builder.draft_request_read_page(
-                next_page_url, keys_only=True
-            )
-            content = self._send(draft).json()
-            self._cached_len = (
-                ChildrenSearchBuilder.parse_count(content),
-                time.monotonic() + LENGTH_CACHE_TTL,
-            )
-            for item in content["data"]:
-                yield item["id"]
-            next_page_url = content["links"]["next"]
+        yield from self._keys_slice(
+            0, None, 1, _ignore_inlined_contents=_ignore_inlined_contents
+        )
 
     def __getitem__(self, keys, _ignore_inlined_contents=False):
         # These are equivalent:
@@ -260,10 +327,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                 key, include_data_sources=self._include_data_sources
             )
             content = self._send(draft).json()
-            self._cached_len = (
-                ChildrenSearchBuilder.parse_count(content),
-                time.monotonic() + LENGTH_CACHE_TTL,
-            )
+            self._cache_length(ChildrenSearchBuilder.parse_response_count(content))
             data = content["data"]
             if not data:
                 raise KeyError(key)
@@ -396,10 +460,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                 direction=direction,
             )
             content = self._send(draft).json()
-            self._cached_len = (
-                ChildrenSearchBuilder.parse_count(content),
-                time.monotonic() + LENGTH_CACHE_TTL,
-            )
+            self._cache_length(ChildrenSearchBuilder.parse_response_count(content))
             for item in content["data"]:
                 yield item["id"]
                 if stop is not None and next(item_counter) == stop - 1:
@@ -442,10 +503,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                 direction=direction,
             )
             content = self._send(draft).json()
-            self._cached_len = (
-                ChildrenSearchBuilder.parse_count(content),
-                time.monotonic() + LENGTH_CACHE_TTL,
-            )
+            self._cache_length(ChildrenSearchBuilder.parse_response_count(content))
             for item in content["data"]:
                 key = item["id"]
                 yield (
@@ -469,18 +527,6 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
 
     def items(self):
         return ItemsView(lambda: len(self), self._items_slice)
-
-    def search(self, query):
-        """
-        Make a Node with a subset of this Node's entries, filtered by query.
-
-        Examples
-        --------
-
-        >>> from tiled.queries import FullText
-        >>> tree.search(FullText("hello"))
-        """
-        return self.new_variation(queries=self._queries + [query])
 
     def search_deep(self, *queries, max_depth=None):
         """
@@ -555,23 +601,6 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             counts,
         )
         return self._send(draft).json()
-
-    def sort(self, *sorting):
-        """
-        Make a Node with the same entries but sorted according to `sorting`.
-
-        Examples
-        --------
-
-        Sort by "color" in ascending order, and then by "height" in descending order.
-
-        >>> from tiled.client import ASCENDING, DESCENDING
-        >>> tree.sort(("color", ASCENDING), ("height", DESCENDING))
-
-        Note that ``1`` may be used as a synonym for ``ASCENDING``, and ``-1``
-        may be used as a synonym for ``DESCENDING``.
-        """
-        return self.new_variation(sorting=sorting)
 
     def export(self, filepath, fields=None, *, format=None):
         """
@@ -652,44 +681,42 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         """
 
         self._cached_len = None
-        create_recipe = CreateNodeRecipe.for_new_node(
-            self.uri,
-            self.path_parts,
+        create_recipe = self._create_node_recipe(
             structure_family,
             data_sources,
             key=key,
             metadata=metadata,
             specs=specs,
             access_tags=access_tags,
-            library_version=self.context.server_info.library_version,
         )
 
-        # All failure semantics live in `CreateNodeRecipe.classify_failure`;
-        # this loop is purely mechanical: send, classify, act on the decision, re-raise.
+        # All failure semantics live in the recipe's predicates; this loop is
+        # purely mechanical: send, consult, act, re-raise. Its one piece of
+        # state, `may_have_reached_server`, only ever turns True.
         may_have_reached_server = False
         for attempt in retry_context():
             with attempt:
                 try:
                     content = self._send(create_recipe.draft).json()
                 except Exception as exc:
-                    decision = create_recipe.classify_failure(
-                        exc, may_have_reached_server
-                    )
-                    may_have_reached_server = decision.may_have_reached_server
-                    if decision.action is CreateFailureAction.TRY_ADOPT:
+                    if create_recipe.should_try_adopt(exc, may_have_reached_server):
                         existing = self._adopt_after_retried_create_conflict(
                             create_recipe
                         )
                         if existing is not None:
                             return existing
+                    may_have_reached_server = (
+                        may_have_reached_server
+                        or create_recipe.request_may_have_reached_server(exc)
+                    )
                     raise
 
-        created_node = create_recipe.merge(content)
+        item = create_recipe.merge(content)
         return client_for_item(
             self.context,
             self.structure_clients,
-            created_node.item,
-            structure=created_node.structure,
+            item,
+            structure=item["attributes"]["structure"],
             include_data_sources=self._include_data_sources,
         )
 
@@ -715,36 +742,8 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         try:
             existing = self[create_recipe.key]
         except Exception:
-            logger.warning(
-                "Create of %r returned 409 Conflict after a retried request, "
-                "but the existing item could not be fetched; treating as a "
-                "genuine conflict.",
-                create_recipe.key,
-            )
-            return None
-
-        mismatch = create_recipe.matches_existing(existing.item["attributes"])
-        if mismatch is not None:
-            logger.warning(
-                "Create of %r returned 409 Conflict after a retried request, "
-                "but the existing item does not match the request (%s); "
-                "treating as a genuine conflict.",
-                create_recipe.key,
-                mismatch,
-            )
-            return None
-
-        logger.warning(
-            "Create of %r returned 409 Conflict after a retried request that "
-            "may have reached the server; adopting the existing (matching) "
-            "item as the result of this create.",
-            create_recipe.key,
-        )
-        return existing
-
-    # When (re)chunking arrays for upload, we use this limit
-    # to attempt to avoid bumping into size limits.
-    _SUGGESTED_MAX_UPLOAD_SIZE = 100_000_000  # 100 MB
+            existing = None
+        return self._adopt_if_matching(create_recipe, existing)
 
     def create_container(
         self,
@@ -1356,14 +1355,11 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         )
 
 
-class DeepSearchResults(collections.abc.Mapping):
-    """Lazy, paginated results of `Container.search_deep(...)`.
+class CommonDeepSearchResults(LengthCacheMixin):
+    """Pure state of deep-search results, shared by the sync and async clients.
 
-    Keys are tuples of path segments relative to the Node that the search
-    was performed on. Values are ordinary live client nodes, the same as
-    manual descent would produce.
-
-    See https://github.com/bluesky/tiled/issues/1368
+    Holds the encoded queries (and the pages builder they define) and relativizes result
+    keys. No I/O; see `DeepSearchResults` and `tiled.client.aio.AsyncDeepSearchResults`.
     """
 
     def __init__(
@@ -1383,31 +1379,43 @@ class DeepSearchResults(collections.abc.Mapping):
         self._max_depth = max_depth
         self._include_data_sources = include_data_sources
         self._root_path_parts = tuple(root_path_parts)
-        self._cached_len = None
-        fixed_params = queries_to_params(*self._queries)
-        if max_depth is not None:
-            fixed_params["max_depth"] = max_depth
-        if include_data_sources:
-            fixed_params["include_data_sources"] = True
-        self._pages_builder = PaginatedCollectionBuilder(
-            link, fixed_params=fixed_params
+        self._pages_builder = DeepSearchBuilder.from_queries(
+            link,
+            self._queries,
+            max_depth=max_depth,
+            include_data_sources=include_data_sources,
         )
+
+    def _result_key(self, item):
+        """The result's key: path segments relative to the searched node.
+
+        The server reports `ancestors` relative to the true root, like every
+        other endpoint.
+        """
+        full_path = tuple(item["attributes"]["ancestors"]) + (item["id"],)
+        return full_path[len(self._root_path_parts) :]  # noqa: E203
+
+
+class DeepSearchResults(CommonDeepSearchResults, collections.abc.Mapping):
+    """Lazy, paginated results of `Container.search_deep(...)`.
+
+    Keys are tuples of path segments relative to the Node that the search
+    was performed on. Values are ordinary live client nodes, the same as
+    manual descent would produce.
+
+    See https://github.com/bluesky/tiled/issues/1368
+    """
 
     def __repr__(self):
         return f"<{type(self).__name__} ({len(self)} results)>"
 
     def __len__(self):
-        now = time.monotonic()
-        if self._cached_len is not None:
-            length, deadline = self._cached_len
-            if now < deadline:
-                return length
+        if (length := self._length_from_cache()) is not None:
+            return length
         content = send_request_draft(
             self.context, self._pages_builder.draft_request_count()
         ).json()
-        length = self._pages_builder.parse_count(content)
-        self._cached_len = (length, now + LENGTH_CACHE_TTL)
-        return length
+        return self._cache_length(self._pages_builder.parse_response_count(content))
 
     def _keys_slice(self, start, stop, direction, page_size=None):
         for key, _value in self._items_slice(start, stop, direction, page_size):
@@ -1426,15 +1434,9 @@ class DeepSearchResults(collections.abc.Mapping):
             content = send_request_draft(
                 self.context, self._pages_builder.draft_request_read_page(next_page_url)
             ).json()
-            self._cached_len = (
-                self._pages_builder.parse_count(content),
-                time.monotonic() + LENGTH_CACHE_TTL,
-            )
+            self._cache_length(self._pages_builder.parse_response_count(content))
             for item in content["data"]:
-                # `ancestors` is server-absolute; make the key relative to
-                # the Node that `search_deep` was called on.
-                full_path = tuple(item["attributes"]["ancestors"]) + (item["id"],)
-                key = full_path[len(self._root_path_parts) :]  # noqa: E203
+                key = self._result_key(item)
                 yield key, client_for_item(
                     self.context,
                     self.structure_clients,
@@ -1464,9 +1466,6 @@ class DeepSearchResults(collections.abc.Mapping):
             if existing_key == key:
                 return value
         raise KeyError(key)
-
-
-LENGTH_CACHE_TTL = 1  # second
 
 
 class Ascending(Sentinel):

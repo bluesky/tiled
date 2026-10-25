@@ -161,7 +161,7 @@ def draft_request_get_item(
 def draft_request_delete(
     link: str, params: Optional[dict[str, Any]] = None
 ) -> RequestDraft:
-    """Draft a DELETE of the resource a link addresses.
+    """Draft a DELETE of the resource that a link addresses.
 
     The generic shape of all deletions in the Tiled API: nothing is parsed
     from the response; parameters select or scope what is deleted (e.g. a
@@ -198,30 +198,30 @@ def fill_link_template(template: str, *args: Any, **kwargs: Any) -> str:
 
 
 def distinct_link(self_link: str) -> str:
-    "Endpoint serving the distinct metadata keys/values of a node's children."
+    "The endpoint that serves the distinct metadata keys/values of a node's children."
     return self_link.replace("/metadata", "/distinct", 1)
 
 
 def register_link(self_link: str) -> str:
-    "Endpoint for creating a child node that references existing assets."
+    "The endpoint that creates a child node referencing existing assets."
     return self_link.replace("/metadata/", "/register/", 1)
 
 
 def revisions_link(self_link: str) -> str:
-    "Endpoint serving a node's metadata revision history."
+    "The endpoint that serves a node's metadata revision history."
     return self_link.replace("/metadata", "/revisions", 1)
 
 
 def asset_manifest_link(self_link: str) -> str:
-    "Endpoint serving the manifests of a node's assets."
+    "The endpoint that serves the manifests of a node's assets."
     return self_link.replace("/metadata", "/asset/manifest", 1)
 
 
 def asset_bytes_link(self_link: str) -> str:
-    "Endpoint serving the raw bytes of a node's assets."
+    "The endpoint that serves the raw bytes of a node's assets."
     return self_link.replace("/metadata", "/asset/bytes", 1)
 
 
 def stream_close_link(self_link: str) -> str:
-    "Endpoint that closes the node's live update stream."
+    "The endpoint that closes the node's live update stream."
     return self_link.replace("/metadata/", "/stream/close/", 1)
