@@ -78,9 +78,7 @@ async def test_round_trip_table(flavor, client):
     node = await call(client.write_table, expected, key=f"table-{flavor}")
     pandas.testing.assert_frame_equal(await call(node.read), expected)
     pandas.testing.assert_frame_equal(await call(node.read_partition, 0), expected)
-    pandas.testing.assert_frame_equal(
-        await call(node.read, ["a"]), expected[["a"]]
-    )
+    pandas.testing.assert_frame_equal(await call(node.read, ["a"]), expected[["a"]])
     assert list(node.columns) == ["a", "b"]
     assert await to_list(node) == ["a", "b"]
     with pytest.raises(IndexError):
@@ -184,9 +182,7 @@ async def test_round_trip_container(flavor, client):
 
     # distinct()
     distinct = await call(parent.distinct, "color", counts=True)
-    colors = {
-        entry["value"]: entry["count"] for entry in distinct["metadata"]["color"]
-    }
+    colors = {entry["value"]: entry["count"] for entry in distinct["metadata"]["color"]}
     assert colors == {"red": 1, "blue": 1}
 
     # delete_contents()
@@ -202,7 +198,10 @@ async def test_round_trip_search_deep(flavor, client):
         inner.write_array, numpy.arange(3), key="target", metadata={"deep_tag": flavor}
     )
     await call(
-        parent.write_array, numpy.arange(2), key="shallow", metadata={"deep_tag": flavor}
+        parent.write_array,
+        numpy.arange(2),
+        key="shallow",
+        metadata={"deep_tag": flavor},
     )
     results = parent.search_deep(Key("deep_tag") == flavor)
     assert await length_of(results) == 2

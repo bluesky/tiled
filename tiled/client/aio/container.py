@@ -51,7 +51,9 @@ class AsyncContainer(CommonContainer, AsyncBaseClient):
         async for key in self.keys():
             yield key
 
-    async def _iter_search_pages(self, keys_only: bool, page_size: Optional[int] = None):
+    async def _iter_search_pages(
+        self, keys_only: bool, page_size: Optional[int] = None
+    ):
         "Iterate over the pages of entries that match the active queries."
         builder = self._children_search_builder
         next_page_url = builder.first_page_link(0, page_size)

@@ -231,9 +231,7 @@ async def test_data_sources_and_asset_manifest(aclient, sync_client):
 
 @pytest.mark.asyncio
 async def test_create_and_write(aclient):
-    container = await aclient.create_container(
-        "written", metadata={"purpose": "tests"}
-    )
+    container = await aclient.create_container("written", metadata={"purpose": "tests"})
     assert container.item["id"] == "written"
     assert dict(container.metadata) == {"purpose": "tests"}
     # Write an array, with a key and metadata.
@@ -367,7 +365,8 @@ def public_surface(cls):
 
 
 @pytest.mark.parametrize(
-    "family", ["array", "container", "dataframe", "sparse", "awkward", "ragged", "bytes"]
+    "family",
+    ["array", "container", "dataframe", "sparse", "awkward", "ragged", "bytes"],
 )
 def test_surface_parity(family):
     """The async twins track the sync surface, minus documented divergences.
