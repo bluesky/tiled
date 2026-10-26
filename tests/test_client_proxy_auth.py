@@ -176,10 +176,6 @@ def test_client_login_guards_against_auth_overwrite_on_login(proxy_url: str):
         RuntimeError, match="An authentication method is already configured"
     ):
         client.login()
-    with pytest.raises(
-        RuntimeError, match="An authentication method is already configured"
-    ):
-        client.context.configure_auth(tokens=TokenAuth(PROXY_TOKEN))
 
 
 def test_api_key_not_sent_on_discovery():

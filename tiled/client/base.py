@@ -193,7 +193,10 @@ class BaseClient:
             If True, any existing authentication will be overwritten.
             If False, an error will be raised if authentication is already configured.
         """
-        self.context.authenticate(overwrite_auth=overwrite_auth)
+        # Fail fast, before any interactive prompt, if the client is already
+        # authenticated with another method (e.g. an external proxy Auth).
+        self.context._raise_if_auth_configured(overwrite_auth)
+        self.context.authenticate()
 
     def logout(self):
         """

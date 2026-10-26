@@ -976,7 +976,6 @@ class Context:
         self,
         *,
         remember_me=True,
-        overwrite_auth=False,
     ):
         """
         Log in to a Tiled server.
@@ -1000,22 +999,14 @@ class Context:
         ----------
         remember_me : bool
             Next time, try to automatically authenticate using this session.
-        overwrite_auth: bool, optional
-            If True, any existing authentication will be overwritten.
-            If False, an error will be raised if authentication is already configured.
         """
-        # Fail fast, before any interactive prompt, if the client is already
-        # authenticated with another method (e.g. an external proxy Auth).
-        self._raise_if_auth_configured(overwrite_auth)
         # Obtain tokens via OAuth2 unless the caller has passed them.
         providers = self.server_info.authentication.providers
         tokens = prompt_for_credentials(
             self.http_client,
             providers,
         )
-        self.configure_auth(
-            tokens, remember_me=remember_me, overwrite_auth=overwrite_auth
-        )
+        self.configure_auth(tokens, remember_me=remember_me)
 
     # These two methods are aliased for convenience.
     login = authenticate
@@ -1037,7 +1028,7 @@ class Context:
                 " with a proxy service like Jupyterhub."
             )
 
-    def configure_auth(self, tokens, remember_me=True, overwrite_auth=False):
+    def configure_auth(self, tokens, remember_me=True):
         """
         Configure Tiled client with tokens for refresh flow.
 
@@ -1045,13 +1036,8 @@ class Context:
         ----------
         tokens : dict, optional
             Must include keys 'access_token' and 'refresh_token'
-        remember_me : bool
-            Next time, try to automatically authenticate using this session.
-        overwrite_auth: bool, optional
-            If True, any existing authentication will be overwritten.
-            If False, an error will be raised if authentication is already configured.
         """
-        self._raise_if_auth_configured(overwrite_auth)
+        self.http_client.auth = None
         if self.api_key is not None:
             raise RuntimeError(
                 "An API key is set. Cannot use both API key and OAuth2 authentication."
