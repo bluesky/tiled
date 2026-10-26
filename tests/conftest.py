@@ -12,6 +12,7 @@ import stamina
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from tiled import profiles
+from tiled.authn_database.core import initialize_authn_database
 from tiled.catalog import from_uri, in_memory
 from tiled.client import Context, from_context
 from tiled.client.base import BaseClient
@@ -383,14 +384,8 @@ TOY_AUTHENTICATION = {
 
 def init_auth_database(tmpdir):
     """Initialize an auth database and return its URI."""
-    import subprocess
-
     database_uri = f"sqlite:///{tmpdir / 'auth.db'}"
-    subprocess.run(
-        [sys.executable, "-m", "tiled", "admin", "initialize-database", database_uri],
-        check=True,
-        capture_output=True,
-    )
+    initialize_authn_database(database_uri)
     return database_uri
 
 
