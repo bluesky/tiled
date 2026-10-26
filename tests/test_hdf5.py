@@ -195,6 +195,8 @@ def test_from_file_with_empty_and_non_utf8_attrs(tmp_path):
         file["x"] = numpy.arange(3)
         file["x"].attrs["units"] = numpy.bytes_("µm".encode("latin-1"))
         file["x"].attrs["comment"] = h5py.Empty("S1")
+        file["x"].attrs["cp1252"] = numpy.bytes_("5–10 €".encode("cp1252"))
+        file["x"].attrs["latin1"] = numpy.bytes_(b"\x81")
         file.attrs["empty"] = h5py.Empty("f")
     tree = HDF5Adapter.from_uris(ensure_uri(file_path))
     with Context.from_app(build_app(tree)) as context:
@@ -202,6 +204,8 @@ def test_from_file_with_empty_and_non_utf8_attrs(tmp_path):
         assert client.metadata["empty"] is None
         assert client["x"].metadata["units"] == "µm"
         assert client["x"].metadata["comment"] is None
+        assert client["x"].metadata["cp1252"] == "5–10 €"
+        assert client["x"].metadata["latin1"] == "\x81"
         numpy.testing.assert_equal(client["x"].read(), numpy.arange(3))
 
 

@@ -85,12 +85,16 @@ def get_hdf5_attrs(
                 # An attribute with a null dataspace has no value.
                 d[k] = None
             elif isinstance(v, bytes):
-                # Convert any bytes to str. Fixed-length strings written by
-                # older instrument software are often Latin-1, not UTF-8.
-                try:
-                    d[k] = v.decode()
-                except UnicodeDecodeError:
-                    d[k] = v.decode("latin-1")
+                # Convert any bytes to str. HDF5 strings are only tagged ASCII
+                # or UTF-8, but older instrument software often wrote
+                # Windows-1252 or Latin-1. Latin-1 decodes any bytes, so it
+                # comes last.
+                for encoding in ("utf-8", "cp1252", "latin-1"):
+                    try:
+                        d[k] = v.decode(encoding)
+                        break
+                    except UnicodeDecodeError:
+                        pass
     return d
 
 
