@@ -166,6 +166,22 @@ def test_from_uri_with_auth_authenticates_discovery(proxy_url):
     assert list(client) == []
 
 
+def test_client_login_guards_against_auth_overwrite_on_login(proxy_url: str):
+    """
+    client.login() should raise an error if the client is already authenticated.
+    """
+    client = from_uri(proxy_url, api_key=API_KEY, auth=TokenAuth(PROXY_TOKEN))
+
+    with pytest.raises(
+        RuntimeError, match="An authentication method is already configured"
+    ):
+        client.login()
+    with pytest.raises(
+        RuntimeError, match="An authentication method is already configured"
+    ):
+        client.context.configure_auth(tokens=TokenAuth(PROXY_TOKEN))
+
+
 def test_api_key_not_sent_on_discovery():
     """
     The API key is deliberately applied *after* discovery. If the proxy's

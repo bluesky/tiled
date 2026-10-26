@@ -976,6 +976,7 @@ class Context:
         self,
         *,
         remember_me=True,
+        overwrite_auth=False,
     ):
         """
         Log in to a Tiled server.
@@ -999,19 +1000,44 @@ class Context:
         ----------
         remember_me : bool
             Next time, try to automatically authenticate using this session.
+        overwrite_auth: bool, optional
+            If True, any existing authentication will be overwritten.
+            If False, an error will be raised if authentication is already configured.
         """
+        # Fail fast, before any interactive prompt, if the client is already
+        # authenticated with another method (e.g. an external proxy Auth).
+        self._raise_if_auth_configured(overwrite_auth)
         # Obtain tokens via OAuth2 unless the caller has passed them.
         providers = self.server_info.authentication.providers
         tokens = prompt_for_credentials(
             self.http_client,
             providers,
         )
-        self.configure_auth(tokens, remember_me=remember_me)
+        self.configure_auth(
+            tokens, remember_me=remember_me, overwrite_auth=overwrite_auth
+        )
 
     # These two methods are aliased for convenience.
     login = authenticate
 
-    def configure_auth(self, tokens, remember_me=True):
+    def _raise_if_auth_configured(self, overwrite=False):
+        """
+        Raise if an authentication method is already configured on the client.
+
+        Parameters
+        ----------
+        overwrite: bool, optional
+            If True, any existing authentication will be overwritten, so no
+            error is raised.
+        """
+        if self.http_client.auth is not None and not overwrite:
+            raise RuntimeError(
+                "An authentication method is already configured. To overwrite, "
+                "set overwrite=True. You can't combine Tiled OAuth2 authentication"
+                " with a proxy service like Jupyterhub."
+            )
+
+    def configure_auth(self, tokens, remember_me=True, overwrite_auth=False):
         """
         Configure Tiled client with tokens for refresh flow.
 
@@ -1019,8 +1045,13 @@ class Context:
         ----------
         tokens : dict, optional
             Must include keys 'access_token' and 'refresh_token'
+        remember_me : bool
+            Next time, try to automatically authenticate using this session.
+        overwrite_auth: bool, optional
+            If True, any existing authentication will be overwritten.
+            If False, an error will be raised if authentication is already configured.
         """
-        self.http_client.auth = None
+        self._raise_if_auth_configured(overwrite_auth)
         if self.api_key is not None:
             raise RuntimeError(
                 "An API key is set. Cannot use both API key and OAuth2 authentication."
