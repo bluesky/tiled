@@ -52,9 +52,8 @@ arrays = await asyncio.gather(*(node.read() for node in nodes))
 
 ## Containers
 
-`AsyncContainer` is *not* a `Mapping`, because the `[]`, `len()`, and
-iteration protocols cannot await. The interface is explicit coroutines and
-async iterators:
+`AsyncContainer` is *not* a `Mapping`, because the `[]`, `len()`, and iteration
+protocols cannot await. Instead, use explicit coroutines and async iterators:
 
 | Synchronous | Asynchronous |
 |---|---|
@@ -88,15 +87,15 @@ array_client = await node.write_array(array, key="image", metadata={"exposure": 
 table_client = await node.write_table(dataframe, key="results")
 ```
 
-An array too large for one request is uploaded in chunks, concurrently.
+If an array is too large for one request, it is uploaded in chunks, concurrently.
 Metadata updates (`update_metadata`, `patch_metadata`, `replace_metadata`)
 and deletion (`delete`, `delete_contents`) are coroutines with the same
 signatures as their synchronous counterparts.
 
 (async-limitations)=
-## Limitations of the first version
+## Known limitations of the async client
 
-The following synchronous-client features are deliberately absent for now:
+The following synchronous-client features are deliberately absent for now, but may be added in the future:
 
 - authentication other than API keys (no interactive login, no OAuth flows);
 - the HTTP response cache;
