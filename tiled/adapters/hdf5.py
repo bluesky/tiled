@@ -100,7 +100,8 @@ class h5open(h5py.File):  # type: ignore
     KeyError: "Unable to synchronously open object (can't open file)"
     if a soft link or an external link is broken, respectively.
 
-    This message is distinct from the case when a key does not exist in the file, in which case h5py raises:
+    It also raises BrokenLink if the requested dataset does not exist in the file at all (e.g. a registered
+    dataset was never written or has been removed), in which case h5py raises:
     KeyError: "Unable to synchronously open object (object 'y' doesn't exist)"
     """
 
@@ -128,6 +129,10 @@ class h5open(h5py.File):  # type: ignore
 
             elif "component not found" in str(exc_value):
                 # Soft link is broken
+                raise BrokenLink(exc_value.args[0]) from exc_value
+
+            elif "doesn't exist" in str(exc_value):
+                # Registered dataset (or group) is missing from the file
                 raise BrokenLink(exc_value.args[0]) from exc_value
 
 
