@@ -31,6 +31,8 @@ Write the date in place of the "Unreleased" in the case a new version is release
   pointed directly at a node could not see its data sources.
 - Fixed the deprecation warning for the removed `prompt_for_reauthentication`
   parameter of `from_uri`, which was never emitted.
+- Fixed a double slash (e.g. `/metadata//x`) in the links returned when
+  creating a node, which the client then followed for subsequent requests.
 
 ## v0.2.19 (2026-10-13)
 
