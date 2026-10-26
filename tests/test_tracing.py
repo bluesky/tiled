@@ -7,10 +7,12 @@ set once per process, so a single provider is installed for the whole module and
 the exporter is cleared between tests.
 """
 import os
+from collections.abc import Generator
 
 import pytest
+from fastapi import FastAPI
 from opentelemetry import trace
-from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace import ReadableSpan, TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from opentelemetry.trace import SpanKind
@@ -46,7 +48,7 @@ _GLOBAL_INSTRUMENTORS = [
 
 
 @pytest.fixture(scope="module")
-def span_exporter():
+def span_exporter() -> Generator[InMemorySpanExporter, None, None]:
     exporter = InMemorySpanExporter()
     current = trace.get_tracer_provider()
     if isinstance(current, TracerProvider):
@@ -72,7 +74,9 @@ def _clear_spans(span_exporter):
     span_exporter.clear()
 
 
-def _build_app(monkeypatch, *, endpoint=ENDPOINT):
+def _build_app(
+    monkeypatch: pytest.MonkeyPatch, *, endpoint: "str | None" = ENDPOINT
+) -> FastAPI:
     if endpoint is None:
         monkeypatch.delenv("OTEL_EXPORTER_OTLP_ENDPOINT", raising=False)
     else:
@@ -80,8 +84,10 @@ def _build_app(monkeypatch, *, endpoint=ENDPOINT):
     return build_app_from_config(CONFIG)
 
 
-def _is_descendant_of(span, ancestor_span_id, by_id):
-    seen = set()
+def _is_descendant_of(
+    span: ReadableSpan, ancestor_span_id: int, by_id: "dict[int, ReadableSpan]"
+) -> bool:
+    seen: "set[int]" = set()
     cur = span
     while cur is not None and cur.parent is not None:
         parent_id = cur.parent.span_id
@@ -96,6 +102,10 @@ def _is_descendant_of(span, ancestor_span_id, by_id):
 
 def test_traced_request_emits_server_and_phase_spans(monkeypatch, span_exporter):
     app = _build_app(monkeypatch)
+    # The inverse of what test_tracing_disabled_by_default relies on: if the
+    # instrumentation ever stops setting this (private) flag, fail here, on the
+    # instrumented app, rather than letting the disabled test pass vacuously.
+    assert getattr(app, "_is_instrumented_by_opentelemetry", False)
     with Context.from_app(app) as context:
         # Discard spans emitted while the Context was being set up, so we measure
         # exactly one request.

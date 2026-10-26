@@ -1,6 +1,7 @@
 import contextlib
 import importlib.util
 import time
+import types
 from collections.abc import Generator, Mapping, Sequence
 from typing import Any, Literal
 
@@ -19,14 +20,18 @@ API_KEY_COOKIE_NAME = "tiled_api_key"
 API_KEY_QUERY_PARAMETER = "api_key"
 CSRF_COOKIE_NAME = "tiled_csrf"
 
-# Human-readable OpenTelemetry span names for the phases timed below.
-_SPAN_NAMES = {
-    "app": "tiled.app",
-    "acl": "tiled.access_control",
-    "read": "tiled.read",
-    "tok": "tiled.tokenize",
-    "pack": "tiled.pack",
-}
+# Human-readable OpenTelemetry span names for the phases timed below: a read-only view,
+# so it cannot be mutated at runtime. (Not an Enum: the keys are the plain-string labels
+# that `record_timing` call sites use, and unknown labels fall back to "tiled.<label>" below.)
+_SPAN_NAMES = types.MappingProxyType(
+    {
+        "app": "tiled.app",
+        "acl": "tiled.access_control",
+        "read": "tiled.read",
+        "tok": "tiled.tokenize",
+        "pack": "tiled.pack",
+    }
+)
 
 # Enable tracing if the OpenTelemetry API is installed. `opentelemetry` is a
 # namespace package shared by all `opentelemetry-*` distributions, so check for
