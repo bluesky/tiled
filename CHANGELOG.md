@@ -5,6 +5,15 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## Unreleased
 
+### Added
+
+- EXPERIMENTAL: an asynchronous Python client, `tiled.client.aio`, for use
+  inside asyncio applications. Async counterparts of the client classes,
+  built on the same protocol layer as the synchronous client; connect with
+  `await tiled.client.aio.from_uri(...)`. API-key authentication only; see
+  the "Asynchronous Client" page of the user guide for the interface
+  differences and the limitations of this first version.
+
 ### Changed
 
 - Internal: the Python client's protocol knowledge -- request building,
