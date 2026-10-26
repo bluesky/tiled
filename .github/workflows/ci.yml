@@ -82,7 +82,7 @@ jobs:
       shell: bash -l {0}
       run: |
         set -vxeuo pipefail
-        uv run pytest -v --cov=tiled --cov-report=term-missing --cov-report=xml:cov.xml
+        uv run pytest -v --durations=25 --cov=tiled --cov-report=term-missing --cov-report=xml:cov.xml
       env:
         # Provide test suite with PostgreSQL and Redis databases to use.
         TILED_TEST_POSTGRESQL_URI: postgresql://postgres:secret@localhost:5432
@@ -158,7 +158,7 @@ jobs:
         TILED_BUILD_SKIP_UI: 1
 
     - name: Test with pytest
-      run: uv run pytest -v
+      run: uv run pytest -v --durations=25
 
   container_canary:
     name: Build and validate container
