@@ -22,6 +22,7 @@ from tiled.structures.container import ContainerStructure
 
 if TYPE_CHECKING:
     from fastapi import APIRouter
+
     from .merged import MergedDeepSearchAdapter
 
 from collections.abc import Iterable, Mapping

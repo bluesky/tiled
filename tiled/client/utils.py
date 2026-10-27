@@ -103,7 +103,7 @@ def handle_error(response):
                 # Use the stock "reason phrase" for the error code
                 # instead of dumping HTML into the terminal.
                 detail = response.reason_phrase
-            message = f"{exc.response.status_code}: " f"{detail} " f"{exc.request.url}"
+            message = f"{exc.response.status_code}: {detail} {exc.request.url}"
             raise ClientError(message, exc.request, exc.response) from exc
         else:
             raise
@@ -568,7 +568,7 @@ def chunks_repr(chunks: Chunks) -> str:
 
 
 def normalize_specs(
-    specs: Optional[Union[list[str], list[Spec], str]]
+    specs: Optional[Union[list[str], list[Spec], str]],
 ) -> Optional[list[dict[str, str]]]:
     "Represent a list of Spec objects or strings as a list of dicts"
 

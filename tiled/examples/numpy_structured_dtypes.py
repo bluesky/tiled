@@ -4,6 +4,7 @@ Example using numpy structured dtypes
 https://numpy.org/doc/stable/user/basics.rec.html
 
 """
+
 import numpy
 
 from tiled.adapters.array import ArrayAdapter

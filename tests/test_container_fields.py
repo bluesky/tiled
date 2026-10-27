@@ -51,7 +51,7 @@ def excel_data_dir(tmpdir_factory):
     df = pandas.DataFrame({"a": [1, 2, 3], "b": [4, 5, 6]})
     with pandas.ExcelWriter(tmpdir / "spreadsheet.xlsx") as writer:
         for i in range(10):
-            df.to_excel(writer, sheet_name=f"Sheet {i+1}", index=False)
+            df.to_excel(writer, sheet_name=f"Sheet {i + 1}", index=False)
     return tmpdir
 
 
