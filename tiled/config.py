@@ -8,7 +8,7 @@ import copy
 from datetime import timedelta
 from functools import cached_property
 from pathlib import Path
-from typing import Annotated, Any, Iterator, Optional, Union
+from typing import Annotated, Any, Callable, Iterator, Optional, Union
 
 from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
 from pydantic_settings import (
@@ -17,6 +17,7 @@ from pydantic_settings import (
     SettingsConfigDict,
 )
 
+from tiled.adapters.core import Adapter
 from tiled.authenticators import ProxiedOIDCAuthenticator
 from tiled.server.protocols import ExternalAuthenticator, InternalAuthenticator
 from tiled.type_aliases import AppTask, TaskMap
@@ -78,7 +79,10 @@ class CatalogConfig(BaseSettings):
 
 
 class TreeSpec(BaseModel):
-    tree_type: Annotated[EntryPointString, Field(alias="tree")]
+    tree_type: Annotated[
+        EntryPointString[Union[Adapter[Any], Callable[..., Adapter[Any]]]],
+        Field(alias="tree"),
+    ]
     path: str
     args: Optional[dict[str, Any]] = None
 
@@ -107,13 +111,13 @@ class TreeSpec(BaseModel):
         return tuple(segment for segment in self.path.split("/") if segment)
 
     @cached_property
-    def tree(self) -> Any:
+    def tree(self) -> Adapter[Any]:
         if callable(self.tree_type):
             return self.tree_type(**self.args or {})
         return self.tree_type
 
     @property
-    def tree_entry(self) -> tuple[tuple[str, ...], Any]:
+    def tree_entry(self) -> tuple[tuple[str, ...], Adapter[Any]]:
         return (self.segments, self.tree)
 
     @field_validator("tree_type", mode="before")
@@ -496,7 +500,7 @@ class Config(BaseSettings):
         return self.uvicorn.get("root_path") or ""
 
     @cached_property
-    def merged_trees(self) -> Any:  # TODO: update when # 1047 is merged
+    def merged_trees(self) -> Adapter[Any]:
         trees = {
             segments: tree
             for segments, tree in (tree_spec.tree_entry for tree_spec in self.trees)
@@ -508,7 +512,8 @@ class Config(BaseSettings):
             # There are one or more tree(s) to be served at sub-paths so merge
             # them into one root MapAdapter with map path segments to dicts
             # containing Adapters at that path.
-            root_mapping = trees.pop((), {})
+            # As trees do not overlap, there is no '()' entry in trees so use empty dict
+            root_mapping = {}
             index: dict[tuple[str, ...], dict] = {(): root_mapping}
 
             # for rest of trees, build up parent nodes if required

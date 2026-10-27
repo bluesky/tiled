@@ -1,6 +1,5 @@
-from typing import List, Optional
+from typing import Any, List, Optional
 
-import pydantic_settings
 from fastapi import HTTPException, Query, Request
 from pydantic import constr
 from starlette.status import (
@@ -11,8 +10,8 @@ from starlette.status import (
 )
 
 from ..access_control.protocols import AccessPolicy
-from ..adapters.protocols import AnyAdapter
 from ..ndslice import NDBlock, NDSlice
+from ..adapters.core import Adapter
 from ..structures.core import StructureFamily
 from ..type_aliases import AccessTags, Scopes
 from ..utils import BrokenLink
@@ -37,7 +36,7 @@ DIM_REGEX = r"(?:(?:-?\d+)?:){0,2}(?:-?\d+)?"
 SLICE_REGEX = rf"^{DIM_REGEX}(?:,{DIM_REGEX})*$"
 
 
-def get_root_tree(request: Request):
+def get_root_tree(request: Request) -> Adapter[Any]:
     return request.app.state.root_tree
 
 
@@ -47,12 +46,12 @@ async def get_entry(
     principal: Optional[Principal],
     authn_access_tags: Optional[AccessTags],
     authn_scopes: Scopes,
-    root_tree: pydantic_settings.BaseSettings,
+    root_tree: Adapter[Any],
     session_state: dict,
     metrics: dict,
     structure_families: Optional[set[StructureFamily]] = None,
     access_policy: Optional[AccessPolicy] = None,
-) -> AnyAdapter:
+) -> Adapter[Any]:
     """
     Obtain a node in the tree from its path.
 
