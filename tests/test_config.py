@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Any
 
-import httpx
+import httpx2 as httpx
 import pytest
 import respx
 from fastapi import APIRouter

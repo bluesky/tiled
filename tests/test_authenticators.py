@@ -5,7 +5,7 @@ import time
 from typing import Any, Optional, Tuple
 from urllib.parse import parse_qs, urlencode
 
-import httpx
+import httpx2 as httpx
 import jwt
 import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa

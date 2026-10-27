@@ -6,7 +6,7 @@ from urllib.parse import parse_qs, urlparse
 
 import dask
 import dask.array
-import httpx
+import httpx2 as httpx
 import numpy
 from numpy.typing import NDArray
 

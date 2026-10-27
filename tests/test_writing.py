@@ -18,7 +18,7 @@ from urllib.parse import urljoin, urlparse
 import awkward
 import boto3
 import dask.dataframe
-import httpx
+import httpx2 as httpx
 import numpy
 import pandas
 import pandas.testing
@@ -132,6 +132,18 @@ def metadata_client(module_tmp_path):
         client = from_context(context)
         client.write_array([1, 2, 3], key="invalid_check")
         yield client
+
+
+def test_created_node_links_have_no_double_slash(tree):
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        with record_history() as history:
+            x = client.write_array([1, 2, 3], key="x")
+            y = client.create_container("c").write_array([1, 2, 3], key="y")
+        for node in (x, y):
+            for url in node.item["links"].values():
+                assert "//" not in urlparse(url).path
+        assert all("//" not in r.url.path for r in history.requests)
 
 
 def test_write_array_full(tree):
