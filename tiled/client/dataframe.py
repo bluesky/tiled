@@ -6,7 +6,7 @@ from urllib.parse import parse_qs, urlparse
 
 import dask
 import dask.dataframe
-import httpx
+import httpx2 as httpx
 
 from ..serialization.table import deserialize_arrow, serialize_arrow
 from ..utils import APACHE_ARROW_FILE_MIME_TYPE, UNCHANGED

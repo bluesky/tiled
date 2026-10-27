@@ -6,7 +6,7 @@ import sys
 import threading
 from queue import Queue
 
-import httpx
+import httpx2 as httpx
 import pytest
 
 

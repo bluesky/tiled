@@ -3,7 +3,7 @@ import logging
 import threading
 from pathlib import Path
 
-import httpx
+import httpx2 as httpx
 import numpy
 import pandas
 import pytest
