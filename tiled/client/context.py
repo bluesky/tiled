@@ -1267,8 +1267,8 @@ class Admin:
         url_path = f"{self.base_url}/auth/principal"
         params = {
             **parse_qs(urlparse(url_path).query),
-            "offset": offset,
-            "limit": limit,
+            "page[offset]": offset,
+            "page[limit]": limit,
         }
         for attempt in retry_context(self.context):
             with attempt:
