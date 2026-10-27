@@ -18,44 +18,22 @@ def initialize_database(database_uri: str):
     """
     Initialize a SQL database for use by Tiled.
     """
-    import asyncio
+    from sqlalchemy.engine import make_url
 
-    from sqlalchemy.ext.asyncio import create_async_engine
-
-    from ..alembic_utils import UninitializedDatabase, check_database, stamp_head
-    from ..authn_database.alembic_constants import (
-        ALEMBIC_DIR,
-        ALEMBIC_INI_TEMPLATE_PATH,
-    )
-    from ..authn_database.core import (
-        ALL_REVISIONS,
-        REQUIRED_REVISION,
-        initialize_database,
-    )
+    from ..authn_database.core import REQUIRED_REVISION, initialize_authn_database
     from ..utils import ensure_specified_sql_driver
 
     database_uri = ensure_specified_sql_driver(database_uri)
-
-    async def do_setup():
-        engine = create_async_engine(database_uri)
-        redacted_url = engine.url._replace(password="[redacted]")
-        try:
-            await check_database(engine, REQUIRED_REVISION, ALL_REVISIONS)
-        except UninitializedDatabase:
-            # Create tables and stamp (alembic) revision.
-            typer.echo(
-                f"Database {redacted_url} is new. Creating tables and marking revision {REQUIRED_REVISION}.",
-                err=True,
-            )
-            await initialize_database(engine)
-            typer.echo("Database initialized.", err=True)
-        else:
-            typer.echo(f"Database at {redacted_url} is already initialized.", err=True)
-            raise typer.Abort()
-        await engine.dispose()
-
-    asyncio.run(do_setup())
-    stamp_head(ALEMBIC_INI_TEMPLATE_PATH, ALEMBIC_DIR, database_uri)
+    redacted_url = make_url(database_uri)._replace(password="[redacted]")
+    if initialize_authn_database(database_uri):
+        typer.echo(
+            f"Database {redacted_url} is new. Created tables and marked revision {REQUIRED_REVISION}.",
+            err=True,
+        )
+        typer.echo("Database initialized.", err=True)
+    else:
+        typer.echo(f"Database at {redacted_url} is already initialized.", err=True)
+        raise typer.Abort()
 
 
 @admin_app.command("upgrade-database")

@@ -1,7 +1,5 @@
 import asyncio
 import json
-import subprocess
-import sys
 from copy import deepcopy
 
 import numpy
@@ -13,6 +11,7 @@ from starlette.status import HTTP_403_FORBIDDEN
 
 from tiled.access_control.access_tags import AccessTagsCompiler
 from tiled.access_control.scopes import ALL_SCOPES
+from tiled.catalog.core import initialize_catalog_database
 from tiled.client import Context, from_context
 from tiled.queries import Key
 from tiled.server.app import build_app_from_config
@@ -361,19 +360,7 @@ def compile_access_tags_tables(catalog_uri, tmp_path_factory):
     # as the app's init_if_not_exists path does, so a file-based catalog passes
     # the app's startup revision check. initialize_database alone does not
     # stamp.
-    subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "tiled",
-            "catalog",
-            "init",
-            "--if-not-exists",
-            ensure_specified_sql_driver(catalog_uri),
-        ],
-        check=True,
-        capture_output=True,
-    )
+    initialize_catalog_database(catalog_uri)
 
     compiler = _make_compiler(access_tag_config, catalog_uri)
     # Constructing the compiler opened a pooled catalog engine keyed by the

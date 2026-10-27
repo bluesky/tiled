@@ -2,8 +2,6 @@ import copy
 import io
 import os
 import shutil
-import subprocess
-import sys
 import time
 from datetime import timedelta
 
@@ -17,6 +15,7 @@ from starlette.status import (
 
 from tiled.adapters.array import ArrayAdapter
 from tiled.adapters.mapping import MapAdapter
+from tiled.authn_database.core import initialize_authn_database
 from tiled.client import Context, from_context
 from tiled.client.auth import CannotRefreshAuthentication
 from tiled.client.context import PasswordRejected, password_grant
@@ -41,11 +40,7 @@ def config(sqlite_or_postgres_uri):
     - a unique nested dict instance that the test can mutate
     """
     database_uri = sqlite_or_postgres_uri
-    subprocess.run(
-        [sys.executable, "-m", "tiled", "admin", "initialize-database", database_uri],
-        check=True,
-        capture_output=True,
-    )
+    initialize_authn_database(database_uri)
     return {
         "authentication": copy.deepcopy(TOY_AUTHENTICATION),
         "database": {

@@ -7,7 +7,6 @@ import logging
 import operator
 import os
 import shutil
-import sys
 import time
 import uuid
 from contextlib import closing
@@ -44,6 +43,7 @@ from sqlalchemy import (
     update,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, REGCONFIG, TEXT
+from sqlalchemy.engine import make_url
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased, selectinload
@@ -129,6 +129,7 @@ from ..utils import (
 from . import orm
 from .core import (
     check_catalog_database,
+    initialize_catalog_database,
     initialize_database,
     register_principal_tag_rows,
     resolve_access_tag_ids,
@@ -3002,26 +3003,13 @@ def from_uri(
     storage_max_overflow=10,
 ):
     uri = ensure_specified_sql_driver(uri)
-    if init_if_not_exists:
-        # The alembic stamping can only be done synchronously.
-        # The cleanest option available is to start a subprocess
-        # because SQLite is allergic to threads.
-        import subprocess
-        from subprocess import CalledProcessError
-
-        # TODO Check if catalog exists.
-        cmd = [sys.executable, "-m", "tiled", "catalog", "init", "--if-not-exists", uri]
-        try:
-            process = subprocess.run(
-                cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True
-            )
-            # Capture stdout and stderr from the subprocess and write to logging
-            logger.info(f"Subprocess stdout: {process.stdout.decode()}")
-            logger.info(f"Subprocess stderr: {process.stderr.decode()}")
-
-        except CalledProcessError as cpe:
-            # Drop cpe: its message echoes cmd, which holds the URI and password.
-            raise DatabaseInitializationError(cpe.stderr.decode()) from None
+    if init_if_not_exists and not is_memory_sqlite(uri):
+        # An in-memory SQLite database is transient and private to the connection
+        # pool that `startup()` opens, so it is initialized there (without alembic).
+        # Only a persistent database needs to be created and stamped here.
+        if initialize_catalog_database(uri):
+            redacted_url = make_url(uri)._replace(password="[redacted]")
+            logger.info(f"Initialized new catalog database at {redacted_url}.")
 
     database_settings = DatabaseSettings(
         uri=uri,
@@ -3159,7 +3147,3 @@ STRUCTURES = {
     StructureFamily.sparse: CatalogSparseAdapter,
     StructureFamily.table: CatalogTableAdapter,
 }
-
-
-class DatabaseInitializationError(Exception):
-    pass
