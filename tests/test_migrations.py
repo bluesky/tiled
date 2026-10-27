@@ -14,14 +14,14 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 from tiled.adapters.array import ArrayAdapter
 from tiled.adapters.mapping import MapAdapter
-from tiled.alembic_utils import downgrade, get_current_revision, stamp_head, upgrade
+from tiled.alembic_utils import downgrade, get_current_revision, upgrade
 from tiled.authn_database import alembic_constants as authn_alembic
-from tiled.authn_database import core as authn_core
 from tiled.authn_database.core import ALL_REVISIONS as AUTHN_REVISIONS
+from tiled.authn_database.core import initialize_authn_database
 from tiled.catalog import alembic_constants as catalog_alembic
-from tiled.catalog import core as catalog_core
 from tiled.catalog import from_uri
 from tiled.catalog.core import ALL_REVISIONS as CATALOG_REVISIONS
+from tiled.catalog.core import initialize_catalog_database
 from tiled.client import Context, from_context
 from tiled.server.app import build_app, build_app_from_config
 from tiled.utils import ensure_specified_sql_driver
@@ -37,31 +37,6 @@ assert CATALOG_DOWNGRADE_TARGET in CATALOG_REVISIONS
 assert AUTHN_DOWNGRADE_TARGET == AUTHN_REVISIONS[-1]
 
 tree = MapAdapter({"A1": ArrayAdapter.from_array(numpy.ones((5, 5)))})
-
-
-def _initialize_database(uri, initialize_database, alembic_constants):
-    "Create the tables and stamp the head revision, as `tiled catalog init` does."
-    uri = ensure_specified_sql_driver(uri)
-
-    async def create_tables():
-        engine = create_async_engine(uri)
-        try:
-            await initialize_database(engine)
-        finally:
-            await engine.dispose()
-
-    asyncio.run(create_tables())
-    stamp_head(
-        alembic_constants.ALEMBIC_INI_TEMPLATE_PATH, alembic_constants.ALEMBIC_DIR, uri
-    )
-
-
-def initialize_catalog_database(uri):
-    _initialize_database(uri, catalog_core.initialize_database, catalog_alembic)
-
-
-def initialize_authn_database(uri):
-    _initialize_database(uri, authn_core.initialize_database, authn_alembic)
 
 
 def current_revision(uri, known_revisions):
