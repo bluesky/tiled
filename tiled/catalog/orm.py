@@ -817,7 +817,7 @@ class DataSource(Timestamped, Base):
     # it to access and arrange the data in the file correctly.
     parameters = Column(JSONVariant, nullable=True)
     # These are additional properties describing the data source (e.g. array chunks).
-    properties = Column(JSONVariant, nullable=True)
+    properties = Column(JSONVariant, nullable=False, server_default="{}")
     # This relates to the mutability of the data.
     management = Column(Enum(Management), nullable=False)
     structure_family = Column(Enum(StructureFamily), nullable=False)
