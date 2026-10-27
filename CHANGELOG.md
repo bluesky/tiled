@@ -29,6 +29,11 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Fixed
 
+- Fixed serving HDF5 files that have an empty (null dataspace) attribute or a
+  byte-string attribute that is not valid UTF-8. Either one made every node
+  in the file fail to load. Empty attributes are now served as `null`, and
+  non-UTF-8 byte strings are decoded as Windows-1252, or as Latin-1 when
+  they are not valid Windows-1252 either.
 - Webhook URL validation performed a reverse DNS lookup (a network round-trip)
   for every address the URL resolves to. It is now done only when the address
   is in a blocked network and `allow_delivery_hosts` is configured, the only
