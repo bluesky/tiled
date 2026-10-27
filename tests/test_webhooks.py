@@ -11,12 +11,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from urllib.parse import quote as urlquote
 
 import anyio
-import httpx
+import httpx2 as httpx
 import pytest
 import respx
 import stamina
 from fastapi import FastAPI, HTTPException
-from httpx import Response
+from httpx2 import Response
 from sqlalchemy import select as sa_select
 
 from tiled.catalog import from_uri, in_memory

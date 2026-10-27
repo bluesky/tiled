@@ -9,7 +9,7 @@ import pytest
 import uvicorn
 import zarr
 from fsspec.implementations.http import HTTPFileSystem
-from httpx import ASGITransport, AsyncClient
+from httpx2 import ASGITransport, AsyncClient
 from starlette.status import (
     HTTP_200_OK,
     HTTP_401_UNAUTHORIZED,

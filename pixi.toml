@@ -8,7 +8,6 @@ version = "0.2.2"
 [tasks]
 
 [dependencies]
-httpx = ">=0.20.0,!=0.23.1"
 json-merge-patch = "*"
 jsonpatch = "*"
 jsonschema = "*"
@@ -21,6 +20,8 @@ pyyaml = "*"
 typer = "*"
 
 [pypi-dependencies]
+# Not yet available on conda-forge; installed from PyPI.
+httpx2 = ">=2.0.0"
 tiled = { path = ".", editable = true }
 
 [feature.array.dependencies]
@@ -128,10 +129,6 @@ pandas = "*"
 pyarrow-all = ">=14.0.1"  # includes fix to CVE 2023-47248
 xarray = "*"
 
-[feature.py310.dependencies]
-python = "3.10.*"
-# python-blosc2 is not available for Python 3.10
-
 [feature.py311.dependencies]
 python = "3.11.*"
 python-blosc2 = "*"
@@ -151,7 +148,6 @@ client = { features = ["array", "awkward", "client", "compression", "dataframe",
 dev = { features = ["array", "awkward", "client", "compression", "dataframe", "formats", "dev", "server", "sparse", "xarray"], solve-group = "default" }
 server = { features = ["array", "awkward", "compression", "dataframe", "formats", "server", "sparse", "xarray"], solve-group = "default" }
 
-py310 = { features = ["array", "awkward", "client", "compression", "dataframe", "formats", "dev", "server", "sparse", "xarray", "py310"] }
 py311 = { features = ["array", "awkward", "client", "compression", "dataframe", "formats", "dev", "server", "sparse", "xarray", "py311"] }
 py312 = { features = ["array", "awkward", "client", "compression", "dataframe", "formats", "dev", "server", "sparse", "xarray", "py312"] }
 py313 = { features = ["array", "awkward", "client", "compression", "dataframe", "formats", "dev", "server", "sparse", "xarray", "py313"] }

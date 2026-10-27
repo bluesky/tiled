@@ -4,7 +4,7 @@ import warnings
 from pathlib import Path
 
 import dask.array
-import httpx
+import httpx2 as httpx
 import numpy
 import pytest
 from starlette.status import (
