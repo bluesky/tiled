@@ -29,6 +29,11 @@ Write the date in place of the "Unreleased" in the case a new version is release
   for every address the URL resolves to. It is now done only when the address
   is in a blocked network and `allow_delivery_hosts` is configured, the only
   case where its result is used.
+- Fixed two authentication-database downgrade migrations on PostgreSQL:
+  `d829476bc173` left a server-side cursor open on `api_keys`, so a later
+  `ALTER TABLE api_keys` in the same `tiled admin downgrade-database` run
+  failed; and `d88e91ea03f9` added `NOT NULL` columns without values, which
+  failed on any table with rows.
 - Fixed `database.init_if_not_exists: true` in the server configuration for an
   authentication database whose URI contains a password: the password was
   masked in the URI handed to the initialization step, which then failed to
