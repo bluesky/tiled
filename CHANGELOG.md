@@ -16,7 +16,8 @@ Write the date in place of the "Unreleased" in the case a new version is release
   spawning a `tiled catalog init` or `tiled admin initialize-database`
   subprocess, which took about 1-2 s per call. For an in-memory SQLite catalog
   no initialization is done at all at this point, since it is transient and
-  initialized at server startup. This speeds up server startup, `SimpleTiledServer`, and the test suite.
+  initialized at server startup. This speeds up server startup, `SimpleTiledServer`,
+  and the test suite.
 - `tiled.utils.Conflicts` now subclasses `ValueError`, and
   `ArrayClient.patch` raises `Conflicts` when the server reports a 409
   (e.g. the patch would overwrite data without `extend=True`), matching
@@ -24,6 +25,10 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Fixed
 
+- Webhook URL validation performed a reverse DNS lookup (a network round-trip)
+  for every address the URL resolves to. It is now done only when the address
+  is in a blocked network and `allow_delivery_hosts` is configured, the only
+  case where its result is used.
 - Fixed `database.init_if_not_exists: true` in the server configuration for an
   authentication database whose URI contains a password: the password was
   masked in the URI handed to the initialization step, which then failed to
