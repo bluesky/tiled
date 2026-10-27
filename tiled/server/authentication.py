@@ -1303,6 +1303,7 @@ def authentication_router() -> APIRouter:
                 (
                     await db.execute(
                         select(orm.Principal)
+                        .order_by(orm.Principal.id)
                         .offset(offset)
                         .limit(limit)
                         .options(

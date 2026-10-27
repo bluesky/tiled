@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Any, Dict, Generator, List, Union
 from unittest.mock import MagicMock, patch
 
-import httpx
+import httpx2 as httpx
 import pytest
 import respx
 import stamina

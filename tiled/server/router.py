@@ -2091,7 +2091,10 @@ def get_router(
             access_tags=access_tags,
         )
         links = links_for_node(
-            structure_family, structure, get_base_url(request), path + f"/{node.key}"
+            structure_family,
+            structure,
+            get_base_url(request),
+            "/".join(filter(None, [path.strip("/"), node.key])),
         )
         data_sources_dump = [
             ds.model_dump() for ds in await node.data_sources(include_assets=True)

@@ -18,7 +18,7 @@ else:
     from typing_extensions import Self
 
 import anyio
-import httpx
+import httpx2 as httpx
 import msgpack
 import stamina
 import websockets.exceptions
