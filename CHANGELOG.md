@@ -20,6 +20,11 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Fixed
 
+- Fixed two authentication-database downgrade migrations on PostgreSQL:
+  `d829476bc173` left a server-side cursor open on `api_keys`, so a later
+  `ALTER TABLE api_keys` in the same `tiled admin downgrade-database` run
+  failed; and `d88e91ea03f9` added `NOT NULL` columns without values, which
+  failed on any table with rows.
 - Improved the deletion of large subtrees with many associated assets (PostgreSQL only).
 - Fixed client-side accumulation of metadata revisions across pages: a slice
   spanning more than one page (more than 100 revisions) returned subsequent
