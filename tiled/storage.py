@@ -297,7 +297,7 @@ class ObjectStorage(Storage):
                 kwargs["service_account_key"] = self.password
 
         _class = {"s3": S3Store, "azure": AzureStore, "google": GCSStore}[self.provider]
-        prefix = uri[len(self.uri) :].lstrip("/") if uri else None  # noqa: E203
+        prefix = uri[len(self.uri) :].lstrip("/") if uri else None
 
         return _class(**kwargs, **self.config, prefix=prefix)
 

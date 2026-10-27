@@ -33,7 +33,7 @@ import numpy as np
 
 from tiled.adapters.hdf5 import HDF5Adapter
 
-EXAMPLE_URL = "https://github.com/nexusformat/exampledata/blob/master/APS/EPICSareaDetector/hdf5/AgBehenate_228.hdf5?raw=true"  # noqa
+EXAMPLE_URL = "https://github.com/nexusformat/exampledata/blob/master/APS/EPICSareaDetector/hdf5/AgBehenate_228.hdf5?raw=true"
 
 rng = np.random.default_rng(42)
 

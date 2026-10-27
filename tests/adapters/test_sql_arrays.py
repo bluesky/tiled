@@ -7,11 +7,13 @@ import pyarrow as pa
 import pytest
 import ragged
 
-from tests.adapters.test_sql import adapter_duckdb_many_partitions  # noqa: F401
-from tests.adapters.test_sql import adapter_duckdb_one_partition  # noqa: F401
-from tests.adapters.test_sql import adapter_psql_many_partitions  # noqa: F401
-from tests.adapters.test_sql import adapter_psql_one_partition  # noqa: F401
-from tests.adapters.test_sql import assert_same_rows
+from tests.adapters.test_sql import (
+    adapter_duckdb_many_partitions,  # noqa: F401
+    adapter_duckdb_one_partition,  # noqa: F401
+    adapter_psql_many_partitions,  # noqa: F401
+    adapter_psql_one_partition,  # noqa: F401
+    assert_same_rows,
+)
 from tiled.adapters.array import ArrayAdapter
 from tiled.adapters.ragged import RaggedAdapter
 from tiled.adapters.sql import SQLAdapter
@@ -88,9 +90,9 @@ batch2 = pa.record_batch(data2, names=names)
 
 
 @pytest.fixture
-def data_source_from_init_storage() -> (
-    Generator[Callable[[str, int], DataSource[TableStructure]], None, None]
-):
+def data_source_from_init_storage() -> Generator[
+    Callable[[str, int], DataSource[TableStructure]], None, None
+]:
     """Fixture providing a factory for DataSource[TableStructure] using the 6-column schema.
 
     Tracks all created storages and disposes + unregisters them on teardown.
@@ -314,9 +316,9 @@ ragged_table = pa.Table.from_batches([ragged_batch0, ragged_batch1, ragged_batch
 
 
 @pytest.fixture
-def ragged_data_source_from_init_storage() -> (
-    Callable[[str, int], DataSource[TableStructure]]
-):
+def ragged_data_source_from_init_storage() -> Callable[
+    [str, int], DataSource[TableStructure]
+]:
     def _init(data_uri: str, num_partitions: int) -> DataSource[TableStructure]:
         structure = TableStructure.from_arrow_table(
             ragged_table, npartitions=num_partitions

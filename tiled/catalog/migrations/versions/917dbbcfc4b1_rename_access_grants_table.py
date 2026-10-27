@@ -102,8 +102,7 @@ def _rebuild_sqlite(src, dst):
     )
     columns = ", ".join(COLUMNS)
     op.execute(
-        f"INSERT INTO {dst['table']} ({columns}) "
-        f"SELECT {columns} FROM {src['table']}"
+        f"INSERT INTO {dst['table']} ({columns}) SELECT {columns} FROM {src['table']}"
     )
     # Dropping the table drops its index too.
     op.drop_table(src["table"])

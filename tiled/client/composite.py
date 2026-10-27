@@ -276,7 +276,7 @@ class CompositeClient(Container):
         for var_name, arr in data_vars.items():
             if is_dim0_consistent:
                 dims = (dim0 or "dim0",) + tuple(
-                    f"{var_name}_dim{i+1}" for i in range(len(arr.shape) - 1)
+                    f"{var_name}_dim{i + 1}" for i in range(len(arr.shape) - 1)
                 )
             else:
                 dims = tuple(f"{var_name}_dim{i}" for i in range(len(arr.shape)))

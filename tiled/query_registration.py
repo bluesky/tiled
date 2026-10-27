@@ -4,6 +4,7 @@ into concrete queries for specific storage backends.
 
 This intentionally only uses built-in dataclasses, not pydantic models.
 """
+
 import inspect
 from dataclasses import fields
 from typing import Any
