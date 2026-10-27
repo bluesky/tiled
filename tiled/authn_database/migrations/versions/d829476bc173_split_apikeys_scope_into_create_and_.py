@@ -50,10 +50,9 @@ def upgrade():
                     scopes |= set(new_scopes)
             role.scopes = list(scopes)
 
-        # Load all rows at once: a server-side cursor (`yield_per`) would stay
-        # open for the rest of the migration transaction, and PostgreSQL then
-        # refuses to ALTER this table in a later migration of the same run.
-        for apikey in db.query(APIKey).options(lazyload(APIKey.principal)).all():
+        for apikey in (
+            db.query(APIKey).options(lazyload(APIKey.principal)).yield_per(500)
+        ):
             scopes = set(apikey.scopes)
             for old_scope, new_scopes in OLD_TO_NEW_SCOPES.items():
                 if old_scope in scopes:
@@ -84,10 +83,9 @@ def downgrade():
                     scopes |= set(old_scopes)
             role.scopes = list(scopes)
 
-        # Load all rows at once: a server-side cursor (`yield_per`) would stay
-        # open for the rest of the migration transaction, and PostgreSQL then
-        # refuses to ALTER this table in a later migration of the same run.
-        for apikey in db.query(APIKey).options(lazyload(APIKey.principal)).all():
+        for apikey in (
+            db.query(APIKey).options(lazyload(APIKey.principal)).yield_per(500)
+        ):
             scopes = set(apikey.scopes)
             for new_scope, old_scopes in NEW_TO_OLD_SCOPES.items():
                 if new_scope in scopes:

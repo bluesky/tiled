@@ -1,5 +1,7 @@
 import asyncio
 import string
+import subprocess
+import sys
 from contextlib import nullcontext
 
 import numpy
@@ -9,9 +11,7 @@ from starlette.status import HTTP_400_BAD_REQUEST
 
 from tiled.adapters.array import ArrayAdapter
 from tiled.adapters.mapping import MapAdapter
-from tiled.alembic_utils import upgrade
 from tiled.catalog import from_uri, in_memory
-from tiled.catalog.alembic_constants import ALEMBIC_DIR, ALEMBIC_INI_TEMPLATE_PATH
 from tiled.client import Context, from_context
 from tiled.queries import (
     Comparison,
@@ -30,7 +30,6 @@ from tiled.queries import (
     StructureFamilyQuery,
 )
 from tiled.server.app import build_app
-from tiled.utils import ensure_specified_sql_driver
 
 from .conftest import TILED_TEST_POSTGRESQL_URI
 from .utils import fail_with_status_code, sqlite_from_dump, temp_postgres
@@ -178,11 +177,9 @@ def test_full_text_after_migration():
     # Load a SQL database created by an older version of Tiled, predating FullText
     # support, and verify that the migration indexes the pre-existing metadata.
     with sqlite_from_dump("before_creating_fts5_virtual_table.sql") as database_path:
-        upgrade(
-            ALEMBIC_INI_TEMPLATE_PATH,
-            ALEMBIC_DIR,
-            ensure_specified_sql_driver(f"sqlite:///{database_path}"),
-            "head",
+        subprocess.check_call(
+            [sys.executable]
+            + f"-m tiled catalog upgrade-database sqlite:///{database_path}".split()
         )
         catalog = from_uri(database_path)
         app = build_app(catalog)
