@@ -151,8 +151,17 @@ async def get_current_revision(
 
 
 async def check_database(
-    engine: AsyncEngine, required_revision: str, known_revisions: Iterable[str]
-):
+    engine: AsyncEngine,
+    required_revision: str,
+    known_revisions: Iterable[str],
+    accepted_revisions: Iterable[str] = (),
+) -> str:
+    """
+    Check that the database is at `required_revision`; return its revision.
+
+    A database at one of `accepted_revisions` passes as well (see
+    `revisions_accepted_at_startup`).
+    """
     revision = await get_current_revision(engine, known_revisions)
     redacted_url = engine.url._replace(password="[redacted]")
     if revision is None:
@@ -160,11 +169,12 @@ async def check_database(
             f"The database {redacted_url} has no revision stamp. It may be empty. "
             "It can be initialized with `initialize_database(engine)`."
         )
-    elif revision != required_revision:
+    elif revision != required_revision and revision not in accepted_revisions:
         raise DatabaseUpgradeNeeded(
             f"The database {redacted_url} has revision {revision} and "
             f"needs to be upgraded to revision {required_revision}."
         )
+    return revision
 
 
 def _run_outside_event_loop(func: Callable[[], T]) -> T:
@@ -233,3 +243,33 @@ def initialize_database_if_needed(
         return initialized
 
     return _run_outside_event_loop(run)
+
+
+# A migration script can set this module attribute to False to declare that the
+# server code at its revision runs correctly on a database at the previous
+# revision, so that the migration may be applied after that code is deployed.
+REQUIRED_AT_STARTUP = "required_at_startup"
+
+
+def revisions_accepted_at_startup(
+    alembic_dir: Union[str, Path], required_revision: str
+) -> list[str]:
+    """
+    The database revisions at which a server requiring `required_revision` starts.
+
+    These are `required_revision` itself and, if its migration script declares
+    `required_at_startup = False`, the revision before it. At most one
+    migration may be pending: the declaration is about the code shipped with
+    that migration and says nothing about code that is further ahead.
+    """
+    from alembic.script import ScriptDirectory
+
+    head = ScriptDirectory(str(alembic_dir)).get_revision(required_revision)
+    accepted = [required_revision]
+    if not getattr(head.module, REQUIRED_AT_STARTUP, True):
+        down_revision = head.down_revision
+        if isinstance(down_revision, str):
+            accepted.append(down_revision)
+        elif down_revision is not None:
+            accepted.extend(down_revision)
+    return accepted

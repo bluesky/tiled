@@ -1,3 +1,5 @@
+import logging
+
 from sqlalchemy import literal, select, text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
@@ -6,10 +8,13 @@ from ..alembic_utils import (
     UninitializedDatabase,
     check_database,
     initialize_database_if_needed,
+    revisions_accepted_at_startup,
 )
 from ..utils import ensure_specified_sql_driver
 from .alembic_constants import ALEMBIC_DIR, ALEMBIC_INI_TEMPLATE_PATH
 from .base import Base
+
+logger = logging.getLogger(__name__)
 
 # This is list of all valid revisions (from current to oldest).
 ALL_REVISIONS = [
@@ -160,9 +165,20 @@ async def resolve_access_tag_ids(connection, names):
 
 
 async def check_catalog_database(engine: AsyncEngine):
+    """
+    Check that the catalog database at `engine` is usable by this server.
+
+    The database must be at the current revision or, if the current migration
+    declares `required_at_startup = False`, at the one before it.
+    """
     redacted_url = engine.url._replace(password="[redacted]")
     try:
-        await check_database(engine, REQUIRED_REVISION, ALL_REVISIONS)
+        revision = await check_database(
+            engine,
+            REQUIRED_REVISION,
+            ALL_REVISIONS,
+            revisions_accepted_at_startup(ALEMBIC_DIR, REQUIRED_REVISION),
+        )
     except UninitializedDatabase:
         raise UninitializedDatabase(
             f"""
@@ -187,4 +203,11 @@ to work with this version. Back up the database, and the run:
 
 tiled catalog upgrade-database {redacted_url}
 """,
+        )
+    if revision != REQUIRED_REVISION:
+        logger.warning(
+            f"The catalog database at {redacted_url} is at revision {revision}, "
+            f"one behind the current revision {REQUIRED_REVISION}. This version "
+            "of Tiled runs on it, but upgrade it soon: "
+            f"tiled catalog upgrade-database {redacted_url}"
         )

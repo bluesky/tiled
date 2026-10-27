@@ -24,6 +24,10 @@ down_revision = "917dbbcfc4b1"
 branch_labels = None
 depends_on = None
 
+# The server does not need this migration in order to work, so it may be
+# applied after the new server version is deployed.
+required_at_startup = False
+
 # Foreign keys that the ORM declares with ON DELETE CASCADE, by table. On
 # SQLite they were created without it (`nodes`, `nodes_closure`: by the batch
 # operations of e05e918092c3) or with ON DELETE SET NULL (`entities`: by

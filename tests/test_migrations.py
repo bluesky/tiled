@@ -10,11 +10,19 @@ import asyncio
 
 import numpy
 import pytest
+from alembic.script import ScriptDirectory
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from tiled.adapters.array import ArrayAdapter
 from tiled.adapters.mapping import MapAdapter
-from tiled.alembic_utils import downgrade, get_current_revision, upgrade
+from tiled.alembic_utils import (
+    REQUIRED_AT_STARTUP,
+    DatabaseUpgradeNeeded,
+    downgrade,
+    get_current_revision,
+    revisions_accepted_at_startup,
+    upgrade,
+)
 from tiled.authn_database import alembic_constants as authn_alembic
 from tiled.authn_database.core import ALL_REVISIONS as AUTHN_REVISIONS
 from tiled.authn_database.core import initialize_authn_database
@@ -23,6 +31,7 @@ from tiled.catalog import from_uri
 from tiled.catalog.core import ALL_REVISIONS as CATALOG_REVISIONS
 from tiled.catalog.core import initialize_catalog_database
 from tiled.client import Context, from_context
+from tiled.queries import Key
 from tiled.server.app import build_app, build_app_from_config
 from tiled.utils import ensure_specified_sql_driver
 
@@ -363,3 +372,106 @@ def test_recursive_delete_in_upgraded_old_database(tmpdir):
             a.create_container("b").write_array(numpy.arange(3), key="arr")
             client.delete_contents("a", recursive=True, external_only=False)
             assert "a" not in client
+
+
+# Startup on a database one revision behind. The migration at the head declares
+# `required_at_startup = False` when the server code at its revision runs on a
+# database at the previous revision; see `revisions_accepted_at_startup`.
+
+
+def head_not_required_at_startup(alembic):
+    head = ScriptDirectory(alembic.ALEMBIC_DIR).get_revision("head")
+    return not getattr(head.module, REQUIRED_AT_STARTUP, True)
+
+
+@pytest.mark.parametrize("database", list(DATABASES))
+def test_revisions_accepted_at_startup(database):
+    _, alembic, _, _ = DATABASES[database]
+    revisions = CATALOG_REVISIONS if database == "catalog" else AUTHN_REVISIONS
+    accepted = revisions_accepted_at_startup(alembic.ALEMBIC_DIR, revisions[0])
+    if head_not_required_at_startup(alembic):
+        assert accepted == revisions[:2]
+    else:
+        assert accepted == revisions[:1]
+
+
+def test_new_migrations_declare_required_at_startup():
+    "Catalog migrations from bfbcd5d137d0 on set `required_at_startup` explicitly."
+    script = ScriptDirectory(catalog_alembic.ALEMBIC_DIR)
+    undeclared = []
+    for revision in CATALOG_REVISIONS:
+        if not hasattr(script.get_revision(revision).module, REQUIRED_AT_STARTUP):
+            undeclared.append(revision)
+        if revision == "bfbcd5d137d0":
+            break
+    assert not undeclared
+
+
+def catalog_server_works(uri, tmpdir):
+    catalog = from_uri(uri, writable_storage=str(tmpdir))
+    with Context.from_app(build_app(catalog)) as context:
+        client = from_context(context)
+        client.write_array(numpy.arange(3), key="x", metadata={"color": "red"})
+        assert list(client.search(Key("color") == "red")) == ["x"]
+        assert client["x"].read().tolist() == [0, 1, 2]
+        client.delete_contents("x", external_only=False)
+        assert list(client) == []
+
+
+def authn_server_works(uri, enter_username_password):
+    config = {
+        "authentication": TOY_AUTHENTICATION,
+        "database": {"uri": uri},
+        "trees": [{"tree": f"{__name__}:tree", "path": "/"}],
+    }
+    with Context.from_app(build_app_from_config(config)) as context:
+        with enter_username_password("alice", "secret1"):
+            client = from_context(context)
+        assert client.context.whoami()["identities"][0]["id"] == "alice"
+
+
+@pytest.mark.parametrize("database", list(DATABASES))
+def test_startup_with_one_pending_migration(
+    database, sqlite_or_postgres_uri, tmpdir, enter_username_password
+):
+    """
+    The server starts on a database one revision behind only if declared.
+
+    When the head migration declares `required_at_startup = False`, this also
+    verifies the declaration: the current code runs on the previous revision.
+    """
+    initialize, alembic, _, _ = DATABASES[database]
+    revisions = CATALOG_REVISIONS if database == "catalog" else AUTHN_REVISIONS
+    uri = ensure_specified_sql_driver(sqlite_or_postgres_uri)
+    initialize(uri)
+    downgrade(alembic.ALEMBIC_INI_TEMPLATE_PATH, alembic.ALEMBIC_DIR, uri, revisions[1])
+    assert current_revision(uri, revisions) == revisions[1]
+
+    def start_server():
+        if database == "catalog":
+            catalog_server_works(uri, tmpdir)
+        else:
+            authn_server_works(uri, enter_username_password)
+
+    if head_not_required_at_startup(alembic):
+        start_server()
+    else:
+        with pytest.raises(DatabaseUpgradeNeeded):
+            start_server()
+
+
+@pytest.mark.parametrize("database", list(DATABASES))
+def test_startup_refused_two_migrations_behind(
+    database, sqlite_or_postgres_uri, tmpdir, enter_username_password
+):
+    "Whatever the head migration declares, two pending migrations are too many."
+    initialize, alembic, _, _ = DATABASES[database]
+    revisions = CATALOG_REVISIONS if database == "catalog" else AUTHN_REVISIONS
+    uri = ensure_specified_sql_driver(sqlite_or_postgres_uri)
+    initialize(uri)
+    downgrade(alembic.ALEMBIC_INI_TEMPLATE_PATH, alembic.ALEMBIC_DIR, uri, revisions[2])
+    with pytest.raises(DatabaseUpgradeNeeded):
+        if database == "catalog":
+            catalog_server_works(uri, tmpdir)
+        else:
+            authn_server_works(uri, enter_username_password)

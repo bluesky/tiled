@@ -5,6 +5,15 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## Unreleased
 
+### Added
+
+- A migration script can declare `required_at_startup = False`, meaning that
+  the server does not need this migration in order to work. The server then
+  starts, with a warning, on a database that has not applied it yet (but is
+  at the previous revision), so that a new version of Tiled can be deployed
+  before the database is upgraded. A database two or more migrations behind
+  is refused, as before. The catalog migration in this release declares this.
+
 ### Changed
 
 - A new catalog database migration (`bfbcd5d137d0`) brings databases

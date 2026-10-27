@@ -25,10 +25,15 @@ branch_labels = ${'"' + branch_labels + '"'}
 branch_labels = ${repr(branch_labels)}
 % endif
 % if isinstance(depends_on, str):
-branch_labels = ${'"' + depends_on + '"'}
+depends_on = ${'"' + depends_on + '"'}
 % else:
 depends_on = ${repr(depends_on)}
 % endif
+
+# Set to False only if the server at this revision runs correctly on a database
+# at the previous revision; i.e. this migration may be applied after the new server
+# version is deployed. Otherwise the server refuses to start on an older database.
+required_at_startup = True
 
 
 def upgrade():
