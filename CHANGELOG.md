@@ -22,6 +22,10 @@ Write the date in place of the "Unreleased" in the case a new version is release
   `ArrayClient.patch` raises `Conflicts` when the server reports a 409
   (e.g. the patch would overwrite data without `extend=True`), matching
   `RaggedClient.patch`. Code catching `ValueError` keeps working.
+- Replace the `httpx` dependency with `httpx2`. Objects passed into Tiled,
+  such as a custom `auth=` or `timeout=`, must now be `httpx2` types, and
+  exceptions raised are `httpx2` exceptions. Python 3.10 is no longer
+  supported, because httpx2 requires Python 3.11 or newer.
 
 ### Fixed
 

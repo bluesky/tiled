@@ -10,7 +10,7 @@ from urllib.parse import parse_qs, urlparse
 import json_merge_patch
 import jsonpatch
 import orjson
-from httpx import URL
+from httpx2 import URL
 
 from tiled.client.context import Context
 

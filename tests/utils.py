@@ -9,7 +9,7 @@ from enum import IntEnum
 from importlib import resources
 from pathlib import Path
 
-import httpx
+import httpx2 as httpx
 import pytest
 import uvicorn
 from sqlalchemy import text

@@ -227,7 +227,7 @@ installed Tiled, you may already have it because it is required by Tiled's
 Python _client_.)
 
 ```
-pip install httpx
+pip install httpx2
 ```
 
 1. Deploy Tiled with HTTPS.

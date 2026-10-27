@@ -6,7 +6,7 @@ import warnings
 from typing import Optional, Union
 from urllib.parse import parse_qs, urlparse
 
-import httpx
+import httpx2 as httpx
 
 from ..utils import import_object, prepend_to_sys_path
 from .container import DEFAULT_STRUCTURE_CLIENT_DISPATCH, Container

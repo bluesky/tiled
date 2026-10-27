@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 
 import attr
-import httpx
+import httpx2 as httpx
 
 logger = logging.getLogger(__name__)
 
