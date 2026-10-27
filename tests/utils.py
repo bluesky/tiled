@@ -1,3 +1,4 @@
+import asyncio
 import contextlib
 import sqlite3
 import tempfile
@@ -27,31 +28,63 @@ def fail_with_status_code(status_code):
     assert info.value.response.status_code == status_code
 
 
-@contextlib.asynccontextmanager
-async def temp_postgres(uri):
-    if uri.endswith("/"):
-        uri = uri[:-1]
-    # Create a fresh database.
+async def _create_disposable_database(uri):
+    "Create a fresh database on the PostgreSQL server at `uri`; return its name."
     engine = create_async_engine(ensure_specified_sql_driver(uri))
     database_name = f"tiled_test_disposable_{uuid.uuid4().hex}"
-    async with engine.connect() as connection:
-        # close the automatically-started transaction
-        await connection.execute(text("COMMIT"))
-        await connection.execute(text(f"CREATE DATABASE {database_name};"))
-        await connection.commit()
-    yield f"{uri}/{database_name}"
-    # Drop the database
-    async with engine.connect() as connection:
-        await connection.execute(text("COMMIT"))
-        # Terminate any lingering sessions first so DROP doesn't fail
-        await connection.execute(
-            text(
-                "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
-                f"WHERE datname = '{database_name}' AND pid <> pg_backend_pid();"
+    try:
+        async with engine.connect() as connection:
+            # close the automatically-started transaction
+            await connection.execute(text("COMMIT"))
+            await connection.execute(text(f"CREATE DATABASE {database_name};"))
+            await connection.commit()
+    finally:
+        await engine.dispose()
+    return database_name
+
+
+async def _drop_disposable_database(uri, database_name):
+    engine = create_async_engine(ensure_specified_sql_driver(uri))
+    try:
+        async with engine.connect() as connection:
+            await connection.execute(text("COMMIT"))
+            # Terminate any lingering sessions first so DROP doesn't fail
+            await connection.execute(
+                text(
+                    "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+                    f"WHERE datname = '{database_name}' AND pid <> pg_backend_pid();"
+                )
             )
-        )
-        await connection.execute(text(f"DROP DATABASE {database_name};"))
-        await connection.commit()
+            await connection.execute(text(f"DROP DATABASE {database_name};"))
+            await connection.commit()
+    finally:
+        await engine.dispose()
+
+
+@contextlib.asynccontextmanager
+async def temp_postgres(uri):
+    "Yield the URI of a fresh database on the server at `uri`; drop it on exit."
+    uri = uri.rstrip("/")
+    database_name = await _create_disposable_database(uri)
+    yield f"{uri}/{database_name}"
+    await _drop_disposable_database(uri, database_name)
+
+
+@contextlib.contextmanager
+def temp_postgres_sync(uri):
+    """
+    Synchronous counterpart of `temp_postgres`, for use in synchronous fixtures.
+
+    Being synchronous, it is also usable at any fixture scope without tying the
+    fixture to an event loop. The database is dropped on exit even if the body
+    raises.
+    """
+    uri = uri.rstrip("/")
+    database_name = asyncio.run(_create_disposable_database(uri))
+    try:
+        yield f"{uri}/{database_name}"
+    finally:
+        asyncio.run(_drop_disposable_database(uri, database_name))
 
 
 @contextlib.contextmanager

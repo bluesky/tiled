@@ -10,9 +10,14 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - Tiled now manages its connection pools to tabular storage more correctly.
   Also, it is now not allowed to use two storage databases with the same
   database on different hosts.
-
-### Changed
-
+- Database initialization with `init_if_not_exists` (the catalog, via
+  `tiled.catalog.from_uri` and server configuration; and the authentication
+  database, via server configuration) is now done in-process instead of by
+  spawning a `tiled catalog init` or `tiled admin initialize-database`
+  subprocess, which took about 1-2 s per call. For an in-memory SQLite catalog
+  no initialization is done at all at this point, since it is transient and
+  initialized at server startup. This speeds up server startup, `SimpleTiledServer`,
+  and the test suite.
 - `tiled.utils.Conflicts` now subclasses `ValueError`, and
   `ArrayClient.patch` raises `Conflicts` when the server reports a 409
   (e.g. the patch would overwrite data without `extend=True`), matching
@@ -24,6 +29,14 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Fixed
 
+- Webhook URL validation performed a reverse DNS lookup (a network round-trip)
+  for every address the URL resolves to. It is now done only when the address
+  is in a blocked network and `allow_delivery_hosts` is configured, the only
+  case where its result is used.
+- Fixed `database.init_if_not_exists: true` in the server configuration for an
+  authentication database whose URI contains a password: the password was
+  masked in the URI handed to the initialization step, which then failed to
+  connect.
 - Improved the deletion of large subtrees with many associated assets (PostgreSQL only).
 - Fixed client-side accumulation of metadata revisions across pages: a slice
   spanning more than one page (more than 100 revisions) returned subsequent
@@ -35,6 +48,8 @@ Write the date in place of the "Unreleased" in the case a new version is release
   pointed directly at a node could not see its data sources.
 - Fixed the deprecation warning for the removed `prompt_for_reauthentication`
   parameter of `from_uri`, which was never emitted.
+- Fixed a double slash (e.g. `/metadata//x`) in the links returned when
+  creating a node, which the client then followed for subsequent requests.
 
 ## v0.2.19 (2026-10-13)
 

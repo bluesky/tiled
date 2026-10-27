@@ -387,7 +387,7 @@ def test_file_with_broken_links(example_file_with_links):
     with pytest.raises(BrokenLink):
         tree = HDF5Adapter.from_uris(example_file_with_links, dataset="a/b/soft_link")
 
-    with pytest.raises(KeyError):
+    with pytest.raises(BrokenLink):
         tree = HDF5Adapter.from_uris(example_file_with_links, dataset="a/b/c/d")
 
     tree = HDF5Adapter.from_uris(example_file_with_links, dataset="a")
@@ -402,7 +402,7 @@ def test_file_with_broken_links(example_file_with_links):
     with h5py.File(child_file_path, "r+") as file:
         file["z/y"].pop("x")
 
-    with pytest.raises(KeyError):
+    with pytest.raises(BrokenLink):
         tree = HDF5Adapter.from_uris(example_file_with_links, dataset="a/b/extr_link/x")
 
     tree = HDF5Adapter.from_uris(example_file_with_links, dataset="a/b/extr_link")
@@ -417,7 +417,7 @@ def test_file_with_broken_links(example_file_with_links):
     with h5py.File(child_file_path, "r+") as file:
         file["z"].pop("y")
 
-    with pytest.raises(KeyError):
+    with pytest.raises(BrokenLink):
         tree = HDF5Adapter.from_uris(example_file_with_links, dataset="a/b/extr_link")
 
     # A client can still be instantiated
@@ -551,6 +551,38 @@ def test_register_broken_hdf5_file(context, example_file_with_links):
 
     with pytest.raises(KeyError):
         list(client["ds_from_extr"].keys())
+
+
+def test_register_missing_hdf5_dataset(context, example_file):
+    """A registered array whose dataset is absent from the file is 410, not 500."""
+    client = from_context(context)
+    data_source = DataSource(
+        mimetype="application/x-hdf5",
+        assets=[
+            Asset(
+                data_uri=example_file,
+                is_directory=False,
+                parameter="data_uris",
+                num=0,
+            )
+        ],
+        structure_family=StructureFamily.array,
+        structure=ArrayStructure(
+            shape=(3, 3),
+            chunks=((3,), (3,)),
+            data_type=BuiltinDtype.from_numpy_dtype(numpy.dtype("int64")),
+        ),
+        parameters={"dataset": "a/b/c/does_not_exist"},
+        management=Management.external,
+    )
+    client.new(
+        structure_family=StructureFamily.array,
+        data_sources=[data_source],
+        key="missing_dataset",
+    )
+    # The client turns 410 Gone into a KeyError (see test_register_broken_hdf5_file)
+    with pytest.raises(KeyError, match="broken link"):
+        client["missing_dataset"].read()
 
 
 def test_update_datasource_with_properties(context, example_file):
