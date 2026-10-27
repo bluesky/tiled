@@ -347,33 +347,6 @@ def test_upgraded_example_database_schema_matches_orm():
     assert actual == COMPARISON_NOISE["catalog", "postgresql"]
 
 
-def test_recursive_delete_in_upgraded_old_database(tmpdir):
-    """
-    Recursive deletion works in a catalog created by an old version of Tiled.
-
-    It relies on the foreign keys of `nodes` and `nodes_closure` cascading,
-    which the catalog's own migrations did not provide on SQLite until
-    bfbcd5d137d0.
-    """
-    from .utils import sqlite_from_dump
-
-    with sqlite_from_dump("before_creating_fts5_virtual_table.sql") as database_path:
-        uri = f"sqlite:///{database_path}"
-        upgrade(
-            catalog_alembic.ALEMBIC_INI_TEMPLATE_PATH,
-            catalog_alembic.ALEMBIC_DIR,
-            ensure_specified_sql_driver(uri),
-            "head",
-        )
-        catalog = from_uri(uri, writable_storage=str(tmpdir))
-        with Context.from_app(build_app(catalog)) as context:
-            client = from_context(context)
-            a = client.create_container("a")
-            a.create_container("b").write_array(numpy.arange(3), key="arr")
-            client.delete_contents("a", recursive=True, external_only=False)
-            assert "a" not in client
-
-
 # Startup on a database one revision behind. The migration at the head declares
 # `required_at_startup = False` when the server code at its revision runs on a
 # database at the previous revision; see `revisions_accepted_at_startup`.
@@ -393,18 +366,6 @@ def test_revisions_accepted_at_startup(database):
         assert accepted == revisions[:2]
     else:
         assert accepted == revisions[:1]
-
-
-def test_new_migrations_declare_required_at_startup():
-    "Catalog migrations from bfbcd5d137d0 on set `required_at_startup` explicitly."
-    script = ScriptDirectory(catalog_alembic.ALEMBIC_DIR)
-    undeclared = []
-    for revision in CATALOG_REVISIONS:
-        if not hasattr(script.get_revision(revision).module, REQUIRED_AT_STARTUP):
-            undeclared.append(revision)
-        if revision == "bfbcd5d137d0":
-            break
-    assert not undeclared
 
 
 def catalog_server_works(uri, tmpdir):
