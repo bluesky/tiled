@@ -236,12 +236,7 @@ KNOWN_DRIFT = {
     ("catalog", "sqlite", "round_trip"): set(),
     ("catalog", "postgresql", "round_trip"): set(),
     ("authn", "sqlite", "round_trip"): set(),
-    # Migration d88e91ea03f9 marks these columns nullable; the ORM does not.
-    # Pending review.
-    ("authn", "postgresql", "round_trip"): {
-        "modify_nullable principals.time_created True -> False",
-        "modify_nullable roles.time_created True -> False",
-    },
+    ("authn", "postgresql", "round_trip"): set(),
     # A database created before full-text search support and upgraded to head.
     # Migration 9bc9b57294b9 widened assets.size on PostgreSQL only: SQLite has
     # no integer widths (INTEGER and BIGINT are the same 64-bit storage class),
