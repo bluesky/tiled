@@ -15,7 +15,7 @@ from pydantic import StringConstraints
 from ..utils import OneShotCachedMap, filter_known_kwargs
 
 
-class StructureFamily(str, enum.Enum):
+class StructureFamily(enum.StrEnum):
     array = "array"
     awkward = "awkward"
     bytes = "bytes"

@@ -17,7 +17,7 @@ FieldDescr = Union[tuple[str, str], tuple[str, str, tuple[int, ...]]]
 NumpyDescr = list[FieldDescr]
 
 
-class Endianness(str, enum.Enum):
+class Endianness(enum.StrEnum):
     """
     An enum of endian values: big, little, not_applicable.
     """
@@ -31,7 +31,7 @@ class ObjectArrayTypeDisabled(ValueError):
     pass
 
 
-class Kind(str, enum.Enum):
+class Kind(enum.StrEnum):
     """
     See https://numpy.org/devdocs/reference/arrays.interface.html#object.__array_interface__
 

@@ -9,7 +9,7 @@ from ..utils import filter_known_kwargs
 from .core import StructureFamily
 
 
-class Management(str, enum.Enum):
+class Management(enum.StrEnum):
     external = "external"
     immutable = "immutable"
     locked = "locked"

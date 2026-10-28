@@ -77,7 +77,7 @@ class PaginationLinks(pydantic.BaseModel):
     last: str
 
 
-class EntryFields(str, enum.Enum):
+class EntryFields(enum.StrEnum):
     metadata = "metadata"
     structure_family = "structure_family"
     structure = "structure"
@@ -314,7 +314,7 @@ class DeviceCode(pydantic.BaseModel):
     grant_type: str
 
 
-class PrincipalType(str, enum.Enum):
+class PrincipalType(enum.StrEnum):
     user = "user"
     service = "service"
 
@@ -633,18 +633,18 @@ SearchResponse = Response[
 ]
 
 
-class EnvelopeFormat(str, enum.Enum):
+class EnvelopeFormat(enum.StrEnum):
     json = "json"
     msgpack = "msgpack"
 
 
-class EventType(str, enum.Enum):
+class EventType(enum.StrEnum):
     container_child_created = "container-child-created"
     container_child_metadata_updated = "container-child-metadata-updated"
     stream_closed = "stream-closed"
 
 
-class DeliveryOutcome(str, enum.Enum):
+class DeliveryOutcome(enum.StrEnum):
     pending = "pending"
     success = "success"
     failed = "failed"

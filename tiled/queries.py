@@ -218,7 +218,7 @@ class NotEq(NoBool):
         return cls(key=key, value=json.loads(value))
 
 
-class Operator(str, enum.Enum):
+class Operator(enum.StrEnum):
     lt = "lt"
     gt = "gt"
     le = "le"

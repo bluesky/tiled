@@ -9,7 +9,7 @@ from ..type_aliases import Chunks
 from .array import BuiltinDtype, Endianness, Kind, StructDtype
 
 
-class SparseLayout(str, enum.Enum):
+class SparseLayout(enum.StrEnum):
     # Only COO is currently supported, but this lays a path
     # for adding other layouts like CSC, CSR, etc. in the future.
     COO = "COO"
