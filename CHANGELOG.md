@@ -10,6 +10,13 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - Tiled now manages its connection pools to tabular storage more correctly.
   Also, it is now not allowed to use two storage databases with the same
   database on different hosts.
+- Greatly reduce access-control overhead for principals with many access
+  tags: the set of tags granted to a principal and the resolved tag ids are
+  cached for a short time (60 s default; `granted_tags_cache_ttl` argument
+  of `TagBasedAccessPolicy` and `TILED_ACCESS_TAG_IDS_CACHE_TTL`, `0`
+  disables). The caches are invalidated immediately within a process when
+  the compiled tags change; changes made by other processes are covered by
+  the TTL.
 - Database initialization with `init_if_not_exists` (the catalog, via
   `tiled.catalog.from_uri` and server configuration; and the authentication
   database, via server configuration) is now done in-process instead of by

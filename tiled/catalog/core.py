@@ -118,13 +118,21 @@ def initialize_catalog_database(uri: str) -> bool:
 async def register_principal_tag_rows(connection, access_tag_names):
     """
     Auto-register bare access tag rows for any principal tags in
-    access_tag_names. Principal tags need to exist at write, possibly before
+    `access_tag_names`. Principal tags need to exist at write, possibly before
     the access tags compiler has been able to create them.
 
     Call this on the same connection/transaction as the tag assignment, so
     that the row is never observed unassigned and the compiler's retention
     rules will never delete it. (An AsyncSession caller can pass
     `await session.connection()`.)
+
+    Returns True if any new access-tag row was inserted (i.e. the name -> id
+    mapping changed). After the transaction COMMITS, the caller must then
+    invalidate compiled-tag caches with `mark_compiled_tags_changed()`;
+    invalidating before commit would let a concurrent request re-cache the
+    not-yet-visible state under the new version. With ON CONFLICT DO NOTHING,
+    RETURNING yields rows only for actual inserts, so the common case (the principal
+    tag row already exists) changes nothing and must not disturb the caches.
     """
     from ..access_control.protocols import PRINCIPAL_TAG_PREFIXES
 
@@ -132,18 +140,20 @@ async def register_principal_tag_rows(connection, access_tag_names):
         name for name in access_tag_names if name.startswith(PRINCIPAL_TAG_PREFIXES)
     }
     if not principal_tags:
-        return
+        return False
     from . import orm
 
     if connection.dialect.name == "postgresql":
         from sqlalchemy.dialects.postgresql import insert as upsert
     else:
         from sqlalchemy.dialects.sqlite import insert as upsert
-    await connection.execute(
+    result = await connection.execute(
         upsert(orm.AccessTag.__table__)
         .values([{"name": name, "is_public": False} for name in sorted(principal_tags)])
         .on_conflict_do_nothing(index_elements=["name"])
+        .returning(orm.AccessTag.__table__.c.id)
     )
+    return result.first() is not None
 
 
 async def resolve_access_tag_ids(connection, names):

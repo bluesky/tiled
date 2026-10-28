@@ -1,7 +1,8 @@
 import logging
 import os
+import time
 from abc import ABC, abstractmethod
-from typing import Generic, Optional, Tuple, TypeVar
+from typing import Generic, NamedTuple, Optional, Tuple, TypeVar
 
 import httpx2 as httpx
 from pydantic import BaseModel, HttpUrl, TypeAdapter, ValidationError
@@ -11,7 +12,7 @@ from ..queries import AccessTagsFilter
 from ..server.schemas import Principal
 from ..type_aliases import AccessTags, Filters, Scopes
 from ..utils import Sentinel, import_object
-from .protocols import AccessPolicy, normalize_access_tags
+from .protocols import AccessPolicy, compiled_tags_version, normalize_access_tags
 from .scopes import ALL_SCOPES, NO_SCOPES, PUBLIC_SCOPES, ScopeName, validate_scopes
 
 ALL_ACCESS = []
@@ -63,17 +64,35 @@ class DummyAccessPolicy(AccessPolicy):
         return ALL_ACCESS
 
 
+class _CachedGrantedTags(NamedTuple):
+    "An entry of TagBasedAccessPolicy's granted-tags cache."
+
+    expires: float  # time.monotonic() deadline; a cache hit does not extend it
+    version: int  # compiled_tags_version() at the time the entry was computed
+    tags: AccessTags
+
+
 class TagBasedAccessPolicy(AccessPolicy):
+    # How many distinct (principal, scopes) granted-tag sets to hold in the cache.
+    GRANTED_TAGS_CACHE_MAX_SIZE = 1024
+
     def __init__(
         self,
         *,
         provider,
         access_tags_parser,
         scopes=None,
+        granted_tags_cache_ttl=60,
     ):
         self.provider = provider
         self.scopes = scopes if (scopes is not None) else ALL_SCOPES
         validate_scopes(self.scopes, "TagBasedAccessPolicy 'scopes'")
+        # For how long (in seconds) the set of tags granted to a principal is
+        # reused before `filters` re-derives it by querying the compiled grant
+        # tables. (Deriving it reads the output of the access tags compiler;
+        # it never runs the compiler.)
+        self.granted_tags_cache_ttl = granted_tags_cache_ttl
+        self._granted_tags_cache = {}
 
         access_tags_parser = import_object(access_tags_parser)
         # The parser reads tag definitions from the catalog database; it is
@@ -417,14 +436,34 @@ class TagBasedAccessPolicy(AccessPolicy):
         if not scopes.issubset(self.scopes):
             return NO_ACCESS
 
-        tag_list = set()
         if principal is None:
-            identifier = None
+            principal_type = identifier = None
         else:
+            principal_type = principal.type
             if principal.type == "service":
                 identifier = str(principal.uuid)
             else:
                 identifier = self._get_id(principal)
+
+        # Cache the derived granted-tag set, keyed by everything it depends on.
+        # Return a fresh AccessTagsFilter on every call, even on a cache hit:
+        # the filter instance gets mutated downstream (`tag_ids`), so it must
+        # not be shared.
+        cache_key = (
+            principal_type,
+            identifier,
+            frozenset(scopes),
+            frozenset(authn_scopes),
+            None if authn_access_tags is None else frozenset(authn_access_tags),
+        )
+        now = time.monotonic()
+        version = compiled_tags_version()
+        cached = self._granted_tags_cache.get(cache_key)
+        if cached is not None and cached.expires > now and cached.version == version:
+            return [AccessTagsFilter(cached.tags)]
+
+        tag_list = set()
+        if principal is not None:
             tag_list.update(
                 set.intersection(
                     *[
@@ -450,7 +489,22 @@ class TagBasedAccessPolicy(AccessPolicy):
         if authn_access_tags is not None:
             tag_list.intersection_update(authn_access_tags)
 
-        return [AccessTagsFilter(normalize_access_tags(tag_list))]
+        tags = normalize_access_tags(tag_list)
+        if self.granted_tags_cache_ttl:
+            cache = self._granted_tags_cache
+            if len(cache) >= self.GRANTED_TAGS_CACHE_MAX_SIZE:
+                # Drop expired entries; if nothing expired, drop the oldest.
+                expired = [k for k, entry in cache.items() if entry.expires <= now]
+                for k in expired:
+                    del cache[k]
+                while len(cache) >= self.GRANTED_TAGS_CACHE_MAX_SIZE:
+                    del cache[min(cache, key=lambda k: cache[k].expires)]
+            cache[cache_key] = _CachedGrantedTags(
+                expires=now + self.granted_tags_cache_ttl,
+                version=version,
+                tags=tags,
+            )
+        return [AccessTagsFilter(tags)]
 
 
 T = TypeVar("T")

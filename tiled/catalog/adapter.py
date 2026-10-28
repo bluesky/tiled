@@ -20,6 +20,7 @@ from typing import (
     Dict,
     List,
     Literal,
+    NamedTuple,
     Optional,
     Union,
     cast,
@@ -30,6 +31,7 @@ import anyio
 from fastapi import HTTPException
 from sqlalchemy import (
     delete,
+    event,
     exists,
     false,
     func,
@@ -72,7 +74,11 @@ from tiled.queries import (
     StructureFamilyQuery,
 )
 
-from ..access_control.protocols import normalize_access_tags
+from ..access_control.protocols import (
+    compiled_tags_version,
+    mark_compiled_tags_changed,
+    normalize_access_tags,
+)
 from ..adapters.utils import DataNotReadyError, IncompatibleShapeError
 from ..mimetypes import (
     APACHE_ARROW_FILE_MIME_TYPE,
@@ -149,6 +155,23 @@ logger = logging.getLogger(__name__)
 # modified within this many seconds. This distinguishes an in-progress
 # streaming append from a write that was aborted and left at rest.
 ARRAY_NOT_READY_WINDOW = float(os.getenv("TILED_ARRAY_NOT_READY_WINDOW", "10.0"))
+
+# How long (in seconds) resolved access-tag ids (name -> id) are cached on the
+# context, and how many distinct tag sets to hold. The mapping only changes
+# when the compiled tags change (a compiler run, or first-time registration
+# of a principal tag row), so a short TTL bounds the staleness while saving a
+# database round trip per request. See resolve_access_tag_ids.
+ACCESS_TAG_IDS_CACHE_TTL = float(os.getenv("TILED_ACCESS_TAG_IDS_CACHE_TTL", "60"))
+ACCESS_TAG_IDS_CACHE_MAX_SIZE = 64
+
+
+class _CachedTagIds(NamedTuple):
+    "An entry of the context's resolved access-tag-ids cache."
+
+    expires: float  # time.monotonic() deadline; a cache hit does not extend it
+    version: int  # compiled_tags_version() at the time the entry was computed
+    ids: tuple
+
 
 # work_mem granted (per transaction, PostgreSQL only) to the asset
 # garbage-collection query in delete_tree. Its hash joins cover the deleted
@@ -241,7 +264,21 @@ async def _resolve_access_tags(db, access_tag_names):
     Principal tags are slightly different: these need to exist at write,
     possibly before the access tags compiler has been able to create them.
     """
-    await register_principal_tag_rows(await db.connection(), access_tag_names)
+    inserted = await register_principal_tag_rows(
+        await db.connection(), access_tag_names
+    )
+    if inserted:
+        # A new tag row changes the name -> id mapping; the compiled-tag
+        # caches must be invalidated -- but only once the row is visible to
+        # other transactions, i.e. after COMMIT. (Invalidating now would let
+        # a concurrent request re-cache the old state under the new version;
+        # on rollback, nothing changed and no invalidation happens.)
+        event.listen(
+            db.sync_session,
+            "after_commit",
+            lambda session: mark_compiled_tags_changed(),
+            once=True,
+        )
     tag_rows = (
         (
             await db.execute(
@@ -308,6 +345,9 @@ class Context:
         self._acquired_storage = []
 
         self.key_maker = key_maker
+        # TTL cache of resolved access-tag ids, shared by the adapters of this
+        # catalog: {frozenset(names): _CachedTagIds}.
+        self.access_tag_ids_cache = {}
         adapters_by_mimetype = adapters_by_mimetype or {}
         # If adapters_by_mimetype comes from a configuration file,
         # objects are given as importable strings, like "package.module:Reader".
@@ -610,13 +650,42 @@ class CatalogNodeAdapter:
     async def resolve_access_tag_ids(self, names):
         """Resolve access-tag 'names' to their 'access_tags.id' values.
 
-        Returns a list of integer ids for the names that exist (order is not
-        significant; missing names are simply omitted). Used to build ACL
-        filters that reference 'tag_id' literals instead of joining
-        'access_tags' by name -- see 'access_tags_filter'.
+        Returns a sorted tuple of integer ids for the names that exist (missing
+        names are simply omitted). Used to build ACL filters that reference 'tag_id'
+        literals instead of joining 'access_tags' by name.
+
+        This is a tuple because the result is cached and shared between requests,
+        so it must be immutable. The result is cached on the context (i.e. per
+        catalog database) for ACCESS_TAG_IDS_CACHE_TTL seconds: the ACL filter of
+        a principal with many tags is resolved on every request (and several times
+        per request, once per path segment), while the name -> id mapping only
+        changes when the compiled tags change (a compiler run, or first-time
+        registration of a principal tag row).
         """
+        if not names:
+            return ()
+        key = frozenset(names)
+        cache = self.context.access_tag_ids_cache
+        now = time.monotonic()
+        version = compiled_tags_version()
+        hit = cache.get(key)
+        if hit is not None and hit.expires > now and hit.version == version:
+            return hit.ids
         async with self.context.session() as db:
-            return await resolve_access_tag_ids(db, names)
+            ids = tuple(sorted(await resolve_access_tag_ids(db, names)))
+        if len(cache) >= ACCESS_TAG_IDS_CACHE_MAX_SIZE:
+            # Drop expired entries; if nothing expired, drop the oldest.
+            expired = [k for k, entry in cache.items() if entry.expires <= now]
+            for k in expired:
+                del cache[k]
+            while len(cache) >= ACCESS_TAG_IDS_CACHE_MAX_SIZE:
+                del cache[min(cache, key=lambda k: cache[k].expires)]
+        cache[key] = _CachedTagIds(
+            expires=now + ACCESS_TAG_IDS_CACHE_TTL,
+            version=version,
+            ids=ids,
+        )
+        return ids
 
     async def exact_len(self):
         "Get the exact number of child (or, in deep mode, descendant) nodes."
