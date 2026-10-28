@@ -22,7 +22,7 @@ import os
 from collections.abc import Generator
 from urllib.parse import urlparse
 
-import httpx
+import httpx2 as httpx
 import numpy as np
 import pyarrow
 import pytest
@@ -352,7 +352,7 @@ def test_webhook_delivery_emits_httpx_span(monkeypatch, span_exporter, tmp_path)
     respx = pytest.importorskip("respx")
     from unittest.mock import patch
 
-    from httpx import Response
+    from httpx2 import Response
 
     _enable_tracing(monkeypatch)
     tree = in_memory(writable_storage=[f"file://localhost{tmp_path / 'data'}"])

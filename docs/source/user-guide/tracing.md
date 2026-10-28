@@ -155,7 +155,9 @@ with record_history() as history:
     ...  # the slow operation, e.g. c["some/array"].read()
 
 for response in history.responses:
-    print(response.elapsed, response.request.url, response.headers.get("x-tiled-trace-id"))
+    print(
+        response.elapsed, response.request.url, response.headers.get("x-tiled-trace-id")
+    )
 ```
 
 Alternatively, `tiled.client.show_logs()` logs every request and response,
