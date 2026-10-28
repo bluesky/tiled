@@ -4,7 +4,7 @@ import os
 import sys
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, ClassVar, List, Optional, Tuple, Union
+from typing import Any, ClassVar, List, Optional, Self, Tuple, Union
 
 import numpy
 
@@ -239,7 +239,7 @@ class ArrayStructure(Structure):
     resizable: Union[bool, Tuple[bool, ...]] = False
 
     @classmethod
-    def from_json(cls, structure: Mapping[str, Any]) -> "ArrayStructure":
+    def from_json(cls, structure: Mapping[str, Any]) -> Self:
         if "fields" in structure["data_type"]:
             data_type = StructDtype.from_json(structure["data_type"])
         else:

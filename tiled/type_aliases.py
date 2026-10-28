@@ -1,12 +1,4 @@
-import sys
-
-from pydantic import AfterValidator
-
-if sys.version_info < (3, 10):
-    EllipsisType = type(Ellipsis)
-else:
-    from types import EllipsisType
-
+from types import EllipsisType
 from typing import (
     Annotated,
     Any,
@@ -21,6 +13,8 @@ from typing import (
     TypedDict,
     Union,
 )
+
+from pydantic import AfterValidator
 
 from .utils import import_object
 

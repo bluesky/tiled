@@ -40,7 +40,7 @@ watchfiles = "*"
 websockets = "*"
 
 [feature.compression.dependencies]
-# python-blosc2 = "*"  # not available on Python < 3.11
+python-blosc2 = "*"
 lz4 = "*"
 zstandard = "*"
 
@@ -131,15 +131,15 @@ xarray = "*"
 
 [feature.py311.dependencies]
 python = "3.11.*"
-python-blosc2 = "*"
 
 [feature.py312.dependencies]
 python = "3.12.*"
-python-blosc2 = "*"
 
 [feature.py313.dependencies]
 python = "3.13.*"
-python-blosc2 = "*"
+
+[feature.py314.dependencies]
+python = "3.14.*"
 
 [environments]
 default = { solve-group = "default" }
@@ -151,3 +151,4 @@ server = { features = ["array", "awkward", "compression", "dataframe", "formats"
 py311 = { features = ["array", "awkward", "client", "compression", "dataframe", "formats", "dev", "server", "sparse", "xarray", "py311"] }
 py312 = { features = ["array", "awkward", "client", "compression", "dataframe", "formats", "dev", "server", "sparse", "xarray", "py312"] }
 py313 = { features = ["array", "awkward", "client", "compression", "dataframe", "formats", "dev", "server", "sparse", "xarray", "py313"] }
+py314 = { features = ["array", "awkward", "client", "compression", "dataframe", "formats", "dev", "server", "sparse", "xarray", "py314"] }

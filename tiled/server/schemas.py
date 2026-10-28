@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from http import HTTPStatus
 from typing import (
     TYPE_CHECKING,
+    Annotated,
     Any,
     Dict,
     Generic,
@@ -27,7 +28,7 @@ from pydantic import (
     field_validator,
 )
 from pydantic_core import PydanticCustomError
-from typing_extensions import Annotated, TypedDict
+from typing_extensions import TypedDict
 
 from tiled.structures.ragged import RaggedStructure
 

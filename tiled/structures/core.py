@@ -8,10 +8,9 @@ import enum
 import importlib
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass
-from typing import Any, Dict, Optional
+from typing import Annotated, Any, Dict, Optional
 
 from pydantic import StringConstraints
-from typing_extensions import Annotated
 
 from ..utils import OneShotCachedMap, filter_known_kwargs
 
