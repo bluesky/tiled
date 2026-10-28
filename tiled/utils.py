@@ -92,7 +92,7 @@ class ListView(collections.abc.Sequence[V], Generic[V]):
         list_ = self._internal_list
         # pformat only works on literal list, so convert if we have
         # some other list-like
-        if not type(list_) is list:
+        if type(list_) is not list:
             list_ = list(self._internal_list)
         p.text(pformat(list_))
 
@@ -138,7 +138,7 @@ class DictView(collections.abc.Mapping[K, V], Generic[K, V]):
         d = self._internal_dict
         # pformat only works on literal dict, so convert if we have
         # some other dict-like
-        if not type(d) is dict:
+        if type(d) is not dict:
             d = dict(self._internal_dict)
         p.text(pformat(d))
 
@@ -768,7 +768,7 @@ def is_coroutine_callable(call: Callable[..., Any]) -> bool:
         return inspect.iscoroutinefunction(call)
     if inspect.isclass(call):
         return False
-    dunder_call = getattr(call, "__call__", None)  # noqa: B004
+    dunder_call = getattr(call, "__call__", None)
     return inspect.iscoroutinefunction(dunder_call)
 
 

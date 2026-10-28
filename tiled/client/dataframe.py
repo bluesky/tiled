@@ -246,7 +246,7 @@ class _DaskDataFrameClient(BaseClient):
         # The order of arguments has changed; check that the user input is correct
         if not isinstance(partition, int):
             warnings.warn(
-                "The order of arguments has changed: please use write_partition(partition, dataframe).",  # noqa: E501
+                "The order of arguments has changed: please use write_partition(partition, dataframe).",
                 DeprecationWarning,
                 stacklevel=2,
             )
@@ -268,7 +268,7 @@ class _DaskDataFrameClient(BaseClient):
         # The order of arguments has changed; check that the user input is correct
         if not isinstance(partition, int):
             warnings.warn(
-                "The order of arguments has changed: please use append_partition(partition, dataframe).",  # noqa: E501
+                "The order of arguments has changed: please use append_partition(partition, dataframe).",
                 DeprecationWarning,
                 stacklevel=2,
             )

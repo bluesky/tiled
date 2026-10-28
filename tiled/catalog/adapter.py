@@ -194,30 +194,36 @@ DEFAULT_CREATION_MIMETYPE = {
 # TODO: make type[Adapter] after #1047
 STORAGE_ADAPTERS_BY_MIMETYPE = OneShotCachedMap[str, type](
     {
-        ZARR_MIMETYPE: lambda: importlib.import_module(
-            "...adapters.zarr", __name__
-        ).ZarrArrayAdapter,
-        AWKWARD_BUFFERS_MIMETYPE: lambda: importlib.import_module(
-            "...adapters.awkward", __name__
-        ).AwkwardBuffersAdapter,
-        PARQUET_MIMETYPE: lambda: importlib.import_module(
-            "...adapters.parquet", __name__
-        ).ParquetDatasetAdapter,
-        "text/csv": lambda: importlib.import_module(
-            "...adapters.csv", __name__
-        ).CSVAdapter,
-        SPARSE_BLOCKS_PARQUET_MIMETYPE: lambda: importlib.import_module(
-            "...adapters.sparse_blocks_parquet", __name__
-        ).SparseBlocksParquetAdapter,
-        APACHE_ARROW_FILE_MIME_TYPE: lambda: importlib.import_module(
-            "...adapters.arrow", __name__
-        ).ArrowAdapter,
-        TILED_SQL_TABLE_MIMETYPE: lambda: importlib.import_module(
-            "...adapters.sql", __name__
-        ).SQLAdapter,
-        RAGGED_SQL_MIMETYPE: lambda: importlib.import_module(
-            "...adapters.ragged", __name__
-        ).RaggedSQLAdapter,
+        ZARR_MIMETYPE: lambda: (
+            importlib.import_module("...adapters.zarr", __name__).ZarrArrayAdapter
+        ),
+        AWKWARD_BUFFERS_MIMETYPE: lambda: (
+            importlib.import_module(
+                "...adapters.awkward", __name__
+            ).AwkwardBuffersAdapter
+        ),
+        PARQUET_MIMETYPE: lambda: (
+            importlib.import_module(
+                "...adapters.parquet", __name__
+            ).ParquetDatasetAdapter
+        ),
+        "text/csv": lambda: (
+            importlib.import_module("...adapters.csv", __name__).CSVAdapter
+        ),
+        SPARSE_BLOCKS_PARQUET_MIMETYPE: lambda: (
+            importlib.import_module(
+                "...adapters.sparse_blocks_parquet", __name__
+            ).SparseBlocksParquetAdapter
+        ),
+        APACHE_ARROW_FILE_MIME_TYPE: lambda: (
+            importlib.import_module("...adapters.arrow", __name__).ArrowAdapter
+        ),
+        TILED_SQL_TABLE_MIMETYPE: lambda: (
+            importlib.import_module("...adapters.sql", __name__).SQLAdapter
+        ),
+        RAGGED_SQL_MIMETYPE: lambda: (
+            importlib.import_module("...adapters.ragged", __name__).RaggedSQLAdapter
+        ),
     }
 )
 
@@ -1883,9 +1889,9 @@ class CatalogNodeAdapter:
                     status_code=HTTP_404_NOT_FOUND,
                     detail=f"No revision {number} for node {self.node.id}",
                 )
-            assert (
-                result.rowcount == 1
-            ), f"Deletion would affect {result.rowcount} rows; rolling back"
+            assert result.rowcount == 1, (
+                f"Deletion would affect {result.rowcount} rows; rolling back"
+            )
             await db.commit()
 
     async def replace_metadata(
@@ -2667,7 +2673,7 @@ def construct_order_by_clauses(sorting):
             # "metadata.color" to avoid the possibility of a name collision
             # with the standard sort keys.
             if key.startswith("metadata."):
-                key = key[len("metadata.") :]  # noqa: E203
+                key = key[len("metadata.") :]
             clause = orm.Node.metadata_
             for segment in key.split("."):
                 clause = clause[segment]
@@ -2938,8 +2944,7 @@ def key_present(query, tree):
     else:
         keys = query.key.split(".")
         condition = (
-            orm.Node.metadata_.op("#>")(sql_cast(keys, ARRAY(TEXT)))
-            != None  # noqa: E711
+            orm.Node.metadata_.op("#>")(sql_cast(keys, ARRAY(TEXT))) != None  # noqa: E711
         )
     condition = condition if getattr(query, "exists", True) else not_(condition)
     return tree.new_variation(conditions=tree.conditions + [condition])

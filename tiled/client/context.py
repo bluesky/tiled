@@ -383,7 +383,7 @@ class Context:
                     )
             if self.api_key is not None:
                 auth_info.append(
-                    f"with API key '{self.api_key[:min(len(self.api_key)//2, 8)]}...'"
+                    f"with API key '{self.api_key[: min(len(self.api_key) // 2, 8)]}...'"
                 )
         auth_repr = " ".join(auth_info)
         return f"<{type(self).__name__} {auth_repr}>"
@@ -1456,13 +1456,13 @@ def device_code_grant(
                 verification_uri = verification["authorization_uri"]
     print(
         f"""
-You have {int(verification['expires_in']) // 60} minutes to visit this URL
+You have {int(verification["expires_in"]) // 60} minutes to visit this URL
 
 {verification_uri}
 
 and enter the code:
 
-{verification['user_code']}
+{verification["user_code"]}
 
 """,
         end="",

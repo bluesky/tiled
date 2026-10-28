@@ -233,7 +233,7 @@ async def test_metadata_index_is_used(example_data_adapter):
         assert len(results[0]) == 1
         assert expected_index in str(e)
     with record_explanations() as e:
-        results = await a.search(Key("bool") == False).keys_page(limit=5)  # noqa: #712
+        results = await a.search(Key("bool") == False).keys_page(limit=5)  # noqa: E712
         assert len(results[0]) == 1
         assert expected_index in str(e)
     with record_explanations() as e:
@@ -247,7 +247,7 @@ async def test_metadata_index_is_used(example_data_adapter):
         assert len(results[0]) == 1
         assert expected_index in str(e)
     with record_explanations() as e:
-        results = await a.search(Key("nested.bool") == False).keys_page(  # noqa: #712
+        results = await a.search(Key("nested.bool") == False).keys_page(  # noqa: E712
             limit=5
         )
         assert len(results[0]) == 1
@@ -1133,9 +1133,9 @@ def test_cursor_pagination_completeness(
     if direction == 1:
         assert collected == keys_inserted, "ASC traversal must match insertion order"
     else:
-        assert collected == list(
-            reversed(keys_inserted)
-        ), "DESC traversal must match reverse insertion order"
+        assert collected == list(reversed(keys_inserted)), (
+            "DESC traversal must match reverse insertion order"
+        )
 
 
 @pytest.mark.asyncio
