@@ -33,7 +33,9 @@ place of blocking methods, returning in-memory structures (numpy arrays,
 pandas DataFrames, and so on; there is no dask integration):
 
 ```python
-node = await client.lookup("experiment", "scan_042")  # instead of client["experiment"]["scan_042"]
+node = await client.lookup(
+    "experiment", "scan_042"
+)  # instead of client["experiment"]["scan_042"]
 array = await node.read()
 table = await (await client.lookup("tables", "results")).read(["a", "b"])
 ```
