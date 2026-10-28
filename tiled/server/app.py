@@ -33,11 +33,13 @@ from starlette.status import (
     HTTP_403_FORBIDDEN,
     HTTP_404_NOT_FOUND,
     HTTP_409_CONFLICT,
+    HTTP_410_GONE,
     HTTP_422_UNPROCESSABLE_CONTENT,
     HTTP_500_INTERNAL_SERVER_ERROR,
 )
 
 from ..access_control.protocols import AccessPolicy
+from ..access_control.scopes import ScopeName
 from ..authenticators import ProxiedOIDCAuthenticator
 from ..catalog.adapter import WouldDeleteData
 from ..config import (
@@ -58,7 +60,13 @@ from ..media_type_registration import (
 )
 from ..query_registration import QueryRegistry, default_query_registry
 from ..type_aliases import AppTask, TaskMap
-from ..utils import SHARE_TILED_PATH, Conflicts, UnsafeIdentifier, UnsupportedQueryType
+from ..utils import (
+    SHARE_TILED_PATH,
+    BrokenLink,
+    Conflicts,
+    UnsafeIdentifier,
+    UnsupportedQueryType,
+)
 from ..validation_registration import ValidationRegistry, default_validation_registry
 from ._backcompat import raw_python_tiled_client_version
 from .authentication import move_api_key
@@ -116,6 +124,34 @@ def custom_openapi(app):
     ]["refreshUrl"] = "token/refresh"
     app.openapi_schema = openapi_schema
     return app.openapi_schema
+
+
+def _find_catalog_context(tree):
+    """
+    Find a catalog database context within the served tree.
+
+    The access tags parser needs the catalog's database settings (the URI) to
+    read tag definitions. The served tree may be a single catalog adapter, or a
+    MapAdapter nesting several catalog mounts (e.g. /foo, /bar mounted from the
+    same catalog database). Walk only the already-materialized, dict-backed
+    mount structure and return the first catalog context found (any one
+    suffices: access tags are a single shared namespace written to one catalog
+    database). In particular, do not use MapAdapter.values(): a MapAdapter may
+    wrap a lazy mapping whose values are data adapters, and inspecting them
+    would construct catalog data during application startup.
+
+    Returns the context, or None if the tree contains no catalog adapter.
+    """
+    context = getattr(tree, "context", None)
+    if context is not None:
+        return context
+    mapping = getattr(tree, "_mapping", None)
+    if isinstance(mapping, dict):
+        for child in mapping.values():
+            found = _find_catalog_context(child)
+            if found is not None:
+                return found
+    return None
 
 
 def build_app(
@@ -373,6 +409,13 @@ def build_app(
     ):
         return JSONResponse(
             status_code=HTTP_409_CONFLICT,
+            content={"detail": exc.args[0]},
+        )
+
+    @app.exception_handler(BrokenLink)
+    async def broken_link_exception_handler(request: Request, exc: BrokenLink):
+        return JSONResponse(
+            status_code=HTTP_410_GONE,
             content={"detail": exc.args[0]},
         )
 
@@ -647,6 +690,7 @@ def build_app(
             from ..authn_database.core import (
                 ALL_REVISIONS,
                 REQUIRED_REVISION,
+                initialize_authn_database,
                 initialize_database,
                 make_admin_by_identity,
                 purge_expired,
@@ -668,24 +712,13 @@ def build_app(
                     await check_database(engine, REQUIRED_REVISION, ALL_REVISIONS)
                 except UninitializedDatabase:
                     if settings.database_init_if_not_exists:
-                        # The alembic stamping can only be does synchronously.
-                        # The cleanest option available is to start a subprocess
-                        # because SQLite is allergic to threads.
-                        import subprocess
-
-                        # TODO Check if catalog exists.
-                        subprocess.run(
-                            [
-                                sys.executable,
-                                "-m",
-                                "tiled",
-                                "admin",
-                                "initialize-database",
-                                str(engine.url),
-                            ],
-                            capture_output=True,
-                            check=True,
+                        # This is a blocking call (alembic drives its own event
+                        # loop), so keep it off the event loop thread.
+                        await asyncio.to_thread(
+                            initialize_authn_database,
+                            engine.url.render_as_string(hide_password=False),
                         )
+                        logger.info(f"Initialized new database at {redacted_url}.")
                     else:
                         print(
                             dedent(
@@ -736,28 +769,113 @@ def build_app(
             if app.state.access_policy is not None and hasattr(
                 app.state.access_policy, "access_tags_parser"
             ):
-                await app.state.access_policy.access_tags_parser.connect()
+                # Access tag definitions live in the catalog database, so the
+                # parser connects with the catalog's own database settings.
+                access_tags_catalog_context = _find_catalog_context(tree)
+                if access_tags_catalog_context is None:
+                    raise ValueError(
+                        "This access policy reads access tags from the catalog "
+                        "database, so it requires a catalog-backed tree."
+                    )
+                await app.state.access_policy.access_tags_parser.connect(
+                    access_tags_catalog_context.database_settings
+                )
+                # The scope set the catalog database enforces should match the
+                # ScopeName enum this server is running. A disagreement here
+                # points at a schema that was changed outside of a migration.
+                enforced_scopes = await app.state.access_policy.access_tags_parser.get_enforced_scopes()
+                # An empty set means the constraint is missing or could not be
+                # read. The catalog then stores any value as a scope, so this
+                # is reported on its own rather than compared: every scope
+                # would otherwise look like a disagreement.
+                if enforced_scopes:
+                    unknown_scopes = enforced_scopes - {
+                        scope.value for scope in ScopeName
+                    }
+                    if unknown_scopes:
+                        logger.warning(
+                            f"The catalog database accepts scopes that this "
+                            f"version of Tiled does not define: "
+                            f"{sorted(unknown_scopes)}. If any access tag "
+                            f"grants one of these, Tiled cannot read that tag "
+                            f"at all: every permission the tag grants is lost, "
+                            f"and requests for data carrying it fail with an "
+                            f"error rather than being denied. The catalog's "
+                            f"scope constraint appears to have been altered "
+                            f"outside of a migration. The catalog schema and "
+                            f"the running version of Tiled need to be "
+                            f"reconciled."
+                        )
+                    # The opposite direction. Only scopes that the policy is
+                    # actually configured with are reported.
+                    configured_scopes = {
+                        getattr(scope, "value", scope)
+                        for scope in getattr(app.state.access_policy, "scopes", ())
+                    }
+                    unstorable_scopes = configured_scopes - enforced_scopes
+                    if unstorable_scopes:
+                        logger.warning(
+                            f"The catalog database cannot store scopes that "
+                            f"this access policy is configured to grant: "
+                            f"{sorted(unstorable_scopes)}. As a result, no "
+                            f"access tag can grant them, so every operation "
+                            f"that requires one is refused, and tag "
+                            f"definitions may fail to compile. The catalog's "
+                            f"scope constraint appears to have been altered "
+                            f"outside of a migration. The catalog schema and "
+                            f"the running version of Tiled need to be "
+                            f"reconciled."
+                        )
+                else:
+                    logger.error(
+                        "Tiled could not read the set of scopes that the "
+                        "catalog database enforces. The catalog will store "
+                        "any value as a scope, and an access tag that grants "
+                        "an unrecognized scope cannot be read at all: every "
+                        "permission that tag grants is lost, and requests for "
+                        "data carrying it fail with an error rather than "
+                        "being denied. The catalog's scope constraint appears "
+                        "to have been dropped outside of a migration. The "
+                        "catalog schema and the running version of Tiled need "
+                        "to be reconciled."
+                    )
 
             async def purge_expired_sessions_and_api_keys():
                 PURGE_INTERVAL = 600  # seconds
                 while True:
-                    async with AsyncSession(
-                        engine, autoflush=False, expire_on_commit=False
-                    ) as db_session:
-                        num_expired_sessions = await purge_expired(
-                            db_session, orm.Session
-                        )
-                        if num_expired_sessions:
-                            logger.info(
-                                f"Purged {num_expired_sessions} expired Sessions from the database."
+                    try:
+                        async with AsyncSession(
+                            engine, autoflush=False, expire_on_commit=False
+                        ) as db_session:
+                            # Purge pending sessions first: they reference sessions,
+                            # so clearing expired ones first lets the sessions they point to be deleted in turn.
+                            num_expired_pending_sessions = await purge_expired(
+                                db_session, orm.PendingSession
                             )
-                        num_expired_api_keys = await purge_expired(
-                            db_session, orm.APIKey
-                        )
-                        if num_expired_api_keys:
-                            logger.info(
-                                f"Purged {num_expired_api_keys} expired API keys from the database."
+                            if num_expired_pending_sessions:
+                                logger.info(
+                                    f"Purged {num_expired_pending_sessions} "
+                                    "expired PendingSessions from the database."
+                                )
+                            num_expired_sessions = await purge_expired(
+                                db_session, orm.Session
                             )
+                            if num_expired_sessions:
+                                logger.info(
+                                    f"Purged {num_expired_sessions} expired Sessions from the database."
+                                )
+                            num_expired_api_keys = await purge_expired(
+                                db_session, orm.APIKey
+                            )
+                            if num_expired_api_keys:
+                                logger.info(
+                                    f"Purged {num_expired_api_keys} expired API keys from the database."
+                                )
+                    except Exception:
+                        logger.warning(
+                            "Failed to purge expired Sessions and API keys from the database.",
+                            exc_info=True,
+                        )
                     await asyncio.sleep(PURGE_INTERVAL)
 
             app.state.tasks.append(
@@ -769,13 +887,21 @@ def build_app(
         for task in tasks["shutdown"]:
             await task()
 
+        # Stop background tasks, and wait for them to finish, before closing the
+        # connection pool they may be using. If the pool were closed first, a task
+        # cancelled mid-query could fail while cleaning up its session, and that
+        # failure (raised in place of the CancelledError) could be caught by the
+        # task's error handling, leaving it running and blocking shutdown.
+        running_tasks = getattr(app.state, "tasks", [])
+        for task in running_tasks:
+            task.cancel()
+        await asyncio.gather(*running_tasks, return_exceptions=True)
+
         settings: Settings = app.dependency_overrides[get_settings]()
         if settings.database_settings.uri is not None:
             from .connection_pool import close_database_connection_pool
 
             await close_database_connection_pool(settings.database_settings)
-        for task in getattr(app.state, "tasks", []):
-            task.cancel()
 
     app.add_middleware(
         CompressionMiddleware,

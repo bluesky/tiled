@@ -20,8 +20,8 @@ jobs:
     name: Static Code Checks
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
-    - uses: pre-commit/action@v3.0.0
+    - uses: actions/checkout@v7
+    - uses: pre-commit/action@v3.0.1
 
   linux_checks:
 
@@ -30,20 +30,20 @@ jobs:
     strategy:
       matrix:
         python-version:
-          - "3.10"
           - "3.11"
           - "3.12"
           - "3.13"
+          - "3.14"
       fail-fast: false
     steps:
 
     - name: Checkout
-      uses: actions/checkout@v3
+      uses: actions/checkout@v7
       with:
         fetch-depth: 0  # get full history for `git describe` to produce version
 
     - name: Install uv and set the python version
-      uses: astral-sh/setup-uv@v6
+      uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e  # v10.3.2
       with:
         python-version: ${{ matrix.python-version }}
 
@@ -68,13 +68,6 @@ jobs:
       shell: bash -l {0}
       run: source continuous_integration/scripts/start_redis.sh
 
-    - name: Start Minio service in container.
-      #TODO: This product is leaving open-source container distribution
-      # Find a new image or product to use
-      # https://github.com/minio/minio/issues/21647#issuecomment-3418675115
-      shell: bash -l {0}
-      run: source continuous_integration/scripts/start_minio.sh
-
     - name: Ensure example data is migrated to current catalog database schema.
       # The example data is expected to be kept up to date to the latest Tiled
       # release, but this CI run may include some unreleased schema changes,
@@ -89,41 +82,73 @@ jobs:
       shell: bash -l {0}
       run: |
         set -vxeuo pipefail
-        uv run pytest -v --cov=tiled --cov-report=term-missing --cov-report=xml:cov.xml
+        uv run pytest -v --durations=25 --cov=tiled --cov-report=term-missing --cov-report=xml:cov.xml
       env:
         # Provide test suite with PostgreSQL and Redis databases to use.
         TILED_TEST_POSTGRESQL_URI: postgresql://postgres:secret@localhost:5432
         TILED_TEST_REDIS: redis://localhost:6379
-        TILED_TEST_BUCKET: http://minioadmin:minioadmin@localhost:9000/buck
+        # Object-storage tests use an in-process `moto` S3 server started by the
+        # test suite (see the `s3_bucket_uri` fixture), so no external service
+        # is needed. Set TILED_TEST_BUCKET to point the tests at a real
+        # MinIO/S3 instead.
         # TODO Reinstate after finding a new image to use
         # https://github.com/bluesky/tiled/issues/1109
         # # Opt in to LDAPAuthenticator tests.
         # TILED_TEST_LDAP: 1
 
     - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v4
+      uses: codecov/codecov-action@v7
       with:
         name: ${{ inputs.python-version }}/${{ inputs.runs-on }}
         files: cov.xml
       env:
         CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
+  web_frontend_checks:
+    name: WebUI Type Check, Tests, and Build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web-frontend
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v7
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v7
+      with:
+        node-version: "20"
+        cache: npm
+        cache-dependency-path: web-frontend/package-lock.json
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Type check
+      run: npm run type-check
+
+    - name: Test
+      run: npm run test:run
+
+    - name: Build
+      run: npm run build
+
   windows_checks:
     name: Test on Windows
     runs-on: windows-latest
     strategy:
       matrix:
-        python-version: ["3.12"]
+        python-version: ["3.14"]
       fail-fast: false
     steps:
 
     - name: Checkout
-      uses: actions/checkout@v3
+      uses: actions/checkout@v7
       with:
         fetch-depth: 0  # get full history for `git describe` to produce version
 
     - name: Install uv and set the python version
-      uses: astral-sh/setup-uv@v6
+      uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e  # v10.3.2
       with:
         python-version: ${{ matrix.python-version }}
 
@@ -133,14 +158,14 @@ jobs:
         TILED_BUILD_SKIP_UI: 1
 
     - name: Test with pytest
-      run: uv run pytest -v
+      run: uv run pytest -v --durations=25
 
   container_canary:
     name: Build and validate container
     runs-on: ubuntu-latest
     steps:
     - name: Checkout
-      uses: actions/checkout@v3
+      uses: actions/checkout@v7
       with:
         fetch-depth: 0  # get full history for `git describe` to produce version
 
@@ -150,7 +175,7 @@ jobs:
         chmod +x /usr/local/bin/canary
 
     - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435  # v3
+      uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069  # v4.4.1
 
     - name: Get git version
       id: version
@@ -162,7 +187,7 @@ jobs:
         echo "TILED_VERSION=$TILED_VERSION" >> $GITHUB_OUTPUT
 
     - name: Build Docker image on multiple arch
-      uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83  # v6
+      uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc  # v7.4.0
       with:
         context: .
         file: Containerfile
@@ -173,7 +198,7 @@ jobs:
           TILED_VERSION=${{ steps.version.outputs.TILED_VERSION }}
 
     - name: Tag and load Docker image on single arch for testing (will use cache)
-      uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83  # v6
+      uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc  # v7.4.0
       with:
         context: .
         file: Containerfile

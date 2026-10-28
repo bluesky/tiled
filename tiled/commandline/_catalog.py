@@ -1,4 +1,3 @@
-import asyncio
 from pathlib import Path
 from typing import Optional
 
@@ -39,39 +38,19 @@ def init(
     # Using a client/serve database engine (PostgreSQL)
     tiled init postgresql://username:password@localhost/database_name:5432
     """
-    from sqlalchemy.ext.asyncio import create_async_engine
+    from sqlalchemy.engine import make_url
 
-    from ..alembic_utils import UninitializedDatabase, check_database, stamp_head
-    from ..catalog.alembic_constants import ALEMBIC_DIR, ALEMBIC_INI_TEMPLATE_PATH
-    from ..catalog.core import ALL_REVISIONS, REQUIRED_REVISION, initialize_database
+    from ..catalog.core import initialize_catalog_database
     from ..utils import ensure_specified_sql_driver
 
     database = ensure_specified_sql_driver(database)
-
-    async def do_setup():
-        engine = create_async_engine(database)
-        redacted_url = engine.url._replace(password="[redacted]")
-        try:
-            await check_database(engine, REQUIRED_REVISION, ALL_REVISIONS)
-        except UninitializedDatabase:
-            # Create tables and stamp (alembic) revision.
-            typer.echo(
-                f"Database {redacted_url} is new. Creating tables.",
-                err=True,
-            )
-            await initialize_database(engine)
-            typer.echo("Database initialized.", err=True)
-        else:
-            if not if_not_exists:
-                typer.echo(
-                    f"Database at {redacted_url} is already initialized.", err=True
-                )
-                raise typer.Abort()
-        finally:
-            await engine.dispose()
-
-    asyncio.run(do_setup())
-    stamp_head(ALEMBIC_INI_TEMPLATE_PATH, ALEMBIC_DIR, database)
+    redacted_url = make_url(database)._replace(password="[redacted]")
+    if initialize_catalog_database(database):
+        typer.echo(f"Database {redacted_url} is new. Created tables.", err=True)
+        typer.echo("Database initialized.", err=True)
+    elif not if_not_exists:
+        typer.echo(f"Database at {redacted_url} is already initialized.", err=True)
+        raise typer.Abort()
 
 
 @catalog_app.command("upgrade-database")
@@ -136,6 +115,7 @@ def downgrade_database(
         engine = create_async_engine(database_uri)
         redacted_url = engine.url._replace(password="[redacted]")
         current_revision = await get_current_revision(engine, ALL_REVISIONS)
+        await engine.dispose()
         if current_revision is None:
             # Create tables and stamp (alembic) revision.
             typer.echo(

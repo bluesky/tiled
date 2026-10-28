@@ -38,6 +38,7 @@ subtrees:
             - file: user-guide/configuration
             - file: user-guide/read-custom-formats
             - file: user-guide/custom-export-formats
+            - file: user-guide/validate-metadata
             - file: user-guide/api-keys
             - file: user-guide/custom-clients
             - file: user-guide/metrics
@@ -58,7 +59,6 @@ subtrees:
             - file: explanations/metadata
             - file: explanations/security
             - file: explanations/compression
-            - file: explanations/specialized-formats
             - file: explanations/caching
             - file: explanations/access-control
             - file: explanations/catalog

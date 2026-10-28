@@ -24,8 +24,8 @@ from typing import (
 from tiled.utils import UnsafeIdentifier
 
 if TYPE_CHECKING:
-    from .ragged import RaggedAdapter
     from .awkward import AwkwardAdapter
+    from .ragged import RaggedAdapter
 
 import adbc_driver_manager
 import numpy
@@ -42,6 +42,8 @@ from ..storage import (
     SQLStorage,
     Storage,
     get_storage,
+    strip_connection_parameters,
+    strip_storage_uri_query_on_write,
 )
 from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import Asset, DataSource
@@ -319,10 +321,18 @@ class SQLAdapter(Adapter[TableStructure]):
             data_source.parameters["dataset_id"] = dataset_id
             conn.commit()
 
+        # Store URI *without* credentials. Behind a feature flag, also strip
+        # connection-tuning query parameters. (Reads match on database name
+        # regardless, via get_storage, so Assets written either way remain
+        # resolvable.)
+        data_uri = (
+            strip_connection_parameters(storage.uri)
+            if strip_storage_uri_query_on_write()
+            else storage.uri
+        )
         data_source.assets.append(
             Asset(
-                # Store URI *without* credentials.
-                data_uri=storage.uri,
+                data_uri=data_uri,
                 is_directory=False,
                 parameter="data_uri",
                 num=None,
@@ -541,10 +551,16 @@ class SQLAdapter(Adapter[TableStructure]):
         else:
             order_by_partition = [{"column": "_partition_id", "direction": "asc"}]
 
-        if args := self.order_by_args + order_by_partition:
-            query += " ORDER BY " + ", ".join(
-                [f'"{c["column"].lower()}" {c["direction"].upper()}' for c in args]
-            )
+        order_by = [
+            f'"{c["column"].lower()}" {c["direction"].upper()}'
+            for c in self.order_by_args + order_by_partition
+        ]
+        # SQL leaves the order of rows that tie on the keys above undefined.
+        # rowid follows insertion order in DuckDB and SQLite.
+        if self.storage.dialect in ("duckdb", "sqlite"):
+            order_by.append("rowid")
+        if order_by:
+            query += " ORDER BY " + ", ".join(order_by)
 
         with closing(self.storage.connect()) as conn:
             with conn.cursor() as cursor:
@@ -673,7 +689,7 @@ def arrow_field_to_pg_type(field: Union[pyarrow.Field, pyarrow.DataType]) -> str
     """
 
     def _resolve_type(
-        arrow_type: Union[pyarrow.Field, pyarrow.DataType]
+        arrow_type: Union[pyarrow.Field, pyarrow.DataType],
     ) -> Union[pyarrow.Field, pyarrow.DataType, str]:
         """Internal helper to resolve type, handling nested cases."""
         # Handle list types
@@ -811,7 +827,7 @@ def arrow_field_to_duckdb_type(field: Union[pyarrow.Field, pyarrow.DataType]) ->
     """
 
     def _resolve_type(
-        arrow_type: Union[pyarrow.Field, pyarrow.DataType]
+        arrow_type: Union[pyarrow.Field, pyarrow.DataType],
     ) -> Union[pyarrow.Field, pyarrow.DataType, str]:
         """Internal helper to resolve type, handling nested cases."""
         # Handle decimal types with custom precision/scale
@@ -1032,15 +1048,15 @@ def is_safe_identifier(
         )
 
     if not allow_reserved_words and identifier.lower() in RESERVED_WORDS:
-        raise ValueError(
+        raise UnsafeIdentifier(
             f'Reserved SQL keywords are not allowed in identifiers, "{identifier}"'
         )
 
     if pattern.match(identifier) is None:
-        raise ValueError(f'Malformed SQL identifier "{identifier}"')
+        raise UnsafeIdentifier(f'Malformed SQL identifier "{identifier}"')
 
     if match := FORBIDDEN_CHARACTERS.search(identifier):
-        raise ValueError(
+        raise UnsafeIdentifier(
             f'Invalid SQL identifier "{identifier}" '
             f"contains forbidden character(s): {', '.join(match.groups())}"
         )

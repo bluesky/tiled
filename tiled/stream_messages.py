@@ -65,13 +65,13 @@ class ChildCreated(Update):
     specs: list[Spec]
     metadata: dict
     data_sources: list[DataSource]
-    access_blob: dict
+    access_tags: list[str]
 
 
 class ChildMetadataUpdated(Update):
-    type: Literal[
+    type: Literal["container-child-metadata-updated"] = (
         "container-child-metadata-updated"
-    ] = "container-child-metadata-updated"
+    )
     key: str
     specs: list[Spec]
     metadata: dict

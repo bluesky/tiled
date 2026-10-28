@@ -16,9 +16,7 @@ class CompositeClient(Container):
     def get_contents(self, maxlen=None, include_metadata=False):
         result = {}
         next_page_url = f"{self.item['links']['search']}"
-        while (next_page_url is not None) or (
-            maxlen is not None and len(result) < maxlen
-        ):
+        while (next_page_url is not None) and (maxlen is None or len(result) < maxlen):
             for attempt in retry_context():
                 with attempt:
                     content = handle_error(
@@ -278,7 +276,7 @@ class CompositeClient(Container):
         for var_name, arr in data_vars.items():
             if is_dim0_consistent:
                 dims = (dim0 or "dim0",) + tuple(
-                    f"{var_name}_dim{i+1}" for i in range(len(arr.shape) - 1)
+                    f"{var_name}_dim{i + 1}" for i in range(len(arr.shape) - 1)
                 )
             else:
                 dims = tuple(f"{var_name}_dim{i}" for i in range(len(arr.shape)))
@@ -299,6 +297,14 @@ class CompositeClient(Container):
         if key in self.keys():
             raise ValueError(f"Key '{key}' already exists in the composite node.")
 
+        if structure_family == StructureFamily.table:
+            # Ensure that the table columns do not overlap with existing keys.
+            for data_source in data_sources:
+                if set(data_source.structure.columns).intersection(self.keys()):
+                    raise ValueError(
+                        "Table columns must not overlap with existing keys in the composite node."
+                    )
+
         return super().new(
             structure_family,
             data_sources,
@@ -306,17 +312,6 @@ class CompositeClient(Container):
             metadata=metadata,
             specs=specs,
             access_tags=access_tags,
-        )
-
-    def write_table(
-        self, data, *, key=None, metadata=None, specs=None, access_tags=None
-    ):
-        if set(self.keys()).intersection(data.columns):
-            raise ValueError(
-                "DataFrame columns must not overlap with existing keys in the composite node."
-            )
-        return super().write_table(
-            data, key=key, metadata=metadata, specs=specs, access_tags=access_tags
         )
 
     def create_appendable_table(

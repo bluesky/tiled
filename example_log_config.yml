@@ -29,6 +29,11 @@ handlers:
       - correlation_id
     stream: ext://sys.stdout
 loggers:
+  tiled:
+    level: INFO
+    handlers:
+      - default
+    propagate: no
   uvicorn.error:
     level: INFO
     handlers:

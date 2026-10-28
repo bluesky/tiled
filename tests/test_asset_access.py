@@ -6,6 +6,8 @@ import pytest
 from starlette.status import (
     HTTP_400_BAD_REQUEST,
     HTTP_403_FORBIDDEN,
+    HTTP_404_NOT_FOUND,
+    HTTP_409_CONFLICT,
     HTTP_416_RANGE_NOT_SATISFIABLE,
 )
 
@@ -115,6 +117,61 @@ def test_get_asset_filepaths(client):
     "Smoke test get_asset_filepaths."
     client.write_array([1, 2, 3], key="x")
     get_asset_filepaths(client.include_data_sources()["x"])
+
+
+def test_delete_internal_asset(client):
+    """Deleting an internally-managed asset requires external_only=false and
+    removes both the SQL record and the underlying data."""
+    x = client.write_array([1, 2, 3], key="x")
+    assets = x.include_data_sources().data_sources()[0].assets
+    assert len(assets) == 1
+    asset_id = assets[0].id
+    filepaths = get_asset_filepaths(client.include_data_sources()["x"])
+    assert all(path.exists() for path in filepaths)
+
+    # By default (external_only=true) the server refuses to delete
+    # internally-managed data.
+    with fail_with_status_code(HTTP_409_CONFLICT):
+        client.context.http_client.delete(
+            f"/api/v1/asset/x?id={asset_id}"
+        ).raise_for_status()
+    # Nothing was deleted.
+    assert all(path.exists() for path in filepaths)
+    client["x"].read()
+
+    # Opting in deletes the record and the underlying data.
+    response = client.context.http_client.delete(
+        f"/api/v1/asset/x?id={asset_id}&external_only=false"
+    )
+    response.raise_for_status()
+    assert response.json() == {"asset_deleted": True, "data_deleted": True}
+    assert not any(path.exists() for path in filepaths)
+
+    # The node still exists, but the asset is gone.
+    assets = x.include_data_sources().data_sources()[0].assets
+    assert len(assets) == 0
+
+
+def test_delete_asset_not_found(client):
+    "Deleting a nonexistent asset id returns 404."
+    client.write_array([1, 2, 3], key="x")
+    with fail_with_status_code(HTTP_404_NOT_FOUND):
+        client.context.http_client.delete(
+            "/api/v1/asset/x?id=123456&external_only=false"
+        ).raise_for_status()
+
+
+def test_delete_asset_gated_by_expose_raw_assets(tmpdir):
+    "With expose_raw_assets=False, deleting an asset returns 403."
+    catalog = in_memory(writable_storage=str(tmpdir / "data"))
+    app = build_app(catalog, server_settings={"expose_raw_assets": False})
+    with Context.from_app(app) as context:
+        client = from_context(context, include_data_sources=True)
+        client.write_array([1, 2, 3], key="x")
+        with fail_with_status_code(HTTP_403_FORBIDDEN):
+            client.context.http_client.delete(
+                "/api/v1/asset/x?id=1&external_only=false"
+            ).raise_for_status()
 
 
 def test_do_not_expose_raw_assets(tmpdir):

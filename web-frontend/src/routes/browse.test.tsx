@@ -71,7 +71,7 @@ const MockItem = (
         metadata: {} as { [key: string]: any },
         structure: {} as any,
         sorting: [] as { key: string; direction: 1 | -1 }[],
-        access_blob: null as any,
+        access_tags: [] as string[],
         data_sources: null as any,
         count: undefined as number | undefined,
       },

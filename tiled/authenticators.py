@@ -4,16 +4,16 @@ import functools
 import logging
 import re
 import secrets
+import time
 import uuid
 from collections.abc import Iterable
 from datetime import timedelta
 from typing import Any, Dict, List, Mapping, Optional, cast
 
-import httpx
-from cachetools import TTLCache, cached
+import httpx2 as httpx
+import jwt
 from fastapi import APIRouter, Request
 from fastapi.security import OAuth2, OAuth2AuthorizationCodeBearer
-from jose import JWTError, jwt
 from pydantic import Secret
 from starlette.responses import RedirectResponse
 
@@ -22,10 +22,20 @@ from .server.protocols import (
     InternalAuthenticator,
     UserSessionState,
 )
-from .server.utils import get_root_url
+from .server.utils import get_current_url
 from .utils import modules_available
 
 logger = logging.getLogger(__name__)
+
+# OIDC signing keys (JWKS) caching, in seconds. See
+# https://learn.microsoft.com/en-us/entra/identity-platform/signing-key-rollover
+# Refetch keys this often...
+JWKS_CACHE_TTL = timedelta(hours=1).total_seconds()
+# ...but if refetching fails, keep using the last fetched keys up to this age...
+JWKS_MAX_STALENESS = timedelta(hours=24).total_seconds()
+# ...and do not attempt fetches more often than this (applies to retrying after
+# a failure and to early refetches triggered by a token with an unknown kid).
+JWKS_MIN_REFETCH_INTERVAL = timedelta(minutes=5).total_seconds()
 
 
 class DummyAuthenticator(InternalAuthenticator):
@@ -205,21 +215,102 @@ properties:
     def end_session_endpoint(self) -> str:
         return cast(str, self._config_from_oidc_url.get("end_session_endpoint"))
 
-    @cached(TTLCache(maxsize=1, ttl=timedelta(hours=1).total_seconds()))
-    def keys(self) -> List[str]:
-        return httpx.get(self.jwks_uri).raise_for_status().json().get("keys", [])
+    # JWKS cache state. Class-level defaults so that instances created without
+    # __init__ (e.g. object.__new__ in tests) still behave.
+    _jwks: Optional[List[dict[str, Any]]] = None
+    _jwks_fetched_at: float = float("-inf")  # last successful fetch
+    _jwks_attempted_at: float = float("-inf")  # last fetch attempt
+
+    def _fetch_keys(self) -> List[dict[str, Any]]:
+        self._jwks_attempted_at = time.monotonic()
+        keys = httpx.get(self.jwks_uri).raise_for_status().json().get("keys", [])
+        self._jwks = keys
+        self._jwks_fetched_at = time.monotonic()
+        return keys
+
+    def _try_fetch_keys(self) -> bool:
+        """Fetch keys, but on failure log and keep the last known good keys.
+
+        Returns True if fresh keys were fetched.
+        """
+        try:
+            self._fetch_keys()
+        except (httpx.HTTPError, ValueError):
+            logger.warning(
+                "Failed to fetch JWKS from %s; keeping keys fetched %.0f s ago",
+                self.jwks_uri,
+                time.monotonic() - self._jwks_fetched_at,
+                exc_info=True,
+            )
+            return False
+        return True
+
+    def _fetch_attempted_recently(self) -> bool:
+        return time.monotonic() - self._jwks_attempted_at < JWKS_MIN_REFETCH_INTERVAL
+
+    def keys(self) -> List[dict[str, Any]]:
+        age = time.monotonic() - self._jwks_fetched_at
+        if self._jwks is None or age > JWKS_MAX_STALENESS:
+            # Nothing usable to fall back on, so fetch errors propagate.
+            return self._fetch_keys()
+        if age > JWKS_CACHE_TTL and not self._fetch_attempted_recently():
+            self._try_fetch_keys()
+        return self._jwks
+
+    def _refetch_keys_for_unknown_kid(self) -> bool:
+        """Refetch the JWKS early, because a token named a kid we lack.
+
+        The provider may have started signing with a new key since our last
+        fetch. Rate-limited, so that tokens with bogus kids cannot make us
+        hammer the provider. On failure, keep the last known good keys.
+
+        Returns True if fresh keys were fetched.
+        """
+        if self._fetch_attempted_recently():
+            return False
+        return self._try_fetch_keys()
+
+    def _signing_key(self, kid: Optional[str]) -> jwt.PyJWK:
+        try:
+            return jwt.PyJWKSet.from_dict({"keys": self.keys()})[kid]
+        except KeyError:
+            pass
+        if self._refetch_keys_for_unknown_kid():
+            try:
+                return jwt.PyJWKSet.from_dict({"keys": self.keys()})[kid]
+            except KeyError:
+                pass
+        # Typically a stale token signed with a key the provider has since
+        # retired, so neither its signature nor its expiry can be checked.
+        logger.info("No JWKS key matches kid %r", kid)
+        raise jwt.InvalidKeyError(f"No JWKS key matches kid {kid!r}")
 
     def decode_token(
         self, id_token: str, access_token: Optional[str] = None
     ) -> dict[str, Any]:
-        return jwt.decode(
+        header = jwt.get_unverified_header(id_token)
+        key = self._signing_key(header.get("kid"))
+        claims = jwt.decode(
             id_token,
-            key=self.keys(),
+            key=key,
             algorithms=self.id_token_signing_alg_values_supported,
             audience=self._audience,
             issuer=self.issuer,
-            access_token=access_token,
+            # Clocks on the provider and this server drift apart, so accept
+            # a fresh token whose iat is slightly in the future.
+            options={"verify_iat": False},
         )
+        # PyJWT does not check the OIDC at_hash claim, which binds an
+        # id_token to the access_token issued alongside it.
+        if "at_hash" in claims:
+            if not access_token:
+                raise jwt.InvalidTokenError("No access_token to check at_hash against")
+            algorithm = jwt.get_algorithm_by_name(header["alg"])
+            digest = algorithm.compute_hash_digest(access_token.encode())
+            at_hash = base64.urlsafe_b64encode(digest[: len(digest) // 2])
+            if claims["at_hash"] != at_hash.rstrip(b"=").decode():
+                raise jwt.InvalidTokenError("at_hash claim does not match access_token")
+        return claims
 
     async def authenticate(self, request: Request) -> Optional[UserSessionState]:
         code = request.query_params.get("code")
@@ -231,7 +322,7 @@ properties:
         # A proxy in the middle may make the request into something like
         # 'http://localhost:8000/...' so we fix the first part but keep
         # the original URI path.
-        redirect_uri = f"{get_root_url(request)}{request.url.path}"
+        redirect_uri = get_current_url(request)
         response = await exchange_code(
             self.token_endpoint,
             code,
@@ -248,10 +339,10 @@ properties:
         access_token = response_body["access_token"]
         try:
             verified_body = self.decode_token(id_token, access_token)
-        except JWTError:
+        except jwt.PyJWTError:
             logger.exception(
                 "Authentication error. Unverified token: %r",
-                jwt.get_unverified_claims(id_token),
+                jwt.decode(id_token, options={"verify_signature": False}),
             )
             return None
         return UserSessionState(verified_body[self.user_id_claim], {})
@@ -477,7 +568,7 @@ class EntraAuthenticator(ProxiedOIDCAuthenticator):
                 "Authentication failed: No authorization code parameter provided."
             )
             return None
-        redirect_uri = f"{get_root_url(request)}{request.url.path}"
+        redirect_uri = get_current_url(request)
         response = await exchange_code(
             self.token_endpoint,
             code,
@@ -495,10 +586,10 @@ class EntraAuthenticator(ProxiedOIDCAuthenticator):
         refresh_token = response_body.get("refresh_token")
         try:
             verified_body = self.decode_token(id_token, access_token)
-        except JWTError:
+        except jwt.PyJWTError:
             logger.exception(
                 "Authentication error. Unverified token: %r",
-                jwt.get_unverified_claims(id_token),
+                jwt.decode(id_token, options={"verify_signature": False}),
             )
             return None
         # Log the id_token claims available for username resolution so
@@ -639,7 +730,7 @@ async def prepare_saml_from_fastapi_request(request: Request) -> Mapping[str, st
         "server_port": request.url.port,
         "script_name": request.url.path,
         "post_data": {},
-        "get_data": {}
+        "get_data": {},
         # Advanced request options
         # "https": "",
         # "request_uri": "",
@@ -1173,11 +1264,7 @@ class LDAPAuthenticator(InternalAuthenticator):
             found = False
             for group in self.allowed_groups:
                 group_filter = (
-                    "(|"
-                    "(member={userdn})"
-                    "(uniqueMember={userdn})"
-                    "(memberUid={uid})"
-                    ")"
+                    "(|(member={userdn})(uniqueMember={userdn})(memberUid={uid}))"
                 )
                 group_filter = group_filter.format(userdn=userdn, uid=username)
                 group_attributes = ["member", "uniqueMember", "memberUid"]

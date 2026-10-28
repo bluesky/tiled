@@ -68,6 +68,11 @@ LOGGING_CONFIG = {
         },
     },
     "loggers": {
+        "tiled": {
+            "handlers": ["default"],
+            "level": "INFO",
+            "propagate": False,
+        },
         "uvicorn.access": {"handlers": ["access"], "level": "INFO", "propagate": False},
         "uvicorn.error": {
             "handlers": ["default"],

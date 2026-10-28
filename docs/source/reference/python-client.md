@@ -90,6 +90,18 @@ It adds these methods, which return a new Container instance.
    tiled.client.container.Container.sort
 ```
 
+This method searches all descendants, at any depth, and returns a
+{py:class}`~tiled.client.container.DeepSearchResults` mapping rather than a
+Container.
+
+```{eval-rst}
+.. autosummary::
+   :toctree: generated
+
+   tiled.client.container.Container.search_deep
+   tiled.client.container.DeepSearchResults
+```
+
 It adds this method, which returns the unique metadata keys,
 structure_families, and specs of its children along with their counts.
 
@@ -122,6 +134,17 @@ and a low-level method for creating a new node to write into:
    :toctree: generated
 
    tiled.client.container.Container.new
+```
+
+There is also a method for registering externally-managed files (which stay
+where they are, in their original format) as datasets served by Tiled:
+
+
+```{eval-rst}
+.. autosummary::
+   :toctree: generated
+
+   tiled.client.container.Container.register
 ```
 
 ## Structure Clients

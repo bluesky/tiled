@@ -28,6 +28,7 @@ docker run --rm -p 9000:9000 -v $(pwd):/config -e CONFIG_FILE=/config/oidc_provi
 
    ```python
    from tiled.client import from_uri
+
    c = from_uri("http://localhost:8000")
    c.login()
    ```

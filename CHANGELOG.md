@@ -5,8 +5,191 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## Unreleased
 
+### Changed
+
+- Tiled now manages its connection pools to tabular storage more correctly.
+  Also, it is now not allowed to use two storage databases with the same
+  database on different hosts.
+- Database initialization with `init_if_not_exists` (the catalog, via
+  `tiled.catalog.from_uri` and server configuration; and the authentication
+  database, via server configuration) is now done in-process instead of by
+  spawning a `tiled catalog init` or `tiled admin initialize-database`
+  subprocess, which took about 1-2 s per call. For an in-memory SQLite catalog
+  no initialization is done at all at this point, since it is transient and
+  initialized at server startup. This speeds up server startup, `SimpleTiledServer`,
+  and the test suite.
+- `tiled.utils.Conflicts` now subclasses `ValueError`, and
+  `ArrayClient.patch` raises `Conflicts` when the server reports a 409
+  (e.g. the patch would overwrite data without `extend=True`), matching
+  `RaggedClient.patch`. Code catching `ValueError` keeps working.
+- Replace the `httpx` dependency with `httpx2`. Objects passed into Tiled,
+  such as a custom `auth=` or `timeout=`, must now be `httpx2` types, and
+  exceptions raised are `httpx2` exceptions. Python 3.10 is no longer
+  supported, because httpx2 requires Python 3.11 or newer.
+
 ### Fixed
 
+- Fixed serving HDF5 files that have an empty (null dataspace) attribute or a
+  byte-string attribute that is not valid UTF-8. Either one made every node
+  in the file fail to load. Empty attributes are now served as `null`, and
+  non-UTF-8 byte strings are decoded as Windows-1252, or as Latin-1 when
+  they are not valid Windows-1252 either.
+- Webhook URL validation performed a reverse DNS lookup (a network round-trip)
+  for every address the URL resolves to. It is now done only when the address
+  is in a blocked network and `allow_delivery_hosts` is configured, the only
+  case where its result is used.
+- Fixed `database.init_if_not_exists: true` in the server configuration for an
+  authentication database whose URI contains a password: the password was
+  masked in the URI handed to the initialization step, which then failed to
+  connect.
+- Improved the deletion of large subtrees with many associated assets (PostgreSQL only).
+- Fixed client-side accumulation of metadata revisions across pages: a slice
+  spanning more than one page (more than 100 revisions) returned subsequent
+  pages as nested lists instead of revision records.
+- Fixed `CompositeClient.get_contents(maxlen=...)`, which kept requesting a
+  `None` URL when the pages were exhausted before reaching `maxlen`.
+- Fixed `from_context` (and therefore `from_uri`) ignoring
+  `include_data_sources=True` in the initial metadata fetch, so a client
+  pointed directly at a node could not see its data sources.
+- Fixed the deprecation warning for the removed `prompt_for_reauthentication`
+  parameter of `from_uri`, which was never emitted.
+- Fixed a double slash (e.g. `/metadata//x`) in the links returned when
+  creating a node, which the client then followed for subsequent requests.
+
+## v0.2.19 (2026-10-13)
+
+### Added
+
+- Expose the Deployment `strategy` in the helm chart, so that a deployment can
+  use `Recreate` instead of the default `RollingUpdate`.
+- Add a `DELETE /api/v1/asset/{path}?id=N` endpoint to dissociate a single
+  asset from a node. If the asset is no longer referenced by any other data
+  source, its catalog record is deleted; and, when it is internally managed,
+  the underlying data (file, directory, object, or storage-database rows) is
+  deleted as well. Mirrors node deletion: gated on `expose_raw_assets` and
+  defaults to `external_only=true`, refusing to delete internally-managed data
+  unless `external_only=false` is passed.
+- Add `Container.register`, a synchronous client method to register external,
+  server-accessible files as a single dataset (array, table, etc.).
+- Add registration support for Parquet files.
+- Documentation: a user-guide page on validating metadata against custom specs
+  via server configuration.
+- ACL filtering by access tags ids resolved from access tag names on the server.
+  The ids are passed as literals in the querries, which allows Postgres to use
+  extended statstics to plan the query.
+- `Container.search_deep(*queries, max_depth=None)` and the corresponding
+  `GET /api/v1/search-deep/{path}` HTTP endpoint, which search all
+  descendants of a node (at any depth), not just direct children. Multiple
+  queries are combined with logical AND. Results are
+  returned as a `DeepSearchResults` mapping keyed by path tuples relative
+  to the search root. Supported by both the SQL catalog and `MapAdapter`,
+  including `MapAdapter` trees with a catalog (or other container adapter)
+  mounted at a sub-path, e.g. via `trees` configuration. Results are in default
+  (database) order; sorting is not supported. Looking up a single result with
+  `results[key]` scans the results and is linear in their number.
+  Access policy is applied to every container between the search root and a
+  match, as path traversal does for other routes, so a node is not returned
+  (and its container's name not revealed) if a container above it is not
+  visible to the requesting user. See
+  [#1368](https://github.com/bluesky/tiled/issues/1368).
+- Zarr arrays are served with `dims` taken from the store: Zarr v3
+  `dimension_names`, or the `_ARRAY_DIMENSIONS` attribute on Zarr v2 arrays.
+  An array with any unnamed dimension keeps `dims=None`.
+
+### Changed
+
+- Enforce canonical identity for graph entities bound to a catalog node: at most
+  one entity may exist for a given `(node_id, kind, name)` (a unique index).
+  Free-standing (external) entities, which have no node, are left unconstrained.
+  A new `upsertEntity` mutation does an atomic get-or-create against that
+  constraint (via `INSERT ... ON CONFLICT`), so concurrent writers converge on
+  one entity instead of racing a check-then-insert and fragmenting the graph. A
+  duplicate `createEntity`/`updateEntity` now fails with an `ENTITY_EXISTS` error.
+- Binding a graph entity to a catalog node (via `createEntity`, `upsertEntity`,
+  or re-binding through `updateEntity`) now requires `write:metadata` permission
+  on that specific node, not merely the global `write:metadata` scope.
+- Rename the experimental graph entity's `entity_type` field to `kind`, in both
+  the database column and the GraphQL API (`entityType` becomes `kind`).
+- Replace catalog `access_blob` column with a normalized `access_tags` table.
+  Tags, grants, tag ownership, and node-tag associations now live in the
+  catalog database; graph entities and links share the same tags table,
+  but have their own association tables. Per-user principal tags replace
+  user-owned blobs and are granted implicitly to their principals.
+- `AccessTagsParser` and `AccessTagsCompiler` now discover and use the catalog
+  database on both SQLite and PostgreSQL. Removed tag definitions retain their
+  node associations but lose their grants, preventing transient configuration
+  failures from erasing access-control information. The server remains
+  compatible with older clients that use `access_blob`.
+- Deployment note: this change includes four sequential catalog migrations
+  (an intermediate blob-association schema, conversion to tags, a
+  parent-scoped node-tag association, and naming adjustment). Apply the full
+  migration chain without stopping at an intermediate revision. This also drops
+  the old metadata index; deploy the improved replacement index from #1521
+  as well.
+- Object-storage (S3) tests now run against an in-process `moto` S3 server
+  started automatically by the test suite, instead of requiring a MinIO
+  container (whose image was removed from Docker Hub). Set `TILED_TEST_BUCKET`
+  to point the tests at a real MinIO/S3 endpoint instead.
+- The server depends on `PyJWT` instead of `python-jose` to sign and verify
+  JSON Web Tokens.
+- Remove `curl` from the container image; it was only used for health checks.
+  The `compose.yml` and `compose.dev.yml` health checks now use `httpx`
+  instead.
+
+### Fixed
+
+- Roll back catalog node creation when SQL identifier validation fails, so a
+  corrected retry is not blocked by a partially-created node.
+- Encode `application/json-seq` table exports with the RFC 7464 record
+  separator and line-feed framing, preventing single-row sequences from being
+  mistaken for a single JSON document by browser clients.
+- Extend to zarr routes the previous fix for reads of array data whose
+  on-disk shape has diverged from the shape recorded in the catalog
+  structure, which can happen while an array is being extended
+  (e.g. streaming appends).
+- Make retrying of non-idempotent requests (create and append) safe against duplication.
+- `distinct` on a catalog node counted nodes across the whole catalog instead of
+  only the node's children. It is now scoped to the requested node.
+- Fix the background task that purges expired Sessions and API keys. It
+  crashed on its first run and was never retried, so expired entries
+  (including the short-lived keys minted for websocket subscriptions)
+  could accumulate until a Principal hit the API-key limit. Expired entries
+  are now removed with a single bulk `DELETE`, so a large backlog is not loaded into
+  memory. The task also purges expired PendingSessions (device-code login attempts).
+- Deleting a Session is no longer blocked by a pending device-code login that
+  still references it: `pending_sessions.session_id` is now `ON DELETE SET
+  NULL`, so the reference is detached instead.
+- On shutdown, the server now stops its background tasks, and waits for them,
+  before closing the database connection pool. Closing the pool first could
+  leave a background task running and hang shutdown.
+- `from_uri` applies its `timeout` and `trust_env` arguments, or the default
+  timeouts when none are given, to the first request it makes to an `http://` URI.
+
+## v0.2.18 (2026-09-02)
+
+### Changed
+
+- Refactor the experimental graph API to tie entities to catalog nodes by
+  `nodePathParts` (a list of key segments) instead of by the internal `nodeId`.
+  Internal catalog node ids are no longer exposed to clients: `createEntity`
+  and `updateEntity` take a `nodePathParts` and the server resolves it to the
+  node's id, the `catalogNodeId` query is removed, and an entity now reports a
+  read-only boolean `isNodeBound` in place of `nodeId`. Passing a
+  `nodePathParts` that names no existing node raises an error.
+
+### Fixed
+
+- Fix `TypeError: Type is not JSON serializable: bytes` when serializing a
+  table with a bytes-dtype (numpy `S`) column to `application/json` or
+  `application/json-seq`. Such values are now decoded to strings.
+- Fix reads of array data whose on-disk shape has diverged from the shape
+  recorded in the catalog structure, which can happen while an array is being
+  extended (e.g. streaming appends).
+- Fix a regression where opening a URL with an `?api_key=...` query parameter
+  in the web UI redirected to the login page instead of authenticating. This
+  now also works in single-user (`--api-key`) mode, where the server exposes no
+  `/auth` routes: the web UI detects the API-key cookie session by probing a
+  protected endpoint rather than `/auth/whoami`.
 - Reading of individual partitions of multi-partitioned tables.
 - Fix the client showing a spurious "Retrying…" indicator (and a misleading
   "Retry scheduled" debug log) when a request failed with a *non-retryable*
@@ -15,6 +198,22 @@ Write the date in place of the "Unreleased" in the case a new version is release
   exception before deciding whether to retry, so the indicator was being driven
   off exception capture rather than an actual retry. The indicator now appears
   only when a retry genuinely occurs.
+- Render `NaN` as transparent pixels.
+- Fix client-side reading of reversed array slices that reach the start of an
+  axis (e.g. `arr[::-1]`) when the selection is large enough to be fetched in
+  multiple requests.
+- Fixed regression in configuration parser, which had mistyped the catalog
+  configuration `adapter_by_mimetype` resulting in a spurious error.
+- Resolve issue where creating a streaming subscription would cause the server
+  to hang indefinitely on close. Added an additional asyncio task that watches
+  for disconnects and breaks out of the `buffer_live_events` loop when the
+  connection is closed. Also added a test to verify that `server.close()` does
+  not hang with an open streaming subscription.
+
+## v0.2.17 (2026-08-25)
+
+### Fixed
+
 - Fix the client ignoring the `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY`
   environment variables. Because Tiled supplies a custom `httpx` transport (to
   enable client-side response caching), httpx's built-in proxy resolution was
@@ -30,7 +229,6 @@ Write the date in place of the "Unreleased" in the case a new version is release
   `scopes_map`). This broke scope-restricted API keys, which legitimately hold
   only a subset of scopes. Authorization is now enforced solely against the
   scopes each endpoint requires.
-- Render `NaN` as transparent pixels.
 
 ## v0.2.16 (2026-08-21)
 
@@ -88,6 +286,9 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Fixed
 
+- Improve webhook handling to enable adding additional blocked networks and
+  allow specification of hostnames that are allowed to receive webhooks despite being
+  on a blocked network.
 - Fix the `raw_export` download progress bar, which showed a wrong total (e.g.
   `1,257,333,024/100 bytes`) and did not advance during the transfer. The bar
   now seeds each task's total from the known asset size, and raw-asset downloads
@@ -1315,3 +1516,6 @@ tiled catalog upgrade-database [postgresql://.. | sqlite:///...]
  - Updated the pydantic version in the pyproject.toml. Now the allowed versions are >2.0.0 - <3.0.0 .
  - Changes to prepare for upcoming numpy 2.0 release
  - Changes to address deprecations in FastAPI
+- Require `duckdb !=1.4.0` instead of `duckdb <1.4.0`.
+- `SQLAdapter.read` and `SQLAdapter.read_partition` return rows in the
+  order they were appended on DuckDB and SQLite.

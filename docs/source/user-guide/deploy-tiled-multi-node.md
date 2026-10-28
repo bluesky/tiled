@@ -38,4 +38,34 @@ Redis primary narrows this window but does not close it. See
 {doc}`../reference/service-configuration` for the full `streaming_cache` field
 reference.
 
+## Postgres high availability
+
+Tiled stores its data in Postgres. To keep Tiled writable across a database
+node outage, run Postgres in a high-availability topology (a primary with
+streaming replicas, managed by a tool such as [Patroni][] for automatic
+failover) and give Tiled a **multi-host connection URI** listing every cluster
+member, with `target_session_attrs=read-write` so the client connects to
+whichever node is currently the read-write primary. The hosts are specified
+using SQLAlchemy's
+[multiple host connection string syntax][].
+
+Tiled uses up to three PostgreSQL databases, and the same multi-host URI
+applies to each: the **authentication** database (`database.uri`), the
+**catalog** (`catalog.uri`), and Postgres **tabular storage** (a
+`catalog.writable_storage` entry). Give each of them the multi-host URI:
+
+```yaml
+database:
+  uri: "postgresql://tiled:${TILED_DATABASE_PASSWORD}@/tiled_authn?host=db1.example:5432&host=db2.example:5432&host=db3.example:5432&target_session_attrs=read-write&ssl=verify-full"
+
+catalog:
+  uri: "postgresql://tiled:${TILED_DATABASE_PASSWORD}@/tiled_catalog?host=db1.example:5432&host=db2.example:5432&host=db3.example:5432&target_session_attrs=read-write&ssl=verify-full"
+  writable_storage:
+    - "postgresql://tiled:${TILED_DATABASE_PASSWORD}@/tiled_storage?host=db1.example:5432&host=db2.example:5432&host=db3.example:5432&target_session_attrs=read-write&ssl=verify-full"
+```
+
 [Helm chart]: https://github.com/bluesky/tiled/pkgs/container/charts%2Ftiled
+
+[Patroni]: https://patroni.readthedocs.io/
+
+[multiple host connection string syntax]: https://docs.sqlalchemy.org/en/20/dialects/postgresql.html#multihost-connections

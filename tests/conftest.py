@@ -4,7 +4,6 @@ import sys
 import tempfile
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
 
 import asyncpg
 import pytest
@@ -13,6 +12,7 @@ import stamina
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from tiled import profiles
+from tiled.authn_database.core import initialize_authn_database
 from tiled.catalog import from_uri, in_memory
 from tiled.client import Context, from_context
 from tiled.client.base import BaseClient
@@ -22,13 +22,49 @@ from tiled.server.settings import get_settings
 from tiled.utils import ensure_specified_sql_driver
 
 from .utils import enter_username_password as utils_enter_uname_passwd
-from .utils import temp_postgres
+from .utils import temp_postgres, temp_postgres_sync
 
 
 @pytest.fixture(autouse=True, scope="session")
 def deactivate_retries():
     "Deactivate HTTP retries."
     stamina.set_active(False)
+
+
+@pytest.fixture(autouse=True, scope="session")
+def s3_bucket_uri():
+    """Provide an S3 endpoint for object-storage tests via TILED_TEST_BUCKET.
+
+    If TILED_TEST_BUCKET is already set (e.g. pointing at a real MinIO/S3),
+    respect it. Otherwise, start an in-process ``moto`` S3 server for the
+    duration of the test session and point TILED_TEST_BUCKET at it, so the
+    object-storage tests run without any external service. If ``moto`` is not
+    installed, leave TILED_TEST_BUCKET unset and those tests will skip.
+
+    An ephemeral port (``port=0``) is used so each pytest-xdist worker gets its
+    own server without collisions.
+    """
+    if os.getenv("TILED_TEST_BUCKET"):
+        yield
+        return
+    try:
+        from moto.server import ThreadedMotoServer
+    except ImportError:
+        yield
+        return
+
+    server = ThreadedMotoServer(ip_address="127.0.0.1", port=0)
+    server.start()
+    host, port = server.get_host_and_port()
+    # moto accepts any credentials; use placeholder values.
+    os.environ["TILED_TEST_BUCKET"] = (
+        f"http://bucketadmin:bucketadmin@{host}:{port}/buck"
+    )
+    try:
+        yield
+    finally:
+        del os.environ["TILED_TEST_BUCKET"]
+        server.stop()
 
 
 @pytest.fixture(autouse=True, scope="module")
@@ -179,6 +215,21 @@ async def postgres_uri():
         yield uri_with_database
 
 
+@pytest.fixture(scope="module")
+def duckdb_uri_module(tmpdir_module):
+    "URI of a DuckDB database file shared by all tests in the module."
+    return f"duckdb:///{tmpdir_module / 'tiled.duckdb'}"
+
+
+@pytest.fixture(scope="module")
+def postgres_uri_module():
+    "URI of a fresh PostgreSQL database shared by all tests in the module."
+    if not TILED_TEST_POSTGRESQL_URI:
+        raise pytest.skip("No TILED_TEST_POSTGRESQL_URI configured")
+    with temp_postgres_sync(TILED_TEST_POSTGRESQL_URI) as uri_with_database:
+        yield uri_with_database
+
+
 @pytest.fixture(params=["sqlite_uri", "postgres_uri"])
 def sqlite_or_postgres_uri(request):
     yield request.getfixturevalue(request.param)
@@ -279,6 +330,30 @@ def catalog_adapter(request):
     yield request.getfixturevalue(request.param)
 
 
+@pytest.fixture(scope="module", params=["sqlite", "postgresql"])
+def catalog_adapter_module(request, tmpdir_module):
+    """
+    Catalog adapter on a fresh database, shared by all tests in the module.
+
+    Building a server (and, for PostgreSQL, a database) is expensive, so
+    prefer this over the function-scoped `catalog_adapter` when the tests do
+    not need a pristine catalog. The tests in a module then share one
+    catalog: each must write under keys of its own and must not assume that
+    the catalog contains only what it created itself.
+
+    Note that startup() and shutdown() are not called, and must be run
+    either manually or via the app (as in `Context.from_app(build_app(...))`).
+    """
+    if request.param == "sqlite":
+        return in_memory(writable_storage=str(tmpdir_module / "sqlite"))
+    else:
+        return from_uri(
+            request.getfixturevalue("postgres_uri_module"),
+            writable_storage=str(tmpdir_module / "postgresql"),
+            init_if_not_exists=True,
+        )
+
+
 @pytest.fixture(
     params=["sqlite_with_example_data_adapter", "postgresql_with_example_data_adapter"]
 )
@@ -330,42 +405,6 @@ def redis_uri():
         raise pytest.skip("No TILED_TEST_REDIS configured")
 
 
-@pytest.fixture
-def minio_uri():
-    if uri := os.getenv("TILED_TEST_BUCKET"):
-        from minio import Minio
-        from minio.deleteobjects import DeleteObject
-
-        # For convenience, we split the bucket from a string
-        url = urlparse(uri)
-        bucket_name = url.path.lstrip("/")
-        uri = url._replace(netloc="{}:{}".format(url.hostname, url.port), path="")
-
-        client = Minio(
-            endpoint=uri.geturl(),
-            access_key=url.username,
-            secret_key=url.password,
-            secure=False,
-        )
-
-        # Reset the state of the bucket after each test.
-        if client.bucket_exists(bucket_name=bucket_name):
-            delete_object_list = map(
-                lambda x: DeleteObject(object_name=x.object_name),
-                client.list_objects(bucket_name=bucket_name, recursive=True),
-            )
-            errors = client.remove_objects(
-                bucket_name=bucket_name, delete_object_list=delete_object_list
-            )
-            for error in errors:
-                print("error occurred when deleting object", error)
-        else:
-            client.make_bucket(bucket_name=bucket_name)
-
-    else:
-        raise pytest.skip("No TILED_TEST_BUCKET configured")
-
-
 # Shared authentication config for tests that need multi-user JWT auth.
 # Uses the toy DictionaryAuthenticator with alice/bob users.
 TOY_AUTHENTICATION = {
@@ -384,14 +423,8 @@ TOY_AUTHENTICATION = {
 
 def init_auth_database(tmpdir):
     """Initialize an auth database and return its URI."""
-    import subprocess
-
     database_uri = f"sqlite:///{tmpdir / 'auth.db'}"
-    subprocess.run(
-        [sys.executable, "-m", "tiled", "admin", "initialize-database", database_uri],
-        check=True,
-        capture_output=True,
-    )
+    initialize_authn_database(database_uri)
     return database_uri
 
 

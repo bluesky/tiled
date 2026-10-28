@@ -105,11 +105,26 @@ class TableStructure(Structure):
                 f"Expected base64-encoded data prefixed with {B64_ENCODED_PREFIX}."
             )
 
-        payload = self.arrow_schema[len(B64_ENCODED_PREFIX) :].encode(  # noqa: E203
-            "utf-8"
-        )
+        payload = self.arrow_schema[len(B64_ENCODED_PREFIX) :].encode("utf-8")
         return pyarrow.ipc.read_schema(io.BytesIO(base64.b64decode(payload)))
 
     @property
     def meta(self):
         return self.arrow_schema_decoded.empty_table().to_pandas()
+
+    def is_compatible(self, other: "Structure") -> bool:
+        """Whether data stored as `other` can be served using this structure.
+
+        Compatible means the two structures describe the same tabular data:
+        the same number of columns with matching column data types, compared in
+        order. Column *names* may differ (a column may be renamed) and the number
+        of partitions need not match, so this is a looser relation than equality.
+        """
+        if not isinstance(other, TableStructure):
+            return False
+        self_schema = self.arrow_schema_decoded
+        other_schema = other.arrow_schema_decoded
+        if len(self_schema.names) != len(other_schema.names):
+            return False
+        # Compare column data types positionally, ignoring the column names.
+        return self_schema.types == other_schema.types

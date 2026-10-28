@@ -13,7 +13,7 @@ else:
     from typing_extensions import Self
 
 import anyio
-import httpx
+import httpx2 as httpx
 import msgpack
 import stamina
 import websockets.exceptions
@@ -567,9 +567,9 @@ class ContainerSubscription(Subscription):
         self.child_created: CallbackRegistry["LiveChildCreated"] = CallbackRegistry(
             self.executor
         )
-        self.child_metadata_updated: CallbackRegistry[
-            "LiveChildMetadataUpdated"
-        ] = CallbackRegistry(self.executor)
+        self.child_metadata_updated: CallbackRegistry["LiveChildMetadataUpdated"] = (
+            CallbackRegistry(self.executor)
+        )
 
     def process(self, update: Update):
         if update.type == "container-child-created":
@@ -602,9 +602,9 @@ class ArraySubscription(Subscription):
         executor: Optional[concurrent.futures.Executor] = None,
     ):
         super().__init__(context, segments, executor)
-        self.new_data: CallbackRegistry[
-            "LiveArrayData" | "LiveArrayRef"
-        ] = CallbackRegistry(self.executor)
+        self.new_data: CallbackRegistry["LiveArrayData" | "LiveArrayRef"] = (
+            CallbackRegistry(self.executor)
+        )
 
     def process(self, update: Update):
         self.new_data.process(update)
@@ -642,6 +642,7 @@ class TableSubscription(Subscription):
 
 class UnparseableMessage(RuntimeError):
     "Message can be decoded but cannot be interpreted by the application"
+
     pass
 
 
@@ -690,7 +691,7 @@ class LiveChildCreated(ChildCreated):
                 "structure_family": self.structure_family,
                 "specs": normalize_specs(self.specs or []),
                 "data_sources": self.data_sources,
-                "access_blob": self.access_blob,
+                "access_tags": self.access_tags,
             },
         }
         if self.structure_family == StructureFamily.container:

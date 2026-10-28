@@ -11,12 +11,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from urllib.parse import quote as urlquote
 
 import anyio
-import httpx
+import httpx2 as httpx
 import pytest
 import respx
 import stamina
 from fastapi import FastAPI, HTTPException
-from httpx import Response
+from httpx2 import Response
 from sqlalchemy import select as sa_select
 
 from tiled.catalog import from_uri, in_memory
@@ -441,9 +441,9 @@ class TestWebhookIntegration:
 
         paths = [e["path"] for e in received]
         assert any(node_key in p for p in paths), "expected event for watched sub-tree"
-        assert not any(
-            sibling_key in str(p) for p in paths
-        ), "unexpected event for sibling sub-tree"
+        assert not any(sibling_key in str(p) for p in paths), (
+            "unexpected event for sibling sub-tree"
+        )
 
     @respx.mock
     def test_subnode_webhook_in_list_for_its_path(
@@ -529,9 +529,9 @@ class TestWebhookIntegration:
         event = received[0]
         assert event["type"] == EventType.container_child_metadata_updated
         # The payload must reflect the existing metadata, not an empty dict.
-        assert event.get("metadata") == {
-            "color": "blue"
-        }, "Webhook payload should include pre-existing metadata when only specs changed"
+        assert event.get("metadata") == {"color": "blue"}, (
+            "Webhook payload should include pre-existing metadata when only specs changed"
+        )
 
     @respx.mock
     def test_webhook_cascade_deleted_when_node_deleted(
@@ -706,6 +706,113 @@ def test_ssrf_check_allows_public_ip() -> None:
         check_url_ssrf_safety("https://example.com/hook")  # must not raise
 
 
+def test_ssrf_check_blocks_custom_local_networks() -> None:
+    """Custom blocked_networks must be enforced in addition to standard ranges."""
+
+    def _fake(host, port, *args, **kwargs):
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 0))]
+
+    with patch("tiled.server.webhooks.socket.getaddrinfo", side_effect=_fake):
+        with pytest.raises(ValueError, match="blocked network 93.184.216.0/24"):
+            check_url_ssrf_safety("https://example.com/hook", ["93.184.216.0/24"])
+
+
+def test_ssrf_check_passes_exception() -> None:
+    """With an acceptable hostname even if within a valid blocked network range, pass."""
+
+    def _fake(host, port, *args, **kwargs):
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 0))]
+
+    def _fake2(hostname):
+        if hostname in ("example.com", "93.184.216.34"):
+            return "example.com"
+        return "example3.com"
+
+    with (
+        patch("tiled.server.webhooks.socket.getaddrinfo", side_effect=_fake),
+        patch("tiled.server.webhooks.socket.getfqdn", side_effect=_fake2),
+    ):
+        check_url_ssrf_safety(
+            "https://example.com/hook", ["93.184.216.0/24"], ["example.com"]
+        )  # must not raise
+
+
+def test_ssrf_check_blocks_custom_local_network_not_accepted() -> None:
+    """Fail if the destination is in a blocked network and not an accepted host."""
+
+    def _fake(host, port, *args, **kwargs):
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 0))]
+
+    def _fake2(hostname):
+        if hostname == "example.com":
+            return "example.com"
+        elif hostname == "example2.com":
+            return "example2.com"
+        else:
+            return "example3.com"
+
+    with (
+        patch("tiled.server.webhooks.socket.getaddrinfo", side_effect=_fake),
+        patch("tiled.server.webhooks.socket.getfqdn", side_effect=_fake2),
+    ):
+        with pytest.raises(ValueError, match="blocked network 93.184.216.0/24"):
+            check_url_ssrf_safety(
+                "https://example.com/hook", ["93.184.216.0/24"], ["example2.com"]
+            )
+
+
+def test_ssrf_check_bad_network() -> None:
+    """A bad network range for a blocked network is invalid."""
+
+    def _fake(host, port, *args, **kwargs):
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 0))]
+
+    def _fake2(hostname):
+        if hostname in ("example.com", "93.184.216.34"):
+            return "example.com"
+        else:
+            return "example3.com"
+
+    with (
+        patch("tiled.server.webhooks.socket.getaddrinfo", side_effect=_fake),
+        patch("tiled.server.webhooks.socket.getfqdn", side_effect=_fake2),
+    ):
+        with pytest.raises(
+            ValueError,
+            match="'abcdef/24' does not appear to be an IPv4 or IPv6 network",
+        ):
+            check_url_ssrf_safety(
+                "https://example.com/hook",
+                ["93.184.216.0/24", "abcdef/24"],
+                ["example.com"],
+            )
+
+
+def test_ssrf_check_bad_accepted_hostname() -> None:
+    """An accepted hostname must be a valid hostname, not an IP."""
+
+    def _fake(host, port, *args, **kwargs):
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 0))]
+
+    def _fake2(hostname):
+        if hostname in ("example.com", "93.184.216.34"):
+            return "example.com"
+        else:
+            return "example3.com"
+
+    with (
+        patch("tiled.server.webhooks.socket.getaddrinfo", side_effect=_fake),
+        patch("tiled.server.webhooks.socket.getfqdn", side_effect=_fake2),
+    ):
+        with pytest.raises(
+            ValueError,
+            match="Allow delivery host 93.184.216.34 must be a valid hostname",
+        ):
+            check_url_ssrf_safety(
+                "https://example.com/hook", ["93.184.216.0/24"], ["93.184.216.34"]
+            )
+
+
 # ---------------------------------------------------------------------------
 # Unit tests: WebhookDispatcher shutdown drains pending tasks
 # ---------------------------------------------------------------------------
@@ -750,7 +857,7 @@ def _make_close_stream_adapter(
     mock_node.key = node_key
     mock_node.structure_family = "container"
     mock_node.specs = []
-    mock_node.access_blob = {}
+    mock_node.access_tags = []
 
     adapter = CatalogNodeAdapter(mock_context, mock_node)
     adapter.path_segments = AsyncMock(return_value=[node_key])
@@ -972,9 +1079,9 @@ def test_webhooks_disabled_router_not_mounted(tmp_path: Any) -> None:
     with Context.from_app(app_no_webhooks) as ctx:
         http = ctx.http_client
         resp = http.get("/api/v1/webhooks/target/")
-        assert (
-            resp.status_code == 404
-        ), "Webhook router should not be mounted when webhooks: is absent from config"
+        assert resp.status_code == 404, (
+            "Webhook router should not be mounted when webhooks: is absent from config"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -1077,3 +1184,45 @@ class TestBuildUrlValidator:
             WebhooksConfig(allow_http=True, allow_private_addresses=True)
         )
         assert validator is _noop_url_validator
+
+    def test_check_not_available_hostname(self) -> None:
+        """Invalid hostname must throw exception."""
+        with patch(
+            "tiled.server.webhook_router.socket.gethostbyname",
+            side_effect=socket.gaierror(-2, "Name or service not known"),
+        ):
+            with pytest.raises(HTTPException) as exc_info:
+                _build_url_validator(
+                    WebhooksConfig(
+                        allow_private_addresses=False,
+                        allow_delivery_hosts=["notmyrealhost"],
+                    )
+                )
+        assert exc_info.value.status_code == 400
+
+
+# -----------------------------------------------------------------------------
+# Unit tests: _build_url_validator with blocked_networks / allow_delivery_hosts
+# -----------------------------------------------------------------------------
+
+
+class TestBuildUrlValidator2:
+    def test_check_blocked_network(self) -> None:
+        """A non-network must throw an exception."""
+        with pytest.raises(HTTPException) as exc_info:
+            _build_url_validator(
+                WebhooksConfig(
+                    blocked_networks=["10.256.0.0/24"],
+                )
+            )
+        assert exc_info.value.status_code == 400
+
+    def test_allow_delivery_hosts(self) -> None:
+        """Delivery host must be a hostname."""
+        with pytest.raises(HTTPException) as exc_info:
+            _build_url_validator(
+                WebhooksConfig(
+                    allow_delivery_hosts=["10.65.128.128"],
+                )
+            )
+        assert exc_info.value.status_code == 400

@@ -365,7 +365,6 @@ mutation($input: CreateEntityInput!) { createEntity(input: $input) { id name } }
 _CREATE_LINK = """
 mutation($input: CreateLinkInput!) { createLink(input: $input) { id predicate } }
 """
-_CATALOG_NODE_ID = "query($path: [String!]!) { catalogNodeId(path: $path) }"
 
 
 def _graphql(http_client, query: str, variables: dict) -> dict:
@@ -421,10 +420,10 @@ def seed_graph(
 
     `http_client` must be authenticated with an API key that has
     `write:metadata` scope. `dataset_names` are the entities that
-    correspond to real catalog datasets on *this* server; they get their
-    `nodeId` resolved from the catalog and a `uri` pointing at this server.
-    If `dataset_container` is given, those datasets are looked up under that
-    container (e.g. `"linked"` -> path `["linked", name]`).
+    correspond to real catalog datasets on *this* server; they are bound to
+    their catalog node by path (`nodePathParts`) and get a `uri` pointing at
+    this server. If `dataset_container` is given, those datasets are looked up
+    under that container (e.g. `"linked"` -> path `["linked", name]`).
     """
     definition_path = definition_path or GRAPH_DEFINITION_PATH
     namespaces, entities, links = _load_graph_definition(definition_path)
@@ -436,21 +435,19 @@ def seed_graph(
     for entity in entities:
         name = entity["name"]
         properties = dict(entity.get("properties") or {})
-        node_id = entity.get("nodeId")
+        node_path_parts = entity.get("nodePathParts")
         uri = entity.get("uri")
         if name in dataset_names:
-            path = [dataset_container, name] if dataset_container else [name]
-            node_id = _graphql(http_client, _CATALOG_NODE_ID, {"path": path})[
-                "catalogNodeId"
-            ]
-            uri = f"{base_url}/api/v1/metadata/" + "/".join(path)
+            node_path_parts = [dataset_container, name] if dataset_container else [name]
+            uri = f"{base_url}/api/v1/metadata/" + "/".join(node_path_parts)
         entity_input: dict[str, Any] = {
-            "entityType": entity.get("entityType", "entity"),
+            "kind": entity.get("kind", "entity"),
             "name": name,
             "uri": uri,
-            "nodeId": node_id,
             "properties": properties,
         }
+        if node_path_parts is not None:
+            entity_input["nodePathParts"] = node_path_parts
         created = _graphql(http_client, _CREATE_ENTITY, {"input": entity_input})
         entity_ids[name] = created["createEntity"]["id"]
 

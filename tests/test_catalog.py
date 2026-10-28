@@ -1,12 +1,15 @@
 import asyncio
+import os
 import random
 import string
+import time
 from contextlib import closing
 from dataclasses import asdict
 from pathlib import Path
 from typing import cast
 
 import dask.array
+import h5py
 import numpy
 import pandas
 import pandas.testing
@@ -25,6 +28,7 @@ from sqlalchemy.pool import AsyncAdaptedQueuePool, QueuePool, StaticPool
 from tiled.adapters.csv import CSVAdapter
 from tiled.adapters.dataframe import ArrayAdapter
 from tiled.adapters.tiff import TiffAdapter
+from tiled.adapters.utils import DataNotReadyError, IncompatibleShapeError
 from tiled.catalog import in_memory
 from tiled.catalog.adapter import WouldDeleteData
 from tiled.catalog.explain import record_explanations
@@ -56,6 +60,24 @@ async def client(catalog_adapter):
     app = build_app(catalog_adapter)
     with Context.from_app(app) as context:
         yield from_context(context)
+
+
+@pytest.mark.asyncio
+async def test_root_node_has_default_access_tags(a):
+    access_tags = (
+        (
+            await a.context.execute(
+                "SELECT access_tags.name "
+                "FROM access_tags "
+                "JOIN node_access_tags_association "
+                "ON node_access_tags_association.tag_id = access_tags.id "
+                "WHERE node_access_tags_association.node_id = 0"
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert list(access_tags) == ["public"]
 
 
 @pytest.mark.asyncio
@@ -185,11 +207,12 @@ async def test_metadata_index_is_used(example_data_adapter):
     # Check that an index is used by inspecting the content of an 'EXPLAIN ...'
     # query. The exact content is intended for humans and is not an API, but we
     # can coarsely check that the index of interest is mentioned.
-    # The 'top_level_metadata' GIN index is PostgreSQL-only. SQLite uses a
-    # B-tree covering index instead; we just verify any index is used.
+    # On PostgreSQL, metadata equality is compiled to a JSONB containment
+    # (metadata @> {...}) served by the 'ix_nodes_metadata' GIN index. SQLite
+    # has no GIN and uses the B-tree index on 'parent' plus a row filter.
     dialect = a.context.engine.url.get_dialect().name
     if dialect == "postgresql":
-        expected_index = "top_level_metadata"
+        expected_index = "ix_nodes_metadata"
     else:
         expected_index = "nodes_parent"  # B-tree index on parent (name varies by Alembic/SQLite version)
     await a.startup()
@@ -202,7 +225,7 @@ async def test_metadata_index_is_used(example_data_adapter):
         assert len(results[0]) == 1
         assert expected_index in str(e)
     with record_explanations() as e:
-        results = await a.search(Key("bool") == False).keys_page(limit=5)  # noqa: #712
+        results = await a.search(Key("bool") == False).keys_page(limit=5)  # noqa: E712
         assert len(results[0]) == 1
         assert expected_index in str(e)
     with record_explanations() as e:
@@ -216,7 +239,7 @@ async def test_metadata_index_is_used(example_data_adapter):
         assert len(results[0]) == 1
         assert expected_index in str(e)
     with record_explanations() as e:
-        results = await a.search(Key("nested.bool") == False).keys_page(  # noqa: #712
+        results = await a.search(Key("nested.bool") == False).keys_page(  # noqa: E712
             limit=5
         )
         assert len(results[0]) == 1
@@ -441,6 +464,86 @@ async def test_lazy_sequence_tolerates_num_offset(tmpdir, num_offset):
 
         result = await x.read(slice=slice_input)
         numpy.testing.assert_array_equal(result, reference)
+    finally:
+        await adapter.shutdown()
+
+
+async def _register_ahead_hdf5(adapter, tmpdir, *, file_frames=3, ahead_frames=5):
+    """Register an external HDF5 array whose catalog structure is ahead of the file.
+
+    The backing file holds `file_frames` frames of shape `(rows, cols)`, but the
+    catalog structure advertises `ahead_frames`, mimicking a streaming append
+    where the catalog shape ran ahead of this reader's view of the file. Returns
+    the backing file path.
+    """
+    rows, cols = 2, 4
+    filepath = Path(tmpdir) / "streaming.h5"
+    with h5py.File(filepath, "w", libver="latest") as f:
+        f.create_dataset(
+            "data",
+            data=numpy.ones((file_frames, rows, cols)),
+            maxshape=(None, rows, cols),
+        )
+    ahead_structure = ArrayStructure(
+        shape=(ahead_frames, rows, cols),
+        chunks=((ahead_frames,), (rows,), (cols,)),
+        data_type=BuiltinDtype.from_numpy_dtype(numpy.dtype("float64")),
+    )
+    await adapter.create_node(
+        key="streaming",
+        structure_family=StructureFamily.array,
+        metadata={},
+        data_sources=[
+            DataSource(
+                structure_family="array",
+                mimetype="application/x-hdf5",
+                structure=asdict(ahead_structure),
+                parameters={"dataset": "data"},
+                management="external",
+                assets=[
+                    Asset(
+                        parameter="data_uris",
+                        num=0,
+                        data_uri=ensure_uri(str(filepath)),
+                        is_directory=False,
+                    )
+                ],
+            )
+        ],
+    )
+    return filepath
+
+
+@pytest.mark.asyncio
+async def test_structure_ahead_of_recently_modified_file_is_transient(tmpdir):
+    # The catalog structure is ahead of the data on disk and the backing file
+    # was just written, so a streaming append is plausibly in progress. The
+    # read raises the transient `DataNotReadyError`.
+    adapter = in_memory(readable_storage=[tmpdir])
+    await adapter.startup()
+    try:
+        await _register_ahead_hdf5(adapter, tmpdir)
+        x = await adapter.lookup_adapter(["streaming"])
+        with pytest.raises(DataNotReadyError):
+            await x.read()
+    finally:
+        await adapter.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_structure_ahead_of_stale_file_is_permanent(tmpdir):
+    # The catalog structure is ahead of the data on disk but the backing file
+    # has not been touched for a long time, so the data is at rest and will not
+    # catch up. The read is downgraded to a permanent `IncompatibleShapeError`.
+    adapter = in_memory(readable_storage=[tmpdir])
+    await adapter.startup()
+    try:
+        filepath = await _register_ahead_hdf5(adapter, tmpdir)
+        stale = time.time() - 3600
+        os.utime(filepath, (stale, stale))
+        x = await adapter.lookup_adapter(["streaming"])
+        with pytest.raises(IncompatibleShapeError):
+            await x.read()
     finally:
         await adapter.shutdown()
 
@@ -854,6 +957,35 @@ async def test_delete_sql_assets(sql_storage_uri):
     storage.dispose()
 
 
+@pytest.mark.asyncio
+async def test_delete_internal_sql_asset(sql_storage_uri):
+    "Deleting an internally-managed SQL-backed asset drops its dataset/table."
+    tree = in_memory(writable_storage={"sql": sql_storage_uri})
+    storage = cast(SQLStorage, get_storage(parse_storage(sql_storage_uri).uri))
+    table = pyarrow.Table.from_pydict({"a": [1, 2, 3], "b": [4.0, 5.0, 6.0]})
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        t = client.create_appendable_table(schema=table.schema, key="t")
+        t.append_partition(0, table)
+        table_name = t.data_sources()[0].parameters["table_name"]
+        asset_id = t.include_data_sources().data_sources()[0].assets[0].id
+
+        node = await tree.lookup_adapter(["t"])
+        # SQL storage is internally managed; external_only=True refuses.
+        with pytest.raises(WouldDeleteData):
+            await node.delete_asset(asset_id, external_only=True)
+
+        # Opting in: this is the only dataset in the storage DB, so the Asset
+        # record is removed and the dataset rows / table are dropped.
+        result = await node.delete_asset(asset_id, external_only=False)
+        assert result == {"asset_deleted": True, "data_deleted": True}
+        assets_after = (await tree.context.execute("SELECT * from assets")).all()
+        assert len(assets_after) == 0
+        with closing(storage.connect()) as conn:
+            assert not sql_table_exists(conn, storage.dialect, table_name)
+    storage.dispose()
+
+
 # ---------------------------------------------------------------------------
 # Hypothesis: pagination completeness
 # ---------------------------------------------------------------------------
@@ -876,6 +1008,21 @@ def sqlite_adapter_for_hypothesis(tmp_path_factory):
     yield adapter, loop
     loop.run_until_complete(adapter.shutdown())
     loop.close()
+
+
+def test_failed_init_does_not_leak_password():
+    # Init fails (nothing listens on port 1); the error must not echo the URI.
+    import traceback
+
+    from tiled.catalog import from_uri
+
+    password = "leaky-secret"
+    uri = f"postgresql+asyncpg://user:{password}@127.0.0.1:1/db"
+
+    with pytest.raises(Exception) as excinfo:
+        from_uri(uri, init_if_not_exists=True)
+
+    assert password not in "".join(traceback.format_exception(excinfo.value))
 
 
 @pytest.fixture(scope="module")
@@ -978,9 +1125,9 @@ def test_cursor_pagination_completeness(
     if direction == 1:
         assert collected == keys_inserted, "ASC traversal must match insertion order"
     else:
-        assert collected == list(
-            reversed(keys_inserted)
-        ), "DESC traversal must match reverse insertion order"
+        assert collected == list(reversed(keys_inserted)), (
+            "DESC traversal must match reverse insertion order"
+        )
 
 
 @pytest.mark.asyncio
@@ -1041,6 +1188,55 @@ async def test_delete_external_asset_registered_twice(tmpdir):
             await tree.context.execute("SELECT * from assets")
         ).all()
         assert len(assets_after_second_delete) == 0
+
+
+@pytest.mark.asyncio
+async def test_delete_shared_external_asset(tmpdir):
+    """Deleting a shared external asset from one node dissociates it there but
+    retains the Asset record (and file) while other nodes still reference it."""
+    tree = in_memory(readable_storage=[str(tmpdir)])
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+
+        with open(tmpdir / "shared.csv", "w") as file:
+            file.write("a,b,c\n1,2,3\n4,5,6\n")
+
+        a = client.create_container("a")
+        b1 = a.create_container("b1")
+        b2 = a.create_container("b2")
+        await register(b1, tmpdir / "shared.csv")
+        await register(b2, tmpdir / "shared.csv")
+
+        assets_before = (await tree.context.execute("SELECT * from assets")).all()
+        assert len(assets_before) == 1  # single shared asset
+
+        # Find the asset id as seen from b1's leaf node.
+        b1_node = await tree.lookup_adapter(["a", "b1", "shared"])
+        (b1_ds,) = await b1_node.data_sources(include_assets=True)
+        asset_id = b1_ds.assets[0].id
+
+        # External assets are not internally managed, so external_only=True is
+        # permitted. Because the asset is still referenced by b2, only the
+        # association is removed.
+        result = await b1_node.delete_asset(asset_id, external_only=True)
+        assert result == {"asset_deleted": False, "data_deleted": False}
+
+        # The Asset record and the file remain; b2 can still read it.
+        assets_after_first = (await tree.context.execute("SELECT * from assets")).all()
+        assert len(assets_after_first) == 1
+        assert (tmpdir / "shared.csv").exists()
+        client["a"]["b2"]["shared"].read()
+        # b1 no longer has the asset.
+        assert await b1_node.asset_by_id(asset_id) is None
+
+        # Deleting from the last referencing node removes the Asset record, but
+        # (being external) leaves the file on disk.
+        b2_node = await tree.lookup_adapter(["a", "b2", "shared"])
+        result = await b2_node.delete_asset(asset_id, external_only=True)
+        assert result == {"asset_deleted": True, "data_deleted": False}
+        assets_after_second = (await tree.context.execute("SELECT * from assets")).all()
+        assert len(assets_after_second) == 0
+        assert (tmpdir / "shared.csv").exists()
 
 
 @pytest.mark.parametrize(
