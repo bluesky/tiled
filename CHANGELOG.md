@@ -7,6 +7,13 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Changed
 
+- `tiled serve demo` now serves a single, catalog-backed demo that combines the
+  data-structure showcase with the experimental "graph of links" provenance
+  feature. The server is public (anonymous read access) and prints a
+  single-user API key (default `secret`) for trying out writes and graph
+  mutations. The graph is defined in `tiled/examples/demo_graph.json`. The
+  standalone `example_configs/graphs/` scripts have been removed in favor of
+  this demo.
 - Enforce canonical identity for graph entities bound to a catalog node: at most
   one entity may exist for a given `(node_id, kind, name)` (a unique index).
   Free-standing (external) entities, which have no node, are left unconstrained.
@@ -234,13 +241,6 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Changed
 
-- `tiled serve demo` now serves a single, catalog-backed demo that combines the
-  data-structure showcase with the experimental "graph of links" provenance
-  feature. The server is public (anonymous read access) and prints a
-  single-user API key (default `secret`) for trying out writes and graph
-  mutations. The graph is defined in `tiled/examples/demo_graph.json`. The
-  standalone `example_configs/graphs/` scripts have been removed in favor of
-  this demo.
 - `ProxiedOIDCAuthenticator` now accepts a `scopes_map` parameter (previously
   available only on `EntraAuthenticator`) and translates identity-provider
   scopes into Tiled scopes when decoding tokens. Its effective `scopes` are the
