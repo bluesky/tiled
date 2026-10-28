@@ -26,7 +26,7 @@ from datetime import datetime, timezone
 from typing import Iterable, Optional
 
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy import and_, delete, false, insert, or_, select, update
+from sqlalchemy import and_, delete, false, func, insert, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.exc import IntegrityError
@@ -439,6 +439,29 @@ class GraphSQLAlchemyStore:
         async with self._engine.connect() as conn:
             return await self._entity_record(conn, id)
 
+    async def get_entities(self, ids: list[str]) -> dict[str, EntityRecord]:
+        """
+        Fetch many entities by id in two statements (rows + their access
+        tags), returning a mapping keyed by id. Ids with no row are absent
+        from the result. This is the batched counterpart of get_entity, used
+        by the GraphQL layer to resolve the endpoints of many links at once.
+        """
+        if not ids:
+            return {}
+        unique_ids = list(dict.fromkeys(ids))
+        async with self._engine.connect() as conn:
+            rows = (
+                await conn.execute(
+                    select(_entities).where(_entities.c.id.in_(unique_ids))
+                )
+            ).all()
+            access_tags_by_id = await self._entity_access_tags_by_id(
+                conn, [row.id for row in rows]
+            )
+        return {
+            row.id: self._to_entity(row, access_tags_by_id.get(row.id)) for row in rows
+        }
+
     async def get_node_access_tags(self, node_id: int) -> Optional[frozenset[str]]:
         """
         Look up a catalog node's access tags, for resolving the effective
@@ -446,24 +469,43 @@ class GraphSQLAlchemyStore:
         Returns None if the node does not exist. Returns raw stored tag
         names; the caller converts to the policy-facing AccessTags type.
         """
+        return (await self.get_node_access_tags_batch([node_id])).get(node_id)
+
+    async def get_node_access_tags_batch(
+        self, node_ids: list[int]
+    ) -> dict[int, frozenset[str]]:
+        """
+        Look up the access tags of many catalog nodes in two statements,
+        returning a mapping of node id to its (possibly empty) tag set. Node
+        ids with no catalog row are absent from the result, which lets the
+        caller distinguish "node has no tags" from "node does not exist".
+        """
+        if not node_ids:
+            return {}
+        unique_ids = list(dict.fromkeys(node_ids))
         async with self._engine.connect() as conn:
-            exists = (
-                await conn.execute(select(_nodes.c.id).where(_nodes.c.id == node_id))
-            ).one_or_none()
-            if exists is None:
-                return None
+            existing = (
+                await conn.execute(
+                    select(_nodes.c.id).where(_nodes.c.id.in_(unique_ids))
+                )
+            ).scalars()
+            tags_by_node: dict[int, set[str]] = {node_id: set() for node_id in existing}
+            if not tags_by_node:
+                return {}
             rows = (
                 await conn.execute(
-                    select(_access_tags.c.name)
+                    select(_node_access_tags.c.node_id, _access_tags.c.name)
                     .select_from(_node_access_tags)
                     .join(
                         _access_tags,
                         _access_tags.c.id == _node_access_tags.c.tag_id,
                     )
-                    .where(_node_access_tags.c.node_id == node_id)
+                    .where(_node_access_tags.c.node_id.in_(list(tags_by_node)))
                 )
             ).all()
-        return frozenset(row.name for row in rows)
+        for node_id, name in rows:
+            tags_by_node[node_id].add(name)
+        return {node_id: frozenset(tags) for node_id, tags in tags_by_node.items()}
 
     async def list_entities(
         self,
@@ -657,6 +699,67 @@ class GraphSQLAlchemyStore:
                 conn, [row.id for row in rows]
             )
         return [self._to_link(row, access_tags_by_id.get(row.id)) for row in rows]
+
+    async def find_links_batch(
+        self,
+        endpoint: str,
+        endpoint_ids: list[str],
+        predicate: Optional[str] = None,
+        limit: int = 100,
+        offset: int = 0,
+        access_filters: Optional[list[AccessTagsFilter]] = None,
+    ) -> dict[str, list[LinkRecord]]:
+        """
+        Batched counterpart of find_links for one endpoint of many links at
+        once: the links where `endpoint` ("subject_id" or "object_id") is any
+        of `endpoint_ids`, applying the same predicate/access filters and the
+        same per-endpoint page (`limit`/`offset`) as find_links would for each
+        id individually. Returns a mapping of endpoint id to its page of links
+        (ids with no links are absent).
+
+        The per-endpoint page is cut with a window function
+        (ROW_NUMBER() OVER (PARTITION BY endpoint ORDER BY created_at, id)),
+        which both SQLite and PostgreSQL support, so expanding the links of
+        every node on a page of a GraphQL query costs a constant number of
+        statements rather than one per node.
+        """
+        if not endpoint_ids:
+            return {}
+        endpoint_column = getattr(_links.c, endpoint)
+        unique_ids = list(dict.fromkeys(endpoint_ids))
+        row_number = (
+            func.row_number()
+            .over(
+                partition_by=endpoint_column,
+                order_by=(_links.c.created_at, _links.c.id),
+            )
+            .label("row_number")
+        )
+        inner = select(_links, row_number).where(endpoint_column.in_(unique_ids))
+        if predicate is not None:
+            inner = inner.where(_links.c.predicate == predicate)
+        if access_filters:
+            inner = inner.where(
+                _access_filters_condition(_link_access_condition, access_filters)
+            )
+        inner = inner.subquery()
+        stmt = (
+            select(inner)
+            .where(inner.c.row_number > offset)
+            .where(inner.c.row_number <= offset + limit)
+            .order_by(inner.c.created_at, inner.c.id)
+        )
+        async with self._engine.connect() as conn:
+            rows = (await conn.execute(stmt)).all()
+            access_tags_by_id = await self._link_access_tags_by_id(
+                conn, [row.id for row in rows]
+            )
+        grouped: dict[str, list[LinkRecord]] = {}
+        for row in rows:
+            grouped.setdefault(getattr(row, endpoint), []).append(
+                self._to_link(row, access_tags_by_id.get(row.id))
+            )
+        return grouped
 
     async def delete_link(self, id: str) -> bool:
         async with self._engine.begin() as conn:

@@ -35,6 +35,7 @@ from typing import Optional
 
 import strawberry
 from graphql import GraphQLError
+from strawberry.dataloader import DataLoader
 from strawberry.extensions import QueryDepthLimiter
 from strawberry.scalars import JSON as StrawberryJSON
 from strawberry.types import Info
@@ -45,7 +46,7 @@ from tiled.access_control.protocols import normalize_access_tags
 from tiled.queries import AccessTagsFilter
 from tiled.type_aliases import AccessTags
 
-from .curie import compact_term, compact_value, expand_term, expand_value
+from .curie import Namespaces, compact_term, compact_value, expand_term, expand_value
 from .orm import ENTITY_NODE_ACCESS_TAGS_ERROR
 from .store import UNSET as STORE_UNSET
 from .store import EntityConflictError, EntityRecord, GraphSQLAlchemyStore, LinkRecord
@@ -73,8 +74,123 @@ def _store(info: Info) -> GraphSQLAlchemyStore:
     return info.context["store"]
 
 
-async def _namespaces(info: Info) -> dict[str, str]:
-    return await _store(info).list_namespaces()
+class _RequestCache:
+    """
+    Per-request memo of lookups that every resolver in a query would
+    otherwise repeat.
+
+    A single GraphQL request fans out into one resolver call per field per
+    node (`entities -> outgoingLinks -> object -> outgoingLinks -> ...`), and
+    each of those needs the namespace registry, the principal's access
+    filters, and the endpoint entities of its links. Without memoization that
+    is O(nodes x depth) round-trips to the database for data that cannot
+    change within the request. The cache lives on `info.context`, which the
+    router builds fresh for every request, so nothing leaks across requests.
+
+    Entity and node-tag lookups go through `DataLoader`s: resolvers that run
+    concurrently within one event-loop tick (e.g. `object` for every link in a
+    page) are collected and served by a single batched store query.
+    """
+
+    __slots__ = (
+        "_store",
+        "_namespaces",
+        "_access_filters",
+        "entities",
+        "node_tags",
+        "links",
+    )
+
+    def __init__(self, store: GraphSQLAlchemyStore):
+        self._store = store
+        self._namespaces: Optional[Namespaces] = None
+        self._access_filters: dict[str, object] = {}
+        self.entities: DataLoader[str, Optional[EntityRecord]] = DataLoader(
+            load_fn=self._load_entities
+        )
+        self.node_tags: DataLoader[int, Optional[frozenset[str]]] = DataLoader(
+            load_fn=self._load_node_tags
+        )
+        # Keyed on (endpoint, endpoint_id, predicate, limit, offset, scope):
+        # the batch function groups keys that share everything but the
+        # endpoint id and issues one query per group. The scope selects the
+        # memoized access filters (see _policy_access_filters).
+        self.links: DataLoader[tuple, list[LinkRecord]] = DataLoader(
+            load_fn=self._load_links
+        )
+
+    async def namespaces(self) -> Namespaces:
+        if self._namespaces is None:
+            self._namespaces = Namespaces(await self._store.list_namespaces())
+        return self._namespaces
+
+    def invalidate_namespaces(self) -> None:
+        "Drop the memoized registry after a mutation changes it."
+        self._namespaces = None
+
+    async def _load_entities(self, ids: list[str]) -> list[Optional[EntityRecord]]:
+        found = await self._store.get_entities(ids)
+        return [found.get(id_) for id_ in ids]
+
+    async def _load_node_tags(
+        self, node_ids: list[int]
+    ) -> list[Optional[frozenset[str]]]:
+        found = await self._store.get_node_access_tags_batch(node_ids)
+        return [found.get(node_id) for node_id in node_ids]
+
+    async def _load_links(self, keys: list[tuple]) -> list[list[LinkRecord]]:
+        # Group by every component except the endpoint id, so that the links
+        # of all nodes expanded with the same arguments come back in one
+        # query per argument combination.
+        groups: dict[tuple, list[str]] = {}
+        for endpoint, endpoint_id, predicate, limit, offset, scope in keys:
+            groups.setdefault((endpoint, predicate, limit, offset, scope), []).append(
+                endpoint_id
+            )
+        results: dict[tuple, dict[str, list[LinkRecord]]] = {}
+        for group_key, endpoint_ids in groups.items():
+            endpoint, predicate, limit, offset, scope = group_key
+            results[group_key] = await self._store.find_links_batch(
+                endpoint=endpoint,
+                endpoint_ids=endpoint_ids,
+                predicate=predicate,
+                limit=limit,
+                offset=offset,
+                access_filters=self._access_filters[scope] or None,
+            )
+        return [
+            results[(endpoint, predicate, limit, offset, scope)].get(endpoint_id, [])
+            for endpoint, endpoint_id, predicate, limit, offset, scope in keys
+        ]
+
+
+def new_request_cache(store: GraphSQLAlchemyStore) -> _RequestCache:
+    """
+    Build the per-request cache. The router calls this when it assembles the
+    context for an HTTP request and stores the result under
+    `context["request_cache"]`, so every resolver in that request shares one
+    cache and nothing persists beyond it.
+    """
+    return _RequestCache(store)
+
+
+def _cache(info: Info) -> _RequestCache:
+    """
+    The cache for the current request.
+
+    Normally provided by the router under `context["request_cache"]`. A
+    context built without one (e.g. `schema.execute` called directly) gets a
+    cache created on first use and kept on the context, which then lives as
+    long as that context object does.
+    """
+    cache = info.context.get("request_cache")
+    if cache is None:
+        cache = info.context["request_cache"] = _RequestCache(_store(info))
+    return cache
+
+
+async def _namespaces(info: Info) -> Namespaces:
+    return await _cache(info).namespaces()
 
 
 async def _resolve_node_binding(
@@ -155,7 +271,7 @@ async def _effective_access_tags(info: Info, record: EntityRecord) -> AccessTags
     in tiled.graph.orm). Resolve whichever is authoritative.
     """
     if record.node_id is not None:
-        node_tags = await _store(info).get_node_access_tags(record.node_id)
+        node_tags = await _cache(info).node_tags.load(record.node_id)
         return normalize_access_tags(node_tags or ())
     return normalize_access_tags(record.access_tags or ())
 
@@ -173,26 +289,38 @@ async def _policy_access_filters(info: Info, scope: str) -> object:
     filtering happens in SQL before LIMIT/OFFSET, rather than filtering a
     page of results after the fact (which would return fewer than `limit`
     rows even when more visible rows exist).
+
+    The result depends only on the principal and the scope, both fixed for
+    the request, so it is computed once per scope and memoized: nested
+    `outgoingLinks`/`incomingLinks` resolvers would otherwise re-run the
+    policy and the tag-id resolution query for every node they expand.
     """
+    cache = _cache(info)
+    if scope in cache._access_filters:
+        return cache._access_filters[scope]
+
     policy = info.context.get("access_policy")
     if policy is None or not hasattr(policy, "filters"):
-        return []
-
-    queries = await policy.filters(
-        _PolicyNode(normalize_access_tags()),
-        info.context["principal"],
-        info.context["authn_access_tags"],
-        info.context["authn_scopes"],
-        {scope},
-    )
-    if queries is NO_ACCESS:
-        return NO_ACCESS
-    for query in queries:
-        if not isinstance(query, AccessTagsFilter):
-            raise GraphQLError(
-                f"Unsupported access-policy filter in graph queries: {type(query).__name__}"
-            )
-        query.tag_ids = await _store(info).resolve_access_tag_ids_for_read(query.tags)
+        queries: object = []
+    else:
+        queries = await policy.filters(
+            _PolicyNode(normalize_access_tags()),
+            info.context["principal"],
+            info.context["authn_access_tags"],
+            info.context["authn_scopes"],
+            {scope},
+        )
+        if queries is not NO_ACCESS:
+            for query in queries:
+                if not isinstance(query, AccessTagsFilter):
+                    raise GraphQLError(
+                        "Unsupported access-policy filter in graph queries: "
+                        f"{type(query).__name__}"
+                    )
+                query.tag_ids = await _store(info).resolve_access_tag_ids_for_read(
+                    query.tags
+                )
+    cache._access_filters[scope] = queries
     return queries
 
 
@@ -274,19 +402,9 @@ class Entity:
         limit: int = 100,
         offset: int = 0,
     ) -> list["Link"]:
-        access_filters = await _policy_access_filters(info, "read:metadata")
-        if access_filters is NO_ACCESS:
-            return []
-        namespaces = await _namespaces(info)
-        expanded_predicate = expand_term(predicate, namespaces) if predicate else None
-        records = await _store(info).find_links(
-            subject_id=str(self.id),
-            predicate=expanded_predicate,
-            limit=limit,
-            offset=offset,
-            access_filters=access_filters or None,
+        return await _load_links(
+            info, "subject_id", str(self.id), predicate, limit, offset
         )
-        return [_link_from_record(r, namespaces) for r in records]
 
     @strawberry.field(description="Links where this entity is the object.")
     async def incoming_links(
@@ -296,19 +414,35 @@ class Entity:
         limit: int = 100,
         offset: int = 0,
     ) -> list["Link"]:
-        access_filters = await _policy_access_filters(info, "read:metadata")
-        if access_filters is NO_ACCESS:
-            return []
-        namespaces = await _namespaces(info)
-        expanded_predicate = expand_term(predicate, namespaces) if predicate else None
-        records = await _store(info).find_links(
-            object_id=str(self.id),
-            predicate=expanded_predicate,
-            limit=limit,
-            offset=offset,
-            access_filters=access_filters or None,
+        return await _load_links(
+            info, "object_id", str(self.id), predicate, limit, offset
         )
-        return [_link_from_record(r, namespaces) for r in records]
+
+
+async def _load_links(
+    info: Info,
+    endpoint: str,
+    endpoint_id: str,
+    predicate: Optional[str],
+    limit: int,
+    offset: int,
+) -> list["Link"]:
+    """
+    Resolve one page of an entity's links at one endpoint, through the
+    request's link loader so that expanding the links of every entity on a
+    page costs one query per distinct (endpoint, predicate, page) rather than
+    one per entity.
+    """
+    scope = "read:metadata"
+    access_filters = await _policy_access_filters(info, scope)
+    if access_filters is NO_ACCESS:
+        return []
+    namespaces = await _namespaces(info)
+    expanded_predicate = expand_term(predicate, namespaces) if predicate else None
+    records = await _cache(info).links.load(
+        (endpoint, endpoint_id, expanded_predicate, limit, offset, scope)
+    )
+    return [_link_from_record(r, namespaces) for r in records]
 
 
 @strawberry.type
@@ -323,23 +457,27 @@ class Link:
 
     @strawberry.field
     async def subject(self, info: Info) -> Optional[Entity]:
-        record = await _store(info).get_entity(str(self.subject_id))
-        if record is None:
-            return None
-        access_tags = await _effective_access_tags(info, record)
-        if not await _is_allowed(info, access_tags, "read:metadata"):
-            return None
-        return _entity_from_record(record, await _namespaces(info))
+        return await _load_visible_entity(info, str(self.subject_id))
 
     @strawberry.field
     async def object(self, info: Info) -> Optional[Entity]:
-        record = await _store(info).get_entity(str(self.object_id))
-        if record is None:
-            return None
-        access_tags = await _effective_access_tags(info, record)
-        if not await _is_allowed(info, access_tags, "read:metadata"):
-            return None
-        return _entity_from_record(record, await _namespaces(info))
+        return await _load_visible_entity(info, str(self.object_id))
+
+
+async def _load_visible_entity(info: Info, id: str) -> Optional[Entity]:
+    """
+    Resolve a link endpoint, or None if it does not exist or the principal may
+    not read it. Goes through the request's entity loader so that the endpoints
+    of every link in a page are fetched with one batched query rather than one
+    query per link.
+    """
+    record = await _cache(info).entities.load(id)
+    if record is None:
+        return None
+    access_tags = await _effective_access_tags(info, record)
+    if not await _is_allowed(info, access_tags, "read:metadata"):
+        return None
+    return _entity_from_record(record, await _namespaces(info))
 
 
 @strawberry.type(
@@ -355,7 +493,7 @@ class Namespace:
 # ---------------------------------------------------------------------------
 
 
-def _entity_from_record(r: EntityRecord, namespaces: dict[str, str]) -> Entity:
+def _entity_from_record(r: EntityRecord, namespaces: Namespaces) -> Entity:
     properties = compact_value(r.properties, namespaces) if r.properties else None
     return Entity(
         id=strawberry.ID(r.id),
@@ -368,7 +506,7 @@ def _entity_from_record(r: EntityRecord, namespaces: dict[str, str]) -> Entity:
     )
 
 
-def _link_from_record(r: LinkRecord, namespaces: dict[str, str]) -> Link:
+def _link_from_record(r: LinkRecord, namespaces: Namespaces) -> Link:
     properties = compact_value(r.properties, namespaces) if r.properties else None
     return Link(
         id=strawberry.ID(r.id),
@@ -790,6 +928,7 @@ class Mutation:
     async def upsert_namespace(self, info: Info, prefix: str, uri: str) -> Namespace:
         _assert_authn_scope(info, "write:metadata")
         await _store(info).upsert_namespace(prefix, uri)
+        _cache(info).invalidate_namespaces()
         logger.info("Upserted namespace prefix=%r uri=%r", prefix, uri)
         return Namespace(prefix=prefix, uri=uri)
 
@@ -800,6 +939,7 @@ class Mutation:
         _assert_authn_scope(info, "write:metadata")
         deleted = await _store(info).delete_namespace(prefix)
         if deleted:
+            _cache(info).invalidate_namespaces()
             logger.info("Deleted namespace prefix=%r", prefix)
         return deleted
 

@@ -67,6 +67,12 @@ Write the date in place of the "Unreleased" in the case a new version is release
   deterministically by breaking `created_at` ties on the unique id, so
   `limit`/`offset` no longer risk skipping or repeating rows created in the
   same batch.
+- Fix the experimental graph's GraphQL resolvers issuing one database query
+  per node per field: a nested traversal re-read the namespace registry and
+  re-ran the access policy for every node, and fetched link endpoints and link
+  lists one row at a time (hundreds of statements for a small graph). Lookups
+  are now memoized per request and batched, so the number of statements is
+  bounded by the query's depth rather than the number of entities.
 - Fixed serving HDF5 files that have an empty (null dataspace) attribute or a
   byte-string attribute that is not valid UTF-8. Either one made every node
   in the file fail to load. Empty attributes are now served as `null`, and
