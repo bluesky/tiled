@@ -11,13 +11,12 @@ Write the date in place of the "Unreleased" in the case a new version is release
   Also, it is now not allowed to use two storage databases with the same
   database on different hosts.
 - Greatly reduce access-control overhead for principals with many access
-  tags: on PostgreSQL the ACL filter passes tag ids as a single array
-  parameter (`tag_id = ANY(...)`) instead of one parameter per tag, and the
-  computed tag sets and resolved tag ids are cached for a short time
-  (60 s default; `granted_tags_cache_ttl` argument of `TagBasedAccessPolicy` and
-  `TILED_ACCESS_TAG_IDS_CACHE_TTL`, `0` disables). The caches are
-  invalidated immediately within a process when the compiled tags change;
-  changes made by other processes are covered by the TTL.
+  tags: the set of tags granted to a principal and the resolved tag ids are
+  cached for a short time (60 s default; `granted_tags_cache_ttl` argument
+  of `TagBasedAccessPolicy` and `TILED_ACCESS_TAG_IDS_CACHE_TTL`, `0`
+  disables). The caches are invalidated immediately within a process when
+  the compiled tags change; changes made by other processes are covered by
+  the TTL.
 - Database initialization with `init_if_not_exists` (the catalog, via
   `tiled.catalog.from_uri` and server configuration; and the authentication
   database, via server configuration) is now done in-process instead of by

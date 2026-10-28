@@ -30,8 +30,6 @@ from urllib.parse import urlparse
 import anyio
 from fastapi import HTTPException
 from sqlalchemy import (
-    Integer,
-    any_,
     delete,
     event,
     exists,
@@ -1072,10 +1070,9 @@ class CatalogNodeAdapter:
         ).where(orm.NodesClosure.ancestor == self.node.id, orm.NodesClosure.depth >= 1)
         if self.max_depth is not None:
             statement = statement.where(orm.NodesClosure.depth <= self.max_depth)
-        dialect_name = self.context.engine.dialect.name
         for query, _ in self.access_filters:
             statement = statement.where(
-                _access_tags_predicate(query, orm.Node, orm.Node.parent, dialect_name)
+                _access_tags_predicate(query, orm.Node, orm.Node.parent)
             )
             # No container strictly between this node and the match may fail
             # the policy: otherwise results leak the paths of hidden containers.
@@ -1089,13 +1086,7 @@ class CatalogNodeAdapter:
                 .join(hidden, hidden.id == to_match.ancestor)
                 .where(to_match.descendant == orm.Node.id, to_match.depth >= 1)
                 .where(from_root.ancestor == self.node.id, from_root.depth >= 1)
-                .where(
-                    not_(
-                        _access_tags_predicate(
-                            query, hidden, hidden.parent, dialect_name
-                        )
-                    )
-                )
+                .where(not_(_access_tags_predicate(query, hidden, hidden.parent)))
                 .exists()
             )
             statement = statement.where(not_(hidden_ancestor))
@@ -2816,7 +2807,7 @@ def specs(query, tree):
     return tree.new_variation(conditions=tree.conditions + conditions)
 
 
-def _access_tags_predicate(query, node, parent, dialect_name):
+def _access_tags_predicate(query, node, parent):
     """Condition: `node` carries one of the query's tags, as a child of `parent`.
 
     `parent` is a literal id (`/search`: all candidates share one parent) or
@@ -2838,22 +2829,11 @@ def _access_tags_predicate(query, node, parent, dialect_name):
         if not query.tag_ids:
             # None of the requested tag names exist; match nothing.
             return false()
-        # Deduplicate and sort so the parameter value is stable across
-        # requests (helps prepared-statement / plan reuse).
-        tag_ids = sorted(set(query.tag_ids))
-        if dialect_name == "postgresql":
-            # Pass all ids in a single array parameter: `tag_id = ANY(...)`.
-            tag_match = orm.NodeAccessTagAssociation.tag_id == any_(
-                literal(tag_ids, ARRAY(Integer))
-            )
-        else:
-            # SQLite has no array type; use a plain IN list.
-            tag_match = orm.NodeAccessTagAssociation.tag_id.in_(tag_ids)
         return (
             select(orm.NodeAccessTagAssociation.node_id)
             .where(orm.NodeAccessTagAssociation.node_id == node.id)
             .where(orm.NodeAccessTagAssociation.parent_id == parent)
-            .where(tag_match)
+            .where(orm.NodeAccessTagAssociation.tag_id.in_(query.tag_ids))
             .exists()
         )
     # Nodes carrying at least one of the given access tags.
@@ -2870,9 +2850,7 @@ def _access_tags_predicate(query, node, parent, dialect_name):
 
 
 def access_tags_filter(query, tree):
-    condition = _access_tags_predicate(
-        query, orm.Node, tree.node.id, tree.context.engine.dialect.name
-    )
+    condition = _access_tags_predicate(query, orm.Node, tree.node.id)
     return tree.new_variation(
         access_filters=tree.access_filters + [(query, condition)],
     )

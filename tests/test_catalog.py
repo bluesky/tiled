@@ -22,8 +22,6 @@ import xarray
 from hypothesis import given, settings
 from hypothesis import strategies as st
 from sqlalchemy import insert, select, text
-from sqlalchemy.dialects import postgresql as postgresql_dialect
-from sqlalchemy.dialects import sqlite as sqlite_dialect
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.pool import AsyncAdaptedQueuePool, QueuePool, StaticPool
 
@@ -35,7 +33,6 @@ from tiled.adapters.utils import DataNotReadyError, IncompatibleShapeError
 from tiled.catalog import in_memory, orm
 from tiled.catalog.adapter import (
     WouldDeleteData,
-    _access_tags_predicate,
     _resolve_access_tags,
 )
 from tiled.catalog.core import register_principal_tag_rows
@@ -44,7 +41,7 @@ from tiled.client import Context, from_context
 from tiled.client.register import register
 from tiled.client.utils import ClientError
 from tiled.client.xarray import write_xarray_dataset
-from tiled.queries import AccessTagsFilter, Eq, Key
+from tiled.queries import Eq, Key
 from tiled.server.app import build_app, build_app_from_config
 from tiled.server.schemas import Asset, DataSource, Management
 from tiled.storage import SQLStorage, get_storage, parse_storage, sanitize_uri
@@ -1498,34 +1495,6 @@ def test_pooling_config(sqlite_or_postgres_uri, sql_storage_uri, desired, expect
 
 # ---- Resolved access-tag-id cache and compiled-tags version bumps ----
 # Companion to the granted-tags cache tests in test_access_policy.py.
-
-
-def test_access_predicate_uses_array_parameter_on_postgresql():
-    query = AccessTagsFilter(["a"])
-    query.tag_ids = (30, 10, 20, 10)
-    condition = _access_tags_predicate(query, orm.Node, 7, "postgresql")
-    sql = str(
-        condition.compile(
-            dialect=postgresql_dialect.dialect(),
-            compile_kwargs={"literal_binds": True},
-        )
-    )
-    assert "= ANY (ARRAY[10, 20, 30])" in sql  # deduplicated, sorted, one array
-    assert "IN (" not in sql
-    parameterized = str(condition.compile(dialect=postgresql_dialect.dialect()))
-    assert parameterized.count("%(") == 2  # parent id + the one array parameter
-
-
-def test_access_predicate_uses_in_list_on_sqlite():
-    query = AccessTagsFilter(["a"])
-    query.tag_ids = (2, 1)
-    condition = _access_tags_predicate(query, orm.Node, 7, "sqlite")
-    sql = str(
-        condition.compile(
-            dialect=sqlite_dialect.dialect(), compile_kwargs={"literal_binds": True}
-        )
-    )
-    assert "IN (1, 2)" in sql
 
 
 @pytest.mark.asyncio
