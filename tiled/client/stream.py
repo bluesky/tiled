@@ -2,15 +2,9 @@ import abc
 import concurrent.futures
 import inspect
 import logging
-import sys
 import threading
 import weakref
-from typing import Any, Callable, Generic, List, Optional, TypeVar
-
-if sys.version_info >= (3, 11):
-    from typing import Self
-else:
-    from typing_extensions import Self
+from typing import Any, Callable, Generic, List, Optional, Self, TypeVar
 
 import anyio
 import httpx2 as httpx

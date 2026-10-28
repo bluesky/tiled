@@ -1,7 +1,7 @@
 import enum
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Any, Optional, Tuple, Union
+from typing import Any, Optional, Self, Tuple, Union
 
 from tiled.structures.root import Structure
 
@@ -31,7 +31,7 @@ class COOStructure(Structure):
     # TODO Include fill_value?
 
     @classmethod
-    def from_json(cls, structure: Mapping[str, Any]) -> "COOStructure":
+    def from_json(cls, structure: Mapping[str, Any]) -> Self:
         data_type = structure.get("data_type", None)
         if data_type is not None and "fields" in data_type:
             data_type = StructDtype.from_json(data_type)

@@ -1,16 +1,9 @@
 from __future__ import annotations
 
-import sys
-
-if sys.version_info >= (3, 11):
-    from typing import Self
-else:
-    from typing_extensions import Self
-
 import copy
 from collections.abc import Set
 from contextlib import closing
-from typing import Any
+from typing import Any, Self
 
 import adbc_driver_manager
 import awkward

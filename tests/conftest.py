@@ -106,11 +106,9 @@ def set_tiled_cache_dir():
     # is still open. It is closed by transport shutdown, but not all tests
     # correctly shut down the transport. This is probably related to the
     # thread-leaking issue.
-    # This option was added to TemporaryDirectory in Python 3.10
-    kwargs = {}
-    if sys.platform.startswith("win") and sys.version_info >= (3, 10):
-        kwargs["ignore_cleanup_errors"] = True
-    with tempfile.TemporaryDirectory(**kwargs) as tmpdir:
+    with tempfile.TemporaryDirectory(
+        ignore_cleanup_errors=sys.platform.startswith("win")
+    ) as tmpdir:
         os.environ["TILED_CACHE_DIR"] = str(tmpdir)
         yield
         del os.environ["TILED_CACHE_DIR"]
