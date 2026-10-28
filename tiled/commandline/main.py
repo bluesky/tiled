@@ -1,4 +1,3 @@
-from typing import Optional
 
 try:
     import click
@@ -57,7 +56,7 @@ cli_app.add_typer(
 
 @cli_app.command("login")
 def login(
-    profile: Optional[str] = typer.Option(
+    profile: str | None = typer.Option(
         None, help="If you use more than one Tiled server, use this to specify which."
     ),
     show_secret_tokens: bool = typer.Option(
@@ -81,7 +80,7 @@ def login(
 
 @cli_app.command("whoami")
 def whoami(
-    profile: Optional[str] = typer.Option(
+    profile: str | None = typer.Option(
         None, help="If you use more than one Tiled server, use this to specify which."
     ),
 ):
@@ -103,7 +102,7 @@ def whoami(
 
 @cli_app.command("logout")
 def logout(
-    profile: Optional[str] = typer.Option(
+    profile: str | None = typer.Option(
         None, help="If you use more than one Tiled server, use this to specify which."
     ),
 ):
@@ -122,7 +121,7 @@ def logout(
 
 @cli_app.command("tree")
 def tree(
-    profile: Optional[str] = typer.Option(
+    profile: str | None = typer.Option(
         None, help="If you use more than one Tiled server, use this to specify which."
     ),
     max_lines: int = typer.Argument(20, help="Max lines to show."),

@@ -8,7 +8,7 @@ import urllib.parse
 import warnings
 from contextlib import contextmanager
 from pathlib import Path
-from typing import List, Literal, Optional
+from typing import Literal
 from urllib.parse import parse_qs, urlparse
 
 import httpx2 as httpx
@@ -60,7 +60,7 @@ prompt the user to provide credentials in the stdin. Options:
 
 
 def identity_provider_input(
-    providers: List[AboutAuthenticationProvider],
+    providers: list[AboutAuthenticationProvider],
 ) -> AboutAuthenticationProvider:
     while True:
         print("Authentication providers:")
@@ -100,7 +100,7 @@ class PasswordRejected(RuntimeError):
     pass
 
 
-def prompt_for_credentials(http_client, providers: List[AboutAuthenticationProvider]):
+def prompt_for_credentials(http_client, providers: list[AboutAuthenticationProvider]):
     """
     Prompt for credentials or third-party login at an interactive terminal.
     """
@@ -175,8 +175,8 @@ class Context:
         *,
         headers=None,
         api_key=None,
-        auth: Optional[httpx.Auth] = None,
-        cookies: Optional[httpx.Cookies | dict] = None,
+        auth: httpx.Auth | None = None,
+        cookies: httpx.Cookies | dict | None = None,
         cache=UNSET,
         timeout=None,
         verify=True,
@@ -704,8 +704,8 @@ class Context:
         *,
         headers=None,
         api_key=None,
-        auth: Optional[httpx.Auth] = None,
-        cookies: Optional[httpx.Cookies | dict] = None,
+        auth: httpx.Auth | None = None,
+        cookies: httpx.Cookies | dict | None = None,
         cache=UNSET,
         timeout=None,
         verify=True,
@@ -1413,8 +1413,8 @@ def password_grant(http_client, auth_endpoint, provider, username, password):
 def device_code_grant(
     http_client,
     auth_endpoint: str,
-    client_id: Optional[str],
-    token_endpoint: Optional[str],
+    client_id: str | None,
+    token_endpoint: str | None,
     scopes: str = "openid offline_access",
 ):
     for attempt in retry_context():

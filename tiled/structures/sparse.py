@@ -1,7 +1,7 @@
 import enum
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Any, Optional, Self, Tuple, Union
+from typing import Any, Self
 
 from tiled.structures.root import Structure
 
@@ -18,15 +18,15 @@ class SparseLayout(str, enum.Enum):
 @dataclass
 class COOStructure(Structure):
     chunks: Chunks  # tuple-of-tuples-of-ints like ((3,), (3,))
-    shape: Tuple[int, ...]  # tuple of ints like (3, 3)
-    data_type: Optional[Union[BuiltinDtype, StructDtype]] = None
-    coord_data_type: Optional[BuiltinDtype] = field(
+    shape: tuple[int, ...]  # tuple of ints like (3, 3)
+    data_type: BuiltinDtype | StructDtype | None = None
+    coord_data_type: BuiltinDtype | None = field(
         default_factory=lambda: BuiltinDtype(
             Endianness("little"), Kind("u"), 8
         )  # numpy 'uint' dtype
     )
-    dims: Optional[Tuple[str, ...]] = None  # None or tuple of names like ("x", "y")
-    resizable: Union[bool, Tuple[bool, ...]] = False
+    dims: tuple[str, ...] | None = None  # None or tuple of names like ("x", "y")
+    resizable: bool | tuple[bool, ...] = False
     layout: SparseLayout = SparseLayout.COO
     # TODO Include fill_value?
 

@@ -347,8 +347,13 @@ extend-exclude = [
 ]
 
 [tool.ruff.lint]
-# Match the previous flake8 (pycodestyle + pyflakes) and isort checks.
-select = ["E", "F", "W", "I"]
+select = [
+    "E",  # pycodestyle errors - https://docs.astral.sh/ruff/rules/#error-e
+    "F",  # pyflakes rules - https://docs.astral.sh/ruff/rules/#pyflakes-f
+    "W",  # pycodestyle warnings - https://docs.astral.sh/ruff/rules/#warning-w
+    "I",  # isort - https://docs.astral.sh/ruff/rules/#isort-i
+    "UP", # pyupgrade - https://docs.astral.sh/ruff/rules/#pyupgrade-up
+]
 
 [tool.ruff.lint.pycodestyle]
 max-line-length = 115

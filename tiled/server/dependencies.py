@@ -1,4 +1,3 @@
-from typing import List, Optional
 
 import pydantic_settings
 from fastapi import HTTPException, Query, Request
@@ -43,15 +42,15 @@ def get_root_tree(request: Request):
 
 async def get_entry(
     path: str,
-    security_scopes: List[str],
-    principal: Optional[Principal],
-    authn_access_tags: Optional[AccessTags],
+    security_scopes: list[str],
+    principal: Principal | None,
+    authn_access_tags: AccessTags | None,
     authn_scopes: Scopes,
     root_tree: pydantic_settings.BaseSettings,
     session_state: dict,
     metrics: dict,
-    structure_families: Optional[set[StructureFamily]] = None,
-    access_policy: Optional[AccessPolicy] = None,
+    structure_families: set[StructureFamily] | None = None,
+    access_policy: AccessPolicy | None = None,
 ) -> AnyAdapter:
     """
     Obtain a node in the tree from its path.
@@ -167,7 +166,7 @@ def parse_slice_param(slice: str = Query("", pattern=SLICE_REGEX)):
 
 
 def expected_shape(
-    expected_shape: Optional[str] = Query(
+    expected_shape: str | None = Query(
         None, min_length=1, pattern="^[0-9]+(,[0-9]+)*$|^scalar$"
     ),
 ):
@@ -194,7 +193,7 @@ def offset_param(
 
 
 def patch_shape_param(
-    patch_shape: Optional[str] = Query(
+    patch_shape: str | None = Query(
         None, min_length=1, pattern="^[0-9]+(,[0-9]+)*$|^scalar$"
     ),
 ):
@@ -205,7 +204,7 @@ def patch_shape_param(
 
 
 def patch_offset_param(
-    patch_offset: Optional[str] = Query(
+    patch_offset: str | None = Query(
         None, min_length=1, pattern="^[0-9]+(,[0-9]+)*$"
     ),
 ):
@@ -216,7 +215,7 @@ def patch_offset_param(
 
 
 def sorting_param(
-    sort: Optional[List[SortField]] = Query(None),
+    sort: list[SortField] | None = Query(None),
 ):
     "Specify and parse a sorting parameter."
     if sort is None:
@@ -258,8 +257,8 @@ def sorting_param(
 class PaginationParams:
     def __init__(
         self,
-        offset: Optional[int] = Query(None, alias="page[offset]", ge=0),
-        cursor: Optional[int] = Query(None, alias="page[cursor]", ge=0),
+        offset: int | None = Query(None, alias="page[offset]", ge=0),
+        cursor: int | None = Query(None, alias="page[cursor]", ge=0),
         limit: int = Query(
             DEFAULT_PAGE_SIZE, alias="page[limit]", ge=0, le=MAX_PAGE_SIZE
         ),

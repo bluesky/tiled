@@ -3,7 +3,6 @@ import json
 import os
 import sqlite3
 import threading
-import typing as tp
 from contextlib import closing
 from datetime import datetime
 from functools import wraps
@@ -281,7 +280,7 @@ class Cache:
             self._conn.commit()
 
     @with_thread_lock
-    def get(self, request: httpx.Request) -> tp.Optional[httpx.Response]:
+    def get(self, request: httpx.Request) -> httpx.Response | None:
         """Get cached response from Cache.
 
         We use the httpx.Request.url as key.
@@ -321,7 +320,7 @@ WHERE cache_key = ?""",
         *,
         request: httpx.Request,
         response: httpx.Response,
-        content: tp.Optional[bytes] = None,
+        content: bytes | None = None,
     ) -> None:
         """Set new response entry in cache.
 

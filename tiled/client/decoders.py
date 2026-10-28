@@ -1,4 +1,4 @@
-from typing import Iterator
+from collections.abc import Iterator
 
 # There is no public API in httpx2 to injecting additional decoders.
 from httpx2._decoders import SUPPORTED_DECODERS

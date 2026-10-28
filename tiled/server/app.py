@@ -11,7 +11,7 @@ from contextlib import asynccontextmanager
 from functools import cache, partial
 from pathlib import Path
 from textwrap import dedent
-from typing import Any, Optional, Union
+from typing import Any
 
 import anyio
 import packaging.version
@@ -156,18 +156,18 @@ def _find_catalog_context(tree):
 
 def build_app(
     tree,
-    authentication: Optional[Authentication] = None,
+    authentication: Authentication | None = None,
     server_settings=None,
-    query_registry: Optional[QueryRegistry] = None,
-    serialization_registry: Optional[SerializationRegistry] = None,
-    deserialization_registry: Optional[SerializationRegistry] = None,
-    compression_registry: Optional[CompressionRegistry] = None,
-    validation_registry: Optional[ValidationRegistry] = None,
-    tasks: Optional[dict[str, list[AppTask]]] = None,
+    query_registry: QueryRegistry | None = None,
+    serialization_registry: SerializationRegistry | None = None,
+    deserialization_registry: SerializationRegistry | None = None,
+    compression_registry: CompressionRegistry | None = None,
+    validation_registry: ValidationRegistry | None = None,
+    tasks: dict[str, list[AppTask]] | None = None,
     scalable=False,
-    access_policy: Optional[AccessPolicy] = None,
-    include_routers: Optional[list[APIRouter]] = None,
-    webhook_url_validator: Optional[UrlValidator] = None,
+    access_policy: AccessPolicy | None = None,
+    include_routers: list[APIRouter] | None = None,
+    webhook_url_validator: UrlValidator | None = None,
 ):
     """
     Serve a Tree
@@ -1096,7 +1096,7 @@ def build_app(
     return app
 
 
-def build_app_from_config(config: Union[Config, dict[str, Any]], scalable=False):
+def build_app_from_config(config: Config | dict[str, Any], scalable=False):
     """
     Convenience function that calls build_app(...) given config as parsed Config instance
 

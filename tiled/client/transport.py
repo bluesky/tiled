@@ -14,8 +14,8 @@ from .utils import TiledResponse
 
 
 def _proxy_mounts_from_env(
-    transport_kwargs: tp.Dict[str, tp.Any],
-) -> tp.Dict[tp.Any, tp.Optional[httpx.BaseTransport]]:
+    transport_kwargs: dict[str, tp.Any],
+) -> dict[tp.Any, httpx.BaseTransport | None]:
     """Build proxy transports from the standard proxy environment variables.
 
     Reads HTTP_PROXY / HTTPS_PROXY / ALL_PROXY / NO_PROXY (via httpx's own
@@ -29,7 +29,7 @@ def _proxy_mounts_from_env(
     """
     from httpx2._utils import URLPattern, get_environment_proxies
 
-    mounts: tp.Dict[tp.Any, tp.Optional[httpx.BaseTransport]] = {}
+    mounts: dict[tp.Any, httpx.BaseTransport | None] = {}
     for key, value in get_environment_proxies().items():
         mounts[URLPattern(key)] = (
             None
@@ -55,13 +55,13 @@ class Transport(httpx.BaseTransport):
     def __init__(
         self,
         *,
-        transport: tp.Optional[httpx.BaseTransport] = None,
-        cache: tp.Optional[Cache] = None,
-        limits: tp.Optional[httpx.Limits] = None,
-        verify: tp.Union[bool, str] = True,
+        transport: httpx.BaseTransport | None = None,
+        cache: Cache | None = None,
+        limits: httpx.Limits | None = None,
+        verify: bool | str = True,
         trust_env: bool = True,
-        cacheable_methods: tp.Tuple[str, ...] = ("GET",),
-        cacheable_status_codes: tp.Tuple[int, ...] = (
+        cacheable_methods: tuple[str, ...] = ("GET",),
+        cacheable_status_codes: tuple[int, ...] = (
             httpx.codes.OK,
             httpx.codes.NON_AUTHORITATIVE_INFORMATION,
             httpx.codes.MULTIPLE_CHOICES,
@@ -77,14 +77,14 @@ class Transport(httpx.BaseTransport):
         )
         # Mapping of URLPattern -> transport for requests that must be routed
         # through a proxy (or, when the value is None, connected to directly).
-        self._mounts: tp.Dict[tp.Any, tp.Optional[httpx.BaseTransport]] = {}
+        self._mounts: dict[tp.Any, httpx.BaseTransport | None] = {}
         if transport is not None:
             # An explicit transport was provided (e.g. the in-process ASGI
             # transport used for TestClient). Use it as-is; proxy/verify
             # handling does not apply.
             self.transport = transport
         else:
-            transport_kwargs: tp.Dict[str, tp.Any] = {"verify": verify}
+            transport_kwargs: dict[str, tp.Any] = {"verify": verify}
             if limits is not None:
                 transport_kwargs["limits"] = limits
             self.transport = httpx.HTTPTransport(**transport_kwargs)

@@ -7,9 +7,9 @@ import re
 import sys
 import uuid
 from collections import defaultdict
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from hashlib import md5
-from typing import Any, Literal, Optional
+from typing import Any, Literal
 
 import anyio
 import dateutil.tz
@@ -221,7 +221,7 @@ async def construct_entries_response(
     omit_links,
     include_data_sources,
     filters,
-    sorting: Optional[list[tuple[str, Literal[1, -1]]]],
+    sorting: list[tuple[str, Literal[1, -1]]] | None,
     base_url,
     media_type,
     max_depth,
@@ -291,7 +291,7 @@ async def construct_entries_response(
     links = pagination_links(base_url, route, path_parts, page, next_cursor, count)
 
     # This value will not leak out. It just used to seed comparisons.
-    metadata_stale_at = datetime.now(timezone.utc) + timedelta(days=1_000_000)
+    metadata_stale_at = datetime.now(UTC) + timedelta(days=1_000_000)
     must_revalidate = getattr(tree, "must_revalidate", True)
     data = []
     for key, entry in items:
@@ -783,7 +783,7 @@ def get_websocket_envelope_formatter(
         async def stream_msgpack(
             websocket: WebSocket,
             metadata: dict,
-            payload_bytes: Optional[bytes],
+            payload_bytes: bytes | None,
         ):
             if payload_bytes is not None:
                 metadata["payload"] = payload_bytes
@@ -797,7 +797,7 @@ def get_websocket_envelope_formatter(
         async def stream_json(
             websocket: WebSocket,
             metadata: dict,
-            payload_bytes: Optional[bytes],
+            payload_bytes: bytes | None,
         ):
             if payload_bytes is not None:
                 media_type = metadata.get("mimetype") or metadata.get(

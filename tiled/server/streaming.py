@@ -3,8 +3,9 @@ import itertools
 import logging
 import weakref
 from collections import defaultdict
+from collections.abc import Callable
 from datetime import datetime
-from typing import Any, Callable, Dict, Optional, Protocol
+from typing import Any, Protocol
 
 import cachetools
 import orjson
@@ -18,7 +19,7 @@ from ..utils import safe_json_dump as _safe_json_dump
 logger = logging.getLogger(__name__)
 
 
-def _build_redis_client(settings: Dict[str, Any]) -> redis.Redis:
+def _build_redis_client(settings: dict[str, Any]) -> redis.Redis:
     """Build the async Redis client for the streaming datastore.
 
     - ``uri`` (``redis://`` / ``rediss://``) — a single standalone node.
@@ -67,7 +68,7 @@ def safe_json_dump(content):
 
 
 class StreamingDatastore(Protocol):
-    def __init__(self, settings: Dict[str, Any]) -> None: ...
+    def __init__(self, settings: dict[str, Any]) -> None: ...
 
     def client(self) -> Any: ...
 
@@ -89,7 +90,7 @@ class StreamingDatastore(Protocol):
     async def close(self, node_id) -> None: ...
 
 
-_DATASTORES: Dict[str, type[StreamingDatastore]] = {}
+_DATASTORES: dict[str, type[StreamingDatastore]] = {}
 
 
 def register_datastore(name: str):
@@ -187,7 +188,7 @@ class PubSub:
         q = asyncio.Queue()
         self_ref = weakref.ref(self)
 
-        def _cleanup_cb(_ref: Optional[weakref.ref] = None):
+        def _cleanup_cb(_ref: weakref.ref | None = None):
             # The weakref callback must not strongly reference self to avoid a reference cycle.
             self_obj = self_ref()
             if self_obj is None:
@@ -273,7 +274,7 @@ def _make_ws_handler_common(
     - Ensures cleanup of resources (e.g., live stream subscriptions) on exit.
     """
 
-    async def handler(sequence: Optional[int] = None, already_accepted: bool = False):
+    async def handler(sequence: int | None = None, already_accepted: bool = False):
         if not already_accepted:
             await websocket.accept()
         end_stream = asyncio.Event()
@@ -442,7 +443,7 @@ class TTLCacheDatastore(StreamingDatastore):
           StreamingDatastore instead.
     """
 
-    def __init__(self, settings: Dict[str, Any]):
+    def __init__(self, settings: dict[str, Any]):
         self._settings = settings
         self._lock = asyncio.Lock()
         maxsize = self._settings.get("maxsize", 1000)
@@ -531,7 +532,7 @@ class TTLCacheDatastore(StreamingDatastore):
 
 @register_datastore("redis")
 class RedisStreamingDatastore(StreamingDatastore):
-    def __init__(self, settings: Dict[str, Any]):
+    def __init__(self, settings: dict[str, Any]):
         self._settings = settings
         self._client = _build_redis_client(settings)
         self.data_ttl = self._settings["data_ttl"]

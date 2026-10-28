@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Literal, Optional, Set, Tuple, Union
+from typing import Any, Literal
 
 import dask.dataframe
 import numpy
@@ -36,14 +36,14 @@ from tiled.type_aliases import JSON, AccessTags, Filters, Scopes
 
 class CustomArrayAdapter:
     structure_family: Literal[StructureFamily.array] = StructureFamily.array
-    supported_storage: Set[type[Storage]] = set()
+    supported_storage: set[type[Storage]] = set()
 
     def __init__(
         self,
         array: NDArray[Any],
         structure: ArrayStructure,
-        metadata: Optional[JSON] = None,
-        specs: Optional[List[Spec]] = None,
+        metadata: JSON | None = None,
+        specs: list[Spec] | None = None,
     ) -> None:
         self._array = array
         self._structure = structure
@@ -56,10 +56,10 @@ class CustomArrayAdapter:
     def read(self, slice: NDSlice) -> NDArray[Any]:
         return self._array
 
-    def read_block(self, block: Tuple[int, ...]) -> NDArray[Any]:
+    def read_block(self, block: tuple[int, ...]) -> NDArray[Any]:
         return self._array
 
-    def specs(self) -> List[Spec]:
+    def specs(self) -> list[Spec]:
         return self._specs
 
     def metadata(self) -> JSON:
@@ -67,7 +67,7 @@ class CustomArrayAdapter:
 
 
 def arrayadapter_protocol_functions(
-    adapter: ArrayAdapter, slice: NDSlice, block: Tuple[int, ...]
+    adapter: ArrayAdapter, slice: NDSlice, block: tuple[int, ...]
 ) -> None:
     adapter.structure()
     adapter.read(slice)
@@ -108,14 +108,14 @@ def test_arrayadapter_protocol(mocker: MockFixture) -> None:
 
 class CustomAwkwardAdapter:
     structure_family: Literal[StructureFamily.awkward] = StructureFamily.awkward
-    supported_storage: Set[type[Storage]] = set()
+    supported_storage: set[type[Storage]] = set()
 
     def __init__(
         self,
         container: dict[str, bytes],
         structure: AwkwardStructure,
-        metadata: Optional[JSON] = None,
-        specs: Optional[List[Spec]] = None,
+        metadata: JSON | None = None,
+        specs: list[Spec] | None = None,
     ) -> None:
         self.container = container
         self._metadata = metadata or {}
@@ -128,10 +128,10 @@ class CustomAwkwardAdapter:
     def read(self) -> NDArray[Any]:
         return numpy.random.rand(4)
 
-    def read_buffers(self, form_keys: Optional[List[str]] = None) -> Dict[str, Any]:
+    def read_buffers(self, form_keys: list[str] | None = None) -> dict[str, Any]:
         return {"a": 123}
 
-    def specs(self) -> List[Spec]:
+    def specs(self) -> list[Spec]:
         return self._specs
 
     def metadata(self) -> JSON:
@@ -141,7 +141,7 @@ class CustomAwkwardAdapter:
 def awkwardadapter_protocol_functions(
     adapter: AwkwardAdapter,
     slice: NDSlice,
-    form_keys: Optional[List[str]],
+    form_keys: list[str] | None,
     container: dict[str, bytes],
 ) -> None:
     adapter.structure()
@@ -179,13 +179,13 @@ def test_awkwardadapter_protocol(mocker: MockFixture) -> None:
 
 class CustomBytesAdapter:
     structure_family: Literal[StructureFamily.bytes] = StructureFamily.bytes
-    supported_storage: Set[type[Storage]] = set()
+    supported_storage: set[type[Storage]] = set()
 
     def __init__(
         self,
         structure: BytesStructure,
-        metadata: Optional[JSON] = None,
-        specs: Optional[List[Spec]] = None,
+        metadata: JSON | None = None,
+        specs: list[Spec] | None = None,
     ) -> None:
         self._structure = structure
         self._metadata = metadata or {}
@@ -194,7 +194,7 @@ class CustomBytesAdapter:
     def structure(self) -> BytesStructure:
         return self._structure
 
-    def specs(self) -> List[Spec]:
+    def specs(self) -> list[Spec]:
         return self._specs
 
     def metadata(self) -> JSON:
@@ -226,14 +226,14 @@ def test_bytesadapter_protocol(mocker: MockFixture) -> None:
 
 class CustomRaggedAdapter:
     structure_family: Literal[StructureFamily.ragged] = StructureFamily.ragged
-    supported_storage: Set[type[Storage]] = set()
+    supported_storage: set[type[Storage]] = set()
 
     def __init__(
         self,
         array: ragged.array,
         structure: RaggedStructure,
-        metadata: Optional[JSON] = None,
-        specs: Optional[List[Spec]] = None,
+        metadata: JSON | None = None,
+        specs: list[Spec] | None = None,
     ) -> None:
         self._array = array
         self._structure = structure
@@ -243,10 +243,10 @@ class CustomRaggedAdapter:
     def structure(self) -> RaggedStructure:
         return self._structure
 
-    def read(self, slice: Optional[NDSlice] = None) -> ragged.array:
+    def read(self, slice: NDSlice | None = None) -> ragged.array:
         return self._array
 
-    def specs(self) -> List[Spec]:
+    def specs(self) -> list[Spec]:
         return self._specs
 
     def metadata(self) -> JSON:
@@ -254,7 +254,7 @@ class CustomRaggedAdapter:
 
 
 def raggedadapter_protocol_functions(
-    adapter: RaggedAdapter, slice: Optional[NDSlice]
+    adapter: RaggedAdapter, slice: NDSlice | None
 ) -> None:
     adapter.structure()
     adapter.read(slice)
@@ -292,15 +292,15 @@ def test_raggedadapter_protocol(mocker: MockFixture) -> None:
 
 class CustomSparseAdapter:
     structure_family: Literal[StructureFamily.sparse] = StructureFamily.sparse
-    supported_storage: Set[type[Storage]] = set()
+    supported_storage: set[type[Storage]] = set()
 
     def __init__(
         self,
-        blocks: Dict[Tuple[int, ...], Tuple[NDArray[Any], Any]],
+        blocks: dict[tuple[int, ...], tuple[NDArray[Any], Any]],
         structure: COOStructure,
         *,
-        metadata: Optional[JSON] = None,
-        specs: Optional[List[Spec]] = None,
+        metadata: JSON | None = None,
+        specs: list[Spec] | None = None,
     ) -> None:
         """
         Construct from blocks with coords given in block-local reference frame.
@@ -331,10 +331,10 @@ class CustomSparseAdapter:
     def read(self, slice: NDSlice) -> sparse.COO:
         return self.arr
 
-    def read_block(self, block: Tuple[int, ...]) -> sparse.COO:
+    def read_block(self, block: tuple[int, ...]) -> sparse.COO:
         return self.arr
 
-    def specs(self) -> List[Spec]:
+    def specs(self) -> list[Spec]:
         return self._specs
 
     def metadata(self) -> JSON:
@@ -342,7 +342,7 @@ class CustomSparseAdapter:
 
 
 def sparseadapter_protocol_functions(
-    adapter: SparseAdapter, slice: NDSlice, block: Tuple[int, ...]
+    adapter: SparseAdapter, slice: NDSlice, block: tuple[int, ...]
 ) -> None:
     adapter.structure()
     adapter.read(slice)
@@ -365,7 +365,7 @@ def test_sparseadapter_protocol(mocker: MockFixture) -> None:
         chunks=((5, 5),),
         data_type=BuiltinDtype.from_numpy_dtype(array.dtype),
     )
-    blocks: Dict[Tuple[int, ...], Tuple[NDArray[Any], Any]] = {(1,): (array, (1,))}
+    blocks: dict[tuple[int, ...], tuple[NDArray[Any], Any]] = {(1,): (array, (1,))}
     metadata: JSON = {"foo": "bar"}
     anyslice = NDSlice(1, 1, 1)
     anyblock = NDSlice(1, 1, 1)
@@ -383,15 +383,15 @@ def test_sparseadapter_protocol(mocker: MockFixture) -> None:
 
 class CustomTableAdapter:
     structure_family: Literal[StructureFamily.table] = StructureFamily.table
-    supported_storage: Set[type[Storage]] = set()
+    supported_storage: set[type[Storage]] = set()
 
     def __init__(
         self,
-        partitions: List[Any],
+        partitions: list[Any],
         structure: TableStructure,
         *,
-        metadata: Optional[JSON] = None,
-        specs: Optional[List[Spec]] = None,
+        metadata: JSON | None = None,
+        specs: list[Spec] | None = None,
     ) -> None:
         """
 
@@ -411,18 +411,18 @@ class CustomTableAdapter:
         return self._structure
 
     def read(
-        self, fields: Optional[List[str]] = None
-    ) -> Union[dask.dataframe.DataFrame, pandas.DataFrame]:
+        self, fields: list[str] | None = None
+    ) -> dask.dataframe.DataFrame | pandas.DataFrame:
         return self._partitions
 
     def read_partition(
         self,
         partition: int,
-        fields: Optional[str] = None,
-    ) -> Union[dask.dataframe.DataFrame, pandas.DataFrame]:
+        fields: str | None = None,
+    ) -> dask.dataframe.DataFrame | pandas.DataFrame:
         return self._partitions[partition]
 
-    def specs(self) -> List[Spec]:
+    def specs(self) -> list[Spec]:
         return self._specs
 
     def metadata(self) -> JSON:
@@ -441,7 +441,7 @@ class CustomTableAdapter:
 
 
 def tableadapter_protocol_functions(
-    adapter: TableAdapter, partition: int, fields: List[str]
+    adapter: TableAdapter, partition: int, fields: list[str]
 ) -> None:
     adapter.structure()
     adapter.read(fields)
@@ -481,7 +481,7 @@ def test_tableadapter_protocol(mocker: MockFixture) -> None:
 
 
 class CustomAccessPolicy(AccessPolicy):
-    def __init__(self, scopes: Optional[Scopes] = None) -> None:
+    def __init__(self, scopes: Scopes | None = None) -> None:
         self.scopes: Scopes = scopes if (scopes is not None) else set(ALL_SCOPES)
 
     def _get_id(self, principal: Principal) -> None:
@@ -490,27 +490,27 @@ class CustomAccessPolicy(AccessPolicy):
     async def init_node(
         self,
         principal: Principal,
-        authn_access_tags: Optional[AccessTags],
+        authn_access_tags: AccessTags | None,
         authn_scopes: Scopes,
-        access_tags: Optional[AccessTags] = None,
-    ) -> Tuple[bool, AccessTags]:
+        access_tags: AccessTags | None = None,
+    ) -> tuple[bool, AccessTags]:
         return (False, access_tags or normalize_access_tags())
 
     async def modify_node(
         self,
         node: BaseAdapter,
         principal: Principal,
-        authn_access_tags: Optional[AccessTags],
+        authn_access_tags: AccessTags | None,
         authn_scopes: Scopes,
-        access_tags: Optional[AccessTags],
-    ) -> Tuple[bool, AccessTags]:
+        access_tags: AccessTags | None,
+    ) -> tuple[bool, AccessTags]:
         return (False, access_tags or normalize_access_tags())
 
     async def allowed_scopes(
         self,
         node: BaseAdapter,
         principal: Principal,
-        authn_access_tags: Optional[AccessTags],
+        authn_access_tags: AccessTags | None,
         authn_scopes: Scopes,
     ) -> Scopes:
         allowed = self.scopes
@@ -521,7 +521,7 @@ class CustomAccessPolicy(AccessPolicy):
         self,
         node: BaseAdapter,
         principal: Principal,
-        authn_access_tags: Optional[AccessTags],
+        authn_access_tags: AccessTags | None,
         authn_scopes: Scopes,
         scopes: Scopes,
     ) -> Filters:
@@ -534,7 +534,7 @@ async def accesspolicy_protocol_functions(
     policy: AccessPolicy,
     node: BaseAdapter,
     principal: Principal,
-    authn_access_tags: Optional[AccessTags],
+    authn_access_tags: AccessTags | None,
     authn_scopes: Scopes,
     scopes: Scopes,
 ) -> None:

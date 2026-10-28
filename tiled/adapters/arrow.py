@@ -1,7 +1,7 @@
 import copy
-from collections.abc import Set
+from collections.abc import Iterator, Set
 from pathlib import Path
-from typing import Any, Dict, Iterator, List, Optional, Tuple, Union
+from typing import Any
 from urllib.parse import quote_plus
 
 import pandas
@@ -28,11 +28,11 @@ class ArrowAdapter(Adapter[TableStructure]):
 
     def __init__(
         self,
-        data_uris: List[str],
-        structure: Optional[TableStructure] = None,
+        data_uris: list[str],
+        structure: TableStructure | None = None,
         *,
-        metadata: Optional[JSON] = None,
-        specs: Optional[List[Spec]] = None,
+        metadata: JSON | None = None,
+        specs: list[Spec] | None = None,
     ) -> None:
         # TODO Store data_uris instead and generalize to non-file schemes.
         self._partition_paths = [path_from_uri(uri) for uri in data_uris]
@@ -51,7 +51,7 @@ class ArrowAdapter(Adapter[TableStructure]):
         data_source: DataSource[TableStructure],
         node: Node,
         /,
-        **kwargs: Optional[Any],
+        **kwargs: Any | None,
     ) -> "ArrowAdapter":
         return init_adapter_from_catalog(cls, data_source, node, **kwargs)
 
@@ -60,7 +60,7 @@ class ArrowAdapter(Adapter[TableStructure]):
         cls,
         storage: Storage,
         data_source: DataSource[TableStructure],
-        path_parts: List[str],
+        path_parts: list[str],
     ) -> DataSource[TableStructure]:
         """
         Class to initialize the list of assets for given uri.
@@ -92,7 +92,7 @@ class ArrowAdapter(Adapter[TableStructure]):
         data_source.assets.extend(assets)
         return data_source
 
-    def get(self, key: str) -> Union[ArrayAdapter, None]:
+    def get(self, key: str) -> ArrayAdapter | None:
         if key not in self.structure().columns:
             return None
         return ArrayAdapter.from_array(self.read([key])[key].values)
@@ -100,11 +100,11 @@ class ArrowAdapter(Adapter[TableStructure]):
     def generate_data_sources(
         self,
         mimetype: str,
-        item: Union[str, Path],
+        item: str | Path,
         is_directory: bool,
-        size: Optional[int] = None,
-        parameters: Optional[Dict[str, Any]] = None,
-    ) -> List[DataSource[TableStructure]]:
+        size: int | None = None,
+        parameters: dict[str, Any] | None = None,
+    ) -> list[DataSource[TableStructure]]:
         """Generate data sources for the adapter.
 
         Parameters
@@ -149,10 +149,10 @@ class ArrowAdapter(Adapter[TableStructure]):
     def from_single_file(
         cls,
         data_uri: str,
-        structure: Optional[TableStructure] = None,
+        structure: TableStructure | None = None,
         *,
-        metadata: Optional[JSON] = None,
-        specs: Optional[List[Spec]] = None,
+        metadata: JSON | None = None,
+        specs: list[Spec] | None = None,
     ) -> "ArrowAdapter":
         return cls(
             [data_uri],
@@ -165,7 +165,7 @@ class ArrowAdapter(Adapter[TableStructure]):
         # Must compute to determine shape.
         return ArrayAdapter.from_array(self.read([key])[key].values)
 
-    def items(self) -> Iterator[Tuple[str, ArrayAdapter]]:
+    def items(self) -> Iterator[tuple[str, ArrayAdapter]]:
         yield from (
             (key, ArrayAdapter.from_array(self.read([key])[key].values))
             for key in self._structure.columns
@@ -204,7 +204,7 @@ class ArrowAdapter(Adapter[TableStructure]):
     def write_partition(
         self,
         partition: int,
-        data: Union[List[pyarrow.record_batch], pyarrow.record_batch, pandas.DataFrame],
+        data: list[pyarrow.record_batch] | pyarrow.record_batch | pandas.DataFrame,
     ) -> None:
         """Write the data into a specific partition as arrow format
 
@@ -234,7 +234,7 @@ class ArrowAdapter(Adapter[TableStructure]):
 
     def write(
         self,
-        data: Union[List[pyarrow.record_batch], pyarrow.record_batch, pandas.DataFrame],
+        data: list[pyarrow.record_batch] | pyarrow.record_batch | pandas.DataFrame,
     ) -> None:
         """
         "Function to write the data as arrow format."
@@ -263,7 +263,7 @@ class ArrowAdapter(Adapter[TableStructure]):
             for batch in data:
                 file_writer.write_batch(batch)
 
-    def read(self, fields: Optional[Union[str, List[str]]] = None) -> pandas.DataFrame:
+    def read(self, fields: str | list[str] | None = None) -> pandas.DataFrame:
         """
         The concatenated data from given set of partitions as pyarrow table.
         Parameters
@@ -283,7 +283,7 @@ class ArrowAdapter(Adapter[TableStructure]):
     def read_partition(
         self,
         partition: int,
-        fields: Optional[Union[str, List[str]]] = None,
+        fields: str | list[str] | None = None,
     ) -> pandas.DataFrame:
         """
         Function to read a batch of data from a given partition.

@@ -1,7 +1,7 @@
 import contextlib
 import time
-from collections.abc import Generator
-from typing import Any, Literal, Mapping, Optional, Sequence
+from collections.abc import Generator, Mapping, Sequence
+from typing import Any, Literal
 
 from fastapi import Request, WebSocket
 from starlette.types import Scope
@@ -19,7 +19,7 @@ API_KEY_QUERY_PARAMETER = "api_key"
 CSRF_COOKIE_NAME = "tiled_csrf"
 
 
-def normalize_root_path(root_path: Optional[str]) -> str:
+def normalize_root_path(root_path: str | None) -> str:
     """Coerce a root_path to "" or "/prefix" (no trailing slash)."""
     stripped = (root_path or "").strip("/")
     return f"/{stripped}" if stripped else ""
@@ -105,9 +105,9 @@ def _get_origin(request_headers: Mapping[str, str], scope: Scope) -> str:
 
 async def filter_for_access(
     entry,
-    access_policy: Optional[AccessPolicy],
+    access_policy: AccessPolicy | None,
     principal: Principal,
-    authn_access_tags: Optional[AccessTags],
+    authn_access_tags: AccessTags | None,
     authn_scopes: Scopes,
     scopes: Sequence[str],
     metrics: dict[str, Any],

@@ -1,6 +1,6 @@
 import math
 from collections import defaultdict
-from typing import Any, Optional, Tuple, Union
+from typing import Any
 
 import dask.array
 import numpy as np
@@ -68,7 +68,7 @@ def init_adapter_from_catalog(
     data_source: DataSource[S],
     node: Any,  # tiled.catalog.orm.Node ?
     /,
-    **kwargs: Optional[Any],
+    **kwargs: Any | None,
 ) -> A:
     # TODO: Sort out typing for Adapters
     """Factory function to produce Adapter instances given their parameters encoded in data sources"""
@@ -102,8 +102,8 @@ class IncompatibleShapeError(ShapeMismatchError):
 
 
 def force_reshape(
-    arr: Union[np.array, dask.array.Array], desired_shape: Tuple[int, ...]
-) -> Union[np.array, dask.array.Array]:
+    arr: np.array | dask.array.Array, desired_shape: tuple[int, ...]
+) -> np.array | dask.array.Array:
     """Reshape a numpy or dask array to match the desired shape, if possible.
 
     Parameters
@@ -168,8 +168,8 @@ def split_chunks(total: int, chunk: int) -> tuple[int, ...]:
 
 
 def grid_shape_for_files(
-    struct_shape: Tuple[int, ...], n_files: int
-) -> Optional[Tuple[int, ...]]:
+    struct_shape: tuple[int, ...], n_files: int
+) -> tuple[int, ...] | None:
     """For multi-asset datasets, return the leading axes of `struct_shape` that
     enumerate the files, one grid cell per file, or `None` when no clean split exists.
 

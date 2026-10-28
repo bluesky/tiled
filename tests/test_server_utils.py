@@ -1,4 +1,3 @@
-from typing import Optional
 
 import pytest
 from starlette.requests import Request
@@ -6,7 +5,7 @@ from starlette.requests import Request
 from tiled.server.utils import get_current_url, get_root_url, normalize_root_path
 
 
-def make_request(path: str, root_path: str, headers: Optional[dict] = None) -> Request:
+def make_request(path: str, root_path: str, headers: dict | None = None) -> Request:
     headers = headers or {"host": "example.org"}
     return Request(
         {
@@ -33,7 +32,7 @@ def make_request(path: str, root_path: str, headers: Optional[dict] = None) -> R
         ("/tenant/ui/tiled", "/tenant/ui/tiled"),
     ],
 )
-def test_normalize_root_path(root_path: Optional[str], expected: str):
+def test_normalize_root_path(root_path: str | None, expected: str):
     assert normalize_root_path(root_path) == expected
 
 
