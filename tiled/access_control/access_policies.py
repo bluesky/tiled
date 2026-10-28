@@ -4,7 +4,7 @@ import time
 from abc import ABC, abstractmethod
 from typing import Generic, NamedTuple, Optional, Tuple, TypeVar
 
-import httpx
+import httpx2 as httpx
 from pydantic import BaseModel, HttpUrl, TypeAdapter, ValidationError
 
 from ..adapters.protocols import BaseAdapter

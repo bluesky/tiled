@@ -12,7 +12,7 @@ from typing import Optional, Union
 from urllib.parse import parse_qs, urlparse
 from weakref import WeakValueDictionary
 
-import httpx
+import httpx2 as httpx
 import msgpack
 import stamina
 import stamina.instrumentation

@@ -1,7 +1,7 @@
 import asyncio
 import logging
 
-import httpx
+import httpx2 as httpx
 import numpy
 import pytest
 import uvicorn

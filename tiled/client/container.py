@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Any, Iterable, Optional, Union
 from urllib.parse import parse_qs, urlparse
 
 import entrypoints
-import httpx
+import httpx2 as httpx
 import orjson
 from packaging.version import Version
 
