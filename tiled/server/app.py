@@ -1200,7 +1200,10 @@ def _setup_opentelemetry_tracing(app: FastAPI) -> None:
     else:
         RedisInstrumentor().instrument()
     try:
-        from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
+        # Tiled's HTTP clients (webhook delivery, OIDC, external access
+        # policies) are httpx2 clients, which the httpx instrumentation traces
+        # through its httpx2 instrumentor (0.65b0 or newer).
+        from opentelemetry.instrumentation.httpx import HTTPX2ClientInstrumentor
     except ImportError:
         pass
     else:
@@ -1220,7 +1223,7 @@ def _setup_opentelemetry_tracing(app: FastAPI) -> None:
         async def _set_peer_service_async(span, request):
             _set_peer_service(span, request)
 
-        HTTPXClientInstrumentor().instrument(
+        HTTPX2ClientInstrumentor().instrument(
             request_hook=_set_peer_service,
             async_request_hook=_set_peer_service_async,
         )

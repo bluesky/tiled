@@ -61,7 +61,7 @@ WEBHOOK_URL = "https://webhook.example.com/tiled-events"
 _GLOBAL_INSTRUMENTORS = [
     ("opentelemetry.instrumentation.asyncpg", "AsyncPGInstrumentor"),
     ("opentelemetry.instrumentation.redis", "RedisInstrumentor"),
-    ("opentelemetry.instrumentation.httpx", "HTTPXClientInstrumentor"),
+    ("opentelemetry.instrumentation.httpx", "HTTPX2ClientInstrumentor"),
 ]
 
 
