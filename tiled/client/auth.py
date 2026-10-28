@@ -2,7 +2,7 @@ import os
 from pathlib import Path
 from typing import Dict, Optional
 
-import httpx
+import httpx2 as httpx
 
 from .utils import SerializableLock, handle_error
 

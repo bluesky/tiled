@@ -31,7 +31,7 @@ from copy import deepcopy
 from dataclasses import asdict, dataclass
 from typing import Any, Optional, Sequence, Union
 
-import httpx
+import httpx2 as httpx
 import jsonpatch
 import orjson
 from packaging.version import Version

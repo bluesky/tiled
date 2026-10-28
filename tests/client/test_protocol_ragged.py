@@ -5,7 +5,7 @@ builders, response parsers, and failure classifiers as plain functions, with
 no server and no I/O.
 """
 
-import httpx
+import httpx2 as httpx
 import orjson
 import pytest
 import ragged

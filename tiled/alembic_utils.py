@@ -1,14 +1,18 @@
+import asyncio
+import concurrent.futures
 import contextlib
 import os.path
 import tempfile
 from collections.abc import Generator
 from pathlib import Path
-from typing import Iterable, Optional
+from typing import Awaitable, Callable, Iterable, Optional, TypeVar, Union
 
 from alembic import command
 from alembic.config import Config
 from alembic.runtime import migration
-from sqlalchemy.ext.asyncio import AsyncEngine
+from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
+
+T = TypeVar("T")
 
 
 def write_alembic_ini(
@@ -161,3 +165,71 @@ async def check_database(
             f"The database {redacted_url} has revision {revision} and "
             f"needs to be upgraded to revision {required_revision}."
         )
+
+
+def _run_outside_event_loop(func: Callable[[], T]) -> T:
+    """Call `func`, in a worker thread if this thread is running an event loop."""
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        in_event_loop = False
+    else:
+        in_event_loop = True
+    if not in_event_loop:
+        return func()
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+        return executor.submit(func).result()
+
+
+def initialize_database_if_needed(
+    database_uri: str,
+    initialize_database: Callable[[AsyncEngine], Awaitable[None]],
+    required_revision: str,
+    known_revisions: Iterable[str],
+    alembic_ini_template_path: Union[str, Path],
+    alembic_dir: Union[str, Path],
+) -> bool:
+    """
+    Create the tables and stamp the head alembic revision, unless already done.
+
+    Returns True if the database was initialized by this call and False if it
+    was already initialized. Raises `DatabaseUpgradeNeeded` or
+    `UnrecognizedDatabase` as `check_database` does.
+
+    This is a blocking call. Alembic drives its own event loop while stamping,
+    so when called from a thread that is itself running an event loop (for
+    example, during an ASGI application startup) the work is done in a worker
+    thread, using connections private to that thread.
+
+    Parameters
+    ----------
+    database_uri : str
+        A SQLAlchemy database URI with an async driver, e.g. `sqlite+aiosqlite:///catalog.db`.
+    initialize_database : async callable
+        Creates the tables, given an `AsyncEngine`.
+    required_revision, known_revisions : str, Iterable[str]
+        The head revision and all known revisions of this database's
+        migrations, as passed to `check_database`.
+    alembic_ini_template_path, alembic_dir : path
+        As passed to `stamp_head`.
+    """
+
+    async def do_setup() -> bool:
+        engine = create_async_engine(database_uri)
+        try:
+            await check_database(engine, required_revision, known_revisions)
+        except UninitializedDatabase:
+            await initialize_database(engine)
+            return True
+        else:
+            return False
+        finally:
+            await engine.dispose()
+
+    def run() -> bool:
+        initialized = asyncio.run(do_setup())
+        if initialized:
+            stamp_head(alembic_ini_template_path, alembic_dir, database_uri)
+        return initialized
+
+    return _run_outside_event_loop(run)

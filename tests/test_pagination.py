@@ -5,20 +5,34 @@ from tiled.server.app import build_app
 
 N = 10  # number of items generated in sample
 
+# The tests only read, so one server per database backend serves them all.
+# Each of the two sample collections is a container in that catalog.
 
-@pytest.fixture
-def client(catalog_adapter):
-    app = build_app(catalog_adapter)
+
+@pytest.fixture(scope="module")
+def root_client(catalog_adapter_module):
+    app = build_app(catalog_adapter_module)
     with Context.from_app(app) as context:
-        client = from_context(context)
+        root = from_context(context)
+        numbers = root.create_container(key="numbers")
         for i in range(N):
-            client.create_container(metadata={"num": i}, key=str(i))
-        yield client
+            numbers.create_container(metadata={"num": i}, key=str(i))
+        # Insert the letters in scrambled order (see `sorted_client`).
+        letters = root.create_container(key="letters")
+        for letter in ["e", "b", "d", "a", "c"]:
+            letters.create_container(metadata={"letter": letter}, key=letter)
+        yield root
 
 
-@pytest.fixture
-def sorted_client(catalog_adapter):
-    """Client pre-populated with 5 items inserted in scrambled order.
+@pytest.fixture(scope="module")
+def client(root_client):
+    "Client on a container of N items with keys '0', '1', ..., in that order."
+    return root_client["numbers"]
+
+
+@pytest.fixture(scope="module")
+def sorted_client(root_client):
+    """Client on a container of 5 items inserted in scrambled order.
 
     Insertion order: e, b, d, a, c
     Alphabetical (key/id) order: a, b, c, d, e
@@ -26,12 +40,7 @@ def sorted_client(catalog_adapter):
     The scrambled insertion order means default (id-based) sort != alphabetical key sort,
     which is required for the cursor vs offset pagination tests to be meaningful.
     """
-    app = build_app(catalog_adapter)
-    with Context.from_app(app) as context:
-        c = from_context(context)
-        for letter in ["e", "b", "d", "a", "c"]:
-            c.create_container(metadata={"letter": letter}, key=letter)
-        yield c
+    return root_client["letters"]
 
 
 def test_first_value(client):

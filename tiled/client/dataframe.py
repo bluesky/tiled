@@ -6,7 +6,7 @@ from urllib.parse import parse_qs, urlparse
 
 import dask
 import dask.dataframe
-import httpx
+import httpx2 as httpx
 
 from ._protocol.node import draft_request_lookup_node
 from ._protocol.table import (

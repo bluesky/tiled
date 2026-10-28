@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterable, Optional, Union
 
 import entrypoints
-import httpx
+import httpx2 as httpx
 
 from ..iterviews import ItemsView, KeysView, ValuesView
 from ..structures.core import Spec, StructureFamily, structure_from_json

@@ -6,7 +6,7 @@ predicates as plain functions, with no server and no I/O.
 
 import dataclasses
 
-import httpx
+import httpx2 as httpx
 import orjson
 import pytest
 
