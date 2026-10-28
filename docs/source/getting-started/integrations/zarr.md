@@ -38,25 +38,34 @@ The resulting object is a zarr.Group, which represents the root of the Tiled cat
 <zarr.hierarchy.Group '/' read-only>
 
 >>> list(group.keys())
-['dynamic', 'flat_array', 'high_entropy', 'low_entropy',
-'nested', 'scalars', 'structured_data', 'tables']
+['flat_array', 'high_entropy', 'linked', 'low_entropy', 'nested',
+'scalars', 'structured_data', 'tables']
 ```
 
 ```python
 >>> root.tree()
 /
- ├── dynamic (3, 3) float64
  ├── flat_array (100,) float64
+ ├── high_entropy (100, 100) int64
+  ├── linked
+ │   ├── background (200, 300) float64
+ │   ├── integrated (200, 300) float64
+ │   ├── measured (3, 200, 300) float64
+ │   ├── normalized (3, 200, 300) float64
+ │   ├── subtracted (3, 200, 300) float64
+ │   └── summary
+ │       ├── intensity (3,) float64
+ │       ...
+ │       └── phase (3,) |S6
  ├── low_entropy (100, 100) int32
  ├── nested
  │   ├── cubes
- │   │   ├── tiny_cube (50, 50, 50) float64
- │   │   └── tiny_hypercube (50, 50, 50, 50, 50) float64
+ │   │   └── tiny_cube (50, 50, 50) float64
  │   ├── images
- │   │   ├── big_image (10000, 10000) float64
+ │   │   ├── big_image (1000, 1000) float64
  │   │   ...
  │   │   └── tiny_image (50, 50) float64
- │   └── sparse_image (100, 100) float64
+ │   └── sparse_image (300, 300) float64
  ├── scalars
  │   ...
  │   └── pi () float64
@@ -70,7 +79,7 @@ The resulting object is a zarr.Group, which represents the root of the Tiled cat
  └── tables
      ├── long_table
      │   ...
-     │   └── C (100000,) float64
+     │   └── C (10000,) float64
      └── wide_table
          ├── A (10,) float64
          ...
