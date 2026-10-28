@@ -484,7 +484,7 @@ class Context:
 
         While the context is active, :attr:`progress_state` is set to a
         ``ProgressState`` instance so that fetch methods
-        (``_get_slice``, ``_get_block``, ``_get_partition``) can advance the bar
+        (``_fetch_one``, ``_get_block``, ``_get_partition``) can advance the bar
         and show a retry indicator.  The slot is reset to ``None`` on exit.
 
         A bar is shown only when :attr:`show_progress` is True *and*
@@ -681,7 +681,7 @@ class Context:
         """Context manager that throttles concurrent data-fetch requests.
 
         Acquires the internal connection semaphore on entry and releases it on
-        exit.  Fetch methods (``_get_block``, ``_get_slice``,
+        exit.  Fetch methods (``_get_block``, ``_fetch_one``,
         ``_get_partition``) use this to cap the number of simultaneous
         outgoing HTTP requests to the limit set by ``max_connections``.
 

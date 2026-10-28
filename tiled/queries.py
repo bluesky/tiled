@@ -5,12 +5,13 @@ They are used on the client side and the server side.
 The are encoded into and decoded from URL query parameters.
 """
 
+import collections
 import enum
 import json
 from dataclasses import dataclass, field
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 
-from .query_registration import register
+from .query_registration import default_query_registry, register
 from .structures.core import StructureFamily as StructureFamilyEnum
 
 JSONSerializable = Any  # Feel free to refine this.
@@ -642,3 +643,19 @@ class Key:
 
 class QueryValueError(ValueError):
     pass
+
+
+def queries_to_params(*queries: Any) -> Dict[str, List[Any]]:
+    """Encode queries as the HTTP API's `filter[...]` query parameters.
+
+    Each registered query type encodes as parameters named
+    `filter[{name}][condition][{field}]` (the form the server's search
+    endpoints accept; see `tiled.server.router`).
+    """
+    params = collections.defaultdict(list)
+    for query in queries:
+        name = default_query_registry.query_type_to_name[type(query)]
+        for query_field, value in query.encode().items():
+            if value is not None:
+                params[f"filter[{name}][condition][{query_field}]"].append(value)
+    return dict(params)

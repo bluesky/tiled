@@ -1,12 +1,11 @@
 import itertools as it
-import time
 import warnings
 from typing import TYPE_CHECKING, Iterable, Optional, Union
-from urllib.parse import parse_qs, urlparse
 
 from ..structures.core import StructureFamily
-from .container import LENGTH_CACHE_TTL, Container
-from .utils import MSGPACK_MIME_TYPE, handle_error, retry_context
+from ._protocol.dataset import assign_dataset_dims
+from ._protocol.search import PaginatedCollectionBuilder
+from .container import Container
 
 if TYPE_CHECKING:
     import pyarrow
@@ -14,27 +13,18 @@ if TYPE_CHECKING:
 
 class CompositeClient(Container):
     def get_contents(self, maxlen=None, include_metadata=False):
+        fixed_params = dict(self._queries_as_params)
+        if not include_metadata:
+            fixed_params["select_metadata"] = False
+        if self._include_data_sources:
+            fixed_params["include_data_sources"] = True
+        builder = PaginatedCollectionBuilder(
+            self.item["links"]["search"], fixed_params=fixed_params
+        )
         result = {}
-        next_page_url = f"{self.item['links']['search']}"
+        next_page_url = builder.link
         while (next_page_url is not None) and (maxlen is None or len(result) < maxlen):
-            for attempt in retry_context():
-                with attempt:
-                    content = handle_error(
-                        self.context.http_client.get(
-                            next_page_url,
-                            headers={"Accept": MSGPACK_MIME_TYPE},
-                            params={
-                                **parse_qs(urlparse(next_page_url).query),
-                                **self._queries_as_params,
-                            }
-                            | ({} if include_metadata else {"select_metadata": False})
-                            | (
-                                {}
-                                if not self._include_data_sources
-                                else {"include_data_sources": True}
-                            ),
-                        )
-                    ).json()
+            content = self._send(builder.draft_request_read_page(next_page_url)).json()
             result.update({item["id"]: item for item in content["data"]})
 
             next_page_url = content["links"]["next"]
@@ -51,7 +41,7 @@ class CompositeClient(Container):
             else:
                 result[item["id"]] = item["id"]
 
-        self._cached_len = (len(result), time.monotonic() + LENGTH_CACHE_TTL)
+        self._cache_length(len(result))
 
         return result
 
@@ -78,12 +68,9 @@ class CompositeClient(Container):
         yield from self._keys_slice(0, None, 1)
 
     def __len__(self):
-        if self._cached_len is not None:
-            length, deadline = self._cached_len
-            if time.monotonic() < deadline:
-                # Used the cached value and do not make any request.
-                return length
-
+        if (length := self._length_from_cache()) is not None:
+            # Use the cached value and do not make any request.
+            return length
         return len(self._flat_keys_mapping)
 
     def __getitem__(self, key: str, _ignore_inlined_contents=False):
@@ -154,10 +141,12 @@ class CompositeClient(Container):
         -------
         xarray.Dataset: The dataset containing the requested variables.
         """
+        import math
+
         import pandas
         import xarray
 
-        from .array import ArrayClient
+        from .array import ArrayClient, DaskArrayClient
 
         contents = self.get_contents()
 
@@ -165,9 +154,9 @@ class CompositeClient(Container):
         # Array/sparse: eager when the client is ArrayClient (the numpy subclass);
         # DaskArrayClient (the base) returns a lazy dask array — nothing fetched yet.
         # Note: ArrayClient inherits DaskArrayClient, so check the eager subclass first.
-        # ArrayClient.fetch_count() mirrors read()'s split_slice logic exactly,
-        # giving the true number of HTTP requests (1 for small arrays, N sub-slices
-        # for large ones), rather than the dask chunk-boundary count.
+        # The lazy read is chunked by sub-fetch, so its chunk count is the
+        # number of HTTP requests (1 for small arrays, N sub-slices for large
+        # ones) — and building it fetches nothing.
         # Table: always eager (npartitions fetches).
         # Awkward: always eager (1 fetch).
         total_fetches = 0
@@ -177,7 +166,11 @@ class CompositeClient(Container):
                 if (variables is None) or (part in variables):
                     array_client = self.base[part]
                     if isinstance(array_client, ArrayClient):
-                        total_fetches += array_client.fetch_count()
+                        # One fetch per chunk of the lazy read; a zero-size
+                        # array is constructed locally, with no fetches.
+                        lazy = DaskArrayClient.read(array_client)
+                        if lazy.size:
+                            total_fetches += math.prod(len(c) for c in lazy.chunks)
             elif sf in (StructureFamily.awkward, StructureFamily.ragged):
                 if (variables is None) or (part in variables):
                     total_fetches += 1
@@ -256,32 +249,10 @@ class CompositeClient(Container):
                     )
 
         # Create xarray.Dataset from the data_vars dictionary
-        is_dim0_consistent = (
-            len(
-                set(
-                    [
-                        arr.shape[0]
-                        for var_name, arr in data_vars.items()
-                        if arr.ndim > 0 and not array_dims.get(var_name)
-                    ]
-                )
-            )
-            <= 1
+        dims = assign_dataset_dims(
+            {name: arr.shape for name, arr in data_vars.items()}, array_dims, dim0
         )
-        if dim0 is not None and not is_dim0_consistent:
-            raise ValueError(
-                "Cannot specify dim0 when the arrays have different left-most dimensions."
-            )
-
-        for var_name, arr in data_vars.items():
-            if is_dim0_consistent:
-                dims = (dim0 or "dim0",) + tuple(
-                    f"{var_name}_dim{i + 1}" for i in range(len(arr.shape) - 1)
-                )
-            else:
-                dims = tuple(f"{var_name}_dim{i}" for i in range(len(arr.shape)))
-            data_vars[var_name] = array_dims.get(var_name) or dims, arr
-
+        data_vars = {name: (dims[name], arr) for name, arr in data_vars.items()}
         return xarray.Dataset(data_vars=data_vars)
 
     def new(

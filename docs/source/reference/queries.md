@@ -29,6 +29,15 @@ Follow the links in the table below for examples specific to each query.
    tiled.queries.StructureFamilyQuery
 ```
 
+## Encoding
+
+```{eval-rst}
+.. autosummary::
+   :toctree: generated
+
+   tiled.queries.queries_to_params
+```
+
 (Some have the word `Query` at the end of their name to avoid confusion with
 other objects in the Tiled codebase.)
 

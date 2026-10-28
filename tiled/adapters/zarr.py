@@ -187,7 +187,7 @@ class ZarrArrayAdapter(Adapter[ArrayStructure]):
                 raise Conflicts(
                     f"Slice {slice} does not fit "
                     f"within current array shape {current_shape}. "
-                    "Use ?extend=true to extend the array dimensions to fit."
+                    "Set extend=true to extend the array dimensions to fit."
                 )
         self._array[tuple(slice_)] = data
         new_chunks = []

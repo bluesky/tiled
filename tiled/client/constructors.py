@@ -4,14 +4,14 @@ import pathlib
 import threading
 import warnings
 from typing import Optional, Union
-from urllib.parse import parse_qs, urlparse
 
 import httpx2 as httpx
 
 from ..utils import import_object, prepend_to_sys_path
+from ._protocol.node import draft_request_refresh_node
 from .container import DEFAULT_STRUCTURE_CLIENT_DISPATCH, Container
 from .context import DEFAULT_TIMEOUT_PARAMS, MAX_CONCURRENT_CONNECTIONS, UNSET, Context
-from .utils import MSGPACK_MIME_TYPE, client_for_item, handle_error, retry_context
+from .utils import client_for_item, send_request_draft
 
 
 def from_uri(
@@ -168,18 +168,8 @@ def from_context(
                 context.authenticate(remember_me=remember_me)
     # Context ensures that context.api_uri has a trailing slash.
     item_uri = f"{context.api_uri}metadata/{'/'.join(node_path_parts)}"
-    params = parse_qs(urlparse(item_uri).query)
-    if include_data_sources:
-        params["include_data_sources"] = include_data_sources
-    for attempt in retry_context():
-        with attempt:
-            content = handle_error(
-                context.http_client.get(
-                    item_uri,
-                    headers={"Accept": MSGPACK_MIME_TYPE},
-                    params=params,
-                )
-            ).json()
+    draft = draft_request_refresh_node(item_uri, include_data_sources)
+    content = send_request_draft(context, draft).json()
     item = content["data"]
     return client_for_item(
         context, structure_clients, item, include_data_sources=include_data_sources

@@ -1,43 +1,45 @@
 import concurrent.futures
-import itertools
 import math
 from typing import TYPE_CHECKING, Optional, Union
-from urllib.parse import parse_qs, urlparse
 
 import dask
 import dask.array
-import httpx2 as httpx
 import numpy
 from numpy.typing import NDArray
 
-from ..ndslice import NDBlock, NDSlice, split_slice
-from ..structures.core import STRUCTURE_TYPES
-from ..utils import Conflicts
+from ..ndslice import NDBlock, NDSlice
+from ..structures.core import structure_from_json
+from ._protocol.array import (
+    ArrayReadRecipe,
+    draft_request_patch_array_full,
+    draft_request_write_array_block,
+    draft_request_write_array_full,
+)
+from ._protocol.request import RequestDraft
 from .base import BaseClient
 from .utils import (
     chunks_repr,
     export_util,
-    handle_error,
     params_from_slice,
-    retry_context,
-    slices_to_dask_chunks,
+    translating_patch_conflicts,
 )
 
 if TYPE_CHECKING:
     from .stream import ArraySubscription
 
 
-class _DaskArrayClient(BaseClient):
-    "Client-side wrapper around an array-like that returns dask arrays"
+class CommonArrayClient:
+    """Pure array accessors shared by the synchronous and asynchronous clients.
+
+    A mixin over `CommonBaseClient`: everything here reads the cached
+    structure; nothing performs I/O.
+    """
 
     # The limit on the expected size of the response body (before compression).
     # This will be used to determine how to combine multiple requests when fetching
     # data in blocks. If set to None, the client will not attempt to combine
     # requests and will fetch each chunk separately as determiied by the structure.
     RESPONSE_BYTESIZE_LIMIT = 100 * 1024 * 1024  # 100 MiB
-
-    def __init__(self, *args, item, **kwargs):
-        super().__init__(*args, item=item, **kwargs)
 
     @property
     def dims(self):
@@ -69,6 +71,10 @@ class _DaskArrayClient(BaseClient):
     def ndim(self):
         return len(self.structure().shape)
 
+    def __len__(self):
+        # As with numpy, len(arr) is the size of the zeroth axis.
+        return self.structure().shape[0]
+
     def __repr__(self):
         attrs = {
             "shape": self.shape,
@@ -81,6 +87,58 @@ class _DaskArrayClient(BaseClient):
             f"<{type(self).__name__}"
             + "".join(f" {k}={v}" for k, v in attrs.items())
             + ">"
+        )
+
+    # -- Glue between instance state and the protocol layer ------------------
+    # Pure methods that bind this client's state (item, structure) to the
+    # builders and parsers in `tiled.client._protocol`. The sync and async
+    # shells share them; only the sends in between differ.
+
+    def _read_recipe(self, slice):
+        "A recipe that reads the whole array or a slice of it."
+        return ArrayReadRecipe.for_full(
+            self.item["links"]["full"],
+            self.structure(),
+            NDSlice(slice),
+            self.RESPONSE_BYTESIZE_LIMIT,
+        )
+
+    def _draft_request_write(self, array, persist):
+        "Draft the request that overwrites the whole array."
+        return draft_request_write_array_full(
+            self.item["links"]["full"], array, persist
+        )
+
+    def _draft_request_write_block(self, array, block, slice, persist):
+        "Draft the request that overwrites one block of the array."
+        return draft_request_write_array_block(
+            self.item["links"]["block"], block, array, slice, persist
+        )
+
+    def _draft_request_patch(self, array, offset, extend, persist):
+        "Draft the request that patches a slice of the array, checking the dtype."
+        if array.dtype != self.dtype:
+            raise ValueError(
+                f"Data given to patch has dtype {array.dtype} which does not "
+                f"match the dtype of this array {self.dtype}."
+            )
+        return draft_request_patch_array_full(
+            self.item["links"]["full"], array, offset, extend, persist
+        )
+
+
+class _DaskArrayClient(CommonArrayClient, BaseClient):
+    "Client-side wrapper around an array-like that returns dask arrays"
+
+    def _read_block_recipe(self, block, slice=None):
+        "A recipe that reads one block (chunk), checking the index is in range."
+        block, block_slice = NDBlock(block), NDSlice(slice)
+        try:
+            block.shape_from_chunks(self.chunks)
+        except IndexError:
+            raise IndexError(f"Block index {block} out of range")
+        return ArrayReadRecipe.for_block(
+            self.item["links"]["block"], self.structure(), block, block_slice
         )
 
     def __array__(self, *args, **kwargs):
@@ -107,91 +165,25 @@ class _DaskArrayClient(BaseClient):
         block_slice : NDSlice, optional
             A slice within this block to return.
         """
-
-        media_type = "application/octet-stream"
-
-        # Determine the expected shape of the resulting array after slicing
-        exp_shape = []
-        # Expand the block to convert for URL
-        block = block.expand_for_shape([len(dim) for dim in self.chunks])
-        if shape := block.shape_from_chunks(self.chunks):
-            exp_shape = block_slice.shape_after_slice(shape) if block_slice else shape
-            # Check for special case of shape with 0 in it.
-            if 0 in exp_shape:
-                # This is valid, and it has come up in the wild.  An array with
-                # 0 as one of the dimensions never contains data, so we can
-                # short-circuit here without any further information from the
-                # service.
-                return numpy.array([], dtype=self.dtype).reshape(exp_shape)
-
-        url_path = self.item["links"]["block"]
-        params = {
-            **parse_qs(urlparse(url_path).query),
-            "block": block.to_numpy_str(),
-            "expected_shape": ",".join(map(str, exp_shape)) or "scalar",
+        recipe = self._read_block_recipe(block, block_slice)
+        # One fetch, or none for a zero-size block; `assemble` handles both.
+        results = {
+            index: self._fetch_one(draft, recipe.dtype, recipe.shape_of_draft(index))
+            for index, draft in recipe.drafts.items()
         }
-        params = params | ({"slice": block_slice.to_numpy_str()} if block_slice else {})
-        with self.context.throttle():
-            for attempt in retry_context(self.context):
-                with attempt:
-                    content = handle_error(
-                        self.context.http_client.get(
-                            url_path,
-                            headers={"Accept": media_type},
-                            params=params,
-                        )
-                    ).read()
-        if (ps := self.context.progress_state) is not None:
-            ps.advance()
-        return numpy.frombuffer(content, dtype=self.dtype).reshape(exp_shape)
+        return recipe.assemble(results)
 
-    def _get_slice(self, slice: NDSlice):
-        """Fetch the data for a slice of the full array
+    def _fetch_one(self, draft: RequestDraft, dtype, expected_shape: tuple[int, ...]):
+        """Send one read request and decode the response.
 
-        This private method is used internally by the client and requires the
-        `slice` argument to be pre-cast as an NDSlice type.
-
-        The request is made to the `/array/full` endpoint.
-
-        See read() for a public version of this.
-
-        Parameters
-        ----------
-        slice : NDSlice
-            A slice of the array to return, pass NDSlice() to return the whole array.
+        The single executor for every array fetch, standalone (`read_block`)
+        or as one task of a split read.
         """
-
-        media_type = "application/octet-stream"
-
-        # Determine the expected shape of the resulting array after slicing
-        exp_shape = slice.shape_after_slice(self.shape) if slice else self.shape
-
-        # Check for special case of shape with 0 in it.
-        if 0 in exp_shape:
-            # This is valid, and it has come up in the wild.  An array with
-            # 0 as one of the dimensions never contains data, so we can
-            # short-circuit here without any further information from the service.
-            return numpy.array([], dtype=self.dtype).reshape(exp_shape)
-
-        url_path = self.item["links"]["full"]
-        params = {
-            **parse_qs(urlparse(url_path).query),
-            "expected_shape": ",".join(map(str, exp_shape)) or "scalar",
-        }
-        params = params | ({"slice": slice.to_numpy_str()} if slice else {})
         with self.context.throttle():
-            for attempt in retry_context(self.context):
-                with attempt:
-                    content = handle_error(
-                        self.context.http_client.get(
-                            url_path,
-                            headers={"Accept": media_type},
-                            params=params,
-                        )
-                    ).read()
+            content = self._send(draft, indicator_context=self.context).read()
         if (ps := self.context.progress_state) is not None:
             ps.advance()
-        return numpy.frombuffer(content, dtype=self.dtype).reshape(exp_shape)
+        return ArrayReadRecipe.parse_response(content, dtype, expected_shape)
 
     def read_block(self, block, slice=None):
         """Access the data for one block of this chunked (dask) array.
@@ -204,140 +196,60 @@ class _DaskArrayClient(BaseClient):
         """
 
         block, block_slice = NDBlock(block), NDSlice(slice)
-
-        try:
-            shape = block.shape_from_chunks(self.chunks)
-        except IndexError:
-            raise IndexError(f"Block index {block} out of range")
-
-        exp_shape = block_slice.shape_after_slice(shape) if block_slice else shape
-        dask_array = dask.array.from_delayed(
+        recipe = self._read_block_recipe(block, block_slice)
+        return dask.array.from_delayed(
             dask.delayed(self._get_block)(block, block_slice),
-            dtype=self.dtype,
-            shape=exp_shape,
+            dtype=recipe.dtype,
+            shape=recipe.shape,
         )
-        return dask_array
-
-    def fetch_count(self, slice=None) -> int:
-        """Return the number of HTTP requests that read(slice) will make.
-
-        Mirrors the split logic in read() so that callers (e.g. CompositeClient)
-        can compute an accurate progress-bar total without triggering any fetches.
-        """
-        arr_slice = NDSlice(slice).expand_for_shape(self.shape)
-        exp_shape = arr_slice.shape_after_slice(self.shape)
-        if 0 in exp_shape:
-            return 0
-        total_bytes = math.prod(exp_shape) * self.dtype.itemsize
-        if total_bytes < self.RESPONSE_BYTESIZE_LIMIT:
-            return 1
-        chunk_bounds = tuple(
-            tuple(itertools.accumulate(axis_chunks, initial=0))
-            for axis_chunks in self.chunks
-        )
-        indexed_slices = split_slice(
-            arr_slice,
-            max_size=self.RESPONSE_BYTESIZE_LIMIT // self.dtype.itemsize,
-            pref_splits=chunk_bounds,
-        )
-        return len(indexed_slices)
 
     def read(self, slice=None):
         """Access the entire array or its slice
 
         The array will be internally chunked with dask.
         """
+        recipe = self._read_recipe(slice)
 
-        # Determine the expected shape of the resulting array after slicing
-        if arr_slice := NDSlice(slice):
-            arr_slice = arr_slice.expand_for_shape(self.shape)  # Remove "..."
-        exp_shape = arr_slice.shape_after_slice(self.shape)
-        total_bytes = math.prod(exp_shape) * self.dtype.itemsize
+        # An array with 0 as one of its dimensions never contains data, so
+        # it is constructed locally without contacting the service.
+        if not recipe.drafts:
+            return dask.array.array([], dtype=recipe.dtype).reshape(recipe.shape)
 
-        # Check for special case of shape with 0 in it.
-        if 0 in exp_shape:
-            # This is valid, and it has come up in the wild.  An array with
-            # 0 as one of the dimensions never contains data, so we can
-            # short-circuit here without any further information from the service.
-            return dask.array.array([], dtype=self.dtype).reshape(exp_shape)
-
-        # If the expected response is small, fetch it in one go.
-        if total_bytes < self.RESPONSE_BYTESIZE_LIMIT:
-            dask_array = dask.array.from_delayed(
-                dask.delayed(self._get_slice)(arr_slice),
-                dtype=self.dtype,
-                shape=exp_shape,
+        # A read expected to be small is fetched in one request.
+        if len(recipe.drafts) == 1:
+            (draft,) = recipe.drafts.values()
+            return dask.array.from_delayed(
+                dask.delayed(self._fetch_one)(draft, recipe.dtype, recipe.shape),
+                dtype=recipe.dtype,
+                shape=recipe.shape,
             )
-            return dask_array
 
-        # The response is expected to be large, subslice it and recombine with dask
-        # Build chunk boundaries along each axis to find best candidate split points
-        chunk_bounds = tuple(
-            tuple(itertools.accumulate(axis_chunks, initial=0))
-            for axis_chunks in self.chunks
-        )
-        indexed_slices = split_slice(
-            arr_slice.expand_for_shape(self.shape),
-            max_size=self.RESPONSE_BYTESIZE_LIMIT // self.dtype.itemsize,
-            pref_splits=chunk_bounds,
-        )
-
-        # Build a client-side dask array whose chunks correspond to subsplits of the slice
+        # The response is expected to be large; build a client-side dask
+        # array whose chunks correspond to the recipe's sub-fetches.
         name = f"remote-dask-array-{self.uri}"
         dask_tasks = {
-            (name,) + indx: (self._get_slice, slc)
-            for indx, (slc) in indexed_slices.items()
+            (name,) + index: (
+                self._fetch_one,
+                draft,
+                recipe.dtype,
+                recipe.shape_of_draft(index),
+            )
+            for index, draft in recipe.drafts.items()
         }
         dask_array = dask.array.Array(
             name=name,
             dask=dask_tasks,
-            dtype=self.dtype,
-            chunks=slices_to_dask_chunks(indexed_slices, self.shape),
-            shape=exp_shape,
+            dtype=recipe.dtype,
+            chunks=recipe.tiling,
+            shape=recipe.shape,
         )
         return dask_array
 
     def write(self, array, persist=True):
-        if not (hasattr(array, "shape") and hasattr(array, "dtype")):
-            array = numpy.asarray(array)
-
-        params = {}
-        if persist is False:
-            # Extend the query only for non-default behavior.
-            params["persist"] = persist
-        for attempt in retry_context():
-            with attempt:
-                handle_error(
-                    self.context.http_client.put(
-                        self.item["links"]["full"],
-                        content=array.tobytes(),
-                        headers={"Content-Type": "application/octet-stream"},
-                        params=params,
-                    )
-                )
+        self._send(self._draft_request_write(array, persist))
 
     def write_block(self, array, block, slice=..., persist=True):
-        if not (hasattr(array, "shape") and hasattr(array, "dtype")):
-            array = numpy.asarray(array)
-
-        url_path = self.item["links"]["block"].format(*block)
-        params = {
-            **parse_qs(urlparse(url_path).query),
-            **params_from_slice(slice),
-        }
-        if persist is False:
-            # Extend the query only for non-default behavior.
-            params["persist"] = persist
-        for attempt in retry_context():
-            with attempt:
-                handle_error(
-                    self.context.http_client.put(
-                        url_path,
-                        content=array.tobytes(),
-                        headers={"Content-Type": "application/octet-stream"},
-                        params=params,
-                    )
-                )
+        self._send(self._draft_request_write_block(array, block, slice, persist))
 
     def patch(
         self,
@@ -400,62 +312,17 @@ class _DaskArrayClient(BaseClient):
                    [[0., 0.],
                     [0., 0.]]])
         """
-        if array.dtype != self.dtype:
-            raise ValueError(
-                f"Data given to patch has dtype {array.dtype} which does not "
-                f"match the dtype of this array {self.dtype}."
-            )
-        array_ = numpy.ascontiguousarray(array)
-        if isinstance(offset, int):
-            offset = (offset,)
-        url_path = self.item["links"]["full"]
-        params = {
-            **parse_qs(urlparse(url_path).query),
-            "offset": ",".join(map(str, offset)),
-            "shape": ",".join(map(str, array_.shape)),
-            "extend": bool(extend),
-        }
-        if persist is False:
-            # Extend the query only for non-default behavior.
-            params["persist"] = persist
-        for attempt in retry_context():
-            with attempt:
-                response = self.context.http_client.patch(
-                    url_path,
-                    content=array_.tobytes(),
-                    headers={"Content-Type": "application/octet-stream"},
-                    params=params,
-                )
-                if response.status_code in [
-                    httpx.codes.BAD_REQUEST,
-                    httpx.codes.CONFLICT,
-                ]:
-                    detail = (
-                        response.json()
-                        .get("detail", "Array parameters conflict.")
-                        .replace(
-                            "Use ?",  # URL query param
-                            "Pass keyword argument ",  # Python function argument
-                        )
-                    )
-                    if response.status_code == httpx.codes.CONFLICT:
-                        raise Conflicts(detail)
-                    raise ValueError(detail)
-                handle_error(response)
+        draft = self._draft_request_patch(array, offset, extend, persist)
+        with translating_patch_conflicts():
+            response = self._send(draft)
         # Update cached structure.
-        new_structure = response.json()
-        structure_type = STRUCTURE_TYPES[self.structure_family]
-        self._structure = structure_type.from_json(new_structure)
+        self._structure = structure_from_json(self.structure_family, response.json())
 
     def __getitem__(self, slice):
         return self.read(slice)
 
     # The default object.__iter__ works as expected here, no need to
     # implemented it specifically.
-
-    def __len__(self):
-        # As with numpy, len(arr) is the size of the zeroth axis.
-        return self.structure().shape[0]
 
     def export(
         self, filepath, *, format=None, slice=None, link=None, template_vars=None
@@ -500,7 +367,7 @@ class _DaskArrayClient(BaseClient):
         return export_util(
             filepath,
             format,
-            self.context.http_client.get,
+            self.context,
             self.item["links"][link].format(**template_vars),
             params=params,
         )
@@ -537,7 +404,9 @@ class DaskArrayClient(_DaskArrayClient):
     def compute(self):
         "Alias to client.read().compute()"
         dask_arr = self.read()
-        n = math.prod(len(c) for c in dask_arr.chunks)
+        # One fetch per chunk: the lazy array is chunked by sub-fetch.
+        # A zero-size array is constructed locally, with no fetches at all.
+        n = 0 if dask_arr.size == 0 else math.prod(len(c) for c in dask_arr.chunks)
         with self.context.tracking_progress(total=n):
             return dask_arr.compute()
 
@@ -550,7 +419,9 @@ class ArrayClient(DaskArrayClient):
         Access the entire array or a slice.
         """
         dask_arr = super().read(slice)
-        n = self.fetch_count(slice)
+        # One fetch per chunk: the lazy array is chunked by sub-fetch.
+        # A zero-size array is constructed locally, with no fetches at all.
+        n = 0 if dask_arr.size == 0 else math.prod(len(c) for c in dask_arr.chunks)
         with self.context.tracking_progress(total=n):
             return dask_arr.compute()
 
