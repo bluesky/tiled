@@ -119,7 +119,7 @@ client.write_array([0, 1, 2], key="subtracted")
 # Register a CURIE prefix so predicates like "prov:wasDerivedFrom" resolve.
 register_namespace(client, "prov", "http://www.w3.org/ns/prov#")
 
-measured = client["measured"].bind_entity()                 # kind="array", name="measured"
+measured = client["measured"].bind_entity()  # kind="array", name="measured"
 subtracted = client["subtracted"].bind_entity(kind="derived")
 ```
 
@@ -168,8 +168,8 @@ from tiled.client.graph import GraphClient
 
 graph = GraphClient(client.context)
 
-graph.get_entity(measured.id)               # one entity by id, or None
-graph.find_entities(kind="derived")         # filter by kind, name, and/or node
+graph.get_entity(measured.id)  # one entity by id, or None
+graph.find_entities(kind="derived")  # filter by kind, name, and/or node
 graph.find_links(subject_id=subtracted.id)  # filter by subject, predicate, object
 ```
 
@@ -177,24 +177,24 @@ From an entity handle you can traverse its links in either direction, and from
 a link handle you can resolve the entities at each end:
 
 ```python
-outgoing = subtracted.outgoing_links()   # links where this entity is the subject
-incoming = measured.incoming_links()     # links where this entity is the object
+outgoing = subtracted.outgoing_links()  # links where this entity is the subject
+incoming = measured.incoming_links()  # links where this entity is the object
 
 link = outgoing[0]
-link.subject()   # the EntityHandle at the tail (== subtracted)
-link.object()    # the EntityHandle at the head (== measured)
+link.subject()  # the EntityHandle at the tail (== subtracted)
+link.object()  # the EntityHandle at the head (== measured)
 ```
 
 Handles can be edited in place. `update()` sends only the fields you pass and
 mutates the handle to match the server's response:
 
 ```python
-sample.update(name="LaB6 (NIST SRM 660c)")   # rename an entity
-sample.update(uri=None)                       # clear a field by passing None
-link.update(predicate="prov:wasRevisionOf")   # relabel a link
+sample.update(name="LaB6 (NIST SRM 660c)")  # rename an entity
+sample.update(uri=None)  # clear a field by passing None
+link.update(predicate="prov:wasRevisionOf")  # relabel a link
 
-sample.delete()   # remove an entity (and every link attached to it)
-link.delete()     # remove a single link
+sample.delete()  # remove an entity (and every link attached to it)
+link.delete()  # remove a single link
 ```
 
 When editing an entity bound to a catalog node on this Tiled server, pass
