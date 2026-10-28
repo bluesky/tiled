@@ -14,7 +14,7 @@ from tiled.server.app import build_app
 from tiled.structures.core import Spec
 from tiled.utils import APACHE_ARROW_FILE_MIME_TYPE
 
-from .utils import URL_LIMITS
+from ..utils import URL_LIMITS
 
 image = numpy.random.random((3, 5))
 temp = 15 + 8 * numpy.random.randn(2, 2, 3)

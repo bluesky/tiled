@@ -1,16 +1,19 @@
-from urllib.parse import parse_qs, urlparse
-
-import numpy
-import sparse
-from ndindex import ndindex
-
-from ..serialization.table import deserialize_arrow, serialize_arrow
-from ..utils import APACHE_ARROW_FILE_MIME_TYPE
+from ._protocol.sparse import (
+    SparseReadRecipe,
+    draft_request_write_sparse_block,
+    draft_request_write_sparse_full,
+)
 from .base import BaseClient
-from .utils import export_util, handle_error, params_from_slice, retry_context
+from .utils import export_util, params_from_slice
 
 
-class SparseClient(BaseClient):
+class CommonSparseClient:
+    """Pure sparse-array accessors and glue shared by the sync and async clients.
+
+    A mixin over `CommonBaseClient`: everything here reads the cached
+    structure; nothing performs I/O.
+    """
+
     @property
     def dims(self):
         return self.structure().dims
@@ -38,6 +41,29 @@ class SparseClient(BaseClient):
             + ">"
         )
 
+    # -- Glue between instance state and the protocol layer ------------------
+    # Pure methods that bind this client's state (item, structure) to the
+    # builders and parsers in `tiled.client._protocol`. The sync and async
+    # shells share them; only the sends in between differ.
+
+    def _read_recipe(self, slice=None):
+        "A recipe that reads the whole array or a slice of it."
+        return SparseReadRecipe.for_full(
+            self.item["links"]["full"], self.structure(), slice
+        )
+
+    def _draft_request_write(self, coords, data):
+        "Draft the request that overwrites the array in full."
+        return draft_request_write_sparse_full(self.item["links"]["full"], coords, data)
+
+
+class SparseClient(CommonSparseClient, BaseClient):
+    def _read_block_recipe(self, block, slice=None):
+        "A recipe that reads one block (chunk) of the array."
+        return SparseReadRecipe.for_block(
+            self.item["links"]["block"], self.structure(), block, slice
+        )
+
     def __array__(self, *args, **kwargs):
         return self.read().__array__(*args, **kwargs)
 
@@ -46,99 +72,23 @@ class SparseClient(BaseClient):
         return self.read().todense(*args, **kwargs)
 
     def read_block(self, block, slice=None):
-        # Fetch the data as an Apache Arrow table
-        # with columns named dim0, dim1, ..., dimN, data.
-        structure = self.structure()
-        url_path = self.item["links"]["block"]
-        params = {**parse_qs(urlparse(url_path).query), **params_from_slice(slice)}
-        params["block"] = ",".join(map(str, block))
-        for attempt in retry_context():
-            with attempt:
-                content = handle_error(
-                    self.context.http_client.get(
-                        url_path,
-                        headers={"Accept": APACHE_ARROW_FILE_MIME_TYPE},
-                        params=params,
-                    )
-                ).read()
-        df = deserialize_arrow(content)
-        original_shape = structure.shape
-        if slice is not None:
-            sliced_shape = ndindex(slice).newshape(original_shape)
-        else:
-            sliced_shape = original_shape
-        ndim = len(sliced_shape)
-
-        return sparse.COO(
-            data=df["data"].values,
-            coords=numpy.stack([df[f"dim{i}"].values for i in range(ndim)]),
-            shape=sliced_shape,
-        )
+        recipe = self._read_block_recipe(block, slice)
+        content = self._send(recipe.draft).read()
+        return recipe.parse_response(content)
 
     def read(self, slice=None):
-        # Fetch the data as an Apache Arrow table
-        # with columns named dim0, dim1, ..., dimN, data.
-        structure = self.structure()
-        url_path = self.item["links"]["full"]
-        params = {**parse_qs(urlparse(url_path).query), **params_from_slice(slice)}
-        for attempt in retry_context():
-            with attempt:
-                content = handle_error(
-                    self.context.http_client.get(
-                        url_path,
-                        headers={"Accept": APACHE_ARROW_FILE_MIME_TYPE},
-                        params=params,
-                    )
-                ).read()
-        df = deserialize_arrow(content)
-        original_shape = structure.shape
-        if slice is not None:
-            sliced_shape = ndindex(slice).newshape(original_shape)
-        else:
-            sliced_shape = original_shape
-        ndim = len(sliced_shape)
-
-        return sparse.COO(
-            data=df["data"].values,
-            coords=numpy.stack([df[f"dim{i}"].values for i in range(ndim)]),
-            shape=sliced_shape,
-        )
+        recipe = self._read_recipe(slice)
+        content = self._send(recipe.draft).read()
+        return recipe.parse_response(content)
 
     def write(self, coords, data):
-        import pandas
-
-        d = {f"dim{i}": coords for i, coords in enumerate(coords)}
-        d["data"] = data
-        df = pandas.DataFrame(d)
-        for attempt in retry_context():
-            with attempt:
-                handle_error(
-                    self.context.http_client.put(
-                        self.item["links"]["full"],
-                        content=bytes(
-                            serialize_arrow(APACHE_ARROW_FILE_MIME_TYPE, df, {})
-                        ),
-                        headers={"Content-Type": APACHE_ARROW_FILE_MIME_TYPE},
-                    )
-                )
+        self._send(self._draft_request_write(coords, data))
 
     def write_block(self, coords, data, block):
-        import pandas
-
-        d = {f"dim{i}": coords for i, coords in enumerate(coords)}
-        d["data"] = data
-        df = pandas.DataFrame(d)
-        for attempt in retry_context():
-            with attempt:
-                handle_error(
-                    self.context.http_client.put(
-                        self.item["links"]["block"].format(*block),
-                        content=bytes(
-                            serialize_arrow(APACHE_ARROW_FILE_MIME_TYPE, df, {})
-                        ),
-                        headers={"Content-Type": APACHE_ARROW_FILE_MIME_TYPE},
-                    )
-                )
+        draft = draft_request_write_sparse_block(
+            self.item["links"]["block"], block, coords, data
+        )
+        self._send(draft)
 
     def __getitem__(self, slice):
         return self.read(slice)
@@ -175,7 +125,7 @@ class SparseClient(BaseClient):
         return export_util(
             filepath,
             format,
-            self.context.http_client.get,
+            self.context,
             self.item["links"]["full"],
             params=params,
         )

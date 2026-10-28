@@ -11,7 +11,7 @@ from tiled.client import Context, from_context, record_history
 from tiled.server.app import build_app
 from tiled.utils import APACHE_ARROW_FILE_MIME_TYPE
 
-from .utils import URL_LIMITS
+from ..utils import URL_LIMITS
 
 
 @pytest.fixture

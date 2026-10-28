@@ -14,17 +14,13 @@ def _format_size(num_bytes: float) -> str:
     return f"{num_bytes:.1f} EB"
 
 
-class BytesClient(BaseClient):
-    """Client for the `bytes` structure family node.
+class CommonBytesClient:
+    """Pure accessors of the `bytes` family, shared by the sync and async clients.
 
     A `bytes` node has no content endpoint and no specialized read path. The
     client exists primarily to (a) identify a node as `bytes` for downstream
     dispatch and (b) provide a more informative `__repr__` than `BaseClient`
     when data-source information is available.
-
-    Use `raw_export(...)` (inherited from `BaseClient`) to download the
-    underlying assets, either to a directory on disk or into an in-memory
-    `MutableMapping` of `BytesIO` buffers.
     """
 
     structure_family: StructureFamily = StructureFamily.bytes
@@ -48,3 +44,17 @@ class BytesClient(BaseClient):
             f"<{type(self).__name__} {_format_size(sum(sizes))} "
             f"across {len(assets)} asset{plural}>"
         )
+
+
+class BytesClient(CommonBytesClient, BaseClient):
+    """Client for the `bytes` structure family node.
+
+    A `bytes` node has no content endpoint and no specialized read path. The
+    client exists primarily to (a) identify a node as `bytes` for downstream
+    dispatch and (b) provide a more informative `__repr__` than `BaseClient`
+    when data-source information is available.
+
+    Use `raw_export(...)` (inherited from `BaseClient`) to download the
+    underlying assets, either to a directory on disk or into an in-memory
+    `MutableMapping` of `BytesIO` buffers.
+    """

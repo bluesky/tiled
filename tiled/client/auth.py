@@ -52,7 +52,7 @@ class TiledAuth(httpx.Auth):
         # 2. The un-serialized instance of TiledAuth will need to be able to
         #    read/write from token_directory anyway.
         self.tokens = {}
-        (refresh_url, csrf_token, token_directory, sync_lock) = state
+        refresh_url, csrf_token, token_directory, sync_lock = state
         self.refresh_url = refresh_url
         self.csrf_token = csrf_token
         if token_directory is not None:

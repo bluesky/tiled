@@ -8,8 +8,13 @@ import dask
 import dask.dataframe
 import httpx2 as httpx
 
-from ..serialization.table import deserialize_arrow, serialize_arrow
-from ..utils import APACHE_ARROW_FILE_MIME_TYPE, UNCHANGED
+from ._protocol.node import draft_request_lookup_node
+from ._protocol.table import (
+    TableReadRecipe,
+    draft_request_append_table_partition,
+    draft_request_write_table_full,
+    draft_request_write_table_partition,
+)
 from .base import BaseClient
 from .utils import (
     MSGPACK_MIME_TYPE,
@@ -17,23 +22,79 @@ from .utils import (
     client_for_item,
     export_util,
     handle_error,
-    retry_context,
-    should_retry_if_unprocessed,
 )
 
 if TYPE_CHECKING:
     from .stream import TableSubscription
 
-_EXTRA_CHARS_PER_ITEM = len("&column=")
+
+class CommonDataFrameClient:
+    """Pure table accessors shared by the synchronous and asynchronous clients.
+
+    A mixin over `CommonBaseClient`: everything here reads the cached
+    structure; nothing performs I/O.
+    """
+
+    @property
+    def columns(self):
+        return self.structure().columns
+
+    def __iter__(self):
+        yield from self.structure().columns
+
+    # __len__ is intentionally not implemented. For DataFrames it means
+    # "number of rows", which is expensive to compute.
+
+    # -- Glue between instance state and the protocol layer ------------------
+    # Pure methods that bind this client's state (item, structure) to the
+    # builders and parsers in `tiled.client._protocol`. The sync and async
+    # shells share them; only the sends in between differ.
+
+    def _read_partition_recipe(self, partition, columns):
+        "A recipe that reads one partition."
+        return TableReadRecipe.for_partition(
+            self.item["links"]["partition"], partition, columns
+        )
+
+    def _draft_request_write(self, dataframe):
+        "Draft the request that overwrites the full table."
+        return draft_request_write_table_full(self.item["links"]["full"], dataframe)
+
+    def _draft_request_write_partition(self, partition, dataframe):
+        "Draft the request that overwrites one partition."
+        # The order of arguments has changed; check that the user input is correct
+        if not isinstance(partition, int):
+            warnings.warn(
+                "The order of arguments has changed: please use write_partition(partition, dataframe).",  # noqa: E501
+                DeprecationWarning,
+                stacklevel=3,
+            )
+            partition, dataframe = dataframe, partition
+        return draft_request_write_table_partition(
+            self.item["links"]["partition"], partition, dataframe
+        )
+
+    def _draft_request_append_partition(self, partition, dataframe):
+        "Draft the request that appends rows to one partition, checking its index."
+        # The order of arguments has changed; check that the user input is correct
+        if not isinstance(partition, int):
+            warnings.warn(
+                "The order of arguments has changed: please use append_partition(partition, dataframe).",  # noqa: E501
+                DeprecationWarning,
+                stacklevel=3,
+            )
+            partition, dataframe = dataframe, partition
+        if partition > self.structure().npartitions:
+            raise ValueError(f"Table has {self.structure().npartitions} partitions")
+        # The draft's retry policy is conservative because appending is not
+        # idempotent; see `draft_request_append_table_partition`.
+        return draft_request_append_table_partition(
+            self.item["links"]["partition"], partition, dataframe
+        )
 
 
-class _DaskDataFrameClient(BaseClient):
+class _DaskDataFrameClient(CommonDataFrameClient, BaseClient):
     "Client-side wrapper around an dataframe-like that returns dask dataframes"
-
-    def new_variation(self, structure=UNCHANGED, **kwargs):
-        if structure is UNCHANGED:
-            structure = self._structure
-        return super().new_variation(structure=structure, **kwargs)
 
     def _repr_pretty_(self, p, cycle):
         """
@@ -105,50 +166,18 @@ class _DaskDataFrameClient(BaseClient):
             return []
         return columns
 
-    @property
-    def columns(self):
-        return self.structure().columns
-
     def _get_partition(self, partition, columns):
         """
         Fetch the actual data for one partition in a partitioned (dask) dataframe.
 
         See read_partition for a public version of this.
         """
-        URL_PATH = self.item["links"]["partition"]
-        params = {**parse_qs(urlparse(URL_PATH).query), "partition": partition}
-        url_length_for_get_request = len(URL_PATH) + sum(
-            _EXTRA_CHARS_PER_ITEM + len(column) for column in (columns or ())
-        )
+        recipe = self._read_partition_recipe(partition, columns)
         with self.context.throttle():
-            if url_length_for_get_request > self.URL_CHARACTER_LIMIT:
-                for attempt in retry_context(self.context):
-                    with attempt:
-                        content = handle_error(
-                            self.context.http_client.post(
-                                URL_PATH,
-                                headers={"Accept": APACHE_ARROW_FILE_MIME_TYPE},
-                                json=columns,
-                                params=params,
-                            )
-                        ).read()
-            else:
-                if columns:
-                    # Note: The singular/plural inconsistency here is because
-                    # ["A", "B"] will be encoded in the URL as column=A&column=B
-                    params["column"] = columns
-                for attempt in retry_context(self.context):
-                    with attempt:
-                        content = handle_error(
-                            self.context.http_client.get(
-                                URL_PATH,
-                                headers={"Accept": APACHE_ARROW_FILE_MIME_TYPE},
-                                params=params,
-                            )
-                        ).read()
+            content = self._send(recipe.draft, indicator_context=self.context).read()
         if (ps := self.context.progress_state) is not None:
             ps.advance()
-        return deserialize_arrow(content)
+        return recipe.parse_response(content)
 
     def read_partition(self, partition, columns=None):
         """
@@ -173,8 +202,7 @@ class _DaskDataFrameClient(BaseClient):
         )
 
     def read(self, columns=None):
-        """
-        Access the entire DataFrame. Optionally select a subset of the columns.
+        """Access the entire DataFrame. Optionally select a subset of the columns.
 
         The result will be internally partitioned with dask.
         """
@@ -205,17 +233,8 @@ class _DaskDataFrameClient(BaseClient):
 
     def __getitem__(self, column):
         try:
-            self_link = self.item["links"]["self"]
-            if self_link.endswith("/"):
-                self_link = self_link[:-1]
-            for attempt in retry_context():
-                with attempt:
-                    content = handle_error(
-                        self.context.http_client.get(
-                            self_link + f"/{column}",
-                            headers={"Accept": MSGPACK_MIME_TYPE},
-                        )
-                    ).json()
+            draft = draft_request_lookup_node(self.item["links"]["self"], (column,))
+            content = self._send(draft).json()
         except ClientError as err:
             if err.response.status_code == httpx.codes.NOT_FOUND:
                 raise KeyError(column)
@@ -223,75 +242,14 @@ class _DaskDataFrameClient(BaseClient):
         item = content["data"]
         return client_for_item(self.context, self.structure_clients, item)
 
-    def __iter__(self):
-        yield from self.structure().columns
-
-    # __len__ is intentionally not implemented. For DataFrames it means "number
-    # of rows" which is expensive to compute.
-
     def write(self, dataframe):
-        for attempt in retry_context():
-            with attempt:
-                handle_error(
-                    self.context.http_client.put(
-                        self.item["links"]["full"],
-                        content=bytes(
-                            serialize_arrow(APACHE_ARROW_FILE_MIME_TYPE, dataframe, {})
-                        ),
-                        headers={"Content-Type": APACHE_ARROW_FILE_MIME_TYPE},
-                    )
-                )
+        self._send(self._draft_request_write(dataframe))
 
     def write_partition(self, partition, dataframe):
-        # The order of arguments has changed; check that the user input is correct
-        if not isinstance(partition, int):
-            warnings.warn(
-                "The order of arguments has changed: please use write_partition(partition, dataframe).",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            partition, dataframe = dataframe, partition
-
-        for attempt in retry_context():
-            with attempt:
-                handle_error(
-                    self.context.http_client.put(
-                        self.item["links"]["partition"].format(index=partition),
-                        content=bytes(
-                            serialize_arrow(APACHE_ARROW_FILE_MIME_TYPE, dataframe, {})
-                        ),
-                        headers={"Content-Type": APACHE_ARROW_FILE_MIME_TYPE},
-                    )
-                )
+        self._send(self._draft_request_write_partition(partition, dataframe))
 
     def append_partition(self, partition, dataframe):
-        # The order of arguments has changed; check that the user input is correct
-        if not isinstance(partition, int):
-            warnings.warn(
-                "The order of arguments has changed: please use append_partition(partition, dataframe).",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            partition, dataframe = dataframe, partition
-
-        if partition > self.structure().npartitions:
-            raise ValueError(f"Table has {self.structure().npartitions} partitions")
-        # Appending rows is not idempotent: if the server processed the request
-        # but the response was lost (e.g. a read timeout or a 5xx from a proxy),
-        # retrying would append the same rows a second time. Only retry errors
-        # that guarantee the request was never processed; raise the rest to the
-        # caller, who can inspect the table before deciding to re-append.
-        for attempt in retry_context(on=should_retry_if_unprocessed):
-            with attempt:
-                handle_error(
-                    self.context.http_client.patch(
-                        self.item["links"]["partition"].format(index=partition),
-                        content=bytes(
-                            serialize_arrow(APACHE_ARROW_FILE_MIME_TYPE, dataframe, {})
-                        ),
-                        headers={"Content-Type": APACHE_ARROW_FILE_MIME_TYPE},
-                    )
-                )
+        self._send(self._draft_request_append_partition(partition, dataframe))
 
     def export(self, filepath, columns=None, *, format=None):
         """
@@ -314,7 +272,7 @@ class _DaskDataFrameClient(BaseClient):
         return export_util(
             filepath,
             format,
-            self.context.http_client.get,
+            self.context,
             self.item["links"]["full"],
             params=params,
         )

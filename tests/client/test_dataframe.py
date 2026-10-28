@@ -11,7 +11,7 @@ from tiled.client import Context, from_context, record_history
 from tiled.serialization.table import deserialize_arrow
 from tiled.server.app import build_app
 
-from .utils import URL_LIMITS, fail_with_status_code
+from ..utils import URL_LIMITS, fail_with_status_code
 
 tree = MapAdapter(
     {

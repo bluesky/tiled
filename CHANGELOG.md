@@ -7,7 +7,14 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Changed
 
+- Internal: the Python client's protocol knowledge -- request building,
+  response parsing, retry policies, and failure classification -- now lives
+  in pure, I/O-free modules under `tiled.client._protocol`, with the client
+  classes reduced to thin shells. Groundwork for an async client (#116).
 - Tiled now manages its connection pools to tabular storage more correctly.
+- Removed `ArrayClient.fetch_count`, which existed to compute progress-bar
+  totals. Totals are now derived from the chunking of the lazy (dask) read,
+  which is one chunk per HTTP request.
   Also, it is now not allowed to use two storage databases with the same
   database on different hosts.
 - Database initialization with `init_if_not_exists` (the catalog, via
@@ -22,6 +29,11 @@ Write the date in place of the "Unreleased" in the case a new version is release
   `ArrayClient.patch` raises `Conflicts` when the server reports a 409
   (e.g. the patch would overwrite data without `extend=True`), matching
   `RaggedClient.patch`. Code catching `ValueError` keeps working.
+- The server's array-patch conflict message is now phrased in
+  interface-neutral terms ("Set extend=true ...") and the Python client
+  surfaces it as-is, instead of rewriting URL-query phrasing into Python
+  keyword phrasing. Against servers older than this release, the client
+  now shows the server's original ("Use ?extend=true ...") message.
 - Replace the `httpx` dependency with `httpx2`. Objects passed into Tiled,
   such as a custom `auth=` or `timeout=`, must now be `httpx2` types, and
   exceptions raised are `httpx2` exceptions. Python 3.10 is no longer
@@ -48,6 +60,17 @@ Write the date in place of the "Unreleased" in the case a new version is release
   masked in the URI handed to the initialization step, which then failed to
   connect.
 - Improved the deletion of large subtrees with many associated assets (PostgreSQL only).
+- The xarray wide-table fetch (reading a dataset of many scalar/short
+  variables in one request) now retries on transient failures like all other read paths.
+- The guard that lets a retried create adopt a node made by its own earlier
+  attempt now compares specs in order. Spec order is significant, so a node
+  with the same specs in a different order is a genuine conflict (409).
+- `write_array` now builds its structure with `ArrayStructure.from_array`,
+  the canonical constructor, so arrays with structured (record) dtypes are
+  described field-by-field instead of as an opaque void type.
+- `Container.export` with a long `fields` selection now switches to an
+  equivalent POST when the URL would exceed the client's URL length limit,
+  as table reads already did, instead of sending an over-long URL.
 - Fixed client-side accumulation of metadata revisions across pages: a slice
   spanning more than one page (more than 100 revisions) returned subsequent
   pages as nested lists instead of revision records.

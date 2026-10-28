@@ -1,25 +1,30 @@
 import builtins
+import enum
 import logging
 import os
 import sys
 import uuid
 from collections import defaultdict
 from collections.abc import Hashable
+from contextlib import contextmanager
+from copy import copy
 from dataclasses import asdict
 from pathlib import Path
 from threading import Lock
 from typing import Optional, Union
-from urllib.parse import parse_qs, urlparse
 from weakref import WeakValueDictionary
 
 import httpx2 as httpx
+import json_merge_patch
+import jsonpatch
 import msgpack
 import stamina
 import stamina.instrumentation
 
 from ..structures.core import Spec
 from ..type_aliases import Chunks
-from ..utils import path_from_uri
+from ..utils import Conflicts, patch_mimetypes, path_from_uri
+from ._protocol.request import RequestDraft, RetryPolicy
 
 # Disable stamina's default retry logging hook.  Tiled handles its own retry
 # messages via the _LoggingAttempt wrapper (routed to tiled.client at DEBUG).
@@ -114,33 +119,6 @@ class ClientError(httpx.HTTPStatusError):
         super().__init__(message=message, request=request, response=response)
 
 
-def should_retry(exception: Exception) -> "bool | float":
-    if isinstance(exception, httpx.HTTPStatusError):
-        if exception.response.status_code == 429:
-            # Respect Retry-After header from load balancer / server.
-            # Return the delay as a float so stamina uses it as the wait time.
-            retry_after = exception.response.headers.get("Retry-After")
-            if retry_after is not None:
-                try:
-                    return float(retry_after)
-                except (ValueError, TypeError):
-                    pass
-            # No Retry-After header; retry with default backoff.
-            return True
-        return exception.response.status_code >= 500
-
-    # do not retry for unsupported protocol errors, eg "htps://"
-    if isinstance(exception, httpx.UnsupportedProtocol):
-        return False
-
-    # do not retry for local protocol errors, eg. carriage return in header value
-    if isinstance(exception, httpx.LocalProtocolError):
-        return False
-
-    # Otherwise retry on all httpx errors.
-    return isinstance(exception, httpx.HTTPError)
-
-
 # Transport errors that can occur only *after* the request has been handed to
 # the network layer: the server may have received and fully processed the
 # request even though the client never received the response.
@@ -152,35 +130,123 @@ SENT_REQUEST_TRANSPORT_ERRORS = (
     httpx.RemoteProtocolError,
 )
 
+# Transport errors that guarantee the request never left the client: the
+# connection was never established, or the request never left the local pool.
+CONNECT_PHASE_TRANSPORT_ERRORS = (
+    httpx.ConnectError,
+    httpx.ConnectTimeout,
+    httpx.PoolTimeout,
+)
+
+
+class FailureKind(enum.Enum):
+    """Classification of a failed request, by what the server may have done.
+
+    This is the single taxonomy behind the retry policies and idempotency
+    logic below. For non-idempotent requests the central question is "may
+    the mutation have happened on the server?".
+    """
+
+    # The request never left the client (connect-phase transport error).
+    # The server did not process it.
+    NEVER_SENT = "never_sent"
+
+    # The request was handed to the network layer but the response was lost
+    # (read/write-phase transport error). The server may have received and
+    # fully processed it.
+    RESPONSE_LOST = "response_lost"
+
+    # 429 rate-limit rejection: the server explicitly refused the request
+    # without processing it. Retry, honoring Retry-After.
+    REFUSED = "refused"
+
+    # 5xx response: the server or an intermediary (e.g. a proxy's 502/504)
+    # failed; the request may have been fully processed regardless.
+    SERVER_ERROR = "server_error"
+
+    # Any other HTTP error response: the server processed the request and
+    # rejected it. Retrying the same request cannot succeed.
+    REJECTED = "rejected"
+
+    # The request itself can never succeed: unsupported protocol (e.g. a
+    # "htps://" typo) or a local protocol violation (e.g. a carriage return
+    # in a header value). Retrying is pointless.
+    MALFORMED = "malformed"
+
+    # Anything else, including failures unrelated to HTTP.
+    OTHER = "other"
+
+
+def classify_failure(exception: Exception) -> FailureKind:
+    "Classify a failed request as one of `FailureKind`."
+    if isinstance(exception, httpx.HTTPStatusError):
+        status_code = exception.response.status_code
+        if status_code == 429:
+            return FailureKind.REFUSED
+        if status_code >= 500:
+            return FailureKind.SERVER_ERROR
+        return FailureKind.REJECTED
+    if isinstance(exception, CONNECT_PHASE_TRANSPORT_ERRORS):
+        return FailureKind.NEVER_SENT
+    if isinstance(exception, SENT_REQUEST_TRANSPORT_ERRORS):
+        return FailureKind.RESPONSE_LOST
+    if isinstance(exception, (httpx.UnsupportedProtocol, httpx.LocalProtocolError)):
+        return FailureKind.MALFORMED
+    return FailureKind.OTHER
+
+
+def _retry_after_wait(response: httpx.Response) -> "bool | float":
+    """Retry decision for a 429, honoring the Retry-After header.
+
+    Returns the delay as a float so stamina uses it as the wait time, or
+    True (retry with default backoff) when the header is absent or is not
+    a number (e.g. an HTTP date).
+    """
+    retry_after = response.headers.get("Retry-After")
+    if retry_after is not None:
+        try:
+            return float(retry_after)
+        except (ValueError, TypeError):
+            pass
+    return True
+
+
+def should_retry(exception: Exception) -> "bool | float":
+    """Default retry policy, for idempotent requests.
+
+    A float return value requests a specific wait time (seconds) before the
+    next attempt; see `_retry_after_wait`.
+    """
+    kind = classify_failure(exception)
+    if kind is FailureKind.REFUSED:
+        return _retry_after_wait(exception.response)
+    if kind in (
+        FailureKind.NEVER_SENT,
+        FailureKind.RESPONSE_LOST,
+        FailureKind.SERVER_ERROR,
+    ):
+        return True
+    if kind in (FailureKind.REJECTED, FailureKind.MALFORMED):
+        return False
+    # OTHER: retry any remaining httpx error (e.g. proxy or decoding
+    # errors); never retry failures unrelated to HTTP.
+    return isinstance(exception, httpx.HTTPError)
+
 
 def should_retry_if_unprocessed(exception: Exception) -> "bool | float":
     """Retry policy for non-idempotent requests (e.g. appending table rows).
 
     Retry only when the failure guarantees that the server never received or
-    processed the request: connection-phase transport errors (the connection
-    was never established, or the request never left the local pool) and 429
-    rate-limit rejections (the server explicitly refused without processing).
+    processed the request: `NEVER_SENT` and `REFUSED` (see `FailureKind`).
 
-    Read/write-phase transport errors (e.g. a read timeout) and 5xx responses
-    (e.g. a 502/504 from a proxy in front of a slow server) can occur *after*
-    the server has fully processed the request; retrying would apply the
-    mutation a second time (e.g. duplicate appended rows). Those errors are
-    raised to the caller instead.
+    `RESPONSE_LOST` and `SERVER_ERROR` failures can occur *after* the server has
+    fully processed the request; retrying would apply the mutation a second time
+    (e.g. duplicate appended rows). Those errors are raised to the caller instead.
     """
-    if isinstance(exception, httpx.HTTPStatusError):
-        if exception.response.status_code == 429:
-            # Same Retry-After handling as should_retry.
-            retry_after = exception.response.headers.get("Retry-After")
-            if retry_after is not None:
-                try:
-                    return float(retry_after)
-                except (ValueError, TypeError):
-                    pass
-            return True
-        return False
-    return isinstance(
-        exception, (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout)
-    )
+    kind = classify_failure(exception)
+    if kind is FailureKind.REFUSED:
+        return _retry_after_wait(exception.response)
+    return kind is FailureKind.NEVER_SENT
 
 
 # Expose the timeout and max attempts as configurable via env vars. The rest of
@@ -291,6 +357,79 @@ def retry_context(context=None, *, on=None):
             context.signal_retry_resolved()
 
 
+# Status codes with which the server reports that patch parameters conflict
+# with the existing array (e.g. would overwrite without `extend=True`).
+PATCH_CONFLICT_STATUS_CODES = (httpx.codes.BAD_REQUEST, httpx.codes.CONFLICT)
+
+
+def patch_conflict_exception(status_code, body):
+    """Translate a patch-conflict response into the exception to raise.
+
+    A 409 (Conflict) maps to `Conflicts`; a 400 (Bad Request) maps to
+    `ValueError`. The server's `detail` message is surfaced as-is: the server
+    phrases it in interface-neutral terms (NB servers older than 0.2.21
+    phrased it in terms of URL query parameters).
+    """
+    exception_type = Conflicts if status_code == httpx.codes.CONFLICT else ValueError
+    return exception_type(body.get("detail", "Array parameters conflict."))
+
+
+@contextmanager
+def translating_patch_conflicts():
+    """Translate patch-conflict error responses into the exceptions to raise.
+
+    Wraps the send of an array-like `patch` request.
+    """
+    try:
+        yield
+    except ClientError as err:
+        if err.response.status_code in PATCH_CONFLICT_STATUS_CODES:
+            raise patch_conflict_exception(
+                err.response.status_code, err.response.json()
+            ) from err
+        raise
+
+
+def collapse_key_segments(keys):
+    """Normalize a lookup of one or more keys into a tuple of path segments.
+
+    Each key may itself contain slashes (`node["a/b", "c"]` is equivalent to
+    `node["a", "b", "c"]`); leading and trailing slashes are dropped.
+    """
+    return tuple("/".join(keys).strip("/").split("/"))
+
+
+def send_request_draft(context, draft, *, indicator_context=None):
+    """Send a `RequestDraft` through a context's HTTP client.
+
+    The request is retried according to the draft's retry policy, and the
+    returned response has been vetted by `handle_error`; HTTP errors surface
+    as exceptions (after any retries the policy allows). `indicator_context`
+    optionally routes the retry indicator through a `Context` shared with progress
+    reporting (data-read paths); by default a standalone indicator is used.
+    """
+
+    def send_once():
+        return context.http_client.request(
+            draft.method,
+            draft.url,
+            params=draft.params,
+            headers=draft.headers,
+            content=draft.content,
+        )
+
+    if draft.retry_policy is RetryPolicy.NONE:
+        return handle_error(send_once())
+    on = (
+        should_retry_if_unprocessed
+        if draft.retry_policy is RetryPolicy.IF_UNPROCESSED
+        else None
+    )
+    for attempt in retry_context(indicator_context, on=on):
+        with attempt:
+            return handle_error(send_once())
+
+
 def should_poll_for_tokens(exception: Exception) -> bool:
     # Retry on transient network errors during device flow polling.
     if isinstance(exception, (httpx.ConnectError, httpx.TimeoutException)):
@@ -321,7 +460,25 @@ class UnknownStructureFamily(KeyError):
     pass
 
 
-def export_util(file, format, get, link, params):
+def resolve_export_format(file, format):
+    """Resolve the export format from the target file when not given explicitly.
+
+    The resulting value is interpreted by the server (see
+    `tiled.media_type_registration`), which accepts a media type like
+    "text/csv" or a file extension like "csv" (no dot). When `file` is a
+    path, an unspecified format is inferred from its suffixes; a writeable
+    buffer carries no name to infer from, so the format must be given.
+    """
+    if isinstance(format, str) and format.startswith("."):
+        format = format[1:]  # e.g. ".csv" -> "csv"
+    if format is None:
+        if not isinstance(file, (str, Path)):
+            raise ValueError("format must be specified when file is writeable buffer")
+        format = ".".join(suffix[1:] for suffix in Path(file).suffixes)  # e.g. "csv"
+    return format
+
+
+def export_util(file, format, context, link, params, *, repeated_param=None):
     """
     Download client data in some format and write to a file.
 
@@ -335,58 +492,38 @@ def export_util(file, format, get, link, params):
         If format is None and `file` is a filepath, the format is inferred
         from the name, like 'table.csv' implies format="text/csv". The format
         may be given as a file extension ("csv") or a media type ("text/csv").
-    get : callable
-        Client's internal GET method
+    context : tiled.client.context.Context
+        The connection through which to download.
     link: str
         URL to download full data
     params : dict
         Additional parameters for the request, which may be used to subselect
         or slice, for example.
+    repeated_param : str, optional
+        The name of one parameter in `params` whose (possibly many) values
+        select a subset of the export (e.g. `field`). It is lifted out of the
+        URL into the body of an equivalent POST when the URL would be too
+        long; see `RequestDraft.get_or_post`.
     """
-
-    # The server accpets a media type like "text/csv" or a file extension like
-    # "csv" (no dot) as a "format".
     if "format" in params:
         raise ValueError("params may not include 'format'. Use the format parameter.")
-    if isinstance(format, str) and format.startswith("."):
-        format = format[1:]  # e.g. ".csv" -> "csv"
+    format = resolve_export_format(file, format)
+    if repeated_param is not None:
+        params = dict(params)
+        values = params.pop(repeated_param, None)
+        draft = RequestDraft.get_or_post(
+            link,
+            repeated_param=repeated_param,
+            values=values,
+            params={"format": format, **params},
+        )
+    else:
+        draft = RequestDraft("GET", link, params={"format": format, **params})
+    content = send_request_draft(context, draft).read()
     if isinstance(file, (str, Path)):
-        # Infer that `file` is a filepath.
-        if format is None:
-            format = ".".join(
-                suffix[1:] for suffix in Path(file).suffixes
-            )  # e.g. "csv"
-        for attempt in retry_context():
-            with attempt:
-                content = handle_error(
-                    get(
-                        link,
-                        params={
-                            **parse_qs(urlparse(link).query),
-                            "format": format,
-                            **params,
-                        },
-                    )
-                ).read()
         with open(file, "wb") as buffer:
             buffer.write(content)
     else:
-        # Infer that `file` is a writeable buffer.
-        if format is None:
-            # We have no filepath to infer to format from.
-            raise ValueError("format must be specified when file is writeable buffer")
-        for attempt in retry_context():
-            with attempt:
-                content = handle_error(
-                    get(
-                        link,
-                        params={
-                            **parse_qs(urlparse(link).query),
-                            "format": format,
-                            **params,
-                        },
-                    )
-                ).read()
         file.write(content)
 
 
@@ -567,10 +704,12 @@ def chunks_repr(chunks: Chunks) -> str:
     return result
 
 
-def normalize_specs(
-    specs: Optional[Union[list[str], list[Spec], str]],
-) -> Optional[list[dict[str, str]]]:
-    "Represent a list of Spec objects or strings as a list of dicts"
+# The forms in which a caller may supply specs to the writing methods.
+Specs = Optional[Union[list[str], list[Spec], str]]
+
+
+def normalize_specs(specs: Specs) -> Optional[list[dict[str, str]]]:
+    "Represent a list of Spec objects, strings, or dicts as a list of dicts."
 
     if specs is None:
         return None
@@ -578,8 +717,44 @@ def normalize_specs(
     for spec in specs:
         if isinstance(spec, str):
             spec = Spec(spec)
-        normalized_specs.append(asdict(spec))
+        # Idempotent: already-normalized dicts pass through, so callers may
+        # normalize independently without coordinating.
+        normalized_specs.append(spec if isinstance(spec, dict) else asdict(spec))
     return normalized_specs
+
+
+def apply_patch(doc, patch, content_type):
+    "Apply a JSON patch (RFC 6902) or merge patch (RFC 7386) to `doc`."
+    if content_type == patch_mimetypes.JSON_PATCH:
+        return jsonpatch.apply_patch(doc=doc, patch=patch, in_place=False)
+    if content_type == patch_mimetypes.MERGE_PATCH:
+        return json_merge_patch.merge(doc, patch)
+    raise ValueError(
+        f"Unsupported patch type {content_type}. "
+        f"Acceptable values are: {', '.join(patch_mimetypes)}."
+    )
+
+
+def normalize_specs_patch(
+    specs_patch: Optional[list], content_type: str
+) -> Optional[list]:
+    """Normalize string specs inside a specs patch to `{"name", "version"}` dicts.
+
+    The two patch representations carry specs differently: a merge patch
+    lists the specs themselves (normalized by `normalize_specs`), while a
+    JSON patch wraps each spec in an operation's `value`.
+    """
+    if specs_patch is None:
+        return None
+    if content_type == patch_mimetypes.MERGE_PATCH:
+        return normalize_specs(specs_patch)
+    normalized: list = []
+    for spec_patch in copy(specs_patch):
+        value = spec_patch.get("value", None)
+        if isinstance(value, str):
+            spec_patch["value"] = asdict(Spec(value))
+        normalized.append(spec_patch)
+    return normalized
 
 
 def slices_to_dask_chunks(slice_dict, shape):

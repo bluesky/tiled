@@ -1,27 +1,18 @@
-import collections
 import collections.abc
 import concurrent.futures
 import functools
 import importlib
 import itertools
 import logging
-import time
-import uuid
 import warnings
-from dataclasses import asdict
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterable, Optional, Union
-from urllib.parse import parse_qs, urlparse
 
 import entrypoints
 import httpx2 as httpx
-import orjson
-from packaging.version import Version
 
 from ..iterviews import ItemsView, KeysView, ValuesView
-from ..queries import KeyLookup
-from ..query_registration import default_query_registry
-from ..structures.core import Spec, StructureFamily
+from ..structures.core import Spec, StructureFamily, structure_from_json
 from ..structures.data_source import DataSource
 from ..utils import (
     UNCHANGED,
@@ -30,18 +21,21 @@ from ..utils import (
     Sentinel,
     ensure_uri,
     node_repr,
-    safe_json_dump,
 )
-from .base import STRUCTURE_TYPES, BaseClient
+from ._protocol.node import (
+    CreateNodeRecipe,
+    draft_request_delete_node,
+    draft_request_lookup_node,
+)
+from ._protocol.search import ChildrenSearchBuilder, DeepSearchBuilder
+from .base import BaseClient, CommonBaseClient, LengthCacheMixin
 from .utils import (
-    MSGPACK_MIME_TYPE,
-    SENT_REQUEST_TRANSPORT_ERRORS,
     ClientError,
     client_for_item,
+    collapse_key_segments,
     export_util,
-    handle_error,
-    normalize_specs,
     retry_context,
+    send_request_draft,
 )
 
 if TYPE_CHECKING:
@@ -53,14 +47,169 @@ if TYPE_CHECKING:
 logger = logging.getLogger("tiled.client")
 
 
-def _as_spec_set(spec_dicts):
-    # Specs that have been passed through normalize_specs -- as well as the
-    # specs on a fetched item -- are lists of {"name": ..., "version": ...}
-    # dicts; represent them as a set for order-insensitive comparison.
-    return {(spec["name"], spec.get("version")) for spec in (spec_dicts or [])}
+class CommonContainer(CommonBaseClient):
+    """Pure container state and glue shared by the sync and async clients.
+
+    Holds the active queries and sorting (and the search builder they
+    define) and binds instance state to the protocol layer. No I/O; see
+    `Container` and `tiled.client.aio.AsyncContainer`.
+    """
+
+    # When (re)chunking arrays for upload, we use this limit
+    # to attempt to avoid bumping into size limits.
+    _SUGGESTED_MAX_UPLOAD_SIZE = 100_000_000  # 100 MB
+
+    def __init__(
+        self,
+        context,
+        *,
+        item,
+        structure_clients,
+        queries=None,
+        sorting=None,
+        structure=None,
+        include_data_sources=False,
+    ):
+        "This is not user-facing. Use Node.from_uri."
+
+        self._queries = list(queries or [])
+        # If the user has not specified a sorting, give the server the opportunity
+        # to tell us the default sorting.
+        if sorting:
+            self._sorting = sorting
+        else:
+            # In the Python API we encode sorting as (key, direction).
+            # This order-based "record" notion does not play well with OpenAPI.
+            # In the HTTP API, therefore, we use {"key": key, "direction": direction}.
+            server_sorting = item["attributes"].get("sorting") or []
+            self._sorting = [
+                (s["key"], int(s["direction"])) for s in server_sorting
+            ] or [("", 1)]  # fall back to server default when not specified
+        self._children_search_builder = ChildrenSearchBuilder.from_queries(
+            item["links"]["search"], self._queries, self._sorting
+        )
+        # Expose the encoded parameters as plain attributes; subclasses
+        # (e.g. `composite.py`) read them directly.
+        self._queries_as_params = self._children_search_builder.fixed_params
+        self._sorting_params = self._children_search_builder.sorting_params
+        self._reversed_sorting_params = (
+            self._children_search_builder.reversed_sorting_params
+        )
+
+        super().__init__(
+            context=context,
+            item=item,
+            structure_clients=structure_clients,
+            include_data_sources=include_data_sources,
+        )
+
+    @property
+    def sorting(self):
+        """
+        The current sorting of this Node
+
+        Given as a list of tuples where the first entry is the sorting key
+        and the second entry indicates ASCENDING (or 1) or DESCENDING (or -1).
+        """
+        return list(self._sorting)
+
+    def new_variation(self, *, queries=UNCHANGED, sorting=UNCHANGED, **kwargs):
+        """
+        Create a copy of this Node, optionally varying some parameters.
+
+        This is intended primarily for internal use and use by subclasses.
+        """
+        if queries is UNCHANGED:
+            queries = self._queries
+        if sorting is UNCHANGED:
+            sorting = self._sorting
+        return super().new_variation(queries=queries, sorting=sorting, **kwargs)
+
+    def search(self, query):
+        """
+        Make a Node with a subset of this Node's entries, filtered by query.
+
+        Examples
+        --------
+
+        >>> from tiled.queries import FullText
+        >>> tree.search(FullText("hello"))
+        """
+        return self.new_variation(queries=self._queries + [query])
+
+    def sort(self, *sorting):
+        """
+        Make a Node with the same entries but sorted according to `sorting`.
+
+        Examples
+        --------
+
+        Sort by "color" in ascending order, and then by "height" in descending order.
+
+        >>> from tiled.client import ASCENDING, DESCENDING
+        >>> tree.sort(("color", ASCENDING), ("height", DESCENDING))
+
+        Note that ``1`` may be used as a synonym for ``ASCENDING``, and ``-1``
+        may be used as a synonym for ``DESCENDING``.
+        """
+        return self.new_variation(sorting=sorting)
+
+    def _create_node_recipe(
+        self, structure_family, data_sources, *, key, metadata, specs, access_tags
+    ):
+        "A recipe that creates a new node under this container."
+        return CreateNodeRecipe.for_new_node(
+            self.uri,
+            self.path_parts,
+            structure_family,
+            data_sources,
+            key=key,
+            metadata=metadata,
+            specs=specs,
+            access_tags=access_tags,
+            library_version=self.context.server_info.library_version,
+        )
+
+    def _adopt_if_matching(self, create_recipe, existing):
+        """Decide whether an existing node is adoptable as the result of a create.
+
+        `existing` is the client fetched for the conflicting key, or None if
+        the fetch failed. Returns the client to adopt, or None (logging the
+        decision either way). The match itself is pure and shared, in
+        `CreateNodeRecipe.matches_existing`; see
+        `Container._adopt_after_retried_create_conflict` for the conditions
+        and trade-offs.
+        """
+        if existing is None:
+            logger.warning(
+                "Create of %r returned 409 Conflict after a retried request, "
+                "but the existing item could not be fetched; treating as a "
+                "genuine conflict.",
+                create_recipe.key,
+            )
+            return None
+
+        mismatch = create_recipe.matches_existing(existing.item["attributes"])
+        if mismatch is not None:
+            logger.warning(
+                "Create of %r returned 409 Conflict after a retried request, "
+                "but the existing item does not match the request (%s); "
+                "treating as a genuine conflict.",
+                create_recipe.key,
+                mismatch,
+            )
+            return None
+
+        logger.warning(
+            "Create of %r returned 409 Conflict after a retried request that "
+            "may have reached the server; adopting the existing (matching) "
+            "item as the result of this create.",
+            create_recipe.key,
+        )
+        return existing
 
 
-class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
+class Container(CommonContainer, BaseClient, collections.abc.Mapping, IndexersMixin):
     # This maps the structure_family sent by the server to a client-side object that
     # can interpret the structure_family's structure and content. OneShotCachedMap is used to
     # defer imports.
@@ -102,96 +251,25 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                 DEFAULT_STRUCTURE_CLIENT_DISPATCH["numpy"].set(name, entrypoint.load)
                 DEFAULT_STRUCTURE_CLIENT_DISPATCH["dask"].set(name, entrypoint.load)
 
-    def __init__(
-        self,
-        context,
-        *,
-        item,
-        structure_clients,
-        queries=None,
-        sorting=None,
-        structure=None,
-        include_data_sources=False,
-    ):
-        "This is not user-facing. Use Node.from_uri."
-
-        self.structure_clients = structure_clients
-        self._queries = list(queries or [])
-        self._queries_as_params = _queries_to_params(*self._queries)
-        # If the user has not specified a sorting, give the server the opportunity
-        # to tell us the default sorting.
-        if sorting:
-            self._sorting = sorting
-        else:
-            # In the Python API we encode sorting as (key, direction).
-            # This order-based "record" notion does not play well with OpenAPI.
-            # In the HTTP API, therefore, we use {"key": key, "direction": direction}.
-            server_sorting = item["attributes"].get("sorting") or []
-            self._sorting = [
-                (s["key"], int(s["direction"])) for s in server_sorting
-            ] or [("", 1)]  # fall back to server default when not specified
-        sorting_list = [
-            f"{'-' if item[1] < 0 else ''}{item[0]}" for item in self._sorting
-        ]
-        reversed_sorting_list = [
-            item[1:] if item.startswith("-") else f"-{item.lstrip('+')}"
-            for item in sorting_list
-        ]
-        self._sorting_params = {"sort": sorting_list} if "".join(sorting_list) else {}
-        self._reversed_sorting_params = (
-            {"sort": reversed_sorting_list} if "".join(reversed_sorting_list) else {}
-        )
-
-        super().__init__(
-            context=context,
-            item=item,
-            structure_clients=structure_clients,
-            include_data_sources=include_data_sources,
-        )
-
     def __repr__(self):
         # Display up to the first N keys to avoid making a giant service
         # request. Use _keys_slicer because it is unauthenticated.
         N = 10
         return node_repr(self, self._keys_slice(0, N, direction=1))
 
-    @property
-    def sorting(self):
-        """
-        The current sorting of this Node
-
-        Given as a list of tuples where the first entry is the sorting key
-        and the second entry indicates ASCENDING (or 1) or DESCENDING (or -1).
-        """
-        return list(self._sorting)
-
-    def new_variation(
-        self,
-        *,
-        structure_clients=UNCHANGED,
-        queries=UNCHANGED,
-        sorting=UNCHANGED,
-        **kwargs,
-    ):
+    def new_variation(self, *, structure_clients=UNCHANGED, **kwargs):
         """
         Create a copy of this Node, optionally varying some parameters.
 
         This is intended primarily for internal use and use by subclasses.
+        In the synchronous client, `structure_clients` may also be given as
+        a registry name ("numpy" or "dask").
         """
         if isinstance(structure_clients, str):
             structure_clients = DEFAULT_STRUCTURE_CLIENT_DISPATCH[structure_clients]
         if structure_clients is UNCHANGED:
             structure_clients = self.structure_clients
-        if queries is UNCHANGED:
-            queries = self._queries
-        if sorting is UNCHANGED:
-            sorting = self._sorting
-        return super().new_variation(
-            structure_clients=structure_clients,
-            queries=queries,
-            sorting=sorting,
-            **kwargs,
-        )
+        return super().new_variation(structure_clients=structure_clients, **kwargs)
 
     def __len__(self):
         # If the contents of this node was provided in-line, there is an
@@ -200,30 +278,11 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         if contents := self.item["attributes"]["structure"]["contents"]:
             return len(contents)
 
-        now = time.monotonic()
-        if self._cached_len is not None:
-            length, deadline = self._cached_len
-            if now < deadline:
-                # Used the cached value and do not make any request.
-                return length
-        link = self.item["links"]["search"]
-        for attempt in retry_context():
-            with attempt:
-                content = handle_error(
-                    self.context.http_client.get(
-                        link,
-                        headers={"Accept": MSGPACK_MIME_TYPE},
-                        params={
-                            **parse_qs(urlparse(link).query),
-                            "fields": "count",
-                            **self._queries_as_params,
-                            **self._sorting_params,
-                        },
-                    )
-                ).json()
-        length = content["meta"]["count"]
-        self._cached_len = (length, now + LENGTH_CACHE_TTL)
-        return length
+        if (length := self._length_from_cache()) is not None:
+            # Use the cached value and do not make any request.
+            return length
+        content = self._send(self._children_search_builder.draft_request_count()).json()
+        return self._cache_length(ChildrenSearchBuilder.parse_response_count(content))
 
     def __length_hint__(self):
         # TODO The server should provide an estimated count.
@@ -231,40 +290,9 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         return len(self)
 
     def __iter__(self, _ignore_inlined_contents=False):
-        # If the contents of this node was provided in-line, and we don't need
-        # to apply any filtering or sorting, we can slice the in-lined data
-        # without fetching anything from the server.
-        contents = self.item["attributes"]["structure"]["contents"]
-        if (
-            (contents is not None)
-            and (not self._queries)
-            and ((not self.sorting) or (self.sorting == [("_", 1)]))
-            and (not _ignore_inlined_contents)
-        ):
-            return (yield from contents)
-        next_page_url = self.item["links"]["search"]
-        while next_page_url is not None:
-            for attempt in retry_context():
-                with attempt:
-                    content = handle_error(
-                        self.context.http_client.get(
-                            next_page_url,
-                            headers={"Accept": MSGPACK_MIME_TYPE},
-                            params={
-                                **parse_qs(urlparse(next_page_url).query),
-                                "fields": "",
-                                **self._queries_as_params,
-                                **self._sorting_params,
-                            },
-                        )
-                    ).json()
-            self._cached_len = (
-                content["meta"]["count"],
-                time.monotonic() + LENGTH_CACHE_TTL,
-            )
-            for item in content["data"]:
-                yield item["id"]
-            next_page_url = content["links"]["next"]
+        yield from self._keys_slice(
+            0, None, 1, _ignore_inlined_contents=_ignore_inlined_contents
+        )
 
     def __getitem__(self, keys, _ignore_inlined_contents=False):
         # These are equivalent:
@@ -288,32 +316,16 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         for key in keys:
             if not isinstance(key, str):
                 raise TypeError("Containers can only be indexed by strings")
-        keys = tuple("/".join(keys).strip("/").split("/"))  # Remove any slashes
+        keys = collapse_key_segments(keys)
         if self._queries:
             # Lookup this key *within the search results* of this Node.
             key, *tail = keys
             tail = tuple(tail)  # list -> tuple
-            params = {
-                **_queries_to_params(KeyLookup(key)),
-                **self._queries_as_params,
-                **self._sorting_params,
-            }
-            if self._include_data_sources:
-                params["include_data_sources"] = True
-            link = self.item["links"]["search"]
-            for attempt in retry_context():
-                with attempt:
-                    content = handle_error(
-                        self.context.http_client.get(
-                            link,
-                            headers={"Accept": MSGPACK_MIME_TYPE},
-                            params={**parse_qs(urlparse(link).query), **params},
-                        )
-                    ).json()
-            self._cached_len = (
-                content["meta"]["count"],
-                time.monotonic() + LENGTH_CACHE_TTL,
+            draft = self._children_search_builder.draft_request_lookup_key(
+                key, include_data_sources=self._include_data_sources
             )
+            content = self._send(draft).json()
+            self._cache_length(ChildrenSearchBuilder.parse_response_count(content))
             data = content["data"]
             if not data:
                 raise KeyError(key)
@@ -354,29 +366,20 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                         item,
                         include_data_sources=self._include_data_sources,
                     )
-                    return result[keys[i + 1 :]] if keys[i + 1 :] else result
+                    return (
+                        result[keys[i + 1 :]] if keys[i + 1 :] else result  # noqa: E203
+                    )
                 else:
                     # The item was not inlined, either because nothing was inlined
                     # or because it was added after we fetched the inlined contents.
                     # Make a request for it.
                     try:
-                        self_link = self.item["links"]["self"].rstrip("/")
-                        params = {}
-                        if self._include_data_sources:
-                            params["include_data_sources"] = True
-                        link = self_link + "".join(f"/{key}" for key in keys[i:])
-                        for attempt in retry_context():
-                            with attempt:
-                                content = handle_error(
-                                    self.context.http_client.get(
-                                        link,
-                                        headers={"Accept": MSGPACK_MIME_TYPE},
-                                        params={
-                                            **parse_qs(urlparse(link).query),
-                                            **params,
-                                        },
-                                    )
-                                ).json()
+                        draft = draft_request_lookup_node(
+                            self.item["links"]["self"],
+                            keys[i:],
+                            include_data_sources=self._include_data_sources,
+                        )
+                        content = self._send(draft).json()
                     except ClientError as err:
                         if err.response.status_code == httpx.codes.NOT_FOUND:
                             # If this is a scalar lookup, raise KeyError("X") not KeyError(("X",)).
@@ -421,17 +424,10 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             keys = self.keys()
         keys = [keys] if isinstance(keys, str) else keys
         for key in set(keys):
-            for attempt in retry_context():
-                with attempt:
-                    handle_error(
-                        self.context.http_client.delete(
-                            f"{self.uri}/{key}",
-                            params={
-                                "recursive": recursive,
-                                "external_only": external_only,
-                            },
-                        )
-                    )
+            draft = draft_request_delete_node(
+                self.uri, key, recursive=recursive, external_only=external_only
+            )
+            self._send(draft)
 
         return self
 
@@ -444,45 +440,25 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         # to apply any filtering or sorting, we can slice the in-lined data
         # without fetching anything from the server.
         contents = self.item["attributes"]["structure"]["contents"]
-        if (
-            (contents is not None)
-            and (not self._queries)
-            and ((not self.sorting) or (self.sorting == [("_", 1)]))
-            and (not _ignore_inlined_contents)
-        ):
+        if ChildrenSearchBuilder.may_serve_from_inlined_contents(
+            contents, self._queries, self.sorting
+        ) and (not _ignore_inlined_contents):
             keys = list(contents)
             if direction < 0:
                 keys = list(reversed(keys))
             return (yield from keys[start:stop])
-        if direction > 0:
-            sorting_params = self._sorting_params
-        else:
-            sorting_params = self._reversed_sorting_params
         assert start >= 0
         assert (stop is None) or (stop >= 0)
-        next_page_url = f"{self.item['links']['search']}?page[offset]={start}"
-        if page_size is not None:
-            next_page_url += f"&page[limit]={page_size}"
+        next_page_url = self._children_search_builder.first_page_link(start, page_size)
         item_counter = itertools.count(start)
         while next_page_url is not None:
-            for attempt in retry_context():
-                with attempt:
-                    content = handle_error(
-                        self.context.http_client.get(
-                            next_page_url,
-                            headers={"Accept": MSGPACK_MIME_TYPE},
-                            params={
-                                **parse_qs(urlparse(next_page_url).query),
-                                "fields": "",
-                                **self._queries_as_params,
-                                **sorting_params,
-                            },
-                        )
-                    ).json()
-            self._cached_len = (
-                content["meta"]["count"],
-                time.monotonic() + LENGTH_CACHE_TTL,
+            draft = self._children_search_builder.draft_request_read_page(
+                next_page_url,
+                keys_only=True,
+                direction=direction,
             )
+            content = self._send(draft).json()
+            self._cache_length(ChildrenSearchBuilder.parse_response_count(content))
             for item in content["data"]:
                 yield item["id"]
                 if stop is not None and next(item_counter) == stop - 1:
@@ -492,16 +468,13 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
     def _items_slice(
         self, start, stop, direction, page_size=None, *, _ignore_inlined_contents=False
     ):
-        # If the contents of this node was provided in-line, and we don't need
+        # If the contents of this node were provided in-line, and we don't need
         # to apply any filtering or sorting, we can slice the in-lined data
         # without fetching anything from the server.
         contents = self.item["attributes"]["structure"]["contents"]
-        if (
-            (contents is not None)
-            and (not self._queries)
-            and ((not self.sorting) or (self.sorting == [("_", 1)]))
-            and (not _ignore_inlined_contents)
-        ):
+        if ChildrenSearchBuilder.may_serve_from_inlined_contents(
+            contents, self._queries, self.sorting
+        ) and (not _ignore_inlined_contents):
             items = list(contents.items())
             if direction < 0:
                 items = list(reversed(items))
@@ -516,37 +489,19 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                     ),
                 )
             return
-        if direction > 0:
-            sorting_params = self._sorting_params
-        else:
-            sorting_params = self._reversed_sorting_params
         assert start >= 0
         assert (stop is None) or (stop >= 0)
-        next_page_url = f"{self.item['links']['search']}?page[offset]={start}"
-        if page_size is not None:
-            next_page_url += f"&page[limit]={page_size}"
+        next_page_url = self._children_search_builder.first_page_link(start, page_size)
         item_counter = itertools.count(start)
         while next_page_url is not None:
-            params = {
-                **parse_qs(urlparse(next_page_url).query),
-                **self._queries_as_params,
-                **sorting_params,
-            }
-            if self._include_data_sources:
-                params["include_data_sources"] = True
-            for attempt in retry_context():
-                with attempt:
-                    content = handle_error(
-                        self.context.http_client.get(
-                            next_page_url,
-                            headers={"Accept": MSGPACK_MIME_TYPE},
-                            params=params,
-                        )
-                    ).json()
-            self._cached_len = (
-                content["meta"]["count"],
-                time.monotonic() + LENGTH_CACHE_TTL,
+            draft = self._children_search_builder.draft_request_read_page(
+                next_page_url,
+                keys_only=False,
+                include_data_sources=self._include_data_sources,
+                direction=direction,
             )
+            content = self._send(draft).json()
+            self._cache_length(ChildrenSearchBuilder.parse_response_count(content))
             for item in content["data"]:
                 key = item["id"]
                 yield (
@@ -571,18 +526,6 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
     def items(self):
         return ItemsView(lambda: len(self), self._items_slice)
 
-    def search(self, query):
-        """
-        Make a Node with a subset of this Node's entries, filtered by query.
-
-        Examples
-        --------
-
-        >>> from tiled.queries import FullText
-        >>> tree.search(FullText("hello"))
-        """
-        return self.new_variation(queries=self._queries + [query])
-
     def search_deep(self, *queries, max_depth=None):
         """
         Search all descendants of this Node (at any depth), not just direct children.
@@ -590,13 +533,12 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         Returns a `DeepSearchResults` mapping, not a `Node`: it is not
         chainable via further `.search()`/`.search_deep()` calls,
         because matches at different depths do not share a single parent.
-        To narrow a search, pass several queries; they are combined with
-        logical AND.
+        To narrow a search, pass several queries; they are combined with logical AND.
 
         Parameters
         ----------
         *queries : query objects, e.g. from tiled.queries
-            At least one is required. All must match.
+            At least one is required. All must match for a node to appear in the search results.
         max_depth : int, optional
             Only descend this many levels below this Node.
 
@@ -624,8 +566,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             include_data_sources=self._include_data_sources,
             # The server reports `ancestors` relative to the true root, like
             # every other endpoint; strip this Node's own path so that result
-            # keys/paths stay relative to the root that `search_deep`
-            # was called on.
+            # keys/paths stay relative to the root that `search_deep` was called on.
             root_path_parts=[part for part in self.path_parts if part],
         )
 
@@ -648,41 +589,14 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         >>> tree.distinct("foo", "bar", counts=True)
         """
 
-        link = self.item["links"]["self"].replace("/metadata", "/distinct", 1)
-        for attempt in retry_context():
-            with attempt:
-                distinct = handle_error(
-                    self.context.http_client.get(
-                        link,
-                        headers={"Accept": MSGPACK_MIME_TYPE},
-                        params={
-                            **parse_qs(urlparse(link).query),
-                            "metadata": metadata_keys,
-                            "structure_families": structure_families,
-                            "specs": specs,
-                            "counts": counts,
-                            **self._queries_as_params,
-                        },
-                    )
-                ).json()
-        return distinct
-
-    def sort(self, *sorting):
-        """
-        Make a Node with the same entries but sorted according to `sorting`.
-
-        Examples
-        --------
-
-        Sort by "color" in ascending order, and then by "height" in descending order.
-
-        >>> from tiled.client import ASCENDING, DESCENDING
-        >>> tree.sort(("color", ASCENDING), ("height", DESCENDING))
-
-        Note that ``1`` may be used as a synonym for ``ASCENDING``, and ``-1``
-        may be used as a synonym for ``DESCENDING``.
-        """
-        return self.new_variation(sorting=sorting)
+        draft = self._children_search_builder.draft_request_read_distinct(
+            self.item["links"]["self"],
+            metadata_keys,
+            structure_families,
+            specs,
+            counts,
+        )
+        return self._send(draft).json()
 
     def export(self, filepath, fields=None, *, format=None):
         """
@@ -713,9 +627,10 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         return export_util(
             filepath,
             format,
-            self.context.http_client.get,
+            self.context,
             self.item["links"]["full"],
             params=params,
+            repeated_param="field",
         )
 
     def _ipython_key_completions_(self):
@@ -762,148 +677,57 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         """
 
         self._cached_len = None
-        metadata = metadata or {}
+        create_recipe = self._create_node_recipe(
+            structure_family,
+            data_sources,
+            key=key,
+            metadata=metadata,
+            specs=specs,
+            access_tags=access_tags,
+        )
 
-        # Backompatibility: if the server is older than 0.2.4,
-        # it can not accept the "properties" field in the data source.
-        # This can be removed in later releases.
-        if Version(self.context.server_info.library_version) < Version("0.2.4"):
-            data_sources_as_dicts = [
-                {k: v for k, v in asdict(ds).items() if k != "properties"}
-                for ds in data_sources
-            ]
-        else:
-            data_sources_as_dicts = [asdict(ds) for ds in data_sources]
-
-        item = {
-            "attributes": {
-                "ancestors": self.path_parts,
-                "metadata": metadata,
-                "structure_family": StructureFamily(structure_family),
-                "specs": normalize_specs(specs or []),
-                "data_sources": data_sources_as_dicts,
-                "access_tags": access_tags,
-            }
-        }
-        if key is None:
-            key = str(uuid.uuid4())
-        body = dict(item["attributes"])
-        body["id"] = key
-
-        if any(data_source.assets for data_source in data_sources):
-            endpoint = self.uri.replace("/metadata/", "/register/", 1)
-        else:
-            endpoint = self.uri
-
-        # Track whether any failed attempt may have been received and processed
-        # by the server: the request was sent but the response was lost (read/
-        # write transport error) or a proxy/server-side error (5xx) occurred
-        # after the fact. In that case a 409 Conflict on a subsequent retry
-        # most likely refers to the node created by our own earlier attempt
-        # (every create carries a key -- supplied or client-generated -- that
-        # acts as an idempotency token), so adopt it instead of failing.
+        # All failure semantics live in the recipe's predicates; this loop is
+        # purely mechanical: send, consult, act, re-raise. Its one piece of
+        # state, `may_have_reached_server`, only ever turns True.
         may_have_reached_server = False
         for attempt in retry_context():
             with attempt:
                 try:
-                    document = handle_error(
-                        self.context.http_client.post(
-                            endpoint,
-                            headers={
-                                "Accept": MSGPACK_MIME_TYPE,
-                                "Content-Type": "application/json",
-                            },
-                            content=safe_json_dump(body),
-                        )
-                    ).json()
-                except SENT_REQUEST_TRANSPORT_ERRORS:
-                    may_have_reached_server = True
-                    raise
-                except httpx.HTTPStatusError as err:
-                    if err.response.status_code >= 500:
-                        may_have_reached_server = True
-                    elif (
-                        may_have_reached_server
-                        and err.response.status_code == httpx.codes.CONFLICT
-                    ):
+                    content = self._send(create_recipe.draft).json()
+                except Exception as exc:
+                    if create_recipe.should_try_adopt(exc, may_have_reached_server):
                         existing = self._adopt_after_retried_create_conflict(
-                            key,
-                            StructureFamily(structure_family),
-                            normalize_specs(specs or []),
-                            metadata,
+                            create_recipe
                         )
                         if existing is not None:
                             return existing
+                    may_have_reached_server = (
+                        may_have_reached_server
+                        or create_recipe.request_may_have_reached_server(exc)
+                    )
                     raise
 
-        if structure_family == StructureFamily.container:
-            structure = {"contents": None, "count": None}
-        else:
-            # Only containers can have multiple data_sources right now.
-            (data_source,) = data_sources
-            structure = data_source.structure
-        item["attributes"]["structure"] = structure
-
-        # If server returned modified metadata update the local copy.
-        # Otherwise, round-trip it through a JSON serializer locally
-        # to ensure that any special types (e.g. datetimes, numpy arrays)
-        # are normalized to natively JSON serializable types.
-        if "metadata" in document:
-            item["attributes"]["metadata"] = document.pop("metadata")
-        else:
-            item["attributes"]["metadata"] = orjson.loads(
-                safe_json_dump(item["attributes"]["metadata"])
-            )
-
-        # Ditto for structure
-        if "structure" in document:
-            item["attributes"]["structure"] = STRUCTURE_TYPES[structure_family](
-                document.pop("structure")
-            )
-
-        # And for data sources
-        if "data_sources" in document:
-            item["attributes"]["data_sources"] = [
-                ds for ds in document.pop("data_sources")
-            ]
-
-        # And for access_tags
-        if "access_tags" in document:
-            item["attributes"]["access_tags"] = document.pop("access_tags")
-
-        # Merge in "id" and "links" returned by the server.
-        item.update(document)
-
-        # Ensure this is a dataclass, not a dict.
-        # When we apply type hints and mypy to the client it should be possible
-        # to dispense with this.
-        if (structure_family != StructureFamily.container) and isinstance(
-            structure, dict
-        ):
-            structure_type = STRUCTURE_TYPES[structure_family]
-            structure = structure_type.from_json(structure)
-
+        item = create_recipe.merge(content)
         return client_for_item(
             self.context,
             self.structure_clients,
             item,
-            structure=structure,
+            structure=item["attributes"]["structure"],
             include_data_sources=self._include_data_sources,
         )
 
-    def _adopt_after_retried_create_conflict(
-        self, key, structure_family, specs, metadata
-    ):
+    def _adopt_after_retried_create_conflict(self, create_recipe):
         """Fetch and return an existing node after a retried create hit 409 Conflict.
 
         Called only when an earlier attempt of the same create request may have
         reached the server (the response was lost to a transport error, or a
         proxy/server returned 5xx after the fact), so the existing node under
-        `key` is most likely the one created by our own earlier attempt. To
-        guard against adopting a genuinely unrelated node (a true key
+        `create_recipe.key` is most likely the one created by our own earlier attempt.
+        To guard against adopting a genuinely unrelated node (a true key
         collision), the existing node must match the request: same structure
         family, same specs, and the same metadata (compared after the same JSON
-        normalization that a create applies to the submitted metadata).
+        normalization that a create applies to the submitted metadata); the
+        match itself is pure and shared, in `CreateNodeRecipe.matches_existing`.
         Otherwise return None and let the caller re-raise the original 409.
 
         NB: a server-side spec validator that *modifies* metadata on ingestion
@@ -912,54 +736,10 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         conservative trade-off: never adopt a node we can not positively match.
         """
         try:
-            existing = self[key]
+            existing = self[create_recipe.key]
         except Exception:
-            logger.warning(
-                "Create of %r returned 409 Conflict after a retried request, "
-                "but the existing item could not be fetched; treating as a "
-                "genuine conflict.",
-                key,
-            )
-            return None
-
-        existing_attrs = existing.item["attributes"]
-        existing_family = StructureFamily(existing_attrs["structure_family"])
-        # The elif chain evaluates lazily, so cheaper checks short-circuit the
-        # more expensive ones (the metadata check serializes the submitted
-        # metadata with the same JSON round-trip normalization that `new()`
-        # applies: numpy scalars, datetimes, etc. become plain JSON types).
-        if existing_family != structure_family:
-            mismatch = f"structure_family {existing_family!r} != {structure_family!r}"
-        elif _as_spec_set(existing_attrs.get("specs")) != _as_spec_set(specs):
-            mismatch = f"specs {existing_attrs.get('specs')!r} != {specs!r}"
-        elif existing_attrs.get("metadata") != orjson.loads(
-            safe_json_dump(metadata or {})
-        ):
-            mismatch = "metadata differs"
-        else:
-            mismatch = None
-
-        if mismatch is not None:
-            logger.warning(
-                "Create of %r returned 409 Conflict after a retried request, "
-                "but the existing item does not match the request (%s); "
-                "treating as a genuine conflict.",
-                key,
-                mismatch,
-            )
-            return None
-
-        logger.warning(
-            "Create of %r returned 409 Conflict after a retried request that "
-            "may have reached the server; adopting the existing (matching) "
-            "item as the result of this create.",
-            key,
-        )
-        return existing
-
-    # When (re)chunking arrays for upload, we use this limit
-    # to attempt to avoid bumping into size limits.
-    _SUGGESTED_MAX_UPLOAD_SIZE = 100_000_000  # 100 MB
+            existing = None
+        return self._adopt_if_matching(create_recipe, existing)
 
     def create_container(
         self,
@@ -1026,49 +806,26 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         """
         import dask.array
         import numpy
-        from dask.array.core import normalize_chunks
 
-        from ..structures.array import ArrayStructure, BuiltinDtype
+        from ._protocol.array import data_source_from_array
 
         if not (hasattr(array, "shape") and hasattr(array, "dtype")):
             # This does not implement enough of the array-like interface.
             # Coerce to numpy.
             array = numpy.asarray(array)
 
-        # Determine chunks such that each chunk is not too large to upload.
-        # Any existing chunking will be taken into account.
-        # If the array is small, there will be only one chunk.
-        if hasattr(array, "chunks"):
-            chunks = normalize_chunks(
-                array.chunks,
-                limit=self._SUGGESTED_MAX_UPLOAD_SIZE,
-                dtype=array.dtype,
-                shape=array.shape,
-            )
-        else:
-            chunks = normalize_chunks(
-                tuple("auto" for _ in array.shape),
-                limit=self._SUGGESTED_MAX_UPLOAD_SIZE,
-                dtype=array.dtype,
-                shape=array.shape,
-            )
-
-        structure = ArrayStructure(
-            shape=array.shape,
-            chunks=chunks,
-            dims=dims,
-            data_type=BuiltinDtype.from_numpy_dtype(array.dtype),
+        data_source = data_source_from_array(
+            array, dims, self._SUGGESTED_MAX_UPLOAD_SIZE
         )
         client = self.new(
             StructureFamily.array,
-            [
-                DataSource(structure=structure, structure_family=StructureFamily.array),
-            ],
+            [data_source],
             key=key,
             metadata=metadata,
             specs=specs,
             access_tags=access_tags,
         )
+        chunks = data_source.structure.chunks
         chunked = any(len(dim) > 1 for dim in chunks)
         if not chunked:
             client.write(
@@ -1185,27 +942,18 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
 
         import numpy
 
-        from tiled.structures.ragged import (
-            RaggedStructure,
-            make_ragged_array,
-            make_ragged_chunks,
-        )
+        from tiled.structures.ragged import make_ragged_array
+
+        from ._protocol.ragged import data_source_from_ragged
 
         array = make_ragged_array(array)
-        chunks = make_ragged_chunks(
-            array, max_partition_bytes or self._SUGGESTED_MAX_UPLOAD_SIZE
+        data_source = data_source_from_ragged(
+            array, dims, max_partition_bytes or self._SUGGESTED_MAX_UPLOAD_SIZE
         )
-        structure = RaggedStructure.from_array(array, chunks=chunks, dims=dims)
 
         client = self.new(
             StructureFamily.ragged,
-            [
-                DataSource(
-                    structure=structure,
-                    structure_family=StructureFamily.ragged,
-                    mimetype="application/x-ragged+sql",
-                ),
-            ],
+            [data_source],
             key=key,
             metadata=metadata,
             specs=specs,
@@ -1214,7 +962,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         if not client.chunked:
             client.write(array)
         else:
-            divisions = numpy.cumsum((0, *structure.chunks[0]))
+            divisions = numpy.cumsum((0, *data_source.structure.chunks[0]))
             starts, stops = divisions[:-1], divisions[1:]
             for block_id, (start, stop) in enumerate(zip(starts, stops, strict=True)):
                 client.write_block(array[start:stop], block=block_id)
@@ -1275,24 +1023,13 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         >>> x.write_block(coords=array([[2, 4]]), data=array([3.1, 2.8]), block=(0,))
         >>> x.write_block(coords=array([[0, 1]]), data=array([6.7, 1.2]), block=(1,))
         """
-        from ..structures.array import BuiltinDtype
-        from ..structures.sparse import COOStructure
+        # Deferred import: `_protocol.sparse` imports numpy and sparse at module scope.
+        from ._protocol.sparse import data_source_from_coo
 
-        structure = COOStructure(
-            shape=shape,
-            # This method only supports single-chunk COO arrays.
-            chunks=tuple((dim,) for dim in shape),
-            dims=dims,
-            data_type=BuiltinDtype.from_numpy_dtype(data.dtype),
-            coord_data_type=BuiltinDtype.from_numpy_dtype(coords.dtype),
-        )
+        # This method only supports single-chunk COO arrays.
         client = self.new(
             StructureFamily.sparse,
-            [
-                DataSource(
-                    structure=structure, structure_family=StructureFamily.sparse
-                ),
-            ],
+            [data_source_from_coo(coords, data, shape, dims)],
             key=key,
             metadata=metadata,
             specs=specs,
@@ -1337,25 +1074,11 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         --------
         write_table
         """
-
-        parameters = {}
-        if table_name is not None:
-            parameters["table_name"] = table_name
-
-        from ..structures.table import TableStructure
-
-        structure = TableStructure.from_schema(schema, npartitions)
+        from ._protocol.table import data_source_for_appendable_table
 
         client = self.new(
             StructureFamily.table,
-            [
-                DataSource(
-                    structure=structure,
-                    structure_family=StructureFamily.table,
-                    mimetype="application/x-tiled-sql-table",
-                    parameters=parameters,
-                )
-            ],
+            [data_source_for_appendable_table(schema, npartitions, table_name)],
             key=key,
             metadata=metadata or {},
             specs=specs or [],
@@ -1400,24 +1123,11 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
 
         import dask.dataframe
 
-        from ..structures.table import TableStructure
-
-        if isinstance(data, dask.dataframe.DataFrame):
-            structure = TableStructure.from_dask_dataframe(data)
-        elif isinstance(data, dict):
-            # table as dict, e.g. {"a": [1,2,3], "b": [4,5,6]}
-            structure = TableStructure.from_dict(data)
-        else:
-            structure = TableStructure.from_pandas(data)
+        from ._protocol.table import data_source_from_table
 
         client = self.new(
             StructureFamily.table,
-            [
-                DataSource(
-                    structure=structure,
-                    structure_family=StructureFamily.table,
-                )
-            ],
+            [data_source_from_table(data)],
             key=key,
             metadata=metadata or {},
             specs=specs or [],
@@ -1564,9 +1274,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         properties = {}
         if structure is not None:
             if isinstance(structure, dict):
-                structure = STRUCTURE_TYPES[adapter.structure_family].from_json(
-                    structure
-                )
+                structure = structure_from_json(adapter.structure_family, structure)
             inferred = adapter.structure()
             if not structure.is_compatible(inferred):
                 raise ValueError(
@@ -1643,15 +1351,11 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         )
 
 
-class DeepSearchResults(collections.abc.Mapping):
-    """
-    Lazy, paginated results of `Container.search_deep(...)`.
+class CommonDeepSearchResults(LengthCacheMixin):
+    """Pure state of deep-search results, shared by the sync and async clients.
 
-    Keys are tuples of path segments relative to the Node that the search
-    was performed on. Values are ordinary live client nodes, the same as
-    manual descent would produce.
-
-    See https://github.com/bluesky/tiled/issues/1368
+    Holds the encoded queries (and the pages builder they define) and relativizes result
+    keys. No I/O; see `DeepSearchResults` and `tiled.client.aio.AsyncDeepSearchResults`.
     """
 
     def __init__(
@@ -1666,46 +1370,48 @@ class DeepSearchResults(collections.abc.Mapping):
         root_path_parts=(),
     ):
         self.context = context
-        self._link = link
         self.structure_clients = structure_clients
         self._queries = list(queries)
-        self._queries_as_params = _queries_to_params(*self._queries)
         self._max_depth = max_depth
         self._include_data_sources = include_data_sources
         self._root_path_parts = tuple(root_path_parts)
-        self._cached_len = None
+        self._pages_builder = DeepSearchBuilder.from_queries(
+            link,
+            self._queries,
+            max_depth=max_depth,
+            include_data_sources=include_data_sources,
+        )
+
+    def _result_key(self, item):
+        """The result's key: path segments relative to the searched node.
+
+        The server reports `ancestors` relative to the true root, like every
+        other endpoint.
+        """
+        full_path = tuple(item["attributes"]["ancestors"]) + (item["id"],)
+        return full_path[len(self._root_path_parts) :]  # noqa: E203
+
+
+class DeepSearchResults(CommonDeepSearchResults, collections.abc.Mapping):
+    """Lazy, paginated results of `Container.search_deep(...)`.
+
+    Keys are tuples of path segments relative to the Node that the search
+    was performed on. Values are ordinary live client nodes, the same as
+    manual descent would produce.
+
+    See https://github.com/bluesky/tiled/issues/1368
+    """
 
     def __repr__(self):
         return f"<{type(self).__name__} ({len(self)} results)>"
 
-    def _params(self, extra=None):
-        params = {**self._queries_as_params}
-        if self._max_depth is not None:
-            params["max_depth"] = self._max_depth
-        if self._include_data_sources:
-            params["include_data_sources"] = True
-        if extra:
-            params.update(extra)
-        return params
-
     def __len__(self):
-        now = time.monotonic()
-        if self._cached_len is not None:
-            length, deadline = self._cached_len
-            if now < deadline:
-                return length
-        for attempt in retry_context():
-            with attempt:
-                content = handle_error(
-                    self.context.http_client.get(
-                        self._link,
-                        headers={"Accept": MSGPACK_MIME_TYPE},
-                        params=self._params({"fields": "count"}),
-                    )
-                ).json()
-        length = content["meta"]["count"]
-        self._cached_len = (length, now + LENGTH_CACHE_TTL)
-        return length
+        if (length := self._length_from_cache()) is not None:
+            return length
+        content = send_request_draft(
+            self.context, self._pages_builder.draft_request_count()
+        ).json()
+        return self._cache_length(self._pages_builder.parse_response_count(content))
 
     def _keys_slice(self, start, stop, direction, page_size=None):
         for key, _value in self._items_slice(start, stop, direction, page_size):
@@ -1718,32 +1424,15 @@ class DeepSearchResults(collections.abc.Mapping):
             )
         assert start >= 0
         assert (stop is None) or (stop >= 0)
-        next_page_url = f"{self._link}?page[offset]={start}"
-        if page_size is not None:
-            next_page_url += f"&page[limit]={page_size}"
+        next_page_url = self._pages_builder.first_page_link(start, page_size)
         item_counter = itertools.count(start)
         while next_page_url is not None:
-            for attempt in retry_context():
-                with attempt:
-                    content = handle_error(
-                        self.context.http_client.get(
-                            next_page_url,
-                            headers={"Accept": MSGPACK_MIME_TYPE},
-                            params={
-                                **parse_qs(urlparse(next_page_url).query),
-                                **self._params(),
-                            },
-                        )
-                    ).json()
-            self._cached_len = (
-                content["meta"]["count"],
-                time.monotonic() + LENGTH_CACHE_TTL,
-            )
+            content = send_request_draft(
+                self.context, self._pages_builder.draft_request_read_page(next_page_url)
+            ).json()
+            self._cache_length(self._pages_builder.parse_response_count(content))
             for item in content["data"]:
-                # `ancestors` is server-absolute; make the key relative to
-                # the Node that `search_deep` was called on.
-                full_path = tuple(item["attributes"]["ancestors"]) + (item["id"],)
-                key = full_path[len(self._root_path_parts) :]
+                key = self._result_key(item)
                 yield (
                     key,
                     client_for_item(
@@ -1776,20 +1465,6 @@ class DeepSearchResults(collections.abc.Mapping):
             if existing_key == key:
                 return value
         raise KeyError(key)
-
-
-def _queries_to_params(*queries):
-    "Compute GET params from the queries."
-    params = collections.defaultdict(list)
-    for query in queries:
-        name = default_query_registry.query_type_to_name[type(query)]
-        for field, value in query.encode().items():
-            if value is not None:
-                params[f"filter[{name}][condition][{field}]"].append(value)
-    return dict(params)
-
-
-LENGTH_CACHE_TTL = 1  # second
 
 
 class Ascending(Sentinel):
