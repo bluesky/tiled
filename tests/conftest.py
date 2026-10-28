@@ -12,6 +12,7 @@ import stamina
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from tiled import profiles
+from tiled.authn_database.core import initialize_authn_database
 from tiled.catalog import from_uri, in_memory
 from tiled.client import Context, from_context
 from tiled.client._protocol.request import RequestDraft
@@ -21,7 +22,7 @@ from tiled.server.settings import get_settings
 from tiled.utils import ensure_specified_sql_driver
 
 from .utils import enter_username_password as utils_enter_uname_passwd
-from .utils import temp_postgres
+from .utils import temp_postgres, temp_postgres_sync
 
 
 @pytest.fixture(autouse=True, scope="session")
@@ -56,9 +57,9 @@ def s3_bucket_uri():
     server.start()
     host, port = server.get_host_and_port()
     # moto accepts any credentials; use placeholder values.
-    os.environ[
-        "TILED_TEST_BUCKET"
-    ] = f"http://bucketadmin:bucketadmin@{host}:{port}/buck"
+    os.environ["TILED_TEST_BUCKET"] = (
+        f"http://bucketadmin:bucketadmin@{host}:{port}/buck"
+    )
     try:
         yield
     finally:
@@ -214,6 +215,21 @@ async def postgres_uri():
         yield uri_with_database
 
 
+@pytest.fixture(scope="module")
+def duckdb_uri_module(tmpdir_module):
+    "URI of a DuckDB database file shared by all tests in the module."
+    return f"duckdb:///{tmpdir_module / 'tiled.duckdb'}"
+
+
+@pytest.fixture(scope="module")
+def postgres_uri_module():
+    "URI of a fresh PostgreSQL database shared by all tests in the module."
+    if not TILED_TEST_POSTGRESQL_URI:
+        raise pytest.skip("No TILED_TEST_POSTGRESQL_URI configured")
+    with temp_postgres_sync(TILED_TEST_POSTGRESQL_URI) as uri_with_database:
+        yield uri_with_database
+
+
 @pytest.fixture(params=["sqlite_uri", "postgres_uri"])
 def sqlite_or_postgres_uri(request):
     yield request.getfixturevalue(request.param)
@@ -314,6 +330,30 @@ def catalog_adapter(request):
     yield request.getfixturevalue(request.param)
 
 
+@pytest.fixture(scope="module", params=["sqlite", "postgresql"])
+def catalog_adapter_module(request, tmpdir_module):
+    """
+    Catalog adapter on a fresh database, shared by all tests in the module.
+
+    Building a server (and, for PostgreSQL, a database) is expensive, so
+    prefer this over the function-scoped `catalog_adapter` when the tests do
+    not need a pristine catalog. The tests in a module then share one
+    catalog: each must write under keys of its own and must not assume that
+    the catalog contains only what it created itself.
+
+    Note that startup() and shutdown() are not called, and must be run
+    either manually or via the app (as in `Context.from_app(build_app(...))`).
+    """
+    if request.param == "sqlite":
+        return in_memory(writable_storage=str(tmpdir_module / "sqlite"))
+    else:
+        return from_uri(
+            request.getfixturevalue("postgres_uri_module"),
+            writable_storage=str(tmpdir_module / "postgresql"),
+            init_if_not_exists=True,
+        )
+
+
 @pytest.fixture(
     params=["sqlite_with_example_data_adapter", "postgresql_with_example_data_adapter"]
 )
@@ -383,14 +423,8 @@ TOY_AUTHENTICATION = {
 
 def init_auth_database(tmpdir):
     """Initialize an auth database and return its URI."""
-    import subprocess
-
     database_uri = f"sqlite:///{tmpdir / 'auth.db'}"
-    subprocess.run(
-        [sys.executable, "-m", "tiled", "admin", "initialize-database", database_uri],
-        check=True,
-        capture_output=True,
-    )
+    initialize_authn_database(database_uri)
     return database_uri
 
 

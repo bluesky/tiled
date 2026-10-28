@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterable, Optional, Union
 
 import entrypoints
-import httpx
+import httpx2 as httpx
 
 from ..iterviews import ItemsView, KeysView, ValuesView
 from ..structures.core import Spec, StructureFamily, structure_from_json
@@ -84,9 +84,7 @@ class CommonContainer(CommonBaseClient):
             server_sorting = item["attributes"].get("sorting") or []
             self._sorting = [
                 (s["key"], int(s["direction"])) for s in server_sorting
-            ] or [
-                ("", 1)
-            ]  # fall back to server default when not specified
+            ] or [("", 1)]  # fall back to server default when not specified
         self._children_search_builder = ChildrenSearchBuilder.from_queries(
             item["links"]["search"], self._queries, self._sorting
         )
@@ -331,9 +329,9 @@ class Container(CommonContainer, BaseClient, collections.abc.Mapping, IndexersMi
             data = content["data"]
             if not data:
                 raise KeyError(key)
-            assert (
-                len(data) == 1
-            ), "The key lookup query must never return more than one result."
+            assert len(data) == 1, (
+                "The key lookup query must never return more than one result."
+            )
             (item,) = data
             result = client_for_item(
                 self.context,
@@ -1435,11 +1433,14 @@ class DeepSearchResults(CommonDeepSearchResults, collections.abc.Mapping):
             self._cache_length(self._pages_builder.parse_response_count(content))
             for item in content["data"]:
                 key = self._result_key(item)
-                yield key, client_for_item(
-                    self.context,
-                    self.structure_clients,
-                    item,
-                    include_data_sources=self._include_data_sources,
+                yield (
+                    key,
+                    client_for_item(
+                        self.context,
+                        self.structure_clients,
+                        item,
+                        include_data_sources=self._include_data_sources,
+                    ),
                 )
                 if stop is not None and next(item_counter) == stop - 1:
                     return

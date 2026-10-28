@@ -4,7 +4,6 @@ These tests exercise fetch planners, write-request builders, data-source
 builders, and response parsers as plain functions, with no server and no I/O.
 """
 
-
 import math
 
 import numpy

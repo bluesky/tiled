@@ -20,7 +20,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any, Optional, Union
 
-import httpx
+import httpx2 as httpx
 import stamina
 from pydantic import TypeAdapter
 

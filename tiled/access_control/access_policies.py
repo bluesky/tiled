@@ -3,7 +3,7 @@ import os
 from abc import ABC, abstractmethod
 from typing import Generic, Optional, Tuple, TypeVar
 
-import httpx
+import httpx2 as httpx
 from pydantic import BaseModel, HttpUrl, TypeAdapter, ValidationError
 
 from ..adapters.protocols import BaseAdapter
@@ -256,8 +256,7 @@ class TagBasedAccessPolicy(AccessPolicy):
             tag.startswith("service:") for tag in access_tags
         ):
             raise ValueError(
-                f"Cannot manually tag node with user tags.\n"
-                f"Received {access_tags=}\n"
+                f"Cannot manually tag node with user tags.\nReceived {access_tags=}\n"
             )
         include_public_tag = False
         # check for tags that need to be added
@@ -514,8 +513,7 @@ class ExternalPolicyDecisionPoint(AccessPolicy, ABC):
         authn_access_tags: Optional[AccessTags],
         authn_scopes: Scopes,
         access_tags: Optional[AccessTags] = None,
-    ) -> str:
-        ...
+    ) -> str: ...
 
     async def _get_external_decision(
         self,

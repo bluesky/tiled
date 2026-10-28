@@ -491,7 +491,7 @@ class NDSlice(tuple):
             if s == Ellipsis:
                 break
             fwd.append(convert_dimension(s))
-        for s in reversed(self[len(fwd) + 1 :]):  # noqa: E203
+        for s in reversed(self[len(fwd) + 1 :]):
             bwd.append(convert_dimension(s))
 
         return fwd + [{} for _ in range(ndim - len(fwd) - len(bwd))] + [*reversed(bwd)]
@@ -632,7 +632,7 @@ class NDSlice(tuple):
     def is_scalar(self, shape: tuple[int, ...]) -> bool:
         "Check if this NDSlice selects a single element (scalar) from an array of the given shape"
         return (len(self) == len(shape)) and all(
-            _is_scalar_slice(s, length=l) for s, l in zip(self, shape)
+            _is_scalar_slice(s, length=n) for s, n in zip(self, shape)
         )
 
 
@@ -793,8 +793,9 @@ def block_for_slice(
                 first_chunk = bisect.bisect_right(chunk_bounds, start) - 1
                 last_chunk = bisect.bisect_right(chunk_bounds, stop + 1) - 1
                 # Ensure first_chunk <= last_chunk for contiguous block range
-                first_chunk, last_chunk = min(first_chunk, last_chunk), max(
-                    first_chunk, last_chunk
+                first_chunk, last_chunk = (
+                    min(first_chunk, last_chunk),
+                    max(first_chunk, last_chunk),
                 )
 
             # Block is the contiguous range of chunks

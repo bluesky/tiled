@@ -195,7 +195,7 @@ authentication:
 
   # OPTION 2 — OpenID Connect (ORCID, Google, Azure, …)
   # Tiled never touches users' passwords; the OIDC provider handles that.
-  # Requires:  pip install httpx
+  # Requires:  pip install httpx2
   #
   # Setup steps:
   #   1. Deploy Tiled behind HTTPS.

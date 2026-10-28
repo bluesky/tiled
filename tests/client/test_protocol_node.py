@@ -8,7 +8,7 @@ plain functions and dataclasses, with no server and no I/O.
 import uuid
 from dataclasses import asdict
 
-import httpx
+import httpx2 as httpx
 import numpy
 import orjson
 import pytest

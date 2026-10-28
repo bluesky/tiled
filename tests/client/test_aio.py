@@ -7,7 +7,7 @@ synchronous client where convenient and reading it back asynchronously.
 
 import asyncio
 
-import httpx
+import httpx2 as httpx
 import numpy
 import pytest
 import stamina

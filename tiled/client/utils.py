@@ -14,7 +14,7 @@ from threading import Lock
 from typing import Optional, Union
 from weakref import WeakValueDictionary
 
-import httpx
+import httpx2 as httpx
 import json_merge_patch
 import jsonpatch
 import msgpack
@@ -108,7 +108,7 @@ def handle_error(response):
                 # Use the stock "reason phrase" for the error code
                 # instead of dumping HTML into the terminal.
                 detail = response.reason_phrase
-            message = f"{exc.response.status_code}: " f"{detail} " f"{exc.request.url}"
+            message = f"{exc.response.status_code}: {detail} {exc.request.url}"
             raise ClientError(message, exc.request, exc.response) from exc
         else:
             raise

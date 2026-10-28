@@ -9,6 +9,9 @@ from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
 from sqlalchemy.sql import func
 
+from ..alembic_utils import initialize_database_if_needed
+from ..utils import ensure_specified_sql_driver
+from .alembic_constants import ALEMBIC_DIR, ALEMBIC_INI_TEMPLATE_PATH
 from .base import Base
 from .orm import APIKey, Identity, PendingSession, Principal, Role, Session
 
@@ -92,6 +95,25 @@ async def initialize_database(engine: AsyncEngine) -> None:
         await create_default_roles(db)
 
 
+def initialize_authn_database(uri: str) -> bool:
+    """
+    Initialize the authentication database at `uri`, unless it already is.
+
+    This creates the tables and stamps the head alembic revision, as
+    `tiled admin initialize-database` does. Returns True if the database was
+    initialized by this call. It is a blocking call, safe to make from a thread that
+    is running an event loop.
+    """
+    return initialize_database_if_needed(
+        ensure_specified_sql_driver(uri),
+        initialize_database,
+        REQUIRED_REVISION,
+        ALL_REVISIONS,
+        ALEMBIC_INI_TEMPLATE_PATH,
+        ALEMBIC_DIR,
+    )
+
+
 async def purge_expired(db: AsyncSession, cls) -> int:
     """
     Remove expired entries and return how many were removed.
@@ -135,9 +157,9 @@ async def create_user(db: AsyncSession, identity_provider: str, id: str) -> Prin
             .options(selectinload(Principal.identities))
         )
     ).scalar()
-    assert (
-        refreshed_principal is not None
-    ), f"Newly created user {id} ({identity_provider}) missing from Principals table"
+    assert refreshed_principal is not None, (
+        f"Newly created user {id} ({identity_provider}) missing from Principals table"
+    )
     return refreshed_principal
 
 

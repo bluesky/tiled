@@ -5,10 +5,10 @@ from pathlib import Path
 from typing import Dict, List, Union
 from urllib.parse import parse_qs, urlparse
 
-import httpx
+import httpx2 as httpx
 import jsonpatch
 import orjson
-from httpx import URL
+from httpx2 import URL
 
 from tiled.client.context import Context
 
@@ -489,7 +489,7 @@ class BaseClient(CommonBaseClient):
             self.context, draft, indicator_context=indicator_context
         )
 
-    def login(self):
+    def login(self, *, overwrite_auth=False):
         """
         Depending on the server's authentication method, this will prompt for username/password:
 
@@ -505,7 +505,16 @@ class BaseClient(CommonBaseClient):
         https://...
 
         and enter the code: XXXX-XXXX
+
+        Parameters
+        ----------
+        overwrite_auth: bool, optional
+            If True, any existing authentication will be overwritten.
+            If False, an error will be raised if authentication is already configured.
         """
+        # Fail fast, before any interactive prompt, if the client is already
+        # authenticated with another method (e.g. an external proxy Auth).
+        self.context._raise_if_auth_configured(overwrite_auth)
         self.context.authenticate()
 
     def logout(self):

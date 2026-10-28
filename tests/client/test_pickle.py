@@ -3,7 +3,7 @@
 # We try connecting out to the demo deployment.
 import pickle
 
-import httpx
+import httpx2 as httpx
 import pytest
 import uvicorn
 

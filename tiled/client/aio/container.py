@@ -15,7 +15,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any, Iterable, Optional, Union
 
-import httpx
+import httpx2 as httpx
 import stamina
 
 from ...structures.core import StructureFamily
@@ -78,11 +78,14 @@ class AsyncContainer(CommonContainer, AsyncBaseClient):
         "Iterate over (key, client) pairs, in pages."
         async for page in self._iter_search_pages(keys_only=False, page_size=page_size):
             for item in page:
-                yield item["id"], client_for_item(
-                    self.context,
-                    self.structure_clients,
-                    item,
-                    include_data_sources=self._include_data_sources,
+                yield (
+                    item["id"],
+                    client_for_item(
+                        self.context,
+                        self.structure_clients,
+                        item,
+                        include_data_sources=self._include_data_sources,
+                    ),
                 )
 
     async def values(self, page_size: Optional[int] = None):
@@ -547,11 +550,14 @@ class AsyncDeepSearchResults(CommonDeepSearchResults):
             content = (await self.context.send(draft)).json()
             self._cache_length(self._pages_builder.parse_response_count(content))
             for item in content["data"]:
-                yield self._result_key(item), client_for_item(
-                    self.context,
-                    self.structure_clients,
-                    item,
-                    include_data_sources=self._include_data_sources,
+                yield (
+                    self._result_key(item),
+                    client_for_item(
+                        self.context,
+                        self.structure_clients,
+                        item,
+                        include_data_sources=self._include_data_sources,
+                    ),
                 )
             next_page_url = content["links"]["next"]
 

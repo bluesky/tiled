@@ -3,7 +3,7 @@ import logging
 import threading
 from pathlib import Path
 
-import httpx
+import httpx2 as httpx
 import numpy
 import pandas
 import pytest
@@ -214,9 +214,9 @@ def test_no_stamina_retry_scheduled_messages(caplog):
                         raise ValueError("transient error")
 
         stamina_messages = [r for r in caplog.records if r.name == "stamina"]
-        assert (
-            len(stamina_messages) == 0
-        ), "stamina's default hook should be disabled — no 'stamina.retry_scheduled' messages"
+        assert len(stamina_messages) == 0, (
+            "stamina's default hook should be disabled — no 'stamina.retry_scheduled' messages"
+        )
     finally:
         stamina.set_active(False)
 

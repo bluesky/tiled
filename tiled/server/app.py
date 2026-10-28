@@ -33,6 +33,7 @@ from starlette.status import (
     HTTP_403_FORBIDDEN,
     HTTP_404_NOT_FOUND,
     HTTP_409_CONFLICT,
+    HTTP_410_GONE,
     HTTP_422_UNPROCESSABLE_CONTENT,
     HTTP_500_INTERNAL_SERVER_ERROR,
 )
@@ -59,7 +60,13 @@ from ..media_type_registration import (
 )
 from ..query_registration import QueryRegistry, default_query_registry
 from ..type_aliases import AppTask, TaskMap
-from ..utils import SHARE_TILED_PATH, Conflicts, UnsafeIdentifier, UnsupportedQueryType
+from ..utils import (
+    SHARE_TILED_PATH,
+    BrokenLink,
+    Conflicts,
+    UnsafeIdentifier,
+    UnsupportedQueryType,
+)
 from ..validation_registration import ValidationRegistry, default_validation_registry
 from ._backcompat import raw_python_tiled_client_version
 from .authentication import move_api_key
@@ -405,6 +412,13 @@ def build_app(
             content={"detail": exc.args[0]},
         )
 
+    @app.exception_handler(BrokenLink)
+    async def broken_link_exception_handler(request: Request, exc: BrokenLink):
+        return JSONResponse(
+            status_code=HTTP_410_GONE,
+            content={"detail": exc.args[0]},
+        )
+
     @app.exception_handler(UnsafeIdentifier)
     async def unsafe_identifier_exception_handler(
         request: Request, exc: UnsafeIdentifier
@@ -676,6 +690,7 @@ def build_app(
             from ..authn_database.core import (
                 ALL_REVISIONS,
                 REQUIRED_REVISION,
+                initialize_authn_database,
                 initialize_database,
                 make_admin_by_identity,
                 purge_expired,
@@ -697,24 +712,13 @@ def build_app(
                     await check_database(engine, REQUIRED_REVISION, ALL_REVISIONS)
                 except UninitializedDatabase:
                     if settings.database_init_if_not_exists:
-                        # The alembic stamping can only be does synchronously.
-                        # The cleanest option available is to start a subprocess
-                        # because SQLite is allergic to threads.
-                        import subprocess
-
-                        # TODO Check if catalog exists.
-                        subprocess.run(
-                            [
-                                sys.executable,
-                                "-m",
-                                "tiled",
-                                "admin",
-                                "initialize-database",
-                                str(engine.url),
-                            ],
-                            capture_output=True,
-                            check=True,
+                        # This is a blocking call (alembic drives its own event
+                        # loop), so keep it off the event loop thread.
+                        await asyncio.to_thread(
+                            initialize_authn_database,
+                            engine.url.render_as_string(hide_password=False),
                         )
+                        logger.info(f"Initialized new database at {redacted_url}.")
                     else:
                         print(
                             dedent(
@@ -779,9 +783,7 @@ def build_app(
                 # The scope set the catalog database enforces should match the
                 # ScopeName enum this server is running. A disagreement here
                 # points at a schema that was changed outside of a migration.
-                enforced_scopes = (
-                    await app.state.access_policy.access_tags_parser.get_enforced_scopes()
-                )
+                enforced_scopes = await app.state.access_policy.access_tags_parser.get_enforced_scopes()
                 # An empty set means the constraint is missing or could not be
                 # read. The catalog then stores any value as a scope, so this
                 # is reported on its own rather than compared: every scope

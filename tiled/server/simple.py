@@ -10,7 +10,7 @@ import time
 from typing import Optional, Union, cast
 from urllib.parse import quote_plus, urlparse
 
-import httpx
+import httpx2 as httpx
 import uvicorn
 
 from ..storage import SQLStorage, get_storage

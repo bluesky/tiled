@@ -49,7 +49,7 @@ class XDIDatasetClient(tiled.client.dataframe.DataFrameClient):
 
     def __repr__(self):
         md = self.metadata["XDI"]
-        return f'<{x.item["id"]} {md["Element"]["Symbol"]} {md["Element"]["Edge"]}>'
+        return f"<{x.item['id']} {md['Element']['Symbol']} {md['Element']['Edge']}>"
 ```
 
 ```{note}
@@ -106,22 +106,20 @@ allow Tiled to efficiently scan the software environment for third-party
 packages that provide custom Tiled clients. (Crucially, for speed, it does _not_
 need to import a package to discover what if any custom Tiled clients it
 includes. The entry points declarations can be read statically.) To register a
-custom Tiled client from a third party package, add this to the `setup.py`:
+custom Tiled client from a third party package, add this to the
+`pyproject.toml`:
 
-```py
-# setup.py
-setup(
-    entry_points={
-        "tiled.special_client": [
-            "xdi = my_package.my_module:XDIDatasetClient",
-        ],
-    },
-)
+```toml
+# pyproject.toml
+[project.entry-points."tiled.structure_client"]
+xdi = "my_package.my_module:XDIDatasetClient"
 ```
 
 On the left side of the `=` is the spec name, and on the right is the import
 path to the custom object we want Tiled to use. Beware the somewhat unusual
 syntax, in particular the colon between the final module and the object.
+(Packages registered under the deprecated group name `tiled.special_client`
+continue to be discovered.)
 
 Re-install the package after adding or editing the entry points. Notice that
 even in "editable" installations (i.e. `pip install -e ...`) a re-install step
