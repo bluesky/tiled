@@ -394,12 +394,14 @@ class UpdateEntityInput:
     node_path_parts: Optional[list[str]] | UnsetType = UNSET
     uri: Optional[str] | UnsetType = UNSET
     kind: Optional[str] = None
+    properties: Optional[JSON] | UnsetType = UNSET  # type: ignore[valid-type]
     access_tags: Optional[list[str]] | UnsetType = UNSET
 
 
 @strawberry.input
 class UpdateLinkInput:
     predicate: Optional[str] | UnsetType = UNSET
+    properties: Optional[JSON] | UnsetType = UNSET  # type: ignore[valid-type]
     access_tags: Optional[list[str]] | UnsetType = UNSET
 
 
@@ -448,6 +450,7 @@ class Query:
         self,
         info: Info,
         kind: Optional[str] = None,
+        name: Optional[str] = None,
         node_path_parts: Optional[list[str]] = None,
         limit: int = 100,
         offset: int = 0,
@@ -463,6 +466,7 @@ class Query:
                 return []
         records = await _store(info).list_entities(
             kind=kind,
+            name=name,
             node_id=node_id,
             limit=limit,
             offset=offset,
@@ -704,6 +708,12 @@ class Mutation:
             # own access tags now that it no longer delegates to a node.
             access_tags = await _init_access_tags(info, None)
         uri = STORE_UNSET if input.uri is UNSET else input.uri
+        namespaces = await _namespaces(info)
+        properties = (
+            STORE_UNSET
+            if input.properties is UNSET
+            else expand_value(input.properties or {}, namespaces)
+        )
         try:
             record = await _store(info).update_entity(
                 str(id),
@@ -711,13 +721,14 @@ class Mutation:
                 node_id=node_id,
                 uri=uri,
                 kind=input.kind,
+                properties=properties,
                 access_tags=STORE_UNSET if access_tags is UNSET else access_tags,
             )
         except EntityConflictError as exc:
             raise GraphQLError(str(exc), extensions={"code": "ENTITY_EXISTS"})
         if record:
             logger.info("Updated entity id=%s", id)
-        return _entity_from_record(record, await _namespaces(info)) if record else None
+        return _entity_from_record(record, namespaces) if record else None
 
     @strawberry.mutation(description="Delete a single link. Returns true if found.")
     async def delete_link(self, info: Info, id: strawberry.ID) -> bool:
@@ -732,7 +743,7 @@ class Mutation:
             logger.info("Deleted link id=%s", id)
         return deleted
 
-    @strawberry.mutation(description="Update a link's predicate.")
+    @strawberry.mutation(description="Update a link's predicate or properties.")
     async def update_link(
         self, info: Info, id: strawberry.ID, input: UpdateLinkInput
     ) -> Optional[Link]:
@@ -758,9 +769,15 @@ class Mutation:
             if input.predicate is UNSET
             else expand_term(input.predicate, namespaces)
         )
+        properties = (
+            STORE_UNSET
+            if input.properties is UNSET
+            else expand_value(input.properties or {}, namespaces)
+        )
         record = await _store(info).update_link(
             str(id),
             predicate=predicate,
+            properties=properties,
             access_tags=STORE_UNSET if access_tags is UNSET else access_tags,
         )
         if record:
