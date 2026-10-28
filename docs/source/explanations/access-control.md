@@ -67,6 +67,67 @@ Tags can also inherit the ACLs of other tags, using the `auto_tags` field. There
 Lastly, only "owners" of a tag can apply that tag to a node. Tag owners are defined in
 this same tag definitions file, under the `tag_owners` key.
 
+## Inherited access tags
+
+A node does not need access tags of its own. A node with no tags is governed by
+the tags of its nearest ancestor that has tags. If no ancestor has tags, it is
+governed by the catalog's `top_level_access_tags`. This lets you control access
+to a whole subtree by tagging only the container at its top. To change who can
+see the subtree later, retag that one container; you don't have to touch every
+node inside it.
+
+(This is separate from `auto_tags`, described above, which lets one *tag*
+include the ACLs of another tag. Inheritance passes tags from a *node* to its
+descendants.)
+
+Consider this tree:
+
+```
+/
+└── experiment   -> access_tags=["data_A"]
+    ├── scan_1   -> access_tags=[]          (inherits ["data_A"])
+    │   └── image -> access_tags=[]         (inherits ["data_A"])
+    └── shared   -> access_tags=["data_B"]
+        └── image -> access_tags=[]         (inherits ["data_B"])
+```
+
+- Anyone `data_A` grants access to can see and use `scan_1` and `scan_1/image`,
+  with the same scopes `data_A` gives them on `experiment`.
+- `shared/image` inherits from its *nearest* tagged ancestor, `shared`. So it
+  is governed by `data_B`, not `data_A`. A node with its own tags never
+  inherits anything.
+- The usual rule still applies: a user can only reach a node if they can see
+  each container on the way to it. A user with `data_B` but not `data_A` cannot
+  see `experiment`, so they cannot reach `shared/image` either, even though
+  `data_B` would grant access to it. The same applies to deep search.
+
+Inheritance applies everywhere access is checked: listing a container's
+contents, search, deep search, and working out which scopes a user has on a
+node.
+
+### New nodes
+
+By default, a node created without access tags is stored without tags, so it
+inherits from its parent. To keep the older behavior, in which such a node is
+tagged with its creator's user tag (e.g. `user:alice`) and is private to them,
+set `tag_new_nodes_with_owner` in the policy's arguments:
+
+```yaml
+access_control:
+  access_policy: "tiled.access_control.access_policies:TagBasedAccessPolicy"
+  args:
+    provider: "pam"
+    access_tags_parser: "tiled.access_control.access_tags:AccessTagsParser"
+    tag_new_nodes_with_owner: true
+```
+
+Only Tiled admins can remove every tag from an existing node, so only they can
+make a tagged node go back to inheriting.
+
+Graph entities created through the GraphQL interface do not inherit tags. When
+`tag_new_nodes_with_owner` is off, a graph entity created without tags is
+visible only to admins until someone tags it.
+
 The compiler writes the compiled tag definitions into the catalog database itself,
 where the tiled server reads them. Compile the tags before writing tagged data:
 tags must be defined before they can be applied to nodes.

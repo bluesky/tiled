@@ -103,6 +103,16 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Changed
 
+- Access tags are inherited: a node with no access tags of its own is governed
+  by the tags of its nearest tagged ancestor (or the catalog's
+  `top_level_access_tags`). This applies to listing, search, deep search, and
+  scope checks.
+- `TagBasedAccessPolicy` no longer tags a node created without access tags
+  with its creator's user tag; the node is left untagged and inherits.
+  Set the new `tag_new_nodes_with_owner: true` policy argument to restore the
+  previous behavior, in which such nodes are private to their creator. This
+  applies to graph entities as well, which do not inherit: when it is off,
+  an entity created without tags is visible only to admins.
 - Replace catalog `access_blob` column with a normalized `access_tags` table.
   Tags, grants, tag ownership, and node-tag associations now live in the
   catalog database; graph entities and links share the same tags table,
