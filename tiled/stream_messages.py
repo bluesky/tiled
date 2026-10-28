@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Generic, Literal, Optional, TypeVar, Union
+from typing import Generic, Literal, TypeVar
 
 from pydantic import BaseModel, Field
 
@@ -9,7 +9,7 @@ from .structures.data_source import Management
 
 
 class Asset(BaseModel):
-    id: Optional[int]  # TODO This should be required, needs work on the SQL
+    id: int | None  # TODO This should be required, needs work on the SQL
     data_uri: str
     is_directory: bool
     parameter: str
@@ -20,7 +20,7 @@ StructureT = TypeVar("StructureT")
 
 
 class DataSource(BaseModel, Generic[StructureT]):
-    id: Optional[int]  # TODO This should be required, needs work on the SQL
+    id: int | None  # TODO This should be required, needs work on the SQL
     structure_family: StructureFamily
     structure: StructureT
     mimetype: str
@@ -40,7 +40,7 @@ class Schema(BaseModel):
 
 class ArraySchema(Schema):
     type: Literal["array-schema"]
-    data_type: Union[BuiltinDtype, StructDtype]
+    data_type: BuiltinDtype | StructDtype
 
 
 class ContainerSchema(Schema):
@@ -81,10 +81,10 @@ class ArrayData(Update):
     type: Literal["array-data"] = "array-data"
     mimetype: str
     shape: tuple[int, ...]
-    offset: Optional[tuple[int, ...]]
-    block: Optional[tuple[int, ...]]
+    offset: tuple[int, ...] | None
+    block: tuple[int, ...] | None
     payload: bytes
-    data_type: Union[BuiltinDtype, StructDtype]
+    data_type: BuiltinDtype | StructDtype
 
 
 class ArrayPatch(BaseModel):
@@ -95,10 +95,10 @@ class ArrayPatch(BaseModel):
 class ArrayRef(Update):
     type: Literal["array-ref"] = "array-ref"
     data_source: DataSource[ArrayStructure]
-    patch: Optional[ArrayPatch]
-    uri: Optional[str]
+    patch: ArrayPatch | None
+    uri: str | None
     shape: tuple[int, ...]
-    data_type: Union[BuiltinDtype, StructDtype]
+    data_type: BuiltinDtype | StructDtype
 
 
 class TableData(Update):
@@ -106,7 +106,7 @@ class TableData(Update):
     mimetype: str
     # partition=None means a write to the entire table, an old design choice
     # that may need revisiting.
-    partition: Optional[int]
+    partition: int | None
     append: bool
     payload: bytes
     arrow_schema: str

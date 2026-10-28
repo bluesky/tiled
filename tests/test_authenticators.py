@@ -2,7 +2,7 @@ import asyncio
 import logging
 import os
 import time
-from typing import Any, Optional, Tuple
+from typing import Any
 from urllib.parse import parse_qs, urlencode
 
 import httpx2 as httpx
@@ -143,7 +143,7 @@ def test_oidc_decoding(
     well_known_url: str,
     issued: bool,
     expired: bool,
-    keys: Tuple[rsa.RSAPrivateKey, rsa.RSAPublicKey]
+    keys: tuple[rsa.RSAPrivateKey, rsa.RSAPublicKey]
 ):
     private_key, _ = keys
     authenticator = OIDCAuthenticator("tiled", "tiled", "secret", well_known_uri=well_known_url)
@@ -170,9 +170,9 @@ def test_oidc_decoding(
 def test_oidc_decoding_checks_at_hash(
     mock_oidc_server: MockRouter,
     well_known_url: str,
-    keys: Tuple[rsa.RSAPrivateKey, rsa.RSAPublicKey],
-    paired_access_token: Optional[str],
-    error: Optional[type[Exception]],
+    keys: tuple[rsa.RSAPrivateKey, rsa.RSAPublicKey],
+    paired_access_token: str | None,
+    error: type[Exception] | None,
 ):
     """Accept an id_token only with the access_token its at_hash was computed from."""
     authenticator = OIDCAuthenticator("tiled", "tiled", "secret", well_known_uri=well_known_url)
@@ -191,8 +191,8 @@ def test_oidc_decoding_checks_at_hash(
 def test_proxied_decoding_unknown_kid_is_unauthorized(
     mock_oidc_server: MockRouter,
     well_known_url: str,
-    keys: Tuple[rsa.RSAPrivateKey, rsa.RSAPublicKey],
-    kid: Optional[str],
+    keys: tuple[rsa.RSAPrivateKey, rsa.RSAPublicKey],
+    kid: str | None,
 ):
     """A token whose signing key is not in the JWKS (e.g. rotated out by the
     provider) must be rejected with 401, not escape as a 500, so that clients
@@ -217,7 +217,7 @@ def test_proxied_decoding_unknown_kid_is_unauthorized(
 def test_proxied_decoding_known_kid(
     mock_oidc_server: MockRouter,
     well_known_url: str,
-    keys: Tuple[rsa.RSAPrivateKey, rsa.RSAPublicKey],
+    keys: tuple[rsa.RSAPrivateKey, rsa.RSAPublicKey],
     expired: bool,
 ):
     """Tokens signed with a known key still decode, and expiry still surfaces
@@ -256,7 +256,7 @@ def test_oidc_unknown_kid_refetches_jwks(
     well_known_url: str,
     jwks_route,
     json_web_keyset: list[dict[str, Any]],
-    keys: Tuple[rsa.RSAPrivateKey, rsa.RSAPublicKey],
+    keys: tuple[rsa.RSAPrivateKey, rsa.RSAPublicKey],
 ):
     """The provider started signing with a key published after our last
     fetch: refetch the JWKS rather than wait out the cache TTL."""
@@ -287,7 +287,7 @@ def test_oidc_unknown_kid_refetches_jwks(
 def test_oidc_unknown_kid_refetch_is_rate_limited(
     well_known_url: str,
     jwks_route,
-    keys: Tuple[rsa.RSAPrivateKey, rsa.RSAPublicKey],
+    keys: tuple[rsa.RSAPrivateKey, rsa.RSAPublicKey],
     caplog,
 ):
     authenticator = OIDCAuthenticator("tiled", "tiled", "secret", well_known_uri=well_known_url)
@@ -314,7 +314,7 @@ def test_oidc_unknown_kid_refetch_is_rate_limited(
 def test_oidc_unknown_kid_refetch_failure_keeps_cached_keys(
     well_known_url: str,
     jwks_route,
-    keys: Tuple[rsa.RSAPrivateKey, rsa.RSAPublicKey],
+    keys: tuple[rsa.RSAPrivateKey, rsa.RSAPublicKey],
 ):
     """A failed refetch must not turn an unknown kid into a server error, nor
     discard the keys we already have."""
@@ -338,7 +338,7 @@ def test_oidc_unknown_kid_refetch_failure_keeps_cached_keys(
 def test_oidc_jwks_cache_expires(
     well_known_url: str,
     jwks_route,
-    keys: Tuple[rsa.RSAPrivateKey, rsa.RSAPublicKey],
+    keys: tuple[rsa.RSAPrivateKey, rsa.RSAPublicKey],
 ):
     authenticator = OIDCAuthenticator("tiled", "tiled", "secret", well_known_uri=well_known_url)
     claims = token(issued=True, expired=False)
@@ -354,7 +354,7 @@ def test_oidc_jwks_cache_expires(
 def test_oidc_jwks_ttl_refresh_failure_falls_back_to_cached_keys(
     well_known_url: str,
     jwks_route,
-    keys: Tuple[rsa.RSAPrivateKey, rsa.RSAPublicKey],
+    keys: tuple[rsa.RSAPrivateKey, rsa.RSAPublicKey],
     caplog,
 ):
     """If the hourly refresh fails, tokens signed with already-known keys keep
@@ -389,7 +389,7 @@ def test_oidc_jwks_ttl_refresh_failure_falls_back_to_cached_keys(
 def test_oidc_jwks_too_stale_does_not_fall_back(
     well_known_url: str,
     jwks_route,
-    keys: Tuple[rsa.RSAPrivateKey, rsa.RSAPublicKey],
+    keys: tuple[rsa.RSAPrivateKey, rsa.RSAPublicKey],
 ):
     "Keys older than JWKS_MAX_STALENESS are not trusted if refreshing fails."
     authenticator = OIDCAuthenticator("tiled", "tiled", "secret", well_known_uri=well_known_url)
@@ -433,7 +433,7 @@ def test_entra_decoding_ignores_unmapped_scopes(caplog):
 
 
 @pytest.fixture
-def keys() -> Tuple[rsa.RSAPrivateKey, rsa.RSAPublicKey]:
+def keys() -> tuple[rsa.RSAPrivateKey, rsa.RSAPublicKey]:
     # Key generated just for these tests
     private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     public_key = private_key.public_key()
@@ -441,7 +441,7 @@ def keys() -> Tuple[rsa.RSAPrivateKey, rsa.RSAPublicKey]:
 
 
 @pytest.fixture
-def json_web_keyset(keys: Tuple[rsa.RSAPrivateKey, rsa.RSAPublicKey]) -> list[dict[str, Any]]:
+def json_web_keyset(keys: tuple[rsa.RSAPrivateKey, rsa.RSAPublicKey]) -> list[dict[str, Any]]:
     _, public_key = keys
     return [
         {**RSAAlgorithm.to_jwk(public_key, as_dict=True), "alg": "RS256", "kid": "secret"}
@@ -480,7 +480,7 @@ async def test_proxied_oidc_token_retrieval(well_known_url: str, mock_oidc_serve
 
 
 def create_mock_OIDC_request(
-    query_params: Optional[dict[str, str]] = None, root_path: str = ""
+    query_params: dict[str, str] | None = None, root_path: str = ""
 ) -> Request:
     """Helper function to create a realistic request object for testing."""
     # The ASGI server prepends root_path to path, so the request URL contains it.
@@ -501,7 +501,7 @@ async def test_OIDCAuthenticator_mock(
     mock_oidc_server: MockRouter,
     well_known_url: str,
     well_known_response: dict[str, Any],
-    keys: Tuple[rsa.RSAPrivateKey, rsa.RSAPublicKey],
+    keys: tuple[rsa.RSAPrivateKey, rsa.RSAPublicKey],
     root_path: str
 ):
     """

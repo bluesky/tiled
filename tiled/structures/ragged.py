@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Iterable, NewType, Optional, Self, Union, cast, runtime_checkable
+from typing import NewType, Self, cast, runtime_checkable
 
 import awkward
 import numpy
@@ -13,9 +14,9 @@ from ..type_aliases import JSON
 from .array import BuiltinDtype, StructDtype
 from .root import Structure
 
-RaggedCompatibleType = Union[
-    ragged.array, awkward.Array, numpy.ndarray, SupportsDLPack, Iterable
-]
+RaggedCompatibleType = (
+    ragged.array | awkward.Array | numpy.ndarray | SupportsDLPack | Iterable
+)
 CanonicalRaggedArray = NewType("CanonicalRaggedArray", ragged.array)
 
 
@@ -313,8 +314,8 @@ def _canonicalize_awkward_layout(
 
 def make_ragged_array(
     array: RaggedCompatibleType,
-    shape: Optional[tuple[int | None, ...]] = None,
-    slice: Optional[NDSlice] = None,
+    shape: tuple[int | None, ...] | None = None,
+    slice: NDSlice | None = None,
     regularize: bool = False,
 ) -> CanonicalRaggedArray:
     """Best-effort conversion of any numeric iterable to a ``ragged`` array.

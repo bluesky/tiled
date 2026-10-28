@@ -1,7 +1,7 @@
 import logging
 import os
 from abc import ABC, abstractmethod
-from typing import Generic, Optional, Tuple, TypeVar
+from typing import Generic, TypeVar
 
 import httpx2 as httpx
 from pydantic import BaseModel, HttpUrl, TypeAdapter, ValidationError
@@ -34,10 +34,10 @@ class DummyAccessPolicy(AccessPolicy):
     async def init_node(
         self,
         principal: Principal,
-        authn_access_tags: Optional[AccessTags],
+        authn_access_tags: AccessTags | None,
         authn_scopes: Scopes,
-        access_tags: Optional[AccessTags] = None,
-    ) -> Tuple[bool, AccessTags]:
+        access_tags: AccessTags | None = None,
+    ) -> tuple[bool, AccessTags]:
         "Do nothing; there is no persistent state to initialize."
         return (False, access_tags or normalize_access_tags())
 
@@ -45,7 +45,7 @@ class DummyAccessPolicy(AccessPolicy):
         self,
         node: BaseAdapter,
         principal: Principal,
-        authn_access_tags: Optional[AccessTags],
+        authn_access_tags: AccessTags | None,
         authn_scopes: Scopes,
     ) -> Scopes:
         "Always allow all scopes."
@@ -55,7 +55,7 @@ class DummyAccessPolicy(AccessPolicy):
         self,
         node: BaseAdapter,
         principal: Principal,
-        authn_access_tags: Optional[AccessTags],
+        authn_access_tags: AccessTags | None,
         authn_scopes: Scopes,
         scopes: Scopes,
     ) -> Filters:
@@ -119,10 +119,10 @@ class TagBasedAccessPolicy(AccessPolicy):
     async def init_node(
         self,
         principal: Principal,
-        authn_access_tags: Optional[AccessTags],
+        authn_access_tags: AccessTags | None,
         authn_scopes: Scopes,
-        access_tags: Optional[AccessTags] = None,
-    ) -> Tuple[bool, AccessTags]:
+        access_tags: AccessTags | None = None,
+    ) -> tuple[bool, AccessTags]:
         if principal.type == "service":
             identifier = str(principal.uuid)
         else:
@@ -222,10 +222,10 @@ class TagBasedAccessPolicy(AccessPolicy):
         self,
         node: BaseAdapter,
         principal: Principal,
-        authn_access_tags: Optional[AccessTags],
+        authn_access_tags: AccessTags | None,
         authn_scopes: Scopes,
-        access_tags: Optional[AccessTags],
-    ) -> Tuple[bool, AccessTags]:
+        access_tags: AccessTags | None,
+    ) -> tuple[bool, AccessTags]:
         if principal.type == "service":
             identifier = str(principal.uuid)
         else:
@@ -356,7 +356,7 @@ class TagBasedAccessPolicy(AccessPolicy):
         self,
         node: BaseAdapter,
         principal: Principal,
-        authn_access_tags: Optional[AccessTags],
+        authn_access_tags: AccessTags | None,
         authn_scopes: Scopes,
     ) -> Scopes:
         # If this is being called, filter_for_access has let us get this far.
@@ -406,7 +406,7 @@ class TagBasedAccessPolicy(AccessPolicy):
         self,
         node: BaseAdapter,
         principal: Principal,
-        authn_access_tags: Optional[AccessTags],
+        authn_access_tags: AccessTags | None,
         authn_scopes: Scopes,
         scopes: Scopes,
     ) -> Filters:
@@ -467,9 +467,9 @@ class ExternalPolicyDecisionPoint(AccessPolicy, ABC):
         create_node_endpoint: str,
         allowed_tags_endpoint: str,
         scopes_endpoint: str,
-        modify_node_endpoint: Optional[str] = None,
-        provider: Optional[str] = None,
-        empty_access_tags_public: Optional[bool] = None,
+        modify_node_endpoint: str | None = None,
+        provider: str | None = None,
+        empty_access_tags_public: bool | None = None,
     ):
         """
         Initialize an access policy configuration.
@@ -510,9 +510,9 @@ class ExternalPolicyDecisionPoint(AccessPolicy, ABC):
     def build_input(
         self,
         principal: Principal,
-        authn_access_tags: Optional[AccessTags],
+        authn_access_tags: AccessTags | None,
         authn_scopes: Scopes,
-        access_tags: Optional[AccessTags] = None,
+        access_tags: AccessTags | None = None,
     ) -> str: ...
 
     async def _get_external_decision(
@@ -520,7 +520,7 @@ class ExternalPolicyDecisionPoint(AccessPolicy, ABC):
         decision_endpoint: str,
         input: str,
         decision_type: type[T],
-    ) -> Optional[T]:
+    ) -> T | None:
         logger.debug(f"Requesting auth {decision_endpoint=} for {input=}")
         async with httpx.AsyncClient() as client:
             response = await client.post(decision_endpoint, content=input)
@@ -534,10 +534,10 @@ class ExternalPolicyDecisionPoint(AccessPolicy, ABC):
     async def init_node(
         self,
         principal: Principal,
-        authn_access_tags: Optional[AccessTags],
+        authn_access_tags: AccessTags | None,
         authn_scopes: Scopes,
-        access_tags: Optional[AccessTags] = None,
-    ) -> Tuple[bool, AccessTags]:
+        access_tags: AccessTags | None = None,
+    ) -> tuple[bool, AccessTags]:
         if access_tags is None and self._empty_access_tags_public is not None:
             return self._empty_access_tags_public, normalize_access_tags()
         decision = await self._get_external_decision(
@@ -553,10 +553,10 @@ class ExternalPolicyDecisionPoint(AccessPolicy, ABC):
         self,
         node: BaseAdapter,
         principal: Principal,
-        authn_access_tags: Optional[AccessTags],
+        authn_access_tags: AccessTags | None,
         authn_scopes: Scopes,
-        access_tags: Optional[AccessTags],
-    ) -> Tuple[bool, AccessTags]:
+        access_tags: AccessTags | None,
+    ) -> tuple[bool, AccessTags]:
         # fix this to match TBAP
         if access_tags == node.access_tags:
             logger.info(
@@ -576,7 +576,7 @@ class ExternalPolicyDecisionPoint(AccessPolicy, ABC):
         self,
         node: BaseAdapter,
         principal: Principal,
-        authn_access_tags: Optional[AccessTags],
+        authn_access_tags: AccessTags | None,
         authn_scopes: Scopes,
         scopes: Scopes,
     ) -> Filters:
@@ -596,7 +596,7 @@ class ExternalPolicyDecisionPoint(AccessPolicy, ABC):
         self,
         node: BaseAdapter,
         principal: Principal,
-        authn_access_tags: Optional[AccessTags],
+        authn_access_tags: AccessTags | None,
         authn_scopes: Scopes,
     ) -> Scopes:
         scopes = await self._get_external_decision(
