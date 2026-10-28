@@ -106,7 +106,7 @@ Generate some activity using the Tiled Python client:
 from tiled.client import from_uri
 
 c = from_uri("http://localhost:8000", api_key="secret")
-c.create_container('test')
+c.create_container("test")
 list(c)
 ```
 

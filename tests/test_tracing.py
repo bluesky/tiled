@@ -6,6 +6,7 @@ Collector, Jaeger, or Tempo. OpenTelemetry's global tracer provider can only be
 set once per process, so a single provider is installed for the whole module and
 the exporter is cleared between tests.
 """
+
 import os
 from collections.abc import Generator
 
@@ -127,9 +128,9 @@ def test_traced_request_emits_server_and_phase_spans(monkeypatch, span_exporter)
     names = {s.name for s in spans}
     assert "tiled.app" in names, "expected the per-request phase span 'tiled.app'"
     app_span = next(s for s in spans if s.name == "tiled.app")
-    assert _is_descendant_of(
-        app_span, roots[0].context.span_id, by_id
-    ), "phase spans should be children of the request's server span"
+    assert _is_descendant_of(app_span, roots[0].context.span_id, by_id), (
+        "phase spans should be children of the request's server span"
+    )
 
 
 def test_excluded_endpoint_emits_no_spans(monkeypatch, span_exporter):
@@ -138,9 +139,9 @@ def test_excluded_endpoint_emits_no_spans(monkeypatch, span_exporter):
         span_exporter.clear()
         response = context.http_client.get("/healthz")
         assert response.status_code == 200
-        assert (
-            not span_exporter.get_finished_spans()
-        ), "excluded endpoints must not produce spans (no orphan traces)"
+        assert not span_exporter.get_finished_spans(), (
+            "excluded endpoints must not produce spans (no orphan traces)"
+        )
 
 
 def test_tracing_disabled_by_default(monkeypatch):
