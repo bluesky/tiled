@@ -1,4 +1,3 @@
-
 import typer
 
 from ._utils import echo_api_keys_table, get_context

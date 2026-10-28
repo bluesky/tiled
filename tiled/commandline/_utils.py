@@ -1,4 +1,3 @@
-
 import typer
 
 
@@ -136,12 +135,10 @@ def echo_api_keys_table(api_keys: list[dict]):
             else "-"
         )
         typer.echo(
-
-                f"{api_key['first_eight']:10}"
-                f"{expiration_time:21}"
-                f"{latest_activity:21}"
-                f"{(api_key['note'] or '')}{' ' * note_padding}"
-                f"{' '.join(api_key['scopes']) or '-'}{' ' * scopes_padding}"
-                f"{access_tags}"
-
+            f"{api_key['first_eight']:10}"
+            f"{expiration_time:21}"
+            f"{latest_activity:21}"
+            f"{(api_key['note'] or '')}{' ' * note_padding}"
+            f"{' '.join(api_key['scopes']) or '-'}{' ' * scopes_padding}"
+            f"{access_tags}"
         )

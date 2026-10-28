@@ -218,8 +218,7 @@ async def lookup_valid_pending_session_by_device_code(
         return None
     if (
         pending_session.expiration_time is not None
-        and pending_session.expiration_time.replace(tzinfo=UTC)
-        < datetime.now(UTC)
+        and pending_session.expiration_time.replace(tzinfo=UTC) < datetime.now(UTC)
     ):
         await db.delete(pending_session)
         await db.commit()
@@ -239,8 +238,7 @@ async def lookup_valid_pending_session_by_user_code(
         return None
     if (
         pending_session.expiration_time is not None
-        and pending_session.expiration_time.replace(tzinfo=UTC)
-        < datetime.now(UTC)
+        and pending_session.expiration_time.replace(tzinfo=UTC) < datetime.now(UTC)
     ):
         await db.delete(pending_session)
         await db.commit()

@@ -627,9 +627,7 @@ class TableSubscription(Subscription):
         executor: concurrent.futures.Executor | None = None,
     ):
         super().__init__(context, segments, executor)
-        self.new_data: CallbackRegistry[LiveTableData] = CallbackRegistry(
-            self.executor
-        )
+        self.new_data: CallbackRegistry[LiveTableData] = CallbackRegistry(self.executor)
 
     def process(self, update: Update):
         self.new_data.process(update)

@@ -186,9 +186,7 @@ class MergedDeepSearchAdapter:
     ) -> tuple[list[tuple[str, Any]], int | None]:
         return await self._paginate(cursor or 0, limit, keys_only=False)
 
-    async def keys_range(
-        self, offset: int = 0, limit: int | None = None
-    ) -> list[str]:
+    async def keys_range(self, offset: int = 0, limit: int | None = None) -> list[str]:
         keys, _ = await self._paginate(offset, limit, keys_only=True)
         return keys
 

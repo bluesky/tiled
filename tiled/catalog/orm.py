@@ -1,4 +1,3 @@
-
 from sqlalchemy import (
     JSON,
     BigInteger,

@@ -1,4 +1,3 @@
-
 import pydantic_settings
 from fastapi import HTTPException, Query, Request
 from pydantic import constr
@@ -204,9 +203,7 @@ def patch_shape_param(
 
 
 def patch_offset_param(
-    patch_offset: str | None = Query(
-        None, min_length=1, pattern="^[0-9]+(,[0-9]+)*$"
-    ),
+    patch_offset: str | None = Query(None, min_length=1, pattern="^[0-9]+(,[0-9]+)*$"),
 ):
     "Specify and parse an array patch offset parameter."
     if patch_offset is None:

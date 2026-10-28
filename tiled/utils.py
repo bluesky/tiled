@@ -226,9 +226,7 @@ class OneShotCachedMap(collections.abc.Mapping[K, V], Generic[K, V]):
     def __getstate__(self) -> collections.abc.Mapping[K, Callable[[], V] | V]:
         return self.__mapping
 
-    def __setstate__(
-        self, mapping: collections.abc.Mapping[K, Callable[[], V] | V]
-    ):
+    def __setstate__(self, mapping: collections.abc.Mapping[K, Callable[[], V] | V]):
         self.__mapping = mapping
         self.__lock = threading.Lock()
 

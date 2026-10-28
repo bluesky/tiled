@@ -453,11 +453,9 @@ def params_from_slice(slice):
                         "Slices with a 'step' other than 1 are not supported."
                     )
                 slices.append(
-
-                        (str(dim.start) if dim.start else "")
-                        + ":"
-                        + (str(dim.stop) if dim.stop else "")
-
+                    (str(dim.start) if dim.start else "")
+                    + ":"
+                    + (str(dim.stop) if dim.stop else "")
                 )
             else:
                 slices.append(str(int(dim)))

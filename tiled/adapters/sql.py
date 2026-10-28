@@ -459,7 +459,10 @@ class SQLAdapter(Adapter[TableStructure]):
     def append_partition(
         self,
         partition: int,
-        data: list[pyarrow.record_batch] | pyarrow.record_batch | pandas.DataFrame | pyarrow.Table,
+        data: list[pyarrow.record_batch]
+        | pyarrow.record_batch
+        | pandas.DataFrame
+        | pyarrow.Table,
     ) -> None:
         """Write the data as arrow format
 

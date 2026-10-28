@@ -299,9 +299,7 @@ def _slc_with_slc(slc1: builtins.slice, slc2: builtins.slice) -> builtins.slice:
     return builtins.slice(new_start, new_stop, new_step)
 
 
-def _is_scalar_slice(
-    slc: int | builtins.slice, length: int | None = None
-) -> bool:
+def _is_scalar_slice(slc: int | builtins.slice, length: int | None = None) -> bool:
     "Best effort to check if a slice selects a single element (scalar) along one dimension"
     if length is not None and isinstance(slc, builtins.slice):
         start, stop, step = slc.indices(length)

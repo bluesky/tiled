@@ -102,9 +102,7 @@ class _PolicyNode:
         self.access_tags = normalize_access_tags(access_tags or ())
 
 
-async def _is_allowed(
-    info: Info, access_tags: AccessTags | None, scope: str
-) -> bool:
+async def _is_allowed(info: Info, access_tags: AccessTags | None, scope: str) -> bool:
     authn_scopes = info.context["authn_scopes"]
     if scope not in authn_scopes:
         return False
@@ -186,9 +184,7 @@ def _access_tags_from_input(access_tags: list[str]) -> AccessTags:
         ) from exc
 
 
-async def _init_access_tags(
-    info: Info, access_tags: AccessTags | None
-) -> AccessTags:
+async def _init_access_tags(info: Info, access_tags: AccessTags | None) -> AccessTags:
     policy = info.context.get("access_policy")
     if policy is not None and hasattr(policy, "init_node"):
         try:

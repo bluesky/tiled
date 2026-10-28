@@ -209,7 +209,16 @@ class NodeAttributes(pydantic.BaseModel):
     structure_family: StructureFamily | None = None
     specs: Specs | None = None
     metadata: dict | None = None  # free-form, user-specified dict
-    structure: ArrayStructure | AwkwardStructure | BytesStructure | RaggedStructure | SparseStructure | NodeStructure | TableStructure | None = None
+    structure: (
+        ArrayStructure
+        | AwkwardStructure
+        | BytesStructure
+        | RaggedStructure
+        | SparseStructure
+        | NodeStructure
+        | TableStructure
+        | None
+    ) = None
     # list of tags that control access to this node
     access_tags: list[str] | None = None
 
@@ -584,9 +593,7 @@ class PatchMetadataRequest(HyphenizedBaseModel):
 
     # Specs for merge-patch. left_to_right mode is used to distinguish between
     # merge-patch List[asdict(Spec)] and json-patch List[Dict]
-    specs: Specs | list[JSONPatchSpec] | None = Field(
-        union_mode="left_to_right"
-    )
+    specs: Specs | list[JSONPatchSpec] | None = Field(union_mode="left_to_right")
 
     # These fields are optional because None means "no changes; do not update".
     # List for merge-patch:

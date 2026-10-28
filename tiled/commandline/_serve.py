@@ -349,9 +349,7 @@ def serve_catalog(
             "By default, a random key is generated at startup and printed."
         ),
     ),
-    cache_uri: str | None = typer.Option(
-        None, "--cache", help=("Provide cache URI")
-    ),
+    cache_uri: str | None = typer.Option(None, "--cache", help=("Provide cache URI")),
     cache_data_ttl: int | None = typer.Option(
         None,
         "--cache-data-ttl",

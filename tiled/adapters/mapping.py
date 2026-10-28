@@ -494,9 +494,7 @@ class MapAdapter(Generic[A], ContainerAdapter[A], IndexersMixin):
         )
 
 
-def walk_string_values(
-    tree: MapAdapter[Any], node: Any | None = None
-) -> Iterator[str]:
+def walk_string_values(tree: MapAdapter[Any], node: Any | None = None) -> Iterator[str]:
     """
     >>> list(
     ...     walk_string_values(

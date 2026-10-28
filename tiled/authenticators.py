@@ -710,7 +710,9 @@ class SAMLAuthenticator(ExternalAuthenticator):
         errors = auth.get_errors()  # This method receives an array with the errors
         if errors:
             raise Exception(
-                "Error when processing SAML Response: {} {}".format(", ".join(errors), auth.get_last_error_reason())
+                "Error when processing SAML Response: {} {}".format(
+                    ", ".join(errors), auth.get_last_error_reason()
+                )
             )
         if auth.is_authenticated():
             # Return a string that the Identity can use as id.

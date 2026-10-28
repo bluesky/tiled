@@ -181,9 +181,7 @@ def decode_token(
 
 
 async def get_api_key(
-    api_key_query: str | None = Depends(
-        APIKeyQuery(name="api_key", auto_error=False)
-    ),
+    api_key_query: str | None = Depends(APIKeyQuery(name="api_key", auto_error=False)),
     api_key_header: str | None = Depends(
         StrictAPIKeyHeader(
             name="Authorization",
@@ -906,7 +904,9 @@ def add_external_routes(
         ),
     ):
         request.state.endpoint = "auth"
-        user_session_state: UserSessionState | None = await authenticator.authenticate(request)
+        user_session_state: UserSessionState | None = await authenticator.authenticate(
+            request
+        )
         if not user_session_state:
             if authenticator.redirect_on_failure:
                 return RedirectResponse(
@@ -1049,7 +1049,9 @@ def add_external_routes(
                     },
                     status_code=HTTP_401_UNAUTHORIZED,
                 )
-            user_session_state: UserSessionState | None = await authenticator.authenticate(request)
+            user_session_state: (
+                UserSessionState | None
+            ) = await authenticator.authenticate(request)
             if not user_session_state:
                 return templates.TemplateResponse(
                     request,
