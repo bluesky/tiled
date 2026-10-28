@@ -27,7 +27,7 @@ from ..server.authentication import (
     get_current_scopes,
 )
 from ..server.settings import DatabaseSettings
-from .schema import schema
+from .schema import new_request_cache, schema
 from .store import GraphSQLAlchemyStore
 
 logger = logging.getLogger(__name__)
@@ -55,7 +55,7 @@ query ExploreGraph {
   entities(limit: 10) {
     id
     name
-    entityType
+    kind
     uri
     outgoingLinks(limit: 5) {
       predicate
@@ -117,6 +117,9 @@ def create_router(get_database_settings: Callable[[], DatabaseSettings]) -> APIR
     ) -> dict:
         return {
             "store": store[0],
+            # Per-request memo/batching for the resolvers (namespaces, access
+            # filters, entity and link loaders); see tiled.graph.schema.
+            "request_cache": new_request_cache(store[0]),
             "principal": principal,
             "authn_access_tags": authn_access_tags,
             "authn_scopes": authn_scopes,

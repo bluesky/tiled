@@ -99,7 +99,7 @@ query {
   entities(limit: 100, offset: 0) {
     id
     name
-    entityType
+    kind
     uri
     properties
   }
@@ -150,7 +150,7 @@ query {
   entities {
     id
     name
-    entityType
+    kind
     properties
   }
   links {
@@ -189,7 +189,7 @@ mutation CreateEntity($input: CreateEntityInput!) {
 ```json
 {
   "input": {
-    "entityType": "dataset",
+    "kind": "dataset",
     "name": "my_dataset",
   }
 }
@@ -263,7 +263,7 @@ An entity can reference the data it describes in two independent ways:
   ```json
   {
     "input": {
-      "entityType": "dataset",
+      "kind": "dataset",
       "name": "raw_dataset",
       "nodePathParts": ["raw_dataset"],
       "uri": "http://127.0.0.1:8000/api/v1/metadata/raw_dataset",
@@ -287,7 +287,7 @@ An entity can reference the data it describes in two independent ways:
   ```json
   {
     "input": {
-      "entityType": "dataset",
+      "kind": "dataset",
       "name": "dif_beam_hdf5_image",
       "uri": "https://tiled-demo.nsls2.bnl.gov/api/v1/metadata/csx/6cb250e3-3a4a-46e1-8fcb-a1caa0445f41/primary/dif_beam_hdf5_image",
       "properties": { "@type": "Dataset" }
