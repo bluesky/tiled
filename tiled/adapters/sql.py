@@ -459,8 +459,8 @@ class SQLAdapter(Adapter[TableStructure]):
     def append_partition(
         self,
         partition: int,
-        data: list[pyarrow.record_batch]
-        | pyarrow.record_batch
+        data: list[pyarrow.RecordBatch]
+        | pyarrow.RecordBatch
         | pandas.DataFrame
         | pyarrow.Table,
     ) -> None:
@@ -470,7 +470,7 @@ class SQLAdapter(Adapter[TableStructure]):
         ----------
         partition : int
             The partition number to which the data will be appended.
-        data : Union[List[pyarrow.record_batch], pyarrow.record_batch, pandas.DataFrame, pyarrow.Table]
+        data : list[pyarrow.RecordBatch] | pyarrow.RecordBatch | pandas.DataFrame | pyarrow.Table
             data to append to the database.
         """
 

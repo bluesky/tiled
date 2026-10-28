@@ -109,7 +109,7 @@ def force_reshape(
     Parameters
     ----------
 
-    arr : Union[np.array, dask.array.Array]
+    arr : np.ndarray | dask.array.Array
         The original ND array to be reshaped
     desired_shape : Tuple[int, ...]
         The desired shape of the resulting array

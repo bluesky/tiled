@@ -9,7 +9,6 @@ from typing import (
     TYPE_CHECKING,
     Literal,
     NamedTuple,
-    Union,
 )
 from urllib.parse import quote, unquote, urlparse, urlunparse
 
@@ -245,9 +244,7 @@ class ObjectStorage(Storage):
 
         return base_uri, bucket_name or None, "/".join(blob_path)
 
-    def get_obstore_location(
-        self, uri=None
-    ) -> Union["S3Store", "AzureStore", "GCSStore"]:
+    def get_obstore_location(self, uri=None) -> "S3Store | AzureStore | GCSStore":
         """Get an obstore.store instance rooted at specified URI.
 
         Parameters

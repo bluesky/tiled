@@ -264,7 +264,7 @@ class Subscription(abc.ABC):
     def __init__(
         self,
         context: Context,
-        segments: list[str] = None,
+        segments: list[str] | None = None,
         executor: concurrent.futures.Executor | None = None,
     ):
         segments = segments or ["/"]
@@ -553,9 +553,9 @@ class ContainerSubscription(Subscription):
     def __init__(
         self,
         context: Context,
-        segments: list[str] = None,
+        segments: list[str] | None = None,
         executor: concurrent.futures.Executor | None = None,
-        structure_clients: dict = None,
+        structure_clients: dict | None = None,
     ):
         super().__init__(context, segments, executor)
         self.structure_clients = structure_clients
@@ -593,7 +593,7 @@ class ArraySubscription(Subscription):
     def __init__(
         self,
         context: Context,
-        segments: list[str] = None,
+        segments: list[str] | None = None,
         executor: concurrent.futures.Executor | None = None,
     ):
         super().__init__(context, segments, executor)
@@ -623,7 +623,7 @@ class TableSubscription(Subscription):
     def __init__(
         self,
         context: Context,
-        segments: list[str] = None,
+        segments: list[str] | None = None,
         executor: concurrent.futures.Executor | None = None,
     ):
         super().__init__(context, segments, executor)

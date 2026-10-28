@@ -4,7 +4,7 @@ import copy
 import os
 from collections.abc import Iterator
 from importlib.metadata import version
-from typing import Any, Union, cast
+from typing import Any, cast
 from urllib.parse import quote_plus, urljoin, urlparse
 
 import zarr
@@ -208,7 +208,7 @@ class ZarrArrayAdapter(Adapter[ArrayStructure]):
 
 
 class ZarrGroupAdapter(
-    ContainerAdapter[Union["ArrayAdapter", "ZarrGroupAdapter"]],
+    ContainerAdapter["ArrayAdapter | ZarrGroupAdapter"],
     IndexersMixin,
 ):
     "Adapter for Zarr groups (containers)"
@@ -238,7 +238,7 @@ class ZarrGroupAdapter(
     def __iter__(self) -> Iterator[Any]:
         yield from self._zarr_group
 
-    def __getitem__(self, key: str) -> Union[ArrayAdapter, "ZarrGroupAdapter"]:
+    def __getitem__(self, key: str) -> "ArrayAdapter | ZarrGroupAdapter":
         value = self._zarr_group[key]
         if isinstance(value, zarr.Group):
             return ZarrGroupAdapter(value)

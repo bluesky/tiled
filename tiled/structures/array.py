@@ -4,7 +4,7 @@ import os
 import sys
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, ClassVar, Self, Union
+from typing import Any, ClassVar, Self
 
 import numpy
 
@@ -149,7 +149,7 @@ class BuiltinDtype:
 @dataclass
 class Field:
     name: str
-    dtype: Union[BuiltinDtype, "StructDtype"]
+    dtype: "BuiltinDtype | StructDtype"
     shape: tuple[int, ...] | None
 
     @classmethod

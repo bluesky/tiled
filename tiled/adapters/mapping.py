@@ -8,7 +8,6 @@ from typing import (
     TYPE_CHECKING,
     Any,
     Generic,
-    Union,
     cast,
 )
 
@@ -308,7 +307,7 @@ class MapAdapter(Generic[A], ContainerAdapter[A], IndexersMixin):
 
     def search_deep(
         self, max_depth: int | None = None
-    ) -> Union["MapAdapter[A]", "MergedDeepSearchAdapter"]:
+    ) -> "MapAdapter[A] | MergedDeepSearchAdapter":
         """Return an adapter over ALL descendants of this node (any depth).
 
         The returned adapter's keys are "/"-joined paths relative to this

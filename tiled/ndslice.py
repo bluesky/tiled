@@ -4,7 +4,6 @@ import itertools
 import math
 import re
 from collections.abc import Iterable
-from typing import Union
 
 from ndindex import ndindex
 
@@ -15,7 +14,7 @@ def is_ellipsis(arg) -> bool:
     return isinstance(arg, EllipsisType) or (arg == Ellipsis)
 
 
-def merge_slices(*args: Union["NDSlice", "NDBlock"]) -> Union["NDSlice", "NDBlock"]:
+def merge_slices(*args: "NDSlice | NDBlock") -> "NDSlice | NDBlock":
     """Merge multiple NDSlices or NDBlocks
 
     Creates a single NDSlice or (NDBlock if all arguemnts are NDBlocks) if they are
@@ -710,7 +709,7 @@ class NDBlock(NDSlice):
 
 
 def block_for_slice(
-    chunks: Chunks, slice: Union[tuple, "NDSlice"] | None = None
+    chunks: Chunks, slice: tuple | NDSlice | None = None
 ) -> tuple["NDBlock", "NDSlice"]:
     """Convert a slice on a chunked array into block indices and a slice within the block
 

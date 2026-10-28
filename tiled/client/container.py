@@ -11,7 +11,7 @@ import warnings
 from collections.abc import Iterable
 from dataclasses import asdict
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Union
+from typing import TYPE_CHECKING, Any
 from urllib.parse import parse_qs, urlparse
 
 import entrypoints
@@ -1367,7 +1367,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
 
     def write_table(
         self,
-        data: Union["pandas.DataFrame", dict[str, Any]],
+        data: "pandas.DataFrame | dict[str, Any]",
         *,
         key=None,
         metadata=None,

@@ -1,10 +1,9 @@
 "Download utilities implemented using httpx and rich progress bars, with parallelism."
 
-from __future__ import annotations
-
 import io
 import re
 import signal
+from _thread import LockType
 from collections.abc import Iterable, MutableMapping
 from concurrent.futures import ThreadPoolExecutor, wait
 from pathlib import Path
@@ -70,7 +69,7 @@ def _download_url(
     url: str,
     target: Path | str,
     mapping: MutableMapping | None,
-    lock: Lock | None,
+    lock: LockType | None,
     accept_encoding: str | None,
 ):
     """Fetch `url` and write the body to disk (when `mapping is None`) or to

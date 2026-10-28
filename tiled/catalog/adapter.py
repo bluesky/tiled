@@ -18,7 +18,6 @@ from typing import (
     TYPE_CHECKING,
     Any,
     Literal,
-    Optional,
     cast,
 )
 from urllib.parse import urlparse
@@ -780,9 +779,9 @@ class CatalogNodeAdapter:
     async def _get_lazy_adapter(
         self,
         *,
-        block: Optional["NDBlock"] = None,
+        block: "NDBlock | None" = None,
         slice: Any = ...,
-    ) -> Optional["AnyAdapter"]:
+    ) -> "AnyAdapter | None":
         """Build an I/O adapter that resolves only the assets a read will touch.
 
         Returns `None` (so the caller falls back to :meth:`get_adapter`) unless

@@ -212,7 +212,7 @@ class ArrowAdapter(Adapter[TableStructure]):
         ----------
         partition : int
             index of partition to be written.
-        data : Union[List[pyarrow.RecordBatch], pyarrow.RecordBatch, pandas.DataFrame]
+        data : list[pyarrow.RecordBatch] | pyarrow.RecordBatch | pandas.DataFrame
             data to write into arrow file.
         """
         if isinstance(data, pandas.DataFrame):

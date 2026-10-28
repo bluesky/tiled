@@ -6,7 +6,7 @@ import sys
 import warnings
 from collections.abc import Iterator
 from pathlib import Path
-from typing import Any, Union
+from typing import Any
 
 import dask
 import dask.array
@@ -413,9 +413,7 @@ class HDF5ArrayAdapter(ArrayAdapter):
         return cls(array, structure, metadata=metadata)
 
 
-class HDF5Adapter(
-    ContainerAdapter[Union["HDF5Adapter", HDF5ArrayAdapter]], IndexersMixin
-):
+class HDF5Adapter(ContainerAdapter["HDF5Adapter | HDF5ArrayAdapter"], IndexersMixin):
     """Adapter for HDF5 files
 
     This map the structure of an HDF5 file onto a "Tree" of array structures.
@@ -486,7 +484,7 @@ class HDF5Adapter(
         libver: str = "latest",
         locking: bool | str | None = None,
         **kwargs: Any,  # Optional kwargs for HDF5ArrayAdapter
-    ) -> Union["HDF5Adapter", HDF5ArrayAdapter]:
+    ) -> "HDF5Adapter | HDF5ArrayAdapter":
         if not isinstance(dataset, str):
             dataset = "/".join(dataset)
 
@@ -542,7 +540,7 @@ class HDF5Adapter(
         libver: str = "latest",
         locking: bool | str | None = None,
         **kwargs: Any,  # Optional kwargs for HDF5ArrayAdapter
-    ) -> Union["HDF5Adapter", HDF5ArrayAdapter]:
+    ) -> "HDF5Adapter | HDF5ArrayAdapter":
         fpath = path_from_uri(data_uris[0])
         with h5open(fpath, dataset, swmr=swmr, libver=libver, locking=locking) as file:
             tree = parse_hdf5_tree(file)
@@ -572,7 +570,7 @@ class HDF5Adapter(
         """Iterate over the keys of the tree"""
         yield from self._tree
 
-    def __getitem__(self, key: str) -> Union["HDF5Adapter", HDF5ArrayAdapter]:
+    def __getitem__(self, key: str) -> "HDF5Adapter | HDF5ArrayAdapter":
         dataset = f"{self.dataset or ''}/{key.strip('/')}"  # Referenced to the root of the file
         node = copy.deepcopy(self._tree)
         for segment in key.strip("/").split("/"):
@@ -599,7 +597,7 @@ class HDF5Adapter(
                 *self.uris, dataset=dataset, **self._kwargs
             )
 
-    def get(self, key: str, *args: Any) -> Union["HDF5Adapter", HDF5ArrayAdapter]:
+    def get(self, key: str, *args: Any) -> "HDF5Adapter | HDF5ArrayAdapter":
         """Overwrite to always raise KeyErrors for broken links and missing items"""
         return self[key]
 
