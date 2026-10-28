@@ -1,4 +1,3 @@
-
 import pytest
 from sqlalchemy.engine import URL, make_url
 
