@@ -114,6 +114,7 @@ from .utils import (
     filter_for_access,
     get_base_url,
     get_base_url_websocket,
+    normalize_root_path,
     record_timing,
 )
 
@@ -170,6 +171,11 @@ def _patch_route_signature(
         # Add a parameter for each field in each type of query.
         for name, query in query_registry.name_to_query_type.items():
             for field in dataclasses.fields(query):
+                # Skip server-internal fields: they are populated on the
+                # server side (not by clients) and must not become URL query
+                # parameters. See e.g. AccessTagsFilter.tag_ids.
+                if field.metadata.get("internal"):
+                    continue
                 # The structured "alias" here is based on
                 # https://mglaman.dev/blog/using-json-router-query-your-search-router-indexes
                 if getattr(field.type, "__origin__", None) is list:
@@ -311,7 +317,10 @@ def get_router(
                     "self": base_url,
                     "documentation": f"{base_url}/docs",
                 },
-                meta={"root_path": request.scope.get("root_path") or "" + "/api"},
+                meta={
+                    "root_path": normalize_root_path(request.scope.get("root_path"))
+                    + "/api"
+                },
             ).model_dump(),
             expires=datetime.now(timezone.utc) + timedelta(seconds=600),
         )
@@ -385,6 +394,136 @@ def get_router(
             # We only get one Expires header, so if different parts
             # of this response become stale at different times, we
             # cite the earliest one.
+            entries_stale_at = getattr(entry, "entries_stale_at", None)
+            headers = {}
+            if (metadata_stale_at is None) or (entries_stale_at is None):
+                expires = None
+            else:
+                expires = min(metadata_stale_at, entries_stale_at)
+            if must_revalidate:
+                headers["Cache-Control"] = "must-revalidate"
+            return json_or_msgpack(
+                request,
+                response_model_dump,
+                expires=expires,
+                headers=headers,
+            )
+        except BrokenLink as err:
+            raise HTTPException(status_code=HTTP_410_GONE, detail=err.args[0])
+        except NoEntry:
+            raise HTTPException(status_code=HTTP_404_NOT_FOUND, detail="No such entry.")
+        except WrongTypeForRoute as err:
+            raise HTTPException(status_code=HTTP_404_NOT_FOUND, detail=err.args[0])
+        except JMESPathError as err:
+            raise HTTPException(
+                status_code=HTTP_400_BAD_REQUEST,
+                detail=f"Malformed 'select_metadata' parameter raised JMESPathError: {err}",
+            )
+
+    @router.get(
+        "/search-deep/{path:path}",
+        response_model=schemas.Response[
+            List[schemas.Resource[schemas.NodeAttributes, dict, dict]],
+            schemas.PaginationLinks,
+            dict,
+        ],
+    )
+    @_patch_route_signature(query_registry)
+    async def search_deep(
+        request: Request,
+        path: str,
+        fields: Optional[List[schemas.EntryFields]] = Query(list(schemas.EntryFields)),
+        select_metadata: Optional[str] = Query(None),
+        page: PaginationParams = Depends(),
+        sort: Optional[List[tuple[str, Literal[1, -1]]]] = Depends(sorting_param),
+        max_depth: Optional[int] = Query(
+            None,
+            ge=1,
+            le=64,
+            description="Maximum number of levels below `path` to search.",
+        ),
+        omit_links: bool = Query(False),
+        include_data_sources: bool = Query(False),
+        principal: Optional[Principal] = Depends(get_current_principal),
+        root_tree=Depends(get_root_tree),
+        session_state: dict = Depends(get_session_state),
+        authn_access_tags: Optional[AccessTags] = Depends(get_current_access_tags),
+        authn_scopes: Scopes = Depends(get_current_scopes),
+        settings: Settings = Depends(get_settings),
+        _=Security(check_scopes, scopes=["read:metadata"]),
+        **filters,
+    ):
+        """
+        Search all descendants of this node (at any depth), not just direct children.
+
+        See https://github.com/bluesky/tiled/issues/1368
+        """
+        entry = await get_entry(
+            path,
+            ["read:metadata"],
+            principal,
+            authn_access_tags,
+            authn_scopes,
+            root_tree,
+            session_state,
+            request.state.metrics,
+            {StructureFamily.container},
+            getattr(request.app.state, "access_policy", None),
+        )
+        if sort:
+            raise HTTPException(
+                status_code=HTTP_400_BAD_REQUEST,
+                detail="Sorting is not supported for deep search.",
+            )
+        if not hasattr(entry, "search_deep"):
+            raise HTTPException(
+                status_code=HTTP_400_BAD_REQUEST,
+                detail="This Tree does not support deep search.",
+            )
+        try:
+            entry = entry.search_deep(max_depth=max_depth)
+        except (NotImplementedError, ValueError) as err:
+            raise HTTPException(status_code=HTTP_400_BAD_REQUEST, detail=str(err))
+        if hasattr(entry, "map_mounts"):
+            # Mounted catalogs are reached by walking, not by `get_entry`, so
+            # the access policy has not been applied to them yet.
+            entry = await entry.map_mounts(
+                partial(
+                    filter_for_access,
+                    access_policy=getattr(request.app.state, "access_policy", None),
+                    principal=principal,
+                    authn_access_tags=authn_access_tags,
+                    authn_scopes=authn_scopes,
+                    scopes=["read:metadata"],
+                    metrics=request.state.metrics,
+                )
+            )
+        request.state.endpoint = "search"
+        try:
+            (
+                response,
+                metadata_stale_at,
+                must_revalidate,
+            ) = await construct_entries_response(
+                query_registry,
+                entry,
+                "/search-deep",
+                path,
+                page,
+                fields,
+                select_metadata,
+                omit_links,
+                include_data_sources,
+                filters,
+                None,  # Sorting is not yet supported for deep search.
+                get_base_url(request),
+                resolve_media_type(request),
+                max_depth=None,
+                exact_count_limit=settings.exact_count_limit,
+                deep=True,
+            )
+            response_model_dump = _model_dump_backcompat(request, response)
+
             entries_stale_at = getattr(entry, "entries_stale_at", None)
             headers = {}
             if (metadata_stale_at is None) or (entries_stale_at is None):
@@ -1952,7 +2091,10 @@ def get_router(
             access_tags=access_tags,
         )
         links = links_for_node(
-            structure_family, structure, get_base_url(request), path + f"/{node.key}"
+            structure_family,
+            structure,
+            get_base_url(request),
+            "/".join(filter(None, [path.strip("/"), node.key])),
         )
         data_sources_dump = [
             ds.model_dump() for ds in await node.data_sources(include_assets=True)
@@ -2773,6 +2915,11 @@ def get_router(
         authn_scopes: Scopes = Depends(get_current_scopes),
         _=Security(check_scopes, scopes=["read:data"]),
     ):
+        if not settings.expose_raw_assets:
+            raise HTTPException(
+                status_code=HTTP_403_FORBIDDEN,
+                detail="This Tiled server does not allow downloading raw assets.",
+            )
         entry = await get_entry(
             path,
             ["read:data"],
@@ -2785,14 +2932,6 @@ def get_router(
             None,
             getattr(request.app.state, "access_policy", None),
         )  # TODO: Separate scope for assets?
-        if not settings.expose_raw_assets:
-            raise HTTPException(
-                status_code=HTTP_403_FORBIDDEN,
-                detail=(
-                    "This Tiled server is configured not to allow "
-                    "downloading raw assets."
-                ),
-            )
         if not hasattr(entry, "asset_by_id"):
             raise HTTPException(
                 status_code=HTTP_405_METHOD_NOT_ALLOWED,
@@ -2822,6 +2961,59 @@ def get_router(
         for root, _directories, files in os.walk(path):
             manifest.extend(Path(root, file) for file in files)
         return json_or_msgpack(request, {"manifest": manifest})
+
+    @router.delete(
+        "/asset/{path:path}",
+        summary="Dissociate an asset from a node and, if unreferenced, delete it",
+    )
+    async def delete_asset(
+        request: Request,
+        path: str,
+        id: int,
+        external_only: bool = Query(
+            True,
+            description=(
+                "Dissociate the asset, but refuse to delete the underlying data "
+                "if it is internally managed. Externally-managed assets are never deleted."
+            ),
+        ),
+        settings: Settings = Depends(get_settings),
+        principal: Optional[Principal] = Depends(get_current_principal),
+        root_tree=Depends(get_root_tree),
+        session_state: dict = Depends(get_session_state),
+        authn_access_tags: Optional[AccessTags] = Depends(get_current_access_tags),
+        authn_scopes: Scopes = Depends(get_current_scopes),
+        _=Security(check_scopes, scopes=["delete:node"]),
+    ):
+        if not settings.expose_raw_assets:
+            raise HTTPException(
+                status_code=HTTP_403_FORBIDDEN,
+                detail="This Tiled server does not allow deleting raw assets.",
+            )
+        entry = await get_entry(
+            path,
+            ["delete:node"],
+            principal,
+            authn_access_tags,
+            authn_scopes,
+            root_tree,
+            session_state,
+            request.state.metrics,
+            None,
+            getattr(request.app.state, "access_policy", None),
+        )
+        if not hasattr(entry, "delete_asset"):
+            raise HTTPException(
+                status_code=HTTP_405_METHOD_NOT_ALLOWED,
+                detail="This node does not support deleting assets.",
+            )
+        result = await entry.delete_asset(id, external_only=external_only)
+        if result is None:
+            raise HTTPException(
+                status_code=HTTP_404_NOT_FOUND,
+                detail=f"This node exists but it does not have an Asset with id {id}",
+            )
+        return json_or_msgpack(request, result)
 
     async def validate_specs(
         specs: List[Spec],

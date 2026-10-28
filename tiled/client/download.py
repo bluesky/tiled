@@ -1,4 +1,5 @@
 "Download utilities implemented using httpx and rich progress bars, with parallelism."
+
 import io
 import re
 import signal
@@ -7,8 +8,8 @@ from pathlib import Path
 from threading import Event, Lock
 from typing import Iterable, MutableMapping, Optional, Union
 
-import httpx
-from httpx._decoders import SUPPORTED_DECODERS
+import httpx2 as httpx
+from httpx2._decoders import SUPPORTED_DECODERS
 from rich.progress import (
     BarColumn,
     DownloadColumn,

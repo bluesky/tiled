@@ -1,11 +1,19 @@
 from sqlalchemy import literal, select, text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from ..alembic_utils import DatabaseUpgradeNeeded, UninitializedDatabase, check_database
+from ..alembic_utils import (
+    DatabaseUpgradeNeeded,
+    UninitializedDatabase,
+    check_database,
+    initialize_database_if_needed,
+)
+from ..utils import ensure_specified_sql_driver
+from .alembic_constants import ALEMBIC_DIR, ALEMBIC_INI_TEMPLATE_PATH
 from .base import Base
 
 # This is list of all valid revisions (from current to oldest).
 ALL_REVISIONS = [
+    "917dbbcfc4b1",
     "3e87cbeb195b",
     "0d4e1f2a3b4c",
     "3bc110ce44e9",
@@ -38,8 +46,9 @@ REQUIRED_REVISION = ALL_REVISIONS[0]
 
 
 async def initialize_database(engine: AsyncEngine):
+    # The definitions in .orm alter Base.metadata.
     from ..graph import orm as graph_orm  # noqa: F401
-    from . import orm  # noqa: F401
+    from . import orm
 
     async with engine.connect() as connection:
         # Install extensions
@@ -87,6 +96,25 @@ async def initialize_database(engine: AsyncEngine):
         await connection.commit()
 
 
+def initialize_catalog_database(uri: str) -> bool:
+    """
+    Initialize the catalog database at `uri`, unless it already is initialized.
+
+    This creates the tables and stamps the head alembic revision, as
+    `tiled catalog init --if-not-exists` does. Returns True if the database was
+    initialized by this call. It is a blocking call, safe to make from a thread that
+    is running an event loop.
+    """
+    return initialize_database_if_needed(
+        ensure_specified_sql_driver(uri),
+        initialize_database,
+        REQUIRED_REVISION,
+        ALL_REVISIONS,
+        ALEMBIC_INI_TEMPLATE_PATH,
+        ALEMBIC_DIR,
+    )
+
+
 async def register_principal_tag_rows(connection, access_tag_names):
     """
     Auto-register bare access tag rows for any principal tags in
@@ -99,13 +127,14 @@ async def register_principal_tag_rows(connection, access_tag_names):
     `await session.connection()`.)
     """
     from ..access_control.protocols import PRINCIPAL_TAG_PREFIXES
-    from . import orm
 
     principal_tags = {
         name for name in access_tag_names if name.startswith(PRINCIPAL_TAG_PREFIXES)
     }
     if not principal_tags:
         return
+    from . import orm
+
     if connection.dialect.name == "postgresql":
         from sqlalchemy.dialects.postgresql import insert as upsert
     else:
@@ -115,6 +144,18 @@ async def register_principal_tag_rows(connection, access_tag_names):
         .values([{"name": name, "is_public": False} for name in sorted(principal_tags)])
         .on_conflict_do_nothing(index_elements=["name"])
     )
+
+
+async def resolve_access_tag_ids(connection, names):
+    """Resolve existing access-tag names to their integer IDs."""
+    if not names:
+        return []
+    from . import orm
+
+    result = await connection.execute(
+        select(orm.AccessTag.id).where(orm.AccessTag.name.in_(list(names)))
+    )
+    return list(result.scalars().all())
 
 
 async def check_catalog_database(engine: AsyncEngine):

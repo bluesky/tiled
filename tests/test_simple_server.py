@@ -7,14 +7,17 @@ import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
-import httpx
+import httpx2 as httpx
 import pyarrow
 import pytest
 from websockets.frames import CloseCode
 
 from tiled.client import SERVERS, from_uri, simple
 from tiled.client.register import register
+from tiled.client.utils import DEFAULT_TIMEOUT_PARAMS
 from tiled.server import SimpleTiledServer
+
+TIMEOUT = httpx.Timeout(**DEFAULT_TIMEOUT_PARAMS)
 
 
 def test_default():
@@ -35,7 +38,7 @@ def test_default():
         repr(server)
         server._repr_html_()  # impl, used by Jupyter
         # Web UI
-        response = httpx.get(server.web_ui_link).raise_for_status()
+        response = httpx.get(server.web_ui_link, timeout=TIMEOUT).raise_for_status()
         assert response.headers["content-type"].startswith("text/html")
 
 
@@ -133,10 +136,11 @@ def test_webhooks_disabled_by_default():
         resp = httpx.get(
             f"http://localhost:{server.port}/api/v1/webhooks/target/",
             headers={"Authorization": f"Apikey {server.api_key}"},
+            timeout=TIMEOUT,
         )
-        assert (
-            resp.status_code == 404
-        ), "Webhook router should not be mounted when enable_webhooks=False"
+        assert resp.status_code == 404, (
+            "Webhook router should not be mounted when enable_webhooks=False"
+        )
         assert server.webhook_secret_key is None
 
 
@@ -158,6 +162,7 @@ def test_webhooks_enabled(tmp_path):
                 "Content-Type": "application/json",
             },
             content=json.dumps({"url": "http://localhost:19999/hook"}),
+            timeout=TIMEOUT,
         )
         assert resp.status_code == 200, resp.text
         body = resp.json()
@@ -197,6 +202,7 @@ def test_webhooks_delivers_event(tmp_path):
                     "Content-Type": "application/json",
                 },
                 content=json.dumps({"url": f"http://127.0.0.1:{receiver_port}/hook"}),
+                timeout=TIMEOUT,
             )
             assert resp.status_code == 200, resp.text
 
@@ -257,9 +263,9 @@ def test_close_with_open_streaming_subscription_does_not_hang(
     closer = threading.Thread(target=_close, daemon=True)
     closer.start()
     try:
-        assert closed.wait(
-            timeout=30
-        ), "server.close() hung with a streaming subscription"
+        assert closed.wait(timeout=30), (
+            "server.close() hung with a streaming subscription"
+        )
         if not disconnect_first:
             # With the subscription still open, uvicorn closes the websocket with
             # SERVICE_RESTART (1012) on shutdown. Wait for the closing handshake

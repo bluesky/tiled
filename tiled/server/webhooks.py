@@ -28,7 +28,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 from urllib.parse import urlparse
 
-import httpx
+import httpx2 as httpx
 import stamina
 from sqlalchemy import delete, select
 
@@ -171,13 +171,16 @@ def check_url_ssrf_safety(
         ip_str = sockaddr[0]
         try:
             addr = ipaddress.ip_address(ip_str)
-            host = socket.getfqdn(ip_str)
         except ValueError:
             continue
         for net in ALL_BLOCKED_NETWORKS:
             if addr in net:
-                # Allow if this address is in allowed hosts
-                if allow_delivery_hosts and host in allow_delivery_hosts:
+                # Allow if this address is in allowed hosts. The reverse lookup
+                # is a network round-trip, so it is done only when it matters.
+                if (
+                    allow_delivery_hosts
+                    and socket.getfqdn(ip_str) in allow_delivery_hosts
+                ):
                     logger.info(
                         f"{addr} is in a blocked network {net} but is allowed because it is also in allowed hosts"
                     )

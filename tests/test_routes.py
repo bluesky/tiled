@@ -1,5 +1,5 @@
 import pytest
-from httpx import ASGITransport, AsyncClient
+from httpx2 import ASGITransport, AsyncClient
 from starlette.status import HTTP_200_OK
 
 from tiled.server.app import build_app

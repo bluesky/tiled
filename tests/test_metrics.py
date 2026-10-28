@@ -1,6 +1,6 @@
 import re
 
-import httpx
+import httpx2 as httpx
 import pytest
 from fastapi import APIRouter
 from starlette.status import HTTP_404_NOT_FOUND, HTTP_500_INTERNAL_SERVER_ERROR

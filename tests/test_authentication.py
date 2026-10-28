@@ -2,9 +2,8 @@ import copy
 import io
 import os
 import shutil
-import subprocess
-import sys
 import time
+from datetime import timedelta
 
 import numpy
 import pytest
@@ -16,6 +15,7 @@ from starlette.status import (
 
 from tiled.adapters.array import ArrayAdapter
 from tiled.adapters.mapping import MapAdapter
+from tiled.authn_database.core import initialize_authn_database
 from tiled.client import Context, from_context
 from tiled.client.auth import CannotRefreshAuthentication
 from tiled.client.context import PasswordRejected, password_grant
@@ -40,11 +40,7 @@ def config(sqlite_or_postgres_uri):
     - a unique nested dict instance that the test can mutate
     """
     database_uri = sqlite_or_postgres_uri
-    subprocess.run(
-        [sys.executable, "-m", "tiled", "admin", "initialize-database", database_uri],
-        check=True,
-        capture_output=True,
-    )
+    initialize_authn_database(database_uri)
     return {
         "authentication": copy.deepcopy(TOY_AUTHENTICATION),
         "database": {
@@ -206,13 +202,20 @@ def test_refresh_forced(enter_username_password, config):
 
 def test_refresh_transparent(enter_username_password, config):
     "When access token expired, refresh happens transparently."
-    # Pathological configuration: a refresh is almost immediately required
-    config["authentication"]["access_token_max_age"] = 1
     with Context.from_app(build_app_from_config(config)) as context:
         with enter_username_password("alice", "secret1"):
             client = from_context(context)
+        secret_key = config["authentication"]["secret_keys"][0]
+        claims = authentication.decode_token(
+            client.context.tokens["access_token"], [secret_key]
+        )
+        expired_access_token = authentication.create_access_token(
+            claims, secret_key, timedelta(seconds=-1)
+        )
+        client.context.http_client.auth.sync_set_token(
+            "access_token", expired_access_token
+        )
         tokens1 = dict(client.context.tokens)
-        time.sleep(2)
         # A refresh should happen automatically now.
         client["A1"]
         tokens2 = dict(client.context.tokens)
@@ -595,6 +598,44 @@ def test_admin_create_service_principal(enter_username_password, principals_cont
 
         # Test service repr
         assert f"authenticated as service '{principal_uuid}'" in repr(context)
+
+
+def test_admin_list_principals_pagination(enter_username_password, principals_context):
+    """
+    Admin can page through principals using offset and limit.
+    """
+    with principals_context["context"] as context:
+        with enter_username_password("alice", "secret1"):
+            context.authenticate()
+
+        def walk(page_size):
+            "Collect UUIDs page by page until a short page signals the end."
+            uuids = []
+            offset = 0
+            while True:
+                page = context.admin.list_principals(offset=offset, limit=page_size)
+                assert len(page) <= page_size
+                uuids.extend(p["uuid"] for p in page)
+                if len(page) < page_size:
+                    return uuids
+                offset += page_size
+
+        small, large = 2, 3
+        # Create more principals than fit on one page, so that paging is
+        # exercised no matter how many principals already exist.
+        created_uuids = {
+            context.admin.create_service_principal(role="user")["uuid"]
+            for _ in range(large + 1)
+        }
+
+        uuids = walk(small)
+        assert len(uuids) > large
+        assert len(uuids) == len(set(uuids)), "duplicates across pages"
+        assert created_uuids <= set(uuids)
+
+        # Page boundaries must not affect the result: a different page size
+        # yields the same principals in the same order.
+        assert walk(large) == uuids
 
 
 def test_admin_api_key_any_principal_exceeds_scopes(

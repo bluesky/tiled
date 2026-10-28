@@ -223,9 +223,8 @@ class NodeAttributes(pydantic.BaseModel):
             TableStructure,
         ]
     ] = None
-    access_tags: Optional[
-        List[str]
-    ] = None  # list of tags that control access to this node
+    # list of tags that control access to this node
+    access_tags: Optional[List[str]] = None
 
     sorting: Optional[List[SortingItem]] = None
     data_sources: Optional[List[DataSource]] = None
@@ -245,6 +244,7 @@ class SelfLinkOnly(pydantic.BaseModel):
 class ContainerLinks(pydantic.BaseModel):
     self: str
     search: str
+    search_deep: Optional[str] = None
     full: str
 
 
@@ -674,9 +674,9 @@ class ContainerChildCreatedEvent(pydantic.BaseModel):
 
 
 class ContainerChildMetadataUpdatedEvent(pydantic.BaseModel):
-    type: Literal[
+    type: Literal[EventType.container_child_metadata_updated] = (
         EventType.container_child_metadata_updated
-    ] = EventType.container_child_metadata_updated
+    )
     timestamp: AwareDatetime
     key: str
     path: list[str]
