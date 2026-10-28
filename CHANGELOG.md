@@ -5,6 +5,21 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## Unreleased
 
+### Added
+
+- Add a client-side interface for the experimental "graph of links". Catalog
+  node clients gain `bind_entity(...)` (an idempotent get-or-create that binds
+  an entity to the node) and `entities()`, and `tiled.client.graph` provides
+  `make_entity`, `make_link`, and `register_namespace` helpers plus a
+  `GraphClient` wrapper over the GraphQL API. The `GraphClient` and its
+  `EntityHandle`/`LinkHandle` handles support the full lifecycle: look entities
+  and links up by id or filter (`get_entity`, `find_entities`, `get_link`,
+  `find_links`), traverse between them (`outgoing_links`, `incoming_links`, and
+  a link's `subject`/`object`), and update or delete them in place
+  (`update`/`delete`, including their `properties`).
+- The experimental graph's `entities` query accepts a `name` filter, and its
+  `updateEntity`/`updateLink` mutations can now change `properties`.
+
 ### Changed
 
 - `tiled serve demo` now serves a single, catalog-backed demo that combines the
@@ -48,6 +63,10 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Fixed
 
+- Make the experimental graph's `entities` and `links` listings paginate
+  deterministically by breaking `created_at` ties on the unique id, so
+  `limit`/`offset` no longer risk skipping or repeating rows created in the
+  same batch.
 - Fixed serving HDF5 files that have an empty (null dataspace) attribute or a
   byte-string attribute that is not valid UTF-8. Either one made every node
   in the file fail to load. Empty attributes are now served as `null`, and
