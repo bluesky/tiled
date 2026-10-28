@@ -7,7 +7,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from functools import cache, partial
 from pathlib import Path
-from typing import Literal, Optional, TypeVar
+from typing import Literal, TypeVar
 
 import anyio
 import packaging
@@ -189,7 +189,7 @@ def _patch_route_signature(
                     default=Query(
                         None, alias=f"filter[{name}][condition][{field.name}]"
                     ),
-                    annotation=Optional[list[field_type]],
+                    annotation=list[field_type] | None,
                 )
                 parameters.append(injected_parameter)
         route_with_sig.__signature__ = signature.replace(parameters=parameters)
@@ -926,9 +926,7 @@ def get_router(
         path: str,
         envelope_format: schemas.EnvelopeFormat = schemas.EnvelopeFormat.json,
         start: int | None = None,
-        principal: schemas.Principal | None = Depends(
-            get_current_principal_websocket
-        ),
+        principal: schemas.Principal | None = Depends(get_current_principal_websocket),
         authn_access_tags: AccessTags | None = Depends(
             get_current_access_tags_websocket
         ),
@@ -936,9 +934,7 @@ def get_router(
         settings: Settings = Depends(get_settings),
         db_factory: Callable = Depends(get_database_session_factory),
         api_key: str | None = Depends(get_api_key_websocket),
-        decoded_access_token: dict | None = Depends(
-            get_decoded_access_token_websocket
-        ),
+        decoded_access_token: dict | None = Depends(get_decoded_access_token_websocket),
     ):
         root_tree = websocket.app.state.root_tree
         websocket.state.metrics = collections.defaultdict(

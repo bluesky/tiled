@@ -1,6 +1,6 @@
 from abc import abstractmethod
 from collections.abc import Mapping
-from typing import Any, Literal, Protocol, Union
+from typing import Any, Literal, Protocol
 
 import dask.dataframe
 import pandas
@@ -110,9 +110,7 @@ class TableAdapter(BaseAdapter, Protocol):
         pass
 
     @abstractmethod
-    def read(
-        self, fields: list[str]
-    ) -> dask.dataframe.DataFrame | pandas.DataFrame:
+    def read(self, fields: list[str]) -> dask.dataframe.DataFrame | pandas.DataFrame:
         pass
 
     @abstractmethod
@@ -136,12 +134,12 @@ class BytesAdapter(BaseAdapter, Protocol):
         pass
 
 
-AnyAdapter = Union[
-    ArrayAdapter,
-    AwkwardAdapter,
-    BytesAdapter,
-    ContainerAdapter,
-    RaggedAdapter,
-    SparseAdapter,
-    TableAdapter,
-]
+AnyAdapter = (
+    ArrayAdapter
+    | AwkwardAdapter
+    | BytesAdapter
+    | ContainerAdapter
+    | RaggedAdapter
+    | SparseAdapter
+    | TableAdapter
+)

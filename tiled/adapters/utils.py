@@ -102,8 +102,8 @@ class IncompatibleShapeError(ShapeMismatchError):
 
 
 def force_reshape(
-    arr: np.array | dask.array.Array, desired_shape: tuple[int, ...]
-) -> np.array | dask.array.Array:
+    arr: np.ndarray | dask.array.Array, desired_shape: tuple[int, ...]
+) -> np.ndarray | dask.array.Array:
     """Reshape a numpy or dask array to match the desired shape, if possible.
 
     Parameters

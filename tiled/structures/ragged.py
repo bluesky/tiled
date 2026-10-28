@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import NewType, Self, Union, cast, runtime_checkable
+from typing import NewType, Self, cast, runtime_checkable
 
 import awkward
 import numpy
@@ -14,9 +14,9 @@ from ..type_aliases import JSON
 from .array import BuiltinDtype, StructDtype
 from .root import Structure
 
-RaggedCompatibleType = Union[
-    ragged.array, awkward.Array, numpy.ndarray, SupportsDLPack, Iterable
-]
+RaggedCompatibleType = (
+    ragged.array | awkward.Array | numpy.ndarray | SupportsDLPack | Iterable
+)
 CanonicalRaggedArray = NewType("CanonicalRaggedArray", ragged.array)
 
 

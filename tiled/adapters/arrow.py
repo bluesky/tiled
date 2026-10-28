@@ -204,7 +204,7 @@ class ArrowAdapter(Adapter[TableStructure]):
     def write_partition(
         self,
         partition: int,
-        data: list[pyarrow.record_batch] | pyarrow.record_batch | pandas.DataFrame,
+        data: list[pyarrow.RecordBatch] | pyarrow.RecordBatch | pandas.DataFrame,
     ) -> None:
         """Write the data into a specific partition as arrow format
 
@@ -212,7 +212,7 @@ class ArrowAdapter(Adapter[TableStructure]):
         ----------
         partition : int
             index of partition to be written.
-        data : Union[List[pyarrow.record_batch], pyarrow.record_batch, pandas.DataFrame]
+        data : Union[List[pyarrow.RecordBatch], pyarrow.RecordBatch, pandas.DataFrame]
             data to write into arrow file.
         """
         if isinstance(data, pandas.DataFrame):
@@ -234,7 +234,7 @@ class ArrowAdapter(Adapter[TableStructure]):
 
     def write(
         self,
-        data: list[pyarrow.record_batch] | pyarrow.record_batch | pandas.DataFrame,
+        data: list[pyarrow.RecordBatch] | pyarrow.RecordBatch | pandas.DataFrame,
     ) -> None:
         """
         "Function to write the data as arrow format."

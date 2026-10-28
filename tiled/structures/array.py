@@ -13,7 +13,7 @@ from tiled.structures.root import Structure
 from ..type_aliases import Chunks
 
 # from dtype.descr
-FieldDescr = Union[tuple[str, str], tuple[str, str, tuple[int, ...]]]
+FieldDescr = tuple[str, str] | tuple[str, str, tuple[int, ...]]
 NumpyDescr = list[FieldDescr]
 
 

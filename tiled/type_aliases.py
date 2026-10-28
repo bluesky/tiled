@@ -4,16 +4,13 @@ from typing import (
     Annotated,
     Any,
     TypedDict,
-    Union,
 )
 
 from pydantic import AfterValidator
 
 from .utils import import_object
 
-JSON_ITEM = Union[
-    str, int, float, Mapping[str, "JSON_ITEM"], Sequence["JSON_ITEM"], None
-]
+JSON_ITEM = str | int | float | Mapping[str, "JSON_ITEM"] | Sequence["JSON_ITEM"] | None
 JSON = Mapping[str, JSON_ITEM]
 
 AccessTags = frozenset[str]
