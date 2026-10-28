@@ -3,6 +3,7 @@ Generate the 'links' section of the response JSON.
 
 The links vary by structure family.
 """
+
 from .structures.core import StructureFamily
 
 

@@ -478,9 +478,9 @@ class Config(BaseSettings):
                     list(self.webhooks.secret_keys) if self.webhooks else None
                 )
             if tree.tree_type is from_uri:
-                tree.args[
-                    "create_mount_nodes_if_not_exist"
-                ] = self.create_mount_nodes_if_not_exist
+                tree.args["create_mount_nodes_if_not_exist"] = (
+                    self.create_mount_nodes_if_not_exist
+                )
         return self
 
     @field_validator("uvicorn")

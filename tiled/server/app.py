@@ -692,6 +692,7 @@ def build_app(
             from ..authn_database.core import (
                 ALL_REVISIONS,
                 REQUIRED_REVISION,
+                initialize_authn_database,
                 initialize_database,
                 make_admin_by_identity,
                 purge_expired,
@@ -718,24 +719,13 @@ def build_app(
                     )
                 except UninitializedDatabase:
                     if settings.database_init_if_not_exists:
-                        # The alembic stamping can only be does synchronously.
-                        # The cleanest option available is to start a subprocess
-                        # because SQLite is allergic to threads.
-                        import subprocess
-
-                        # TODO Check if catalog exists.
-                        subprocess.run(
-                            [
-                                sys.executable,
-                                "-m",
-                                "tiled",
-                                "admin",
-                                "initialize-database",
-                                str(engine.url),
-                            ],
-                            capture_output=True,
-                            check=True,
+                        # This is a blocking call (alembic drives its own event
+                        # loop), so keep it off the event loop thread.
+                        await asyncio.to_thread(
+                            initialize_authn_database,
+                            engine.url.render_as_string(hide_password=False),
                         )
+                        logger.info(f"Initialized new database at {redacted_url}.")
                     else:
                         print(
                             dedent(
@@ -808,9 +798,7 @@ def build_app(
                 # The scope set the catalog database enforces should match the
                 # ScopeName enum this server is running. A disagreement here
                 # points at a schema that was changed outside of a migration.
-                enforced_scopes = (
-                    await app.state.access_policy.access_tags_parser.get_enforced_scopes()
-                )
+                enforced_scopes = await app.state.access_policy.access_tags_parser.get_enforced_scopes()
                 # An empty set means the constraint is missing or could not be
                 # read. The catalog then stores any value as a scope, so this
                 # is reported on its own rather than compared: every scope

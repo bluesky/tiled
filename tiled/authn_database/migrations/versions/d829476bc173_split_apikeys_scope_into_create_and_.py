@@ -5,6 +5,7 @@ Revises: 27e069ba3bf5
 Create Date: 2025-12-08 17:09:18.062287
 
 """
+
 from alembic import op
 from sqlalchemy.orm import lazyload
 from sqlalchemy.orm.session import Session

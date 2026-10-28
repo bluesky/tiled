@@ -24,8 +24,8 @@ from typing import (
 from tiled.utils import UnsafeIdentifier
 
 if TYPE_CHECKING:
-    from .ragged import RaggedAdapter
     from .awkward import AwkwardAdapter
+    from .ragged import RaggedAdapter
 
 import adbc_driver_manager
 import numpy
@@ -689,7 +689,7 @@ def arrow_field_to_pg_type(field: Union[pyarrow.Field, pyarrow.DataType]) -> str
     """
 
     def _resolve_type(
-        arrow_type: Union[pyarrow.Field, pyarrow.DataType]
+        arrow_type: Union[pyarrow.Field, pyarrow.DataType],
     ) -> Union[pyarrow.Field, pyarrow.DataType, str]:
         """Internal helper to resolve type, handling nested cases."""
         # Handle list types
@@ -827,7 +827,7 @@ def arrow_field_to_duckdb_type(field: Union[pyarrow.Field, pyarrow.DataType]) ->
     """
 
     def _resolve_type(
-        arrow_type: Union[pyarrow.Field, pyarrow.DataType]
+        arrow_type: Union[pyarrow.Field, pyarrow.DataType],
     ) -> Union[pyarrow.Field, pyarrow.DataType, str]:
         """Internal helper to resolve type, handling nested cases."""
         # Handle decimal types with custom precision/scale

@@ -18,7 +18,7 @@ from urllib.parse import urljoin, urlparse
 import awkward
 import boto3
 import dask.dataframe
-import httpx
+import httpx2 as httpx
 import numpy
 import pandas
 import pandas.testing

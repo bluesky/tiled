@@ -40,7 +40,7 @@ MIN_CHUNK_SIZE = 1  # Minimum chunk size along the concatenation axis
 
 
 def parse_hdf5_tree(
-    tree: Union[h5py.File, h5py.Group, h5py.Dataset]
+    tree: Union[h5py.File, h5py.Group, h5py.Dataset],
 ) -> Union[dict[str, Union[Any, Sentinel]], Sentinel]:
     """Parse an HDF5 file or group into a nested dictionary structure
 
@@ -81,9 +81,20 @@ def get_hdf5_attrs(
     ) as node:
         d = dict(getattr(node, "attrs", {}))
         for k, v in d.items():
-            # Convert any bytes to str.
-            if isinstance(v, bytes):
-                d[k] = v.decode()
+            if isinstance(v, h5py.Empty):
+                # An attribute with a null dataspace has no value.
+                d[k] = None
+            elif isinstance(v, bytes):
+                # Convert any bytes to str. HDF5 strings are only tagged ASCII
+                # or UTF-8, but older instrument software often wrote
+                # Windows-1252 or Latin-1. Latin-1 decodes any bytes, so it
+                # comes last.
+                for encoding in ("utf-8", "cp1252", "latin-1"):
+                    try:
+                        d[k] = v.decode(encoding)
+                        break
+                    except UnicodeDecodeError:
+                        pass
     return d
 
 
@@ -122,7 +133,7 @@ class h5open(h5py.File):  # type: ignore
     def __exit__(self, exc_type, exc_value, exc_tb) -> None:  # type: ignore
         super().__exit__(exc_type, exc_value, exc_tb)
 
-        if exc_type == KeyError:
+        if exc_type is KeyError:
             if "file" in str(exc_value):
                 # External link is broken
                 raise BrokenLink(exc_value.args[0]) from exc_value
@@ -179,7 +190,7 @@ class HDF5ArrayAdapter(ArrayAdapter):
                 return ds[slice]
 
         def _get_hdf5_specs(
-            fpath: Union[str, Path]
+            fpath: Union[str, Path],
         ) -> Tuple[Tuple[int, ...], Tuple[int, ...], numpy.dtype]:
             with h5open(
                 fpath, dataset, swmr=swmr, libver=libver, locking=locking

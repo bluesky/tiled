@@ -1,7 +1,5 @@
 import asyncio
 import string
-import subprocess
-import sys
 from contextlib import nullcontext
 
 import numpy
@@ -106,22 +104,11 @@ async def client(request, tmpdir_module):
             raise pytest.skip("No TILED_TEST_POSTGRESQL_URI configured")
         # Create temporary database.
         async with temp_postgres(TILED_TEST_POSTGRESQL_URI) as uri_with_database_name:
-            subprocess.run(
-                [
-                    sys.executable,
-                    "-m",
-                    "tiled",
-                    "catalog",
-                    "init",
-                    uri_with_database_name,
-                ],
-                check=True,
-                capture_output=True,
-            )
             tree = from_uri(
                 uri_with_database_name,
                 writable_storage=str(tmpdir_module / "postgresql"),
                 metadata={"backend": request.param},
+                init_if_not_exists=True,
             )
             app = build_app(tree)
             with Context.from_app(app) as context:

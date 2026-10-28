@@ -6,7 +6,7 @@ from urllib.parse import parse_qs, urlparse
 
 import dask
 import dask.array
-import httpx
+import httpx2 as httpx
 import numpy
 from numpy.typing import NDArray
 
@@ -283,7 +283,7 @@ class _DaskArrayClient(BaseClient):
         )
 
         # Build a client-side dask array whose chunks correspond to subsplits of the slice
-        name = "remote-dask-array-" f"{self.uri}"
+        name = f"remote-dask-array-{self.uri}"
         dask_tasks = {
             (name,) + indx: (self._get_slice, slc)
             for indx, (slc) in indexed_slices.items()

@@ -346,8 +346,8 @@ class FileSequenceAdapter(Adapter[ArrayStructure]):
             # coordinates; `_read_selected` reshapes each stored frame to that
             # shape before applying `frame_slice`. Reducing per-file and reshaping
             # the file axis afterward commute, so the result matches a full read.
-            frame_slice = expanded[len(stacking_grid_shape) :]  # noqa: E203
-            struct_frame_shape = struct_shape[len(stacking_grid_shape) :]  # noqa: E203
+            frame_slice = expanded[len(stacking_grid_shape) :]
+            struct_frame_shape = struct_shape[len(stacking_grid_shape) :]
             reduced = self._read_selected(
                 file_indx_list, frame_slice, struct_frame_shape
             )

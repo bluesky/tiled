@@ -28,12 +28,12 @@ tiled serve config config.yml
 import io
 
 import h5py
-import httpx
+import httpx2 as httpx
 import numpy as np
 
 from tiled.adapters.hdf5 import HDF5Adapter
 
-EXAMPLE_URL = "https://github.com/nexusformat/exampledata/blob/master/APS/EPICSareaDetector/hdf5/AgBehenate_228.hdf5?raw=true"  # noqa
+EXAMPLE_URL = "https://github.com/nexusformat/exampledata/blob/master/APS/EPICSareaDetector/hdf5/AgBehenate_228.hdf5?raw=true"
 
 rng = np.random.default_rng(42)
 

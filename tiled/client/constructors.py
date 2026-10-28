@@ -6,7 +6,7 @@ import warnings
 from typing import Optional, Union
 from urllib.parse import parse_qs, urlparse
 
-import httpx
+import httpx2 as httpx
 
 from ..utils import import_object, prepend_to_sys_path
 from .container import DEFAULT_STRUCTURE_CLIENT_DISPATCH, Container
@@ -29,6 +29,7 @@ def from_uri(
     timeout=None,
     include_data_sources=False,
     auth: Optional[httpx.Auth] = None,
+    cookies: Optional[httpx.Cookies | dict] = None,
     max_connections: int = MAX_CONCURRENT_CONNECTIONS,
     show_progress=None,
     trust_env=True,
@@ -68,6 +69,8 @@ def from_uri(
         Default False. If True, fetch information about underlying data sources.
     auth : httpx.Auth, optional
         Custom authentication handler.
+    cookies : httpx.Cookies, optional
+        Cookies to send.
     max_connections : int, optional
         If provided, use this value for the maximum number of concurrent
         connections in the HTTP client.
@@ -97,6 +100,8 @@ For non-interactive authentication, use an API key or add custom auth
     context, node_path_parts = Context.from_any_uri(
         uri,
         api_key=api_key,
+        auth=auth,
+        cookies=cookies,
         cache=cache,
         headers=headers,
         timeout=timeout,
@@ -105,14 +110,6 @@ For non-interactive authentication, use an API key or add custom auth
         show_progress=show_progress,
         trust_env=trust_env,
     )
-    if auth is not None:
-        if isinstance(auth, httpx.Auth):
-            context.http_client.auth = auth
-            context.has_external_auth = True
-        else:
-            raise ValueError(
-                f"Tiled client auth parameter has been set with {type(auth)} httpx.Auth or None allowed"
-            )
     return from_context(
         context,
         structure_clients=structure_clients,

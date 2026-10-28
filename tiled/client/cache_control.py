@@ -2,13 +2,14 @@
 Adapted from https://raw.githubusercontent.com/obendidi/httpx-cache/main/httpx_cache/transport.py
 in accordance with its BSD-3 license
 """
+
 import logging
 import typing as tp
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 
 import attr
-import httpx
+import httpx2 as httpx
 
 logger = logging.getLogger(__name__)
 

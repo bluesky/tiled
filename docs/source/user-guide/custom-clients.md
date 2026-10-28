@@ -49,7 +49,7 @@ class XDIDatasetClient(tiled.client.dataframe.DataFrameClient):
 
     def __repr__(self):
         md = self.metadata["XDI"]
-        return f'<{x.item["id"]} {md["Element"]["Symbol"]} {md["Element"]["Edge"]}>'
+        return f"<{x.item['id']} {md['Element']['Symbol']} {md['Element']['Edge']}>"
 ```
 
 ```{note}
