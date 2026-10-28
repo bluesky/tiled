@@ -281,7 +281,10 @@ async def test_create_conflict_adoption(aclient, monkeypatch):
         return await real_send(draft)
 
     monkeypatch.setattr(aclient.context, "send", flaky_send)
-    stamina.set_active(True)  # deactivated in conftest; the retry loop needs it
+    # Retries are deactivated in conftest; the adoption flow needs them.
+    # Testing mode disables the backoff waits.
+    stamina.set_active(True)
+    stamina.set_testing(True, attempts=3)
     try:
         # The lost attempt created the node; the retry's 409 Conflict refers
         # to it, and it matches the request, so it is adopted.
@@ -296,6 +299,7 @@ async def test_create_conflict_adoption(aclient, monkeypatch):
             await aclient.create_container("adopted", metadata={"other": 2})
         assert exc_info.value.response.status_code == httpx.codes.CONFLICT
     finally:
+        stamina.set_testing(False)
         stamina.set_active(False)
 
 
