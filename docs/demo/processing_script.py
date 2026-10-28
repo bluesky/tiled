@@ -23,10 +23,13 @@ import argparse
 
 import numpy
 import pandas
+
 from tiled.client import from_uri
 
 
-def subtract_background(measured: numpy.ndarray, background: numpy.ndarray) -> numpy.ndarray:
+def subtract_background(
+    measured: numpy.ndarray, background: numpy.ndarray
+) -> numpy.ndarray:
     """Remove the shared background frame from every measured frame."""
     return measured - background[None, :, :]
 
