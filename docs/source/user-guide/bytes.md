@@ -56,7 +56,7 @@ buffer; no filesystem I/O is performed:
 ```python
 buffers = {}
 keys = c["my_blob"].raw_export(buffers)
-payload = buffers[keys[0]].read()   # single-asset node
+payload = buffers[keys[0]].read()  # single-asset node
 ```
 
 For a multi-asset node, the keys are `<asset_id>/<filename>` and the assets

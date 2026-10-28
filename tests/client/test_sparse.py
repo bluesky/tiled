@@ -15,7 +15,7 @@ s = sparse.COO(a)
 blocks = {}
 for i in range(2):
     for j in range(2):
-        chunk = s[i * N : (1 + i) * N, j * M : (1 + j) * M]  # noqa: E203
+        chunk = s[i * N : (1 + i) * N, j * M : (1 + j) * M]
         # Below we test the COOAdapter.from_global_ref constructor, so
         # coordinates should be in the reference frame of the whole array.
         coords = chunk.coords + [[i * N], [j * M]]

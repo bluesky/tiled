@@ -205,7 +205,8 @@ class Transport(httpx.BaseTransport):
                                     )
 
                         response.stream = ByteStreamWrapper(
-                            stream=response.stream, callback=_callback  # type: ignore
+                            stream=response.stream,  # type: ignore
+                            callback=_callback,
                         )
         if __debug__:
             collect_response(response)

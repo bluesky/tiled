@@ -10,7 +10,7 @@ from tiled.adapters.core import A, S
 from ..structures.data_source import DataSource
 
 # for back-compat
-from ..utils import IndexersMixin  # noqa: F401
+from ..utils import IndexersMixin
 from ..utils import node_repr as tree_repr  # noqa: F401
 
 __all__ = [

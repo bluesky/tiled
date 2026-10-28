@@ -133,17 +133,17 @@ def pagination_links(base_url, route, path_parts, page, next_cursor, length_hint
         "next": None,
     }
     if next_cursor is not None:
-        links[
-            "next"
-        ] = f"{base_url}{route}/{path_str}?page[cursor]={next_cursor}&page[limit]={page.limit}"
+        links["next"] = (
+            f"{base_url}{route}/{path_str}?page[cursor]={next_cursor}&page[limit]={page.limit}"
+        )
     elif (
         (page.cursor is None)
         and (page.offset is not None)
         and (page.offset + page.limit < length_hint)
     ):
-        links[
-            "next"
-        ] = f"{base_url}{route}/{path_str}?page[offset]={page.offset + page.limit}&page[limit]={page.limit}"
+        links["next"] = (
+            f"{base_url}{route}/{path_str}?page[offset]={page.offset + page.limit}&page[limit]={page.limit}"
+        )
     return links
 
 
@@ -266,7 +266,7 @@ async def construct_entries_response(
                     # Non-default sort: use offset pagination
                     keys = await tree.keys_range(page.offset, page.limit)
         else:
-            keys = tree.keys()[page.offset : page.offset + page.limit]  # noqa: E203
+            keys = tree.keys()[page.offset : page.offset + page.limit]
         items = [(key, None) for key in keys]
     elif fields == [schemas.EntryFields.count]:
         # Only count is requested, so we do not need to pull any items.
@@ -285,7 +285,7 @@ async def construct_entries_response(
                     # Non-default sort: use offset pagination
                     items = await tree.items_range(page.offset, page.limit)
         else:
-            items = tree.items()[page.offset : page.offset + page.limit]  # noqa: E203
+            items = tree.items()[page.offset : page.offset + page.limit]
 
     # Construct pagination links
     links = pagination_links(base_url, route, path_parts, page, next_cursor, count)

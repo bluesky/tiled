@@ -226,10 +226,9 @@ class _DaskArrayClient(CommonArrayClient, BaseClient):
 
         # The response is expected to be large; build a client-side dask
         # array whose chunks correspond to the recipe's sub-fetches.
-        name = "remote-dask-array-" f"{self.uri}"
+        name = f"remote-dask-array-{self.uri}"
         dask_tasks = {
-            (name,)
-            + index: (
+            (name,) + index: (
                 self._fetch_one,
                 draft,
                 recipe.dtype,
