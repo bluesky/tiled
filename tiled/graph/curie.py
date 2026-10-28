@@ -21,7 +21,7 @@ def split_curie(term: str) -> Optional[tuple[str, str]]:
     return prefix, local
 
 
-def expand_term(term: str, namespaces: dict[str, str]) -> str:
+def expand_term(term: str, namespaces) -> str:
     parsed = split_curie(term)
     if parsed is None:
         return term
@@ -32,10 +32,49 @@ def expand_term(term: str, namespaces: dict[str, str]) -> str:
     return f"{namespace}{local}"
 
 
-def compact_term(term: str, namespaces: dict[str, str]) -> str:
-    for prefix, namespace in sorted(
-        namespaces.items(), key=lambda item: len(item[1]), reverse=True
-    ):
+class Namespaces:
+    """
+    A prefix -> URI registry with the compaction order computed once.
+
+    Compacting a term tries the longest namespace URI first, so the registry
+    must be sorted by URI length. Sorting on every `compact_term` call is
+    wasteful when a single request compacts hundreds of keys and predicates
+    against the same registry; this object sorts once and is reused for the
+    whole request. It behaves like the plain `dict` it wraps for lookups.
+    """
+
+    __slots__ = ("mapping", "by_length")
+
+    def __init__(self, mapping: dict[str, str]):
+        self.mapping = mapping
+        self.by_length = sorted(
+            mapping.items(), key=lambda item: len(item[1]), reverse=True
+        )
+
+    def get(self, prefix: str, default=None):
+        return self.mapping.get(prefix, default)
+
+    def items(self):
+        return self.mapping.items()
+
+    def __iter__(self):
+        return iter(self.mapping)
+
+    def __len__(self):
+        return len(self.mapping)
+
+    def __contains__(self, prefix) -> bool:
+        return prefix in self.mapping
+
+
+def _by_length(namespaces) -> list[tuple[str, str]]:
+    if isinstance(namespaces, Namespaces):
+        return namespaces.by_length
+    return sorted(namespaces.items(), key=lambda item: len(item[1]), reverse=True)
+
+
+def compact_term(term: str, namespaces) -> str:
+    for prefix, namespace in _by_length(namespaces):
         if term.startswith(namespace):
             start = len(namespace)
             local = term[start:]
@@ -44,7 +83,7 @@ def compact_term(term: str, namespaces: dict[str, str]) -> str:
     return term
 
 
-def expand_value(value, namespaces: dict[str, str]):
+def expand_value(value, namespaces):
     if isinstance(value, dict):
         return {
             expand_term(key, namespaces): expand_value(inner, namespaces)
@@ -55,7 +94,7 @@ def expand_value(value, namespaces: dict[str, str]):
     return value
 
 
-def compact_value(value, namespaces: dict[str, str]):
+def compact_value(value, namespaces):
     if isinstance(value, dict):
         return {
             compact_term(key, namespaces): compact_value(inner, namespaces)
@@ -64,31 +103,3 @@ def compact_value(value, namespaces: dict[str, str]):
     if isinstance(value, list):
         return [compact_value(item, namespaces) for item in value]
     return value
-
-
-def collect_used_prefixes_from_term(term: str, namespaces: dict[str, str]) -> set[str]:
-    used: set[str] = set()
-
-    parsed = split_curie(term)
-    if parsed is not None:
-        prefix, _ = parsed
-        if prefix in namespaces:
-            used.add(prefix)
-
-    for prefix, namespace in namespaces.items():
-        if term.startswith(namespace):
-            used.add(prefix)
-    return used
-
-
-def collect_used_prefixes_from_value(value, namespaces: dict[str, str]) -> set[str]:
-    used: set[str] = set()
-    if isinstance(value, dict):
-        for key, inner in value.items():
-            if isinstance(key, str):
-                used.update(collect_used_prefixes_from_term(key, namespaces))
-            used.update(collect_used_prefixes_from_value(inner, namespaces))
-    elif isinstance(value, list):
-        for item in value:
-            used.update(collect_used_prefixes_from_value(item, namespaces))
-    return used
