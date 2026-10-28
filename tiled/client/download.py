@@ -1,5 +1,7 @@
 "Download utilities implemented using httpx and rich progress bars, with parallelism."
 
+from __future__ import annotations
+
 import io
 import re
 import signal
