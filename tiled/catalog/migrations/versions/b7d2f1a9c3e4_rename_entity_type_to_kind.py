@@ -1,7 +1,7 @@
 """Rename entities.entity_type to entities.kind
 
 Revision ID: b7d2f1a9c3e4
-Revises: 3e87cbeb195b
+Revises: 917dbbcfc4b1
 Create Date: 2026-10-01 00:00:00.000000
 
 """
@@ -10,7 +10,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = "b7d2f1a9c3e4"
-down_revision = "3e87cbeb195b"
+down_revision = "917dbbcfc4b1"
 branch_labels = None
 depends_on = None
 

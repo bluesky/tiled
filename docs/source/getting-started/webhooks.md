@@ -92,9 +92,9 @@ Registering on the root (`""`) means we watch the entire catalog.  Omitting
 
 ```{code-cell} ipython3
 import json
-import httpx
+import httpx2
 
-resp = httpx.post(
+resp = httpx2.post(
     f"http://localhost:{server.port}/api/v1/webhooks/target/",
     headers={
         "Authorization": f"Apikey {server.api_key}",
@@ -158,10 +158,9 @@ the payload was not tampered with.
 ```python
 import hashlib, hmac
 
+
 def verify(body: bytes, secret: str, header: str) -> bool:
-    expected = "sha256=" + hmac.new(
-        secret.encode(), body, hashlib.sha256
-    ).hexdigest()
+    expected = "sha256=" + hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
     return hmac.compare_digest(expected, header)
 ```
 
@@ -170,6 +169,7 @@ useful for deduplicating retried deliveries:
 
 ```python
 seen = set()
+
 
 def handle(request):
     event_id = request.headers["X-Tiled-Event-ID"]
@@ -186,7 +186,7 @@ see whether a delivery succeeded, how many retries it took, and what HTTP
 status code your receiver returned.
 
 ```{code-cell} ipython3
-resp = httpx.get(
+resp = httpx2.get(
     f"http://localhost:{server.port}/api/v1/webhooks/history/{webhook_id}",
     headers={"Authorization": f"Apikey {server.api_key}"},
 )

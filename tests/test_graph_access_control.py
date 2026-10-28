@@ -227,9 +227,9 @@ async def _insert_node(store, node_id, access_tags, key="node", parent=0):
             )
         )
         access_tag_ids = await _access_tag_ids(conn, access_tags)
-        assert len(access_tag_ids) == len(
-            set(access_tags)
-        ), f"undefined tags among {access_tags}"
+        assert len(access_tag_ids) == len(set(access_tags)), (
+            f"undefined tags among {access_tags}"
+        )
         if access_tag_ids:
             await conn.execute(
                 sa_insert(_node_access_tags),

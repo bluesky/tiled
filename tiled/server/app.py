@@ -33,6 +33,7 @@ from starlette.status import (
     HTTP_403_FORBIDDEN,
     HTTP_404_NOT_FOUND,
     HTTP_409_CONFLICT,
+    HTTP_410_GONE,
     HTTP_422_UNPROCESSABLE_CONTENT,
     HTTP_500_INTERNAL_SERVER_ERROR,
 )
@@ -59,7 +60,13 @@ from ..media_type_registration import (
 )
 from ..query_registration import QueryRegistry, default_query_registry
 from ..type_aliases import AppTask, TaskMap
-from ..utils import SHARE_TILED_PATH, Conflicts, UnsafeIdentifier, UnsupportedQueryType
+from ..utils import (
+    SHARE_TILED_PATH,
+    BrokenLink,
+    Conflicts,
+    UnsafeIdentifier,
+    UnsupportedQueryType,
+)
 from ..validation_registration import ValidationRegistry, default_validation_registry
 from ._backcompat import raw_python_tiled_client_version
 from .authentication import move_api_key
@@ -405,6 +412,13 @@ def build_app(
             content={"detail": exc.args[0]},
         )
 
+    @app.exception_handler(BrokenLink)
+    async def broken_link_exception_handler(request: Request, exc: BrokenLink):
+        return JSONResponse(
+            status_code=HTTP_410_GONE,
+            content={"detail": exc.args[0]},
+        )
+
     @app.exception_handler(UnsafeIdentifier)
     async def unsafe_identifier_exception_handler(
         request: Request, exc: UnsafeIdentifier
@@ -676,6 +690,7 @@ def build_app(
             from ..authn_database.core import (
                 ALL_REVISIONS,
                 REQUIRED_REVISION,
+                initialize_authn_database,
                 initialize_database,
                 make_admin_by_identity,
                 purge_expired,
@@ -697,24 +712,13 @@ def build_app(
                     await check_database(engine, REQUIRED_REVISION, ALL_REVISIONS)
                 except UninitializedDatabase:
                     if settings.database_init_if_not_exists:
-                        # The alembic stamping can only be does synchronously.
-                        # The cleanest option available is to start a subprocess
-                        # because SQLite is allergic to threads.
-                        import subprocess
-
-                        # TODO Check if catalog exists.
-                        subprocess.run(
-                            [
-                                sys.executable,
-                                "-m",
-                                "tiled",
-                                "admin",
-                                "initialize-database",
-                                str(engine.url),
-                            ],
-                            capture_output=True,
-                            check=True,
+                        # This is a blocking call (alembic drives its own event
+                        # loop), so keep it off the event loop thread.
+                        await asyncio.to_thread(
+                            initialize_authn_database,
+                            engine.url.render_as_string(hide_password=False),
                         )
+                        logger.info(f"Initialized new database at {redacted_url}.")
                     else:
                         print(
                             dedent(
@@ -779,9 +783,7 @@ def build_app(
                 # The scope set the catalog database enforces should match the
                 # ScopeName enum this server is running. A disagreement here
                 # points at a schema that was changed outside of a migration.
-                enforced_scopes = (
-                    await app.state.access_policy.access_tags_parser.get_enforced_scopes()
-                )
+                enforced_scopes = await app.state.access_policy.access_tags_parser.get_enforced_scopes()
                 # An empty set means the constraint is missing or could not be
                 # read. The catalog then stores any value as a scope, so this
                 # is reported on its own rather than compared: every scope
@@ -841,23 +843,39 @@ def build_app(
             async def purge_expired_sessions_and_api_keys():
                 PURGE_INTERVAL = 600  # seconds
                 while True:
-                    async with AsyncSession(
-                        engine, autoflush=False, expire_on_commit=False
-                    ) as db_session:
-                        num_expired_sessions = await purge_expired(
-                            db_session, orm.Session
-                        )
-                        if num_expired_sessions:
-                            logger.info(
-                                f"Purged {num_expired_sessions} expired Sessions from the database."
+                    try:
+                        async with AsyncSession(
+                            engine, autoflush=False, expire_on_commit=False
+                        ) as db_session:
+                            # Purge pending sessions first: they reference sessions,
+                            # so clearing expired ones first lets the sessions they point to be deleted in turn.
+                            num_expired_pending_sessions = await purge_expired(
+                                db_session, orm.PendingSession
                             )
-                        num_expired_api_keys = await purge_expired(
-                            db_session, orm.APIKey
-                        )
-                        if num_expired_api_keys:
-                            logger.info(
-                                f"Purged {num_expired_api_keys} expired API keys from the database."
+                            if num_expired_pending_sessions:
+                                logger.info(
+                                    f"Purged {num_expired_pending_sessions} "
+                                    "expired PendingSessions from the database."
+                                )
+                            num_expired_sessions = await purge_expired(
+                                db_session, orm.Session
                             )
+                            if num_expired_sessions:
+                                logger.info(
+                                    f"Purged {num_expired_sessions} expired Sessions from the database."
+                                )
+                            num_expired_api_keys = await purge_expired(
+                                db_session, orm.APIKey
+                            )
+                            if num_expired_api_keys:
+                                logger.info(
+                                    f"Purged {num_expired_api_keys} expired API keys from the database."
+                                )
+                    except Exception:
+                        logger.warning(
+                            "Failed to purge expired Sessions and API keys from the database.",
+                            exc_info=True,
+                        )
                     await asyncio.sleep(PURGE_INTERVAL)
 
             app.state.tasks.append(
@@ -869,13 +887,21 @@ def build_app(
         for task in tasks["shutdown"]:
             await task()
 
+        # Stop background tasks, and wait for them to finish, before closing the
+        # connection pool they may be using. If the pool were closed first, a task
+        # cancelled mid-query could fail while cleaning up its session, and that
+        # failure (raised in place of the CancelledError) could be caught by the
+        # task's error handling, leaving it running and blocking shutdown.
+        running_tasks = getattr(app.state, "tasks", [])
+        for task in running_tasks:
+            task.cancel()
+        await asyncio.gather(*running_tasks, return_exceptions=True)
+
         settings: Settings = app.dependency_overrides[get_settings]()
         if settings.database_settings.uri is not None:
             from .connection_pool import close_database_connection_pool
 
             await close_database_connection_pool(settings.database_settings)
-        for task in getattr(app.state, "tasks", []):
-            task.cancel()
 
     app.add_middleware(
         CompressionMiddleware,

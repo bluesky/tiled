@@ -225,7 +225,7 @@ async def test_metadata_index_is_used(example_data_adapter):
         assert len(results[0]) == 1
         assert expected_index in str(e)
     with record_explanations() as e:
-        results = await a.search(Key("bool") == False).keys_page(limit=5)  # noqa: #712
+        results = await a.search(Key("bool") == False).keys_page(limit=5)  # noqa: E712
         assert len(results[0]) == 1
         assert expected_index in str(e)
     with record_explanations() as e:
@@ -239,7 +239,7 @@ async def test_metadata_index_is_used(example_data_adapter):
         assert len(results[0]) == 1
         assert expected_index in str(e)
     with record_explanations() as e:
-        results = await a.search(Key("nested.bool") == False).keys_page(  # noqa: #712
+        results = await a.search(Key("nested.bool") == False).keys_page(  # noqa: E712
             limit=5
         )
         assert len(results[0]) == 1
@@ -1010,6 +1010,21 @@ def sqlite_adapter_for_hypothesis(tmp_path_factory):
     loop.close()
 
 
+def test_failed_init_does_not_leak_password():
+    # Init fails (nothing listens on port 1); the error must not echo the URI.
+    import traceback
+
+    from tiled.catalog import from_uri
+
+    password = "leaky-secret"
+    uri = f"postgresql+asyncpg://user:{password}@127.0.0.1:1/db"
+
+    with pytest.raises(Exception) as excinfo:
+        from_uri(uri, init_if_not_exists=True)
+
+    assert password not in "".join(traceback.format_exception(excinfo.value))
+
+
 @pytest.fixture(scope="module")
 def postgresql_adapter_for_hypothesis(tmp_path_factory):
     from tiled.catalog import from_uri
@@ -1110,9 +1125,9 @@ def test_cursor_pagination_completeness(
     if direction == 1:
         assert collected == keys_inserted, "ASC traversal must match insertion order"
     else:
-        assert collected == list(
-            reversed(keys_inserted)
-        ), "DESC traversal must match reverse insertion order"
+        assert collected == list(reversed(keys_inserted)), (
+            "DESC traversal must match reverse insertion order"
+        )
 
 
 @pytest.mark.asyncio

@@ -2,9 +2,10 @@
 Adapted from https://raw.githubusercontent.com/obendidi/httpx-cache/main/httpx_cache/transport.py
 in accordance with its BSD-3 license
 """
+
 import typing as tp
 
-import httpx
+import httpx2 as httpx
 
 from .cache import Cache
 from .cache_control import ByteStreamWrapper, CacheControl
@@ -26,7 +27,7 @@ def _proxy_mounts_from_env(
     builds itself, which is otherwise skipped when a custom transport is
     supplied.
     """
-    from httpx._utils import URLPattern, get_environment_proxies
+    from httpx2._utils import URLPattern, get_environment_proxies
 
     mounts: tp.Dict[tp.Any, tp.Optional[httpx.BaseTransport]] = {}
     for key, value in get_environment_proxies().items():
@@ -204,7 +205,8 @@ class Transport(httpx.BaseTransport):
                                     )
 
                         response.stream = ByteStreamWrapper(
-                            stream=response.stream, callback=_callback  # type: ignore
+                            stream=response.stream,  # type: ignore
+                            callback=_callback,
                         )
         if __debug__:
             collect_response(response)

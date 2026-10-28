@@ -16,9 +16,7 @@ class CompositeClient(Container):
     def get_contents(self, maxlen=None, include_metadata=False):
         result = {}
         next_page_url = f"{self.item['links']['search']}"
-        while (next_page_url is not None) or (
-            maxlen is not None and len(result) < maxlen
-        ):
+        while (next_page_url is not None) and (maxlen is None or len(result) < maxlen):
             for attempt in retry_context():
                 with attempt:
                     content = handle_error(
@@ -278,7 +276,7 @@ class CompositeClient(Container):
         for var_name, arr in data_vars.items():
             if is_dim0_consistent:
                 dims = (dim0 or "dim0",) + tuple(
-                    f"{var_name}_dim{i+1}" for i in range(len(arr.shape) - 1)
+                    f"{var_name}_dim{i + 1}" for i in range(len(arr.shape) - 1)
                 )
             else:
                 dims = tuple(f"{var_name}_dim{i}" for i in range(len(arr.shape)))

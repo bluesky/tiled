@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any, Union
 from urllib.parse import parse_qs, urlparse
 
-import httpx
+import httpx2 as httpx
 import numpy as np
 import orjson
 import ragged
