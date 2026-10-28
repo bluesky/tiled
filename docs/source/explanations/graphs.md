@@ -58,8 +58,8 @@ widely-used vocabularies rather than an ad hoc scheme invented per-deployment:
 - [**PROV**](https://www.w3.org/TR/prov-o/) (the W3C provenance ontology)
   defines terms like `wasDerivedFrom`, `wasGeneratedBy`, `used`, `Agent`,
   and `Activity` for describing how one piece of data came from another. A
-  processing pipeline can record `derived_dataset -[prov:wasDerivedFrom]->
-  raw_dataset` and `analysis_workflow -[prov:used]-> raw_dataset` using terms
+  processing pipeline can record `subtracted -[prov:wasDerivedFrom]->
+  measured` and `analysis_workflow -[prov:used]-> measured` using terms
   that provenance-aware tools elsewhere already understand, instead of a
   Tiled-specific `derived_from` metadata field with no agreed-upon meaning.
 - [**RO-Crate**](https://www.researchobject.org/ro-crate/) (and the underlying

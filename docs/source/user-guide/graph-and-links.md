@@ -12,25 +12,27 @@ exploring it interactively in the browser.
 
 ## Enable the graph feature
 
-The graph is available automatically whenever a server is serving a
-catalog-backed tree (see {doc}`example-server-config`)---there is no separate
-configuration flag. A ready-to-run demo can be found in
-`example_configs/graphs/` in the Tiled source repository:
+The graph is available automatically whenever a server is backed by a SQL-based
+catalog tree (see {doc}`example-server-config`) -- there is no separate
+configuration flag. The built-in demo server is the easiest way to try it:
 
 ```
-bash example_configs/graphs/run_demo.sh
+tiled serve demo
 ```
 
-This starts a server, seeds a small catalog of datasets, creates a handful of
-graph entities and links between them (using [PROV](https://www.w3.org/TR/prov-o/)
-and [RO](https://w3id.org/ro/terms/) predicates), then leaves the server
-running.
+This starts a public server, populates a catalog of datasets (a `linked`
+container holding a `measured` image stack and a `background` frame, reduced
+into `subtracted`, `normalized`, and `integrated` datasets plus a tabular
+`summary`, alongside a broader showcase of data structures), and seeds a small
+provenance graph connecting them---using
+[PROV](https://www.w3.org/TR/prov-o/) and [RO](https://w3id.org/ro/terms/)
+predicates, and linking out to data on another Tiled server and to an
+encyclopedic reference for the sample---then leaves the server running.
 
 ```{note}
-The demo config (`example_configs/graphs/graph_example_config.yml`) disables
-anonymous access and uses the single-user API key `secret`. Every request,
-including from the GraphiQL editor below, needs an
-`Authorization: Apikey secret` header.
+The demo is public: anonymous access is read-only, so you can browse the graph
+without credentials. *Writing* data or mutating the graph requires the
+single-user API key (default `secret`), which is printed at startup.
 ```
 
 ## Open the GraphQL editor
@@ -47,10 +49,11 @@ in-browser editor for GraphQL. The same URL also accepts `POST` requests
 programmatically, from `curl` or any HTTP client (see "From the command
 line" below).
 
-Before running any query, add the API key. In GraphiQL there is a small tab
-row at the bottom of the query-editing pane, usually labeled **Variables** /
-**Headers** (sometimes collapsed behind a settings icon). Click **Headers**
-and enter:
+The read-only queries below run without credentials. To *create* or *modify*
+entities and links, send the API key as an `Authorization` header. In GraphiQL
+there is a small tab row at the bottom of the query-editing pane, usually
+labeled **Variables** / **Headers** (sometimes collapsed behind a settings
+icon). Click **Headers** and enter:
 
 ```json
 {
@@ -58,8 +61,9 @@ and enter:
 }
 ```
 
-Without this header, queries will not raise an error---they will simply return
-empty results, because Tiled's access checks fail closed.
+On a server that is *not* public, read queries also require this header;
+without it they will not raise an error---they will simply return empty
+results, because Tiled's access checks fail closed.
 
 ## Query entities and links
 
@@ -99,11 +103,91 @@ query {
   entities(limit: 100, offset: 0) {
     id
     name
-    entityType
+    kind
     uri
     properties
   }
 }
+```
+
+## Trace provenance across the graph
+
+So far, each query has returned a flat list of entities or links. But entities
+and links form a connected graph, and GraphQL lets you walk it. From an entity,
+`outgoingLinks` follows the edges leaving it (and `incomingLinks` the edges
+arriving); each link's `object` is another entity, with its own links. The following
+example demonstrates how to nest these fields and a single query to hop from entity
+to entity, tracing a chain across the graph.
+
+The demo connects its datasets into a reduction pipeline with
+`prov:wasDerivedFrom` edges (`integrated` was derived from `normalized`, which
+was derived from `subtracted`, which was derived from `measured` and
+`background`). Starting from the `integrated` result, one query can reconstruct
+the whole lineage---and, at the raw `measured` dataset, reach out to its
+external context (a calibration image on *another* Tiled server and the
+sample's encyclopedic record).
+
+First get the id of the `integrated` entity (from the `entities` query above,
+or filter by name in your client), then run:
+
+```graphql
+query Lineage($id: ID!) {
+  entity(id: $id) {
+    name
+    outgoingLinks(predicate: "prov:wasDerivedFrom") {
+      object {
+        name
+        outgoingLinks(predicate: "prov:wasDerivedFrom") {
+          object {
+            name
+            outgoingLinks(predicate: "prov:wasDerivedFrom") {
+              object {
+                name
+                kind
+                outgoingLinks {
+                  predicate
+                  object { name kind uri }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+with the id supplied in the **Variables** pane:
+
+```json
+{
+  "id": "<id of integrated>"
+}
+```
+
+The response reconstructs the entire provenance in one round trip:
+
+```
+integrated
+ └─ normalized
+     └─ subtracted
+         ├─ measured   (prov:wasInformedBy → dif_beam_hdf5_image, on another Tiled server)
+         │             (schema:about       → lanthanum_hexaboride, on Wikidata)
+         └─ background
+```
+
+The `predicate:` argument filters each hop to just the lineage edges; drop it
+(as the innermost `outgoingLinks` does) to see *all* edges leaving a node. To
+ask the mirror-image question---"what was derived *from* `measured`?"---start
+from `measured` and follow `incomingLinks(predicate: "prov:wasDerivedFrom")`
+instead.
+
+```{note}
+The graph is recursively traversable, so a query could nest
+`outgoingLinks` arbitrarily deep and become expensive to resolve. Tiled caps
+nesting at a fixed depth (10 levels); a query deeper than that is rejected.
+Introspection queries (the GraphiQL **Docs** panel) are exempt.
 ```
 
 ## Query namespaces
@@ -150,7 +234,7 @@ query {
   entities {
     id
     name
-    entityType
+    kind
     properties
   }
   links {
@@ -189,7 +273,7 @@ mutation CreateEntity($input: CreateEntityInput!) {
 ```json
 {
   "input": {
-    "entityType": "dataset",
+    "kind": "dataset",
     "name": "my_dataset",
   }
 }
@@ -263,7 +347,7 @@ An entity can reference the data it describes in two independent ways:
   ```json
   {
     "input": {
-      "entityType": "dataset",
+      "kind": "dataset",
       "name": "raw_dataset",
       "nodePathParts": ["raw_dataset"],
       "uri": "http://127.0.0.1:8000/api/v1/metadata/raw_dataset",
@@ -287,7 +371,7 @@ An entity can reference the data it describes in two independent ways:
   ```json
   {
     "input": {
-      "entityType": "dataset",
+      "kind": "dataset",
       "name": "dif_beam_hdf5_image",
       "uri": "https://tiled-demo.nsls2.bnl.gov/api/v1/metadata/csx/6cb250e3-3a4a-46e1-8fcb-a1caa0445f41/primary/dif_beam_hdf5_image",
       "properties": { "@type": "Dataset" }
@@ -301,8 +385,16 @@ An entity can reference the data it describes in two independent ways:
   dataset, to record that the local data was derived from an experiment run
   somewhere else.
 
-  See the `dif_beam_hdf5_image` entity in `example_configs/graphs/input.json`
-  for a worked example.
+  The same pattern works for any stable external identifier, not just Tiled
+  URLs. The demo also includes a `lanthanum_hexaboride` entity whose `uri` is
+  a [Wikidata](https://www.wikidata.org/wiki/Q410318) IRI, linked from
+  `measured` with `schema:about` to tie the measurement to an open,
+  encyclopedic record of the sample material. Other good choices for such
+  references include a DOI, a [DBpedia](https://www.dbpedia.org/) resource, or
+  a domain database entry (e.g. a PDB or Crystallography Open Database id).
+
+  See the `dif_beam_hdf5_image` and `lanthanum_hexaboride` entities in
+  `tiled/examples/demo_graph.json` for worked examples.
 
 ## From the command line
 
@@ -315,7 +407,9 @@ curl -s http://127.0.0.1:8000/api/graphql \
   -d '{"query": "query { links { id predicate } entities { id name } }"}'
 ```
 
-See `example_configs/graphs/input.json` and
-`example_configs/graphs/create_links.py` for a complete, runnable example of
-creating entities and links through GraphQL, including registering
-namespaces and resolving human-readable entity names to their generated ids.
+The graph the demo builds is defined in `tiled/examples/demo_graph.json`, a
+single JSON-LD-style document listing the entities and links. The code that
+reads it and creates them through GraphQL---registering namespaces, resolving
+catalog node ids, and resolving human-readable entity names to their generated
+ids---lives in `tiled/examples/demo.py` (`seed_graph`). Edit `demo_graph.json`
+to add your own entities and links to the demo.
