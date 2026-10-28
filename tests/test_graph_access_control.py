@@ -9,7 +9,7 @@ from tiled.access_control.protocols import normalize_access_tags
 from tiled.catalog import in_memory as catalog_in_memory
 from tiled.catalog.core import initialize_database
 from tiled.config import Database
-from tiled.graph.schema import schema
+from tiled.graph.schema import new_request_cache, schema
 from tiled.graph.store import (
     EntityConflictError,
     GraphSQLAlchemyStore,
@@ -189,6 +189,10 @@ def _context(store, policy, principal, scopes):
 
 
 async def _execute(query, context, variables=None):
+    # Mirror the router, which gives every request its own cache: tests reuse
+    # one context dict across many executions, so a cache left on it would
+    # otherwise serve one execution's memoized data to the next.
+    context = {**context, "request_cache": new_request_cache(context["store"])}
     result = await schema.execute(
         query,
         variable_values=variables or {},
@@ -1100,6 +1104,159 @@ async def test_graphql_expands_and_compacts_curies(store, policy):
     assert [link["predicate"] for link in filtered.data["links"]] == [
         "schema:relatedTo"
     ]
+
+
+async def _build_chain(store, policy, length):
+    """Create entities d0..d{length-1} with d{i+1} -wasDerivedFrom-> d{i}.
+    Returns (alice context, [entity ids])."""
+    alice_ctx = _context(store, policy, "alice", {"read:metadata", "write:metadata"})
+    ids = []
+    for i in range(length):
+        created = await _execute(
+            CREATE_ENTITY_MUTATION,
+            alice_ctx,
+            {"input": {"kind": "d", "name": f"d{i}", "accessTags": ["team"]}},
+        )
+        assert created.errors is None
+        ids.append(created.data["createEntity"]["id"])
+    for subject, obj in zip(ids[1:], ids[:-1]):
+        link = await _execute(
+            CREATE_LINK_MUTATION,
+            alice_ctx,
+            {
+                "input": {
+                    "subjectId": subject,
+                    "predicate": "wasDerivedFrom",
+                    "objectId": obj,
+                    "accessTags": ["team"],
+                }
+            },
+        )
+        assert link.errors is None
+    return alice_ctx, ids
+
+
+TRAVERSAL_QUERY = """
+query {
+  entities(limit: 50) {
+    name
+    outgoingLinks {
+      predicate
+      object {
+        name
+        outgoingLinks { predicate object { name } }
+      }
+    }
+  }
+}
+"""
+
+
+@pytest.mark.asyncio
+async def test_nested_traversal_is_batched(store, policy):
+    """
+    A nested traversal must not issue one query per node. Namespaces are read
+    once per request, link endpoints are loaded in one batch per depth level,
+    and each entity's links come from one batched query per (endpoint,
+    predicate, page) rather than one per entity. The statement count is
+    therefore bounded by the query's depth, not by the number of entities.
+    """
+    from sqlalchemy import event
+
+    alice_ctx, ids = await _build_chain(store, policy, 12)
+
+    statements: list[str] = []
+
+    def record(conn, cursor, statement, parameters, context, executemany):
+        statements.append(" ".join(statement.split()[:6]).lower())
+
+    event.listen(store._engine.sync_engine, "before_cursor_execute", record)
+    try:
+        result = await _execute(TRAVERSAL_QUERY, alice_ctx)
+    finally:
+        event.remove(store._engine.sync_engine, "before_cursor_execute", record)
+    assert result.errors is None
+
+    # Correctness: the chain is intact two levels deep.
+    by_name = {e["name"]: e for e in result.data["entities"]}
+    assert by_name["d5"]["outgoingLinks"][0]["object"]["name"] == "d4"
+    assert (
+        by_name["d5"]["outgoingLinks"][0]["object"]["outgoingLinks"][0]["object"][
+            "name"
+        ]
+        == "d3"
+    )
+    # Efficiency: far fewer statements than entities, and namespaces read once.
+    namespace_reads = sum(1 for s in statements if "from namespaces" in s)
+    assert namespace_reads == 1, statements
+    assert len(statements) < len(ids), (len(statements), statements)
+
+
+@pytest.mark.asyncio
+async def test_batched_links_respect_per_entity_paging(store, policy):
+    """Batched link loading pages per entity, matching the unbatched semantics."""
+    alice_ctx, ids = await _build_chain(store, policy, 3)
+    # Give d2 a second outgoing link so it has a page of two.
+    extra = await _execute(
+        CREATE_LINK_MUTATION,
+        alice_ctx,
+        {
+            "input": {
+                "subjectId": ids[2],
+                "predicate": "also",
+                "objectId": ids[0],
+                "accessTags": ["team"],
+            }
+        },
+    )
+    assert extra.errors is None
+
+    query = """
+    query($id: ID!) {
+      entity(id: $id) {
+        first: outgoingLinks(limit: 1, offset: 0) { predicate }
+        second: outgoingLinks(limit: 1, offset: 1) { predicate }
+        all: outgoingLinks { predicate }
+      }
+    }
+    """
+    result = await _execute(query, alice_ctx, {"id": ids[2]})
+    assert result.errors is None
+    entity = result.data["entity"]
+    assert [link["predicate"] for link in entity["all"]] == ["wasDerivedFrom", "also"]
+    assert [link["predicate"] for link in entity["first"]] == ["wasDerivedFrom"]
+    assert [link["predicate"] for link in entity["second"]] == ["also"]
+
+    # d0 has two incoming links (from d1 and, via "also", from d2).
+    incoming = await _execute(
+        "query($id: ID!) { entity(id: $id) { incomingLinks { subject { name } } } }",
+        alice_ctx,
+        {"id": ids[0]},
+    )
+    assert incoming.errors is None
+    assert sorted(
+        link["subject"]["name"] for link in incoming.data["entity"]["incomingLinks"]
+    ) == ["d1", "d2"]
+
+
+@pytest.mark.asyncio
+async def test_namespace_cache_invalidated_within_request(store, policy):
+    """A mutation that changes the registry must not serve a stale, memoized
+    namespace mapping to later fields of the same request."""
+    alice_ctx = _context(store, policy, "alice", {"read:metadata", "write:metadata"})
+    result = await _execute(
+        """
+        mutation {
+          upsertNamespace(prefix: "ex", uri: "http://example.org/") { prefix }
+          deleteNamespace(prefix: "ex")
+        }
+        """,
+        alice_ctx,
+    )
+    assert result.errors is None
+    assert result.data["deleteNamespace"] is True
+    listed = await _execute(NAMESPACES_QUERY, alice_ctx)
+    assert listed.data["namespaces"] == []
 
 
 def test_graphql_http_route_access_control_integration(policy):
