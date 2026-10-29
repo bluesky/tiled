@@ -9,6 +9,13 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 - OIDC authenticators now verify id_tokens (and their `at_hash`) at login via
   `verify_login`, while `decode_token` only decodes access tokens.
+ 
+- On PostgreSQL, the access-control filter passes the resolved tag ids as a
+  single array parameter (`tag_id = ANY(...)`) instead of one bind parameter
+  per tag. For principals with many tags this avoids huge, per-tag-count
+  prepared statements, whose parameter-blind generic plans defeated the
+  planner statistics.
+
 - Tiled now manages its connection pools to tabular storage more correctly.
   Also, it is now not allowed to use two storage databases with the same
   database on different hosts.
