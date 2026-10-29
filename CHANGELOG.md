@@ -99,6 +99,11 @@ Write the date in place of the "Unreleased" in the case a new version is release
   graph entities, and links were written anyway. Such writes now fail with
   403 (a GraphQL error for graph writes).
 
+### Maintenance
+
+- Fixed flaky `test_thread_lock`, which started its timer after the worker
+  threads had already started.
+
 ## v0.2.19 (2026-10-13)
 
 ### Added
