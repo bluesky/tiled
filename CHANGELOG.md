@@ -5,14 +5,32 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## Unreleased
 
+### Added
+
+- A migration script can declare `required_at_startup = False`, meaning that
+  the server does not need this migration in order to work. The server then
+  starts, with a warning, on a database that has not applied it yet (but is
+  at the previous revision), so that a new version of Tiled can be deployed
+  before the database is upgraded. A database two or more migrations behind
+  is refused, as before. The catalog migration in this release declares this.
+
 ### Changed
 
+- A new catalog database migration (`bfbcd5d137d0`) brings databases
+  migrated from older versions in line with the schema that a fresh
+  installation gets: `ON DELETE CASCADE` on the foreign keys of `entities`,
+  and on SQLite also of `nodes` and `nodes_closure`; `NOT NULL` on the
+  columns of `data_source_asset_association` (PostgreSQL); and index naming.
+  Run `tiled catalog upgrade-database`. On SQLite, the migration rebuilds the
+  `nodes`, `nodes_closure` and `entities` tables, which takes time
+  proportional to their size.
+- The `properties` column of `data_sources` is `NOT NULL` with default `{}`
+  in the ORM, as it already was in migrated databases.
 - On PostgreSQL, the access-control filter passes the resolved tag ids as a
   single array parameter (`tag_id = ANY(...)`) instead of one bind parameter
   per tag. For principals with many tags this avoids huge, per-tag-count
   prepared statements, whose parameter-blind generic plans defeated the
   planner statistics.
-
 - Tiled now manages its connection pools to tabular storage more correctly.
   Also, it is now not allowed to use two storage databases with the same
   database on different hosts.
@@ -47,6 +65,18 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Fixed
 
+- Fixed recursive deletion (`delete_contents(..., recursive=True)`) in SQLite
+  catalogs created before the closure-table migration (`e05e918092c3`), which
+  failed with `FOREIGN KEY constraint failed` because the foreign keys of
+  `nodes` and `nodes_closure` did not cascade.
+- Fixed deleting a node that a graph entity is bound to in a migrated
+  catalog: the entity is now deleted along with the node, as in a fresh
+  installation, instead of being left unbound.
+- Fixed two authentication-database downgrade migrations on PostgreSQL:
+  `d829476bc173` left a server-side cursor open on `api_keys`, so a later
+  `ALTER TABLE api_keys` in the same `tiled admin downgrade-database` run
+  failed; and `d88e91ea03f9` added `NOT NULL` columns without values, which
+  failed on any table with rows.
 - Fixed `ArrayClient.patch` on arrays whose shape is not a whole number of
   chunks. The check for writing past the end, and the new shape after
   `extend=True`, used the Zarr array's shape, which is rounded up to whole

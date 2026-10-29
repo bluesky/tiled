@@ -724,8 +724,10 @@ def build_app(
                 DatabaseUpgradeNeeded,
                 UninitializedDatabase,
                 check_database,
+                revisions_accepted_at_startup,
             )
             from ..authn_database import orm
+            from ..authn_database.alembic_constants import ALEMBIC_DIR
             from ..authn_database.core import (
                 ALL_REVISIONS,
                 REQUIRED_REVISION,
@@ -748,7 +750,12 @@ def build_app(
             else:
                 redacted_url = engine.url._replace(password="[redacted]")
                 try:
-                    await check_database(engine, REQUIRED_REVISION, ALL_REVISIONS)
+                    revision = await check_database(
+                        engine,
+                        REQUIRED_REVISION,
+                        ALL_REVISIONS,
+                        revisions_accepted_at_startup(ALEMBIC_DIR, REQUIRED_REVISION),
+                    )
                 except UninitializedDatabase:
                     if settings.database_init_if_not_exists:
                         # This is a blocking call (alembic drives its own event
@@ -792,6 +799,14 @@ def build_app(
                     raise err from None
                 else:
                     logger.info(f"Connected to existing database at {redacted_url}.")
+                    if revision != REQUIRED_REVISION:
+                        logger.warning(
+                            f"The database at {redacted_url} is at revision "
+                            f"{revision}, one behind the current revision "
+                            f"{REQUIRED_REVISION}. This version of Tiled runs with "
+                            "this database revision, but please upgrade it soon: "
+                            f"tiled admin upgrade-database {redacted_url}"
+                        )
             for admin in authentication.tiled_admins or []:
                 logger.info(
                     f"Ensuring that principal with identity {admin} has role 'admin'"

@@ -5,3 +5,22 @@ To generate a new revision file, run:
 ```
 python -m tiled.authn_database revision -m "description..."
 ```
+
+Besides the usual alembic identifiers, a migration script may declare:
+
+```
+required_at_startup = False
+```
+
+At startup, the server checks the revision of the database. By default
+(`required_at_startup = True`, or no declaration), the server refuses to
+start unless this migration has been applied.
+
+With `required_at_startup = False`, the server may start on a database that
+is at the previous revision, and logs a warning. Use this when the server does
+not need the migration in order to work, for example when the migration only
+adds an index or fixes a constraint. Then the new version of Tiled can be
+deployed first and the database upgraded afterwards.
+
+This applies to the latest database revision only. A database that is two or more
+migrations behind is always refused, whatever the migrations declare.
