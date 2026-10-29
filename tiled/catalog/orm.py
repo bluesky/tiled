@@ -1,5 +1,3 @@
-from typing import List
-
 from sqlalchemy import (
     JSON,
     BigInteger,
@@ -95,7 +93,7 @@ class Node(Timestamped, Base):
     # inserts/deletes rows in node_access_tags_association (never in access_tags itself).
     # passive_deletes defers cleanup of association rows to the DB-level
     # ON DELETE CASCADE when a node is deleted.
-    access_tags: Mapped[List["AccessTag"]] = relationship(
+    access_tags: Mapped[list["AccessTag"]] = relationship(
         secondary="node_access_tags_association",
         lazy="selectin",
         passive_deletes=True,
@@ -169,12 +167,12 @@ class AccessTag(Timestamped, Base):
         Boolean, nullable=False, default=False, server_default=text("false")
     )
 
-    grants: Mapped[List["AccessGrant"]] = relationship(
+    grants: Mapped[list["AccessGrant"]] = relationship(
         back_populates="tag",
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
-    owners: Mapped[List["AccessTagOwnerAssociation"]] = relationship(
+    owners: Mapped[list["AccessTagOwnerAssociation"]] = relationship(
         back_populates="tag",
         cascade="all, delete-orphan",
         passive_deletes=True,
@@ -357,12 +355,12 @@ class AccessTagsPrincipal(Timestamped, Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(Unicode(255), nullable=False, unique=True)
 
-    grants: Mapped[List["AccessGrant"]] = relationship(
+    grants: Mapped[list["AccessGrant"]] = relationship(
         back_populates="principal",
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
-    owned_tags: Mapped[List["AccessTagOwnerAssociation"]] = relationship(
+    owned_tags: Mapped[list["AccessTagOwnerAssociation"]] = relationship(
         back_populates="principal",
         cascade="all, delete-orphan",
         passive_deletes=True,
@@ -830,7 +828,7 @@ class DataSource(Timestamped, Base):
     )
 
     # many-to-many relationship to Asset, bypassing the `Association` class
-    assets: Mapped[List["Asset"]] = relationship(
+    assets: Mapped[list["Asset"]] = relationship(
         secondary="data_source_asset_association",
         back_populates="data_sources",
         cascade="all, delete",
@@ -838,7 +836,7 @@ class DataSource(Timestamped, Base):
         viewonly=True,
     )
     # association between Asset -> Association -> DataSource
-    asset_associations: Mapped[List["DataSourceAssetAssociation"]] = relationship(
+    asset_associations: Mapped[list["DataSourceAssetAssociation"]] = relationship(
         back_populates="data_source",
         lazy="raise",
         order_by=[DataSourceAssetAssociation.parameter, DataSourceAssetAssociation.num],
@@ -882,13 +880,13 @@ class Asset(Timestamped, Base):
     size = Column(BigInteger, nullable=True)
 
     # # many-to-many relationship to Asset, bypassing the `Association` class
-    data_sources: Mapped[List["DataSource"]] = relationship(
+    data_sources: Mapped[list["DataSource"]] = relationship(
         secondary="data_source_asset_association",
         back_populates="assets",
         viewonly=True,
     )
     # association between DataSource -> Association -> Asset
-    data_source_associations: Mapped[List["DataSourceAssetAssociation"]] = relationship(
+    data_source_associations: Mapped[list["DataSourceAssetAssociation"]] = relationship(
         back_populates="asset",
     )
 
@@ -953,7 +951,7 @@ class Webhook(Timestamped, Base):
         lazy="noload",
     )
 
-    deliveries: Mapped[List["WebhookDelivery"]] = relationship(
+    deliveries: Mapped[list["WebhookDelivery"]] = relationship(
         back_populates="webhook",
         cascade="all, delete-orphan",
         passive_deletes=True,

@@ -1,5 +1,4 @@
 import uuid
-from typing import Optional
 from unittest.mock import MagicMock
 
 import pytest
@@ -21,9 +20,9 @@ def external_policy() -> ExternalPolicyDecisionPoint:
         def build_input(
             self,
             principal: Principal,
-            authn_access_tags: Optional[AccessTags],
+            authn_access_tags: AccessTags | None,
             authn_scopes: Scopes,
-            access_tags: Optional[AccessTags] = None,
+            access_tags: AccessTags | None = None,
         ) -> str:
             return ""
 
@@ -224,8 +223,8 @@ async def test_allowed_scopes_return_no_scopes_if_validation_error(
 async def test_empty_access_tags_public(
     external_policy: ExternalPolicyDecisionPoint,
     principal: Principal,
-    allow: Optional[bool],
-    remote_allow: Optional[bool],
+    allow: bool | None,
+    remote_allow: bool | None,
 ):
     external_policy._empty_access_tags_public = allow
     policy = external_policy

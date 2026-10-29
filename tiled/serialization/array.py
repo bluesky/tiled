@@ -150,7 +150,7 @@ def serialize_html(mimetype, array, metadata):
         csv_data = default_serialization_registry.dispatch("array", "text/csv")(
             array, metadata
         )
-        return "<html>" "<body>" f"{csv_data.decode()!s}" "</body>" "</html>"
+        return f"<html><body>{csv_data.decode()!s}</body></html>"
     else:
         return (
             "<html>"

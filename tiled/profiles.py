@@ -42,7 +42,7 @@ def schema():
 
     here = Path(__file__).parent.absolute()
     schema_path = here / "config_schemas" / "client_profiles.yml"
-    with open(schema_path, "r") as file:
+    with open(schema_path) as file:
         return yaml.safe_load(file)
 
 

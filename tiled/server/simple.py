@@ -7,7 +7,7 @@ import shutil
 import tempfile
 import threading
 import time
-from typing import Optional, Union, cast
+from typing import cast
 from urllib.parse import quote_plus, urlparse
 
 import httpx2 as httpx
@@ -94,12 +94,10 @@ class SimpleTiledServer:
 
     def __init__(
         self,
-        directory: Optional[Union[str, pathlib.Path]] = None,
-        api_key: Optional[str] = None,
+        directory: str | pathlib.Path | None = None,
+        api_key: str | None = None,
         port: int = 0,
-        readable_storage: Optional[
-            Union[str, pathlib.Path, list[Union[str, pathlib.Path]]]
-        ] = None,
+        readable_storage: str | pathlib.Path | list[str | pathlib.Path] | None = None,
         enable_webhooks: bool = False,
     ):
         # Delay import to avoid circular import.

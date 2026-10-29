@@ -1,7 +1,7 @@
 import concurrent.futures
 import functools
 import warnings
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 from urllib.parse import parse_qs, urlparse
 
 import dask
@@ -246,7 +246,7 @@ class _DaskDataFrameClient(BaseClient):
         # The order of arguments has changed; check that the user input is correct
         if not isinstance(partition, int):
             warnings.warn(
-                "The order of arguments has changed: please use write_partition(partition, dataframe).",  # noqa: E501
+                "The order of arguments has changed: please use write_partition(partition, dataframe).",
                 DeprecationWarning,
                 stacklevel=2,
             )
@@ -268,7 +268,7 @@ class _DaskDataFrameClient(BaseClient):
         # The order of arguments has changed; check that the user input is correct
         if not isinstance(partition, int):
             warnings.warn(
-                "The order of arguments has changed: please use append_partition(partition, dataframe).",  # noqa: E501
+                "The order of arguments has changed: please use append_partition(partition, dataframe).",
                 DeprecationWarning,
                 stacklevel=2,
             )
@@ -321,7 +321,7 @@ class _DaskDataFrameClient(BaseClient):
 
     def subscribe(
         self,
-        executor: Optional[concurrent.futures.Executor] = None,
+        executor: concurrent.futures.Executor | None = None,
     ) -> "TableSubscription":
         """
         Subscribe to streaming updates about this table.

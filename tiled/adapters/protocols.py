@@ -1,6 +1,6 @@
 from abc import abstractmethod
 from collections.abc import Mapping
-from typing import Any, Dict, List, Literal, Optional, Protocol, Set, Tuple, Union
+from typing import Any, Literal, Protocol
 
 import dask.dataframe
 import pandas
@@ -22,14 +22,14 @@ from ..type_aliases import JSON
 
 
 class BaseAdapter(Protocol):
-    supported_storage: Set[type[Storage]]
+    supported_storage: set[type[Storage]]
 
     @abstractmethod
     def metadata(self) -> JSON:
         pass
 
     @abstractmethod
-    def specs(self) -> List[Spec]:
+    def specs(self) -> list[Spec]:
         pass
 
 
@@ -54,7 +54,7 @@ class ArrayAdapter(BaseAdapter, Protocol):
 
     # TODO Fix slice
     @abstractmethod
-    def read_block(self, block: Tuple[int, ...]) -> NDArray[Any]:
+    def read_block(self, block: tuple[int, ...]) -> NDArray[Any]:
         pass
 
 
@@ -70,7 +70,7 @@ class AwkwardAdapter(BaseAdapter, Protocol):
         pass
 
     @abstractmethod
-    def read_buffers(self, form_keys: Optional[List[str]] = None) -> Dict[str, Any]:
+    def read_buffers(self, form_keys: list[str] | None = None) -> dict[str, Any]:
         pass
 
 
@@ -82,7 +82,7 @@ class RaggedAdapter(BaseAdapter, Protocol):
         pass
 
     @abstractmethod
-    def read(self, slice: Optional[NDSlice] = None) -> ragged.array:
+    def read(self, slice: NDSlice | None = None) -> ragged.array:
         pass
 
 
@@ -98,7 +98,7 @@ class SparseAdapter(BaseAdapter, Protocol):
         pass
 
     # TODO Fix slice (just like array)
-    def read_block(self, block: Tuple[int, ...]) -> sparse.COO:
+    def read_block(self, block: tuple[int, ...]) -> sparse.COO:
         pass
 
 
@@ -110,17 +110,15 @@ class TableAdapter(BaseAdapter, Protocol):
         pass
 
     @abstractmethod
-    def read(
-        self, fields: List[str]
-    ) -> Union[dask.dataframe.DataFrame, pandas.DataFrame]:
+    def read(self, fields: list[str]) -> dask.dataframe.DataFrame | pandas.DataFrame:
         pass
 
     @abstractmethod
     def read_partition(
         self,
         partition: int,
-        fields: Optional[str] = None,
-    ) -> Union[dask.dataframe.DataFrame, pandas.DataFrame]:
+        fields: str | None = None,
+    ) -> dask.dataframe.DataFrame | pandas.DataFrame:
         pass
 
     @abstractmethod
@@ -136,12 +134,12 @@ class BytesAdapter(BaseAdapter, Protocol):
         pass
 
 
-AnyAdapter = Union[
-    ArrayAdapter,
-    AwkwardAdapter,
-    BytesAdapter,
-    ContainerAdapter,
-    RaggedAdapter,
-    SparseAdapter,
-    TableAdapter,
-]
+AnyAdapter = (
+    ArrayAdapter
+    | AwkwardAdapter
+    | BytesAdapter
+    | ContainerAdapter
+    | RaggedAdapter
+    | SparseAdapter
+    | TableAdapter
+)

@@ -28,9 +28,25 @@ Write the date in place of the "Unreleased" in the case a new version is release
   such as a custom `auth=` or `timeout=`, must now be `httpx2` types, and
   exceptions raised are `httpx2` exceptions. Python 3.10 is no longer
   supported, because httpx2 requires Python 3.11 or newer.
+- Python 3.14 is now officially supported.
+- String-valued enums (`StructureFamily`, `Kind`, `Endianness`, `Management`,
+  `SparseLayout`, `Operator`, `ScopeName`, `EntryFields`, `PrincipalType`,
+  `EnvelopeFormat`, `EventType`, `DeliveryOutcome`) now subclass
+  `enum.StrEnum`. Comparison with plain strings, `.value`, and serialization
+  are unchanged, but `str()`, `format()`, and f-strings of a member now give
+  its value (e.g. `"array"`) instead of its qualified name
+  (`"StructureFamily.array"`). Error messages that include these values
+  change accordingly.
+- Type annotations throughout use PEP 604 (`X | Y`) and built-in generics
+  (`list[str]`) instead of `typing.Union`, `Optional`, `List`, etc., enforced
+  by the ruff `UP` (pyupgrade) rules.
 
 ### Fixed
 
+- Fixed `ArrayClient.patch` on arrays whose shape is not a whole number of
+  chunks. The check for writing past the end, and the new shape after
+  `extend=True`, used the Zarr array's shape, which is rounded up to whole
+  chunks, so a patch could silently grow the array or add fill values.
 - Fixed serving HDF5 files that have an empty (null dataspace) attribute or a
   byte-string attribute that is not valid UTF-8. Either one made every node
   in the file fail to load. Empty attributes are now served as `null`, and

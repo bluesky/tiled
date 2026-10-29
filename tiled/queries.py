@@ -8,7 +8,7 @@ The are encoded into and decoded from URL query parameters.
 import enum
 import json
 from dataclasses import dataclass, field
-from typing import Any, List, Optional
+from typing import Any
 
 from .query_registration import register
 from .structures.core import StructureFamily as StructureFamilyEnum
@@ -94,7 +94,7 @@ class KeysFilter(NoBool):
     keys : List[str]
     """
 
-    keys: List[str]
+    keys: list[str]
 
     def encode(self):
         return {"keys": json.dumps(self.keys)}
@@ -218,7 +218,7 @@ class NotEq(NoBool):
         return cls(key=key, value=json.loads(value))
 
 
-class Operator(str, enum.Enum):
+class Operator(enum.StrEnum):
     lt = "lt"
     gt = "gt"
     le = "le"
@@ -324,7 +324,7 @@ class In:
     """
 
     key: str
-    value: List[JSONSerializable]
+    value: list[JSONSerializable]
 
     def __post_init__(self):
         self.value = list(self.value)
@@ -359,7 +359,7 @@ class NotIn:
     """
 
     key: str
-    value: List[JSONSerializable]
+    value: list[JSONSerializable]
 
     def __post_init__(self):
         self.value = list(self.value)
@@ -465,8 +465,8 @@ class SpecsQuery:
     >>> c.search(SpecsQuery(include=["foo", "bar"], exclude=["baz"]))
     """
 
-    include: List[str]
-    exclude: List[str]
+    include: list[str]
+    exclude: list[str]
 
     def __init__(self, include, exclude=None):
         exclude = exclude or []
@@ -533,7 +533,7 @@ class AccessTagsFilter:
     >>> c.search(AccessTagsFilter(["tag_for_bill", "useful_data"]))
     """
 
-    tags: List[str]
+    tags: list[str]
     # Server-internal field (NOT a query parameter, NOT sent over the wire):
     # the tag 'id's corresponding to 'tags', resolved against the
     # 'access_tags' table on the server side. The 'internal' metadata marks it
@@ -543,7 +543,7 @@ class AccessTagsFilter:
     # filter on 'tag_id' literals directly instead of joining 'access_tags' by
     # name. For catalog queries, this also lets PostgreSQL use the
     # (parent_id, tag_id) extended statistics to estimate the ACL subquery.
-    tag_ids: Optional[List[int]] = field(
+    tag_ids: list[int] | None = field(
         default=None, compare=False, metadata={"internal": True}
     )
 

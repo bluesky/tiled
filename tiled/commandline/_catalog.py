@@ -1,5 +1,4 @@
 from pathlib import Path
-from typing import Optional
 
 import typer
 
@@ -56,7 +55,7 @@ def init(
 @catalog_app.command("upgrade-database")
 def upgrade_database(
     database_uri: str,
-    revision: Optional[str] = typer.Argument(
+    revision: str | None = typer.Argument(
         None,
         help="The ID of a revision to upgrade to. By default, upgrade to the latest one.",
     ),

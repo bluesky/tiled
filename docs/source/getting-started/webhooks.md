@@ -158,10 +158,9 @@ the payload was not tampered with.
 ```python
 import hashlib, hmac
 
+
 def verify(body: bytes, secret: str, header: str) -> bool:
-    expected = "sha256=" + hmac.new(
-        secret.encode(), body, hashlib.sha256
-    ).hexdigest()
+    expected = "sha256=" + hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
     return hmac.compare_digest(expected, header)
 ```
 
@@ -170,6 +169,7 @@ useful for deduplicating retried deliveries:
 
 ```python
 seen = set()
+
 
 def handle(request):
     event_id = request.headers["X-Tiled-Event-ID"]

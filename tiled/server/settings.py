@@ -1,7 +1,7 @@
 import secrets
 from datetime import timedelta
 from functools import cache
-from typing import Any, List, Optional
+from typing import Any
 
 from pydantic import Field
 from pydantic.dataclasses import dataclass
@@ -11,7 +11,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # hashable cache key for use in tiled.server.connection_pool
 @dataclass(unsafe_hash=True)
 class DatabaseSettings:
-    uri: Optional[str] = None
+    uri: str | None = None
     pool_size: int = 5
     pool_pre_ping: bool = True
     max_overflow: int = 5
@@ -25,12 +25,12 @@ class Settings(BaseSettings):
 
     tree: Any = None
     allow_anonymous_access: bool = False
-    allow_origins: List[str] = Field(default_factory=list)
+    allow_origins: list[str] = Field(default_factory=list)
     authenticator: Any = None
     # These 'single user' settings are only applicable if authenticator is None.
     single_user_api_key: str = secrets.token_hex(32)
     # The first key will be used for encryption. Each key will be tried in turn for decryption.
-    secret_keys: List[str] = [secrets.token_hex(32)]
+    secret_keys: list[str] = [secrets.token_hex(32)]
     access_token_max_age: timedelta = timedelta(minutes=15)
     refresh_token_max_age: timedelta = timedelta(days=7)
     session_max_age: timedelta = timedelta(days=365)

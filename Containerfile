@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.9
-ARG PYTHON_VERSION=3.12
-ARG UV_VERSION=0.12.0
+ARG PYTHON_VERSION=3.14
+ARG UV_VERSION=0.13.6
 
 # `COPY --from` cannot expand a variable in an image ref
 FROM ghcr.io/astral-sh/uv:${UV_VERSION} AS uv_bin
@@ -17,7 +17,7 @@ RUN set -ex && npm run build
 
 # This stage doubles as setting up for the build and as the devcontainer
 FROM docker.io/python:${PYTHON_VERSION} AS developer
-ARG PYTHON_VERSION=3.12
+ARG PYTHON_VERSION=3.14
 
 # Ensure apt-get doesn't open a menu on you.
 ENV DEBIAN_FRONTEND=noninteractive
@@ -39,7 +39,7 @@ COPY --from=uv_bin /uv /usr/local/bin/uv
 # - Silence uv complaining about not being able to use hard links,
 # - tell uv to byte-compile packages for faster application startups,
 # - prevent uv from accidentally downloading isolated Python builds,
-# - pick a Python (use `/usr/bin/python3.12` on uv 0.5.0 and later),
+# - pick a Python (use `/usr/bin/python3.14` on uv 0.5.0 and later),
 # - and finally declare `/app` as the target for `uv sync`.
 # - Skip building the UI here because we already did it in the stage
 #   above using a node container.
@@ -90,7 +90,7 @@ RUN set -ex && \
 ##########################################################################
 
 FROM docker.io/python:${PYTHON_VERSION}-slim AS app_runtime
-ARG PYTHON_VERSION=3.12
+ARG PYTHON_VERSION=3.14
 ARG APP_UID=999
 
 # Add the application virtualenv to search path.

@@ -39,6 +39,7 @@ classifiers = [
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
   "Topic :: Scientific/Engineering :: Physics",
 ]
 
@@ -119,7 +120,7 @@ array = [
 # This is the "kichen sink" fully-featured client dependency set.
 client = [
     "awkward >=2.4.3",
-    "blosc2; python_version >= '3.10'",
+    "blosc2",
     "dask[array]",
     "dask[dataframe]",
     "entrypoints",
@@ -141,7 +142,7 @@ client = [
 # These are used by the client/server to more efficiently compress.
 # They fall back to gzip (which is slower) if these are not installed.
 compression = [
-    "blosc2; python_version >= '3.10'",
+    "blosc2",
     "lz4",
     "zstandard",
 ]
@@ -205,7 +206,7 @@ server = [
     "asgi-correlation-id",
     "asyncpg >=0.28",
     "awkward >=2.4.3",
-    "blosc2; python_version >= '3.10'",
+    "blosc2",
     "cachetools",
     "canonicaljson",
     "dask",
@@ -271,9 +272,7 @@ test = [
     "aiohttp",
     "boto3",
     "coverage",
-    "flake8",
     "hypothesis",
-    "importlib_resources;python_version < \"3.9\"",
     "ipython",
     "ldap3",
     "locust",
@@ -291,6 +290,7 @@ test = [
 ]
 dev = [
   { include-group = "test" },
+  "ruff==0.17.3",
 ]
 docs = [
     "ipykernel",
@@ -334,32 +334,29 @@ version-file = "tiled/_version.py"
 "share/tiled/templates" = "share/tiled/templates"
 "share/tiled/ui" = "share/tiled/ui"
 
-[tool.black]
+[tool.ruff]
 line-length = 88
-target-version = ['py37']
-include = '\.pyi?$'
-exclude = '''
+force-exclude = true
+extend-exclude = [
+    "versioneer.py",
+    "tiled/_version.py",
+    "tiled/serialization/_zipfile_py39.py",
+    "docs/source/conf.py",
+    "share",
+    "web-frontend",
+]
 
-(
-  /(
-    | \.git
-    | \.mypy_cache
-    | \.venv
-    | _build
-    | build
-    | dist
-  )/
-  | versioneer.py
-  | tiled/_version.py
-  | tiled/serialization/_zipfile_py39.py
-  | docs/source/conf.py
-  | share
-  | web-frontend
-)
-'''
+[tool.ruff.lint]
+select = [
+    "E",  # pycodestyle errors - https://docs.astral.sh/ruff/rules/#error-e
+    "F",  # pyflakes rules - https://docs.astral.sh/ruff/rules/#pyflakes-f
+    "W",  # pycodestyle warnings - https://docs.astral.sh/ruff/rules/#warning-w
+    "I",  # isort - https://docs.astral.sh/ruff/rules/#isort-i
+    "UP", # pyupgrade - https://docs.astral.sh/ruff/rules/#pyupgrade-up
+]
 
-[tool.isort]
-profile = "black"
+[tool.ruff.lint.pycodestyle]
+max-line-length = 115
 
 [tool.coverage.run]
 data_file = "/tmp/tiled.coverage"

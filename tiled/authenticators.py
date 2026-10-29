@@ -6,9 +6,9 @@ import re
 import secrets
 import time
 import uuid
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from datetime import timedelta
-from typing import Any, Dict, List, Mapping, Optional, cast
+from typing import Any, cast
 
 import httpx2 as httpx
 import jwt
@@ -83,7 +83,7 @@ properties:
 
     async def authenticate(
         self, username: str, password: str
-    ) -> Optional[UserSessionState]:
+    ) -> UserSessionState | None:
         true_password = self._users_to_passwords.get(username)
         if not true_password:
             # Username is not valid.
@@ -117,7 +117,7 @@ properties:
 
     async def authenticate(
         self, username: str, password: str
-    ) -> Optional[UserSessionState]:
+    ) -> UserSessionState | None:
         import pamela
 
         try:
@@ -157,8 +157,8 @@ properties:
         client_secret: str,
         well_known_uri: str,
         confirmation_message: str = "",
-        redirect_on_success: Optional[str] = None,
-        redirect_on_failure: Optional[str] = None,
+        redirect_on_success: str | None = None,
+        redirect_on_failure: str | None = None,
         user_id_claim: str = "sub",
     ):
         self._audience = audience
@@ -217,11 +217,11 @@ properties:
 
     # JWKS cache state. Class-level defaults so that instances created without
     # __init__ (e.g. object.__new__ in tests) still behave.
-    _jwks: Optional[List[dict[str, Any]]] = None
+    _jwks: list[dict[str, Any]] | None = None
     _jwks_fetched_at: float = float("-inf")  # last successful fetch
     _jwks_attempted_at: float = float("-inf")  # last fetch attempt
 
-    def _fetch_keys(self) -> List[dict[str, Any]]:
+    def _fetch_keys(self) -> list[dict[str, Any]]:
         self._jwks_attempted_at = time.monotonic()
         keys = httpx.get(self.jwks_uri).raise_for_status().json().get("keys", [])
         self._jwks = keys
@@ -248,7 +248,7 @@ properties:
     def _fetch_attempted_recently(self) -> bool:
         return time.monotonic() - self._jwks_attempted_at < JWKS_MIN_REFETCH_INTERVAL
 
-    def keys(self) -> List[dict[str, Any]]:
+    def keys(self) -> list[dict[str, Any]]:
         age = time.monotonic() - self._jwks_fetched_at
         if self._jwks is None or age > JWKS_MAX_STALENESS:
             # Nothing usable to fall back on, so fetch errors propagate.
@@ -270,7 +270,7 @@ properties:
             return False
         return self._try_fetch_keys()
 
-    def _signing_key(self, kid: Optional[str]) -> jwt.PyJWK:
+    def _signing_key(self, kid: str | None) -> jwt.PyJWK:
         try:
             return jwt.PyJWKSet.from_dict({"keys": self.keys()})[kid]
         except KeyError:
@@ -300,7 +300,7 @@ properties:
         )
 
     def verify_login(
-        self, id_token: str, access_token: Optional[str] = None
+        self, id_token: str, access_token: str | None = None
     ) -> dict[str, Any]:
         """Verify an id_token and return its claims.
 
@@ -341,7 +341,7 @@ properties:
             options={"verify_iat": False},
         )
 
-    async def authenticate(self, request: Request) -> Optional[UserSessionState]:
+    async def authenticate(self, request: Request) -> UserSessionState | None:
         code = request.query_params.get("code")
         if not code:
             logger.warning(
@@ -413,11 +413,11 @@ properties:
         well_known_uri: str,
         device_flow_client_id: str,
         client_secret: str = "",
-        scopes: Optional[List[str]] = None,
-        scopes_map: Optional[Dict[str, List[str]]] = None,
+        scopes: list[str] | None = None,
+        scopes_map: dict[str, list[str]] | None = None,
         confirmation_message: str = "",
-        redirect_on_success: Optional[str] = None,
-        redirect_on_failure: Optional[str] = None,
+        redirect_on_success: str | None = None,
+        redirect_on_failure: str | None = None,
         user_id_claim: str = "sub",
     ):
         super().__init__(
@@ -443,7 +443,7 @@ properties:
         return self._oidc_bearer
 
     @property
-    def scopes(self) -> List[str]:
+    def scopes(self) -> list[str]:
         # Combine explicitly-configured scopes with those granted via
         # scopes_map (the union of its values, i.e. all Tiled scopes it grants).
         combined: set[str] = set(self._scopes or [])
@@ -488,11 +488,11 @@ class EntraAuthenticator(ProxiedOIDCAuthenticator):
         client_id: str,
         well_known_uri: str,
         device_flow_client_id: str,
-        extra_scopes: Optional[List[str]] = None,
-        scopes_map: Optional[Dict[str, List[str]]] = None,
+        extra_scopes: list[str] | None = None,
+        scopes_map: dict[str, list[str]] | None = None,
         confirmation_message: str = "",
         client_secret: str = "",
-        redirect_on_success: Optional[str] = None,
+        redirect_on_success: str | None = None,
     ):
         self.extra_scopes = extra_scopes or []
         super().__init__(
@@ -514,7 +514,7 @@ class EntraAuthenticator(ProxiedOIDCAuthenticator):
         return self._add_entra_identity(super().decode_token(access_token))
 
     def verify_login(
-        self, id_token: str, access_token: Optional[str] = None
+        self, id_token: str, access_token: str | None = None
     ) -> dict[str, Any]:
         return self._add_entra_identity(super().verify_login(id_token, access_token))
 
@@ -570,7 +570,7 @@ class EntraAuthenticator(ProxiedOIDCAuthenticator):
 
         return claims
 
-    async def authenticate(self, request: Request) -> Optional[UserSessionState]:
+    async def authenticate(self, request: Request) -> UserSessionState | None:
         """Complete the Entra OIDC authorization-code flow and return a session.
 
         After a successful code exchange the Entra ``access_token`` and
@@ -652,7 +652,7 @@ async def exchange_code(
     client_id: str,
     client_secret: str,
     redirect_uri: str,
-    extra_scopes: Optional[List[str]] = None,
+    extra_scopes: list[str] | None = None,
 ) -> httpx.Response:
     """Exchange an authorization code for tokens at the IdP token endpoint.
 
@@ -723,7 +723,7 @@ class SAMLAuthenticator(ExternalAuthenticator):
 
         self.include_routers = [router]
 
-    async def authenticate(self, request: Request) -> Optional[UserSessionState]:
+    async def authenticate(self, request: Request) -> UserSessionState | None:
         if not modules_available("onelogin"):
             raise ModuleNotFoundError(
                 "This SAMLAuthenticator requires the module 'oneline' to be installed."
@@ -736,8 +736,8 @@ class SAMLAuthenticator(ExternalAuthenticator):
         errors = auth.get_errors()  # This method receives an array with the errors
         if errors:
             raise Exception(
-                "Error when processing SAML Response: %s %s"
-                % (", ".join(errors), auth.get_last_error_reason())
+                f"Error when processing SAML Response: {', '.join(errors)} "
+                f"{auth.get_last_error_reason()}"
             )
         if auth.is_authenticated():
             # Return a string that the Identity can use as id.
@@ -756,7 +756,7 @@ async def prepare_saml_from_fastapi_request(request: Request) -> Mapping[str, st
         "server_port": request.url.port,
         "script_name": request.url.path,
         "post_data": {},
-        "get_data": {}
+        "get_data": {},
         # Advanced request options
         # "https": "",
         # "request_uri": "",
@@ -1172,7 +1172,7 @@ class LDAPAuthenticator(InternalAuthenticator):
 
     async def authenticate(
         self, username: str, password: str
-    ) -> Optional[UserSessionState]:
+    ) -> UserSessionState | None:
         import ldap3
 
         username_saved = username  # Save the user name passed as a parameter
@@ -1290,11 +1290,7 @@ class LDAPAuthenticator(InternalAuthenticator):
             found = False
             for group in self.allowed_groups:
                 group_filter = (
-                    "(|"
-                    "(member={userdn})"
-                    "(uniqueMember={userdn})"
-                    "(memberUid={uid})"
-                    ")"
+                    "(|(member={userdn})(uniqueMember={userdn})(memberUid={uid}))"
                 )
                 group_filter = group_filter.format(userdn=userdn, uid=username)
                 group_attributes = ["member", "uniqueMember", "memberUid"]

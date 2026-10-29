@@ -1,4 +1,5 @@
 "Adapted from https://github.com/sqlalchemy/sqlalchemy/wiki/Query-Plan-SQL-construct"
+
 import contextlib
 import os
 

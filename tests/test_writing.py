@@ -283,6 +283,33 @@ def test_extend_array(tree):
             ac.patch(ones.astype("uint8"), offset=9, extend=True)
 
 
+def test_patch_array_with_partial_last_chunk(tree):
+    "Patch an array whose shape is not a whole number of chunks."
+    with Context.from_app(
+        build_app(tree, validation_registry=validation_registry)
+    ) as context:
+        client = from_context(context)
+
+        a = numpy.arange(10)
+        ac = client.write_array(dask.array.from_array(a, chunks=3))
+        assert ac.chunks == ((3, 3, 3, 1),)
+
+        # Writing past the end without extend=True is refused.
+        with pytest.raises(Conflicts):
+            ac.patch(numpy.array([10, 11]), offset=(10,))
+        numpy.testing.assert_equal(ac.read(), a)
+
+        # Extending by one element grows the array by one element.
+        ac.patch(numpy.array([10]), offset=(10,), extend=True)
+        assert ac.shape == (11,)
+        assert ac.chunks == ((3, 3, 3, 2),)
+        numpy.testing.assert_equal(ac.read(), numpy.arange(11))
+
+        ac.patch(numpy.array([11, 12]), offset=(11,), extend=True)
+        assert ac.shape == (13,)
+        numpy.testing.assert_equal(ac.read(), numpy.arange(13))
+
+
 def test_write_table_full(tree):
     with Context.from_app(
         build_app(tree, validation_registry=validation_registry)

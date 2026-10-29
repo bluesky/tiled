@@ -37,6 +37,7 @@ the tag tables: an owner whose only tag is a principal tag (``user:<name>``
 or ``service:<uuid>``) becomes a kind ``user`` blob again, with the username
 taken from either prefix; anything else becomes a kind ``tags`` blob.
 """
+
 import sqlalchemy as sa
 from alembic import op
 

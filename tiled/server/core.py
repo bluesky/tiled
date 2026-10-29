@@ -7,9 +7,9 @@ import re
 import sys
 import uuid
 from collections import defaultdict
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from hashlib import md5
-from typing import Any, Literal, Optional
+from typing import Any, Literal
 
 import anyio
 import dateutil.tz
@@ -133,17 +133,17 @@ def pagination_links(base_url, route, path_parts, page, next_cursor, length_hint
         "next": None,
     }
     if next_cursor is not None:
-        links[
-            "next"
-        ] = f"{base_url}{route}/{path_str}?page[cursor]={next_cursor}&page[limit]={page.limit}"
+        links["next"] = (
+            f"{base_url}{route}/{path_str}?page[cursor]={next_cursor}&page[limit]={page.limit}"
+        )
     elif (
         (page.cursor is None)
         and (page.offset is not None)
         and (page.offset + page.limit < length_hint)
     ):
-        links[
-            "next"
-        ] = f"{base_url}{route}/{path_str}?page[offset]={page.offset + page.limit}&page[limit]={page.limit}"
+        links["next"] = (
+            f"{base_url}{route}/{path_str}?page[offset]={page.offset + page.limit}&page[limit]={page.limit}"
+        )
     return links
 
 
@@ -221,7 +221,7 @@ async def construct_entries_response(
     omit_links,
     include_data_sources,
     filters,
-    sorting: Optional[list[tuple[str, Literal[1, -1]]]],
+    sorting: list[tuple[str, Literal[1, -1]]] | None,
     base_url,
     media_type,
     max_depth,
@@ -266,7 +266,7 @@ async def construct_entries_response(
                     # Non-default sort: use offset pagination
                     keys = await tree.keys_range(page.offset, page.limit)
         else:
-            keys = tree.keys()[page.offset : page.offset + page.limit]  # noqa: E203
+            keys = tree.keys()[page.offset : page.offset + page.limit]
         items = [(key, None) for key in keys]
     elif fields == [schemas.EntryFields.count]:
         # Only count is requested, so we do not need to pull any items.
@@ -285,13 +285,13 @@ async def construct_entries_response(
                     # Non-default sort: use offset pagination
                     items = await tree.items_range(page.offset, page.limit)
         else:
-            items = tree.items()[page.offset : page.offset + page.limit]  # noqa: E203
+            items = tree.items()[page.offset : page.offset + page.limit]
 
     # Construct pagination links
     links = pagination_links(base_url, route, path_parts, page, next_cursor, count)
 
     # This value will not leak out. It just used to seed comparisons.
-    metadata_stale_at = datetime.now(timezone.utc) + timedelta(days=1_000_000)
+    metadata_stale_at = datetime.now(UTC) + timedelta(days=1_000_000)
     must_revalidate = getattr(tree, "must_revalidate", True)
     data = []
     for key, entry in items:
@@ -783,7 +783,7 @@ def get_websocket_envelope_formatter(
         async def stream_msgpack(
             websocket: WebSocket,
             metadata: dict,
-            payload_bytes: Optional[bytes],
+            payload_bytes: bytes | None,
         ):
             if payload_bytes is not None:
                 metadata["payload"] = payload_bytes
@@ -797,7 +797,7 @@ def get_websocket_envelope_formatter(
         async def stream_json(
             websocket: WebSocket,
             metadata: dict,
-            payload_bytes: Optional[bytes],
+            payload_bytes: bytes | None,
         ):
             if payload_bytes is not None:
                 media_type = metadata.get("mimetype") or metadata.get(
