@@ -8,7 +8,6 @@ from collections.abc import Hashable
 from dataclasses import asdict
 from pathlib import Path
 from threading import Lock
-from typing import Optional, Union
 from urllib.parse import parse_qs, urlparse
 from weakref import WeakValueDictionary
 
@@ -454,11 +453,9 @@ def params_from_slice(slice):
                         "Slices with a 'step' other than 1 are not supported."
                     )
                 slices.append(
-                    (
-                        (str(dim.start) if dim.start else "")
-                        + ":"
-                        + (str(dim.stop) if dim.stop else "")
-                    )
+                    (str(dim.start) if dim.start else "")
+                    + ":"
+                    + (str(dim.stop) if dim.stop else "")
                 )
             else:
                 slices.append(str(int(dim)))
@@ -568,8 +565,8 @@ def chunks_repr(chunks: Chunks) -> str:
 
 
 def normalize_specs(
-    specs: Optional[Union[list[str], list[Spec], str]],
-) -> Optional[list[dict[str, str]]]:
+    specs: list[str] | list[Spec] | str | None,
+) -> list[dict[str, str]] | None:
     "Represent a list of Spec objects or strings as a list of dicts"
 
     if specs is None:

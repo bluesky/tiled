@@ -1,6 +1,6 @@
 from abc import ABC
 from collections.abc import Set
-from typing import Any, Generic, List, Optional, TypeVar
+from typing import Any, Generic, TypeVar
 
 from tiled.storage import Storage
 from tiled.structures.core import Spec, StructureFamily
@@ -17,8 +17,8 @@ class Adapter(ABC, Generic[S]):
         self,
         structure: S,
         *,
-        metadata: Optional[JSON] = None,
-        specs: Optional[List[Spec]] = None,
+        metadata: JSON | None = None,
+        specs: list[Spec] | None = None,
     ):
         self._structure = structure
         self._metadata = metadata or {}
@@ -28,11 +28,11 @@ class Adapter(ABC, Generic[S]):
         return self._metadata
 
     @property
-    def specs(self) -> List[Spec]:
+    def specs(self) -> list[Spec]:
         return self._specs
 
     @specs.setter
-    def specs(self, value: List[Spec]) -> None:
+    def specs(self, value: list[Spec]) -> None:
         self._specs = value
 
     def structure(self) -> S:

@@ -3,10 +3,11 @@
 import io
 import re
 import signal
+from _thread import LockType
+from collections.abc import Iterable, MutableMapping
 from concurrent.futures import ThreadPoolExecutor, wait
 from pathlib import Path
 from threading import Event, Lock
-from typing import Iterable, MutableMapping, Optional, Union
 
 import httpx2 as httpx
 from httpx2._decoders import SUPPORTED_DECODERS
@@ -66,10 +67,10 @@ def _download_url(
     done_event: Event,
     client: httpx.Client,
     url: str,
-    target: Union[Path, str],
-    mapping: Optional[MutableMapping],
-    lock: Optional[Lock],
-    accept_encoding: Optional[str],
+    target: Path | str,
+    mapping: MutableMapping | None,
+    lock: LockType | None,
+    accept_encoding: str | None,
 ):
     """Fetch `url` and write the body to disk (when `mapping is None`) or to
     a `BytesIO` stored in `mapping` (otherwise). Returns the resolved target."""
@@ -125,10 +126,10 @@ def download(
     urls: Iterable[str],
     targets: Iterable,
     *,
-    mapping: Optional[MutableMapping] = None,
+    mapping: MutableMapping | None = None,
     max_workers: int = 4,
-    totals: Optional[Iterable[Optional[int]]] = None,
-    accept_encoding: Optional[str] = None,
+    totals: Iterable[int | None] | None = None,
+    accept_encoding: str | None = None,
 ):
     """Download multiple URLs in parallel.
 

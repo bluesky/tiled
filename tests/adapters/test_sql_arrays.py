@@ -1,5 +1,6 @@
+from collections.abc import Callable, Generator
 from pathlib import Path
-from typing import Callable, Dict, Generator, Type, Union, cast
+from typing import cast
 
 import awkward as ak
 import numpy as np
@@ -286,7 +287,7 @@ def test_write_read_one_batch_many_part(
 # arrays are exposed as the correct adapter type and read back correctly.
 
 ragged_names = ["integers", "floats", "ragged_floats"]
-ragged_names_adapters: Dict[str, Type[Union[ArrayAdapter, RaggedAdapter]]] = {
+ragged_names_adapters: dict[str, type[ArrayAdapter | RaggedAdapter]] = {
     "integers": ArrayAdapter,
     "floats": ArrayAdapter,
     "ragged_floats": RaggedAdapter,
@@ -392,7 +393,7 @@ def test_ragged_column_adapter_type_and_data(
     sql_adapter: SQLAdapter = request.getfixturevalue(sql_adapter_fixture)
     sql_adapter.append_partition(0, ragged_table)
 
-    child_adapter: Union[ArrayAdapter, RaggedAdapter] = sql_adapter[field]  # type: ignore[assignment]
+    child_adapter: ArrayAdapter | RaggedAdapter = sql_adapter[field]  # type: ignore[assignment]
     assert isinstance(child_adapter, expected_adapter_type)
 
     field_index = ragged_names.index(field)

@@ -214,11 +214,12 @@ async def test_thread_lock():
     # Run the timer twice concurrently
     loop = asyncio.get_running_loop()
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+        # Start the clock before submitting; run_in_executor starts the thread
+        t0 = time.perf_counter()
         coros = [
             loop.run_in_executor(executor, timer.sleep),
             loop.run_in_executor(executor, timer.sleep),
         ]
-        t0 = time.perf_counter()
         await asyncio.gather(*coros)
         run_time = time.perf_counter() - t0
     # Check that the threads didn't run in parallel

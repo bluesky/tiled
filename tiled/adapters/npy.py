@@ -1,5 +1,6 @@
 import builtins
-from typing import Any, Iterable, List, Optional, Tuple, Union
+from collections.abc import Iterable
+from typing import Any
 
 import numpy
 from numpy._typing import NDArray
@@ -35,8 +36,8 @@ class NPYAdapter(Adapter[ArrayStructure]):
         data_uri: str,
         structure: ArrayStructure,
         *,
-        metadata: Optional[JSON] = None,
-        specs: Optional[List[Spec]] = None,
+        metadata: JSON | None = None,
+        specs: list[Spec] | None = None,
     ) -> None:
         """
 
@@ -56,7 +57,7 @@ class NPYAdapter(Adapter[ArrayStructure]):
         data_source: DataSource[ArrayStructure],
         node: Node,
         /,
-        **kwargs: Optional[Any],
+        **kwargs: Any | None,
     ) -> "NPYAdapter":
         return init_adapter_from_catalog(cls, data_source, node, **kwargs)
 
@@ -64,7 +65,7 @@ class NPYAdapter(Adapter[ArrayStructure]):
     def from_uris(
         cls,
         data_uri: str,
-        **kwargs: Optional[Any],
+        **kwargs: Any | None,
     ) -> "NPYAdapter":
         filepath = path_from_uri(data_uri)
         cache_key = (numpy.load, filepath)
@@ -89,7 +90,7 @@ class NPYAdapter(Adapter[ArrayStructure]):
         return arr
 
     def read_block(
-        self, block: Tuple[int, ...], slice: Optional[builtins.slice] = None
+        self, block: tuple[int, ...], slice: builtins.slice | None = None
     ) -> NDArray[Any]:
         if sum(block) != 0:
             raise IndexError(block)
@@ -104,7 +105,7 @@ class NPYAdapter(Adapter[ArrayStructure]):
 
 class NPYSequenceAdapter(FileSequenceAdapter):
     def _load_from_files(
-        self, slice: Union[builtins.slice, int, Iterable[int]] = slice(None)
+        self, slice: builtins.slice | int | Iterable[int] = slice(None)
     ) -> NDArray[Any]:
         if isinstance(slice, int):
             return numpy.load(self.filepaths[slice])[None, ...]

@@ -9,19 +9,15 @@ import os
 import shutil
 import time
 import uuid
+from collections.abc import Callable
 from contextlib import closing
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from functools import partial, reduce
 from pathlib import Path
 from typing import (
     TYPE_CHECKING,
     Any,
-    Callable,
-    Dict,
-    List,
     Literal,
-    Optional,
-    Union,
     cast,
 )
 from urllib.parse import urlparse
@@ -29,6 +25,8 @@ from urllib.parse import urlparse
 import anyio
 from fastapi import HTTPException
 from sqlalchemy import (
+    Integer,
+    any_,
     delete,
     exists,
     false,
@@ -271,7 +269,7 @@ class Context:
         key_maker=lambda: str(uuid.uuid4()),
         storage_pool_size=5,
         storage_max_overflow=10,
-        webhook_secret_keys: Optional[List[str]] = None,
+        webhook_secret_keys: list[str] | None = None,
     ):
         self.engine = get_database_engine(database_settings)
         self.database_settings = database_settings
@@ -320,7 +318,7 @@ class Context:
         )
         self.adapters_by_mimetype = merged_adapters_by_mimetype
         self.cache_config = cache_config
-        self.webhook_secret_keys: List[str] = webhook_secret_keys or []
+        self.webhook_secret_keys: list[str] = webhook_secret_keys or []
         self.webhook_dispatcher = None
 
     def session(self):
@@ -405,11 +403,11 @@ class CatalogNodeAdapter:
         *,
         conditions=None,
         queries=None,
-        sorting: Optional[list[tuple[str, Literal[1, -1]]]] = None,
-        mount_path: Optional[list[str]] = None,
+        sorting: list[tuple[str, Literal[1, -1]]] | None = None,
+        mount_path: list[str] | None = None,
         create_mount_nodes_if_not_exist: bool = False,
         deep: bool = False,
-        max_depth: Optional[int] = None,
+        max_depth: int | None = None,
         access_filters=None,
     ):
         self.context = context
@@ -626,7 +624,7 @@ class CatalogNodeAdapter:
         async with self.context.session() as db:
             return (await db.execute(statement)).scalar_one()
 
-    async def approx_len(self) -> Optional[int]:
+    async def approx_len(self) -> int | None:
         """Get an approximate number of child nodes using table statistics.
 
         This only works for PostgreSQL databases and does not take into account
@@ -783,9 +781,9 @@ class CatalogNodeAdapter:
     async def _get_lazy_adapter(
         self,
         *,
-        block: Optional["NDBlock"] = None,
+        block: "NDBlock | None" = None,
         slice: Any = ...,
-    ) -> Optional["AnyAdapter"]:
+    ) -> "AnyAdapter | None":
         """Build an I/O adapter that resolves only the assets a read will touch.
 
         Returns `None` (so the caller falls back to :meth:`get_adapter`) unless
@@ -1001,9 +999,10 @@ class CatalogNodeAdapter:
         ).where(orm.NodesClosure.ancestor == self.node.id, orm.NodesClosure.depth >= 1)
         if self.max_depth is not None:
             statement = statement.where(orm.NodesClosure.depth <= self.max_depth)
+        dialect_name = self.context.engine.dialect.name
         for query, _ in self.access_filters:
             statement = statement.where(
-                _access_tags_predicate(query, orm.Node, orm.Node.parent)
+                _access_tags_predicate(query, orm.Node, orm.Node.parent, dialect_name)
             )
             # No container strictly between this node and the match may fail
             # the policy: otherwise results leak the paths of hidden containers.
@@ -1017,7 +1016,13 @@ class CatalogNodeAdapter:
                 .join(hidden, hidden.id == to_match.ancestor)
                 .where(to_match.descendant == orm.Node.id, to_match.depth >= 1)
                 .where(from_root.ancestor == self.node.id, from_root.depth >= 1)
-                .where(not_(_access_tags_predicate(query, hidden, hidden.parent)))
+                .where(
+                    not_(
+                        _access_tags_predicate(
+                            query, hidden, hidden.parent, dialect_name
+                        )
+                    )
+                )
                 .exists()
             )
             statement = statement.where(not_(hidden_ancestor))
@@ -1297,7 +1302,7 @@ class CatalogNodeAdapter:
             if self.context.webhook_dispatcher:
                 await self.context.webhook_dispatcher.dispatch(
                     ContainerChildCreatedEvent(
-                        timestamp=datetime.now(tz=timezone.utc),
+                        timestamp=datetime.now(tz=UTC),
                         key=key,
                         structure_family=structure_family,
                         specs=[spec.model_dump() for spec in (specs or [])],
@@ -1908,7 +1913,7 @@ class CatalogNodeAdapter:
                     else (current.specs if not drop_revision else self.node.specs) or []
                 )
                 ev = ContainerChildMetadataUpdatedEvent(
-                    timestamp=datetime.now(tz=timezone.utc),
+                    timestamp=datetime.now(tz=UTC),
                     key=self.node.key,
                     specs=[spec.model_dump() for spec in effective_specs],
                     metadata=effective_metadata,
@@ -1926,7 +1931,7 @@ class CatalogNodeAdapter:
             segments = list(await self.path_segments())
             await self.context.webhook_dispatcher.dispatch(
                 StreamClosedEvent(
-                    timestamp=datetime.now(tz=timezone.utc),
+                    timestamp=datetime.now(tz=UTC),
                     key=self.node.key,
                     path=segments,
                 ),
@@ -1977,8 +1982,8 @@ class CatalogContainerAdapter(CatalogNodeAdapter):
 
     async def keys_page(
         self,
-        cursor: Optional[int] = None,
-        limit: Optional[int] = None,
+        cursor: int | None = None,
+        limit: int | None = None,
     ):
         """Return a page of keys and the cursor for the next page.
 
@@ -2029,7 +2034,7 @@ class CatalogContainerAdapter(CatalogNodeAdapter):
             return [relative_keys[row[1]] for row in rows], next_cursor
         return [row[0] for row in rows], next_cursor
 
-    async def keys_range(self, offset: int = 0, limit: Optional[int] = None):
+    async def keys_range(self, offset: int = 0, limit: int | None = None):
         """Return a list of keys, starting at `offset` up to `limit`.
 
         The server uses `keys_page()` internally for cursor-based pagination.
@@ -2062,8 +2067,8 @@ class CatalogContainerAdapter(CatalogNodeAdapter):
 
     async def items_page(
         self,
-        cursor: Optional[int] = None,
-        limit: Optional[int] = None,
+        cursor: int | None = None,
+        limit: int | None = None,
     ):
         """Return a page of (key, adapter) pairs and the cursor for the next page.
 
@@ -2124,7 +2129,7 @@ class CatalogContainerAdapter(CatalogNodeAdapter):
             next_cursor,
         )
 
-    async def items_range(self, offset: int = 0, limit: Optional[int] = None):
+    async def items_range(self, offset: int = 0, limit: int | None = None):
         """Return a list of (key, adapter) pairs, starting at `offset` up to `limit`.
 
         The server uses `items_page()` internally for cursor-based pagination.
@@ -2162,7 +2167,7 @@ class CatalogContainerAdapter(CatalogNodeAdapter):
             for node in nodes
         ]
 
-    async def cursor_for_offset(self, offset: int) -> Optional[int]:
+    async def cursor_for_offset(self, offset: int) -> int | None:
         """Return the id of the node just before the given offset, for cursor pagination.
 
         Returns None when cursor pagination is not applicable:
@@ -2202,7 +2207,7 @@ class CatalogContainerAdapter(CatalogNodeAdapter):
 
 
 class CatalogArrayAdapter(CatalogNodeAdapter):
-    async def _assets_recently_modified(self) -> Optional[bool]:
+    async def _assets_recently_modified(self) -> bool | None:
         """Report whether a backing asset was modified within the freshness window.
 
         Returns `True` if at least one backing asset was modified within
@@ -2738,7 +2743,7 @@ def specs(query, tree):
     return tree.new_variation(conditions=tree.conditions + conditions)
 
 
-def _access_tags_predicate(query, node, parent):
+def _access_tags_predicate(query, node, parent, dialect_name):
     """Condition: `node` carries one of the query's tags, as a child of `parent`.
 
     `parent` is a literal id (`/search`: all candidates share one parent) or
@@ -2760,11 +2765,22 @@ def _access_tags_predicate(query, node, parent):
         if not query.tag_ids:
             # None of the requested tag names exist; match nothing.
             return false()
+        # Deduplicate and sort so the parameter value is stable across
+        # requests (helps prepared-statement / plan reuse).
+        tag_ids = sorted(set(query.tag_ids))
+        if dialect_name == "postgresql":
+            # Pass all ids in a single array parameter: `tag_id = ANY(...)`.
+            tag_match = orm.NodeAccessTagAssociation.tag_id == any_(
+                literal(tag_ids, ARRAY(Integer))
+            )
+        else:
+            # SQLite has no array type; use a plain IN list.
+            tag_match = orm.NodeAccessTagAssociation.tag_id.in_(tag_ids)
         return (
             select(orm.NodeAccessTagAssociation.node_id)
             .where(orm.NodeAccessTagAssociation.node_id == node.id)
             .where(orm.NodeAccessTagAssociation.parent_id == parent)
-            .where(orm.NodeAccessTagAssociation.tag_id.in_(query.tag_ids))
+            .where(tag_match)
             .exists()
         )
     # Nodes carrying at least one of the given access tags.
@@ -2781,7 +2797,9 @@ def _access_tags_predicate(query, node, parent):
 
 
 def access_tags_filter(query, tree):
-    condition = _access_tags_predicate(query, orm.Node, tree.node.id)
+    condition = _access_tags_predicate(
+        query, orm.Node, tree.node.id, tree.context.engine.dialect.name
+    )
     return tree.new_variation(
         access_filters=tree.access_filters + [(query, condition)],
     )
@@ -2832,7 +2850,7 @@ def in_or_not_in_postgresql(query, tree, method):
     return tree.new_variation(conditions=tree.conditions + [condition])
 
 
-_IN_OR_NOT_IN_DIALECT_DISPATCH: Dict[str, Callable] = {
+_IN_OR_NOT_IN_DIALECT_DISPATCH: dict[str, Callable] = {
     "sqlite": in_or_not_in_sqlite,
     "postgresql": in_or_not_in_postgresql,
 }
@@ -2894,7 +2912,7 @@ def in_memory(
     adapters_by_mimetype=None,
     top_level_access_tags=None,
     cache_config=None,
-    webhook_secret_keys: Optional[List[str]] = None,
+    webhook_secret_keys: list[str] | None = None,
 ):
     if not named_memory:
         uri = "sqlite:///:memory:"
@@ -2998,10 +3016,10 @@ def from_uri(
     init_if_not_exists=False,
     adapters_by_mimetype=None,
     top_level_access_tags=None,
-    mount_node: Optional[Union[str, List[str]]] = None,
+    mount_node: str | list[str] | None = None,
     create_mount_nodes_if_not_exist=False,
     cache_config=None,
-    webhook_secret_keys: Optional[List[str]] = None,
+    webhook_secret_keys: list[str] | None = None,
     catalog_pool_size=5,
     storage_pool_size=5,
     catalog_max_overflow=10,

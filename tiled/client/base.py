@@ -4,7 +4,6 @@ from collections.abc import MutableMapping
 from copy import copy, deepcopy
 from dataclasses import asdict
 from pathlib import Path
-from typing import Dict, List, Union
 from urllib.parse import parse_qs, urlparse
 
 import json_merge_patch
@@ -22,7 +21,7 @@ from .utils import MSGPACK_MIME_TYPE, handle_error, normalize_specs, retry_conte
 
 # TODO: Duplicated from  tiled.type_aliases to prevent importing numpy
 # After #1407 replace AnyAdapter with the BaseClass and remove this redefinition
-JSON_ITEM = Union[str, int, float, bool, Dict[str, "JSON_ITEM"], List["JSON_ITEM"]]
+JSON_ITEM = str | int | float | bool | dict[str, "JSON_ITEM"] | list["JSON_ITEM"]
 
 
 class MetadataRevisions:

@@ -9,9 +9,10 @@ import urllib.parse
 import warnings
 from contextlib import asynccontextmanager
 from functools import cache, partial
+from html import escape
 from pathlib import Path
 from textwrap import dedent
-from typing import Any, Optional, Union
+from typing import Any
 
 import anyio
 import packaging.version
@@ -74,7 +75,13 @@ from .compression import CompressionMiddleware
 from .protocols import ExternalAuthenticator, InternalAuthenticator
 from .router import get_metrics_router, get_router
 from .settings import Settings, get_settings
-from .utils import API_KEY_COOKIE_NAME, CSRF_COOKIE_NAME, get_root_url, record_timing
+from .utils import (
+    API_KEY_COOKIE_NAME,
+    CSRF_COOKIE_NAME,
+    get_root_url,
+    normalize_root_path,
+    record_timing,
+)
 from .webhook_router import UrlValidator, get_webhook_router
 from .zarr import get_zarr_router_v2, get_zarr_router_v3
 
@@ -97,6 +104,15 @@ logger.addHandler(handler)
 
 # This is used to pass the currently-authenticated principal into the logger.
 current_principal = contextvars.ContextVar("current_principal")
+
+
+# Emitted by web-frontend's build; the prefix is unknown until runtime.
+UI_BASE_TAG = '<base href="/ui/" />'
+
+
+def render_ui_index(index_html: str, root_path: str) -> str:
+    """Point the UI's <base> at the prefix this server is served under."""
+    return index_html.replace(UI_BASE_TAG, f'<base href="{escape(root_path)}/ui/">')
 
 
 def custom_openapi(app):
@@ -156,18 +172,18 @@ def _find_catalog_context(tree):
 
 def build_app(
     tree,
-    authentication: Optional[Authentication] = None,
+    authentication: Authentication | None = None,
     server_settings=None,
-    query_registry: Optional[QueryRegistry] = None,
-    serialization_registry: Optional[SerializationRegistry] = None,
-    deserialization_registry: Optional[SerializationRegistry] = None,
-    compression_registry: Optional[CompressionRegistry] = None,
-    validation_registry: Optional[ValidationRegistry] = None,
-    tasks: Optional[dict[str, list[AppTask]]] = None,
+    query_registry: QueryRegistry | None = None,
+    serialization_registry: SerializationRegistry | None = None,
+    deserialization_registry: SerializationRegistry | None = None,
+    compression_registry: CompressionRegistry | None = None,
+    validation_registry: ValidationRegistry | None = None,
+    tasks: dict[str, list[AppTask]] | None = None,
     scalable=False,
-    access_policy: Optional[AccessPolicy] = None,
-    include_routers: Optional[list[APIRouter]] = None,
-    webhook_url_validator: Optional[UrlValidator] = None,
+    access_policy: AccessPolicy | None = None,
+    include_routers: list[APIRouter] | None = None,
+    webhook_url_validator: UrlValidator | None = None,
 ):
     """
     Serve a Tree
@@ -304,6 +320,16 @@ def build_app(
     if SHARE_TILED_PATH:
         # If the distribution includes static assets, serve UI routes.
 
+        index_html_path = Path(SHARE_TILED_PATH, "ui", "index.html")
+        index_html = index_html_path.read_text() if index_html_path.is_file() else None
+        # Without the tag the UI only works unmounted; a vendored UI is fine.
+        if index_html is not None and UI_BASE_TAG not in index_html:
+            logger.warning(
+                "%s lacks %s; serving it unmodified, so it works only at /.",
+                index_html_path,
+                UI_BASE_TAG,
+            )
+
         @app.get("/favicon.ico", include_in_schema=False)
         async def favicon():
             icon_path = Path(SHARE_TILED_PATH, "ui", "tiled-icon.ico")
@@ -313,15 +339,26 @@ def build_app(
 
         @app.get("/ui/{path:path}")
         async def ui(
+            request: Request,
             path,
             _=Depends(move_api_key),
         ):
-            response = await lookup_file(path)
+            response = await lookup_file(request, path)
             return response
 
-        async def lookup_file(path, try_app=True):
+        async def lookup_file(request: Request, path, try_app=True):
             if not path:
                 path = "index.html"
+            if path == "index.html" and index_html is not None:
+                return Response(
+                    content=render_ui_index(
+                        index_html, normalize_root_path(request.scope.get("root_path"))
+                    ),
+                    media_type="text/html",
+                    # A stale index references asset filenames that an upgrade
+                    # has already removed.
+                    headers={"Cache-Control": "no-store"},
+                )
             full_path = Path(SHARE_TILED_PATH, "ui", path)
             try:
                 stat_result = await anyio.to_thread.run_sync(os.stat, full_path)
@@ -332,7 +369,7 @@ def build_app(
                 # such as /ui//metadata/a/b/c.
                 # Serve index.html and let the client-side application sort it out.
                 if try_app:
-                    response = await lookup_file("index.html", try_app=False)
+                    response = await lookup_file(request, "index.html", try_app=False)
                     return response
                 raise HTTPException(status_code=HTTP_404_NOT_FOUND)
             except OSError:
@@ -379,11 +416,13 @@ def build_app(
             # comments. But they are served as JSON because that is easy to deal with
             # on the client side.
             ui_settings = yaml.safe_load(Path(TILED_UI_SETTINGS).read_text())
-            if root_path := server_settings.get("root_path", ""):
-                ui_settings["api_url"] = f"{root_path}{ui_settings['api_url']}"
 
             @app.get("/tiled-ui-settings")
-            async def tiled_ui_settings():
+            async def tiled_ui_settings(request: Request):
+                root_path = normalize_root_path(request.scope.get("root_path"))
+                api_url = ui_settings["api_url"]
+                if root_path and api_url.startswith("/"):
+                    return {**ui_settings, "api_url": f"{root_path}{api_url}"}
                 return ui_settings
 
     @app.exception_handler(Conflicts)
@@ -1111,7 +1150,7 @@ def build_app(
     return app
 
 
-def build_app_from_config(config: Union[Config, dict[str, Any]], scalable=False):
+def build_app_from_config(config: Config | dict[str, Any], scalable=False):
     """
     Convenience function that calls build_app(...) given config as parsed Config instance
 

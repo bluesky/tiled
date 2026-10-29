@@ -26,6 +26,11 @@ Write the date in place of the "Unreleased" in the case a new version is release
   proportional to their size.
 - The `properties` column of `data_sources` is `NOT NULL` with default `{}`
   in the ORM, as it already was in migrated databases.
+- On PostgreSQL, the access-control filter passes the resolved tag ids as a
+  single array parameter (`tag_id = ANY(...)`) instead of one bind parameter
+  per tag. For principals with many tags this avoids huge, per-tag-count
+  prepared statements, whose parameter-blind generic plans defeated the
+  planner statistics.
 - Tiled now manages its connection pools to tabular storage more correctly.
   Also, it is now not allowed to use two storage databases with the same
   database on different hosts.
@@ -45,6 +50,18 @@ Write the date in place of the "Unreleased" in the case a new version is release
   such as a custom `auth=` or `timeout=`, must now be `httpx2` types, and
   exceptions raised are `httpx2` exceptions. Python 3.10 is no longer
   supported, because httpx2 requires Python 3.11 or newer.
+- Python 3.14 is now officially supported.
+- String-valued enums (`StructureFamily`, `Kind`, `Endianness`, `Management`,
+  `SparseLayout`, `Operator`, `ScopeName`, `EntryFields`, `PrincipalType`,
+  `EnvelopeFormat`, `EventType`, `DeliveryOutcome`) now subclass
+  `enum.StrEnum`. Comparison with plain strings, `.value`, and serialization
+  are unchanged, but `str()`, `format()`, and f-strings of a member now give
+  its value (e.g. `"array"`) instead of its qualified name
+  (`"StructureFamily.array"`). Error messages that include these values
+  change accordingly.
+- Type annotations throughout use PEP 604 (`X | Y`) and built-in generics
+  (`list[str]`) instead of `typing.Union`, `Optional`, `List`, etc., enforced
+  by the ruff `UP` (pyupgrade) rules.
 
 ### Fixed
 
@@ -60,6 +77,10 @@ Write the date in place of the "Unreleased" in the case a new version is release
   `ALTER TABLE api_keys` in the same `tiled admin downgrade-database` run
   failed; and `d88e91ea03f9` added `NOT NULL` columns without values, which
   failed on any table with rows.
+- Fixed `ArrayClient.patch` on arrays whose shape is not a whole number of
+  chunks. The check for writing past the end, and the new shape after
+  `extend=True`, used the Zarr array's shape, which is rounded up to whole
+  chunks, so a patch could silently grow the array or add fill values.
 - Fixed serving HDF5 files that have an empty (null dataspace) attribute or a
   byte-string attribute that is not valid UTF-8. Either one made every node
   in the file fail to load. Empty attributes are now served as `null`, and
@@ -86,6 +107,15 @@ Write the date in place of the "Unreleased" in the case a new version is release
   parameter of `from_uri`, which was never emitted.
 - Fixed a double slash (e.g. `/metadata//x`) in the links returned when
   creating a node, which the client then followed for subsequent requests.
+- Fixed `ExternalPolicyDecisionPoint` allowing writes its policy service
+  denied. A `{"result": false}` reply was not treated as a denial, so nodes,
+  graph entities, and links were written anyway. Such writes now fail with
+  403 (a GraphQL error for graph writes).
+
+### Maintenance
+
+- Fixed flaky `test_thread_lock`, which started its timer after the worker
+  threads had already started.
 
 ## v0.2.19 (2026-10-13)
 

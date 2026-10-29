@@ -1,0 +1,13 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /web-frontend
+    schedule:
+      interval: cron
+      cronjob: "0 0 1,15 * *"
+
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: cron
+      cronjob: "0 0 1,15 * *"
