@@ -5,6 +5,7 @@ client-side response caching), httpx's built-in resolution of the
 HTTP_PROXY / HTTPS_PROXY / NO_PROXY environment variables is bypassed.
 The Transport replicates that behavior so proxy env vars are honored.
 """
+
 import httpx2 as httpx
 import pytest
 

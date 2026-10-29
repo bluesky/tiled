@@ -18,17 +18,19 @@ With pip or uv, install `"tiled[client]"`. With conda or pixi, install
 ```python
 # Explicit URL
 from tiled.client import from_uri
+
 c = from_uri("https://tiled-demo.nsls2.bnl.gov")
 
 # Alternatively, use a "profile" as shorthand.
 from tiled.client import from_profile
+
 c = from_profile("some_alias")
 ```
 
 **Navigate**
 
 ```python
-x = c['examples/xraydb']
+x = c["examples/xraydb"]
 x.metadata
 ```
 
@@ -37,7 +39,7 @@ x.metadata
 ```python
 from tiled.queries import Key
 
-results = x.search(Key('element.category') == 'nonmetal')
+results = x.search(Key("element.category") == "nonmetal")
 ```
 
 **Fetch items**
@@ -61,31 +63,31 @@ for key, value in results.items():
 
 ```python
 # Tiled infers desired format from '.csv' file extension
-c['examples/xraydb/C/edges'].export('my_table.csv')
+c["examples/xraydb/C/edges"].export("my_table.csv")
 
 # List avaiable formats.
-c['examples/images/binary_blobs'].formats
+c["examples/images/binary_blobs"].formats
 # Specify format explicitly as MIME type.
-c['examples/images/binary_blobs'].export('my_image.png', format='image/png')
+c["examples/images/binary_blobs"].export("my_image.png", format="image/png")
 ```
 
 **Slice remotely**
 
 ```python
 # Download array slice into numpy object in memory.
-arr = c['examples/images/binary_blobs'][:50,-50:]
+arr = c["examples/images/binary_blobs"][:50, -50:]
 
 # Download array slice to file on disk.
-c['examples/images/binary_blobs'].export(
-    'top_right_corner.png',
-     slice=np.s_[:50,-50:],
+c["examples/images/binary_blobs"].export(
+    "top_right_corner.png",
+    slice=np.s_[:50, -50:],
 )
 
 # Download table columns into pandas DataFrame in memory.
-c['examples/xraydb/C/edges'].read(['edge', 'energy_eV'])
+c["examples/xraydb/C/edges"].read(["edge", "energy_eV"])
 
 # Download table columns into file on disk.
-c['examples/xraydb/C/edges'].export('my_table.csv', columns=['edge', 'energy_eV'])
+c["examples/xraydb/C/edges"].export("my_table.csv", columns=["edge", "energy_eV"])
 ```
 
 **Locate data sources**
@@ -106,10 +108,10 @@ c['examples/xraydb/C/edges'].data_sources()
 _This requires a server that you are authorized to write to._
 
 ```python
-c.write_array([1, 2, 3], metadata={'color': 'blue'})
-c.write_table({'a': [1, 2], 'b': [3, 4]}, metadata={'color': 'blue'})
-s = c.create_container('stuff')
-s.write_array([1, 2, 3], key='nested stuff')
+c.write_array([1, 2, 3], metadata={"color": "blue"})
+c.write_table({"a": [1, 2], "b": [3, 4]}, metadata={"color": "blue"})
+s = c.create_container("stuff")
+s.write_array([1, 2, 3], key="nested stuff")
 ```
 
 More features not shown:

@@ -4,7 +4,8 @@ Utilities for adapting outgoing responses (and interpreting incoming requests)
 so that older ``python-tiled`` clients keep working when the server evolves.
 """
 
-from typing import Any, Mapping, Optional
+from collections.abc import Mapping
+from typing import Any
 
 import packaging.version
 from fastapi import HTTPException, Request
@@ -46,7 +47,7 @@ def legacy_access_blob_error(exc: ValueError) -> HTTPException:
     )
 
 
-def raw_python_tiled_client_version(request: Request) -> Optional[str]:
+def raw_python_tiled_client_version(request: Request) -> str | None:
     """Return the raw ``<version>`` from a ``python-tiled/<version>`` User-Agent, or None.
 
     Returns None when the User-Agent header is absent or does not identify a
@@ -62,7 +63,7 @@ def raw_python_tiled_client_version(request: Request) -> Optional[str]:
 
 def parse_python_tiled_client_version(
     request: Request,
-) -> Optional[packaging.version.Version]:
+) -> packaging.version.Version | None:
     """Return the parsed version from a ``python-tiled/<version>`` User-Agent, or None.
 
     Returns None when the User-Agent is missing, is not a Python Tiled client,
@@ -80,7 +81,7 @@ def parse_python_tiled_client_version(
 
 
 def strip_asset_fields_for_client(
-    data_sources: list, client_version: Optional[packaging.version.Version]
+    data_sources: list, client_version: packaging.version.Version | None
 ) -> None:
     """Remove asset fields that the given python-tiled client cannot accept.
 
@@ -100,7 +101,7 @@ def strip_asset_fields_for_client(
 
 def access_tags_from_access_blob(
     access_blob: Mapping[str, Any],
-) -> Optional[AccessTags]:
+) -> AccessTags | None:
     """Translate a legacy ``access_blob`` into access tags.
 
     An empty blob carries no tag information: the old server left ownership to
@@ -134,7 +135,7 @@ def access_tags_from_access_blob(
     return normalize_access_tags(tags)
 
 
-def access_blob_from_access_tags(access_tags) -> Optional[dict]:
+def access_blob_from_access_tags(access_tags) -> dict | None:
     """Render access tags in the legacy ``access_blob`` shape.
 
     A principal tag (``user:<id>`` or ``service:<id>``) marks a node that the
@@ -150,7 +151,7 @@ def access_blob_from_access_tags(access_tags) -> Optional[dict]:
 
 
 def client_expects_access_blob(
-    client_version: Optional[packaging.version.Version],
+    client_version: packaging.version.Version | None,
 ) -> bool:
     """Whether this client predates the replacement of access_blob by access_tags.
 
@@ -186,7 +187,7 @@ def access_tags_from_patch_request(body, access_tags, apply_patch) -> AccessTags
     return access_tags if patched_tags is None else patched_tags
 
 
-def legacy_access_blob(body) -> Optional[Any]:
+def legacy_access_blob(body) -> Any | None:
     """Return the deprecated ``access_blob`` a client sent, or None if it sent none.
 
     Gated on ``model_fields_set`` so that reading the field -- and tripping the
@@ -198,7 +199,7 @@ def legacy_access_blob(body) -> Optional[Any]:
     return body.access_blob
 
 
-def access_tags_from_request(body) -> Optional[AccessTags]:
+def access_tags_from_request(body) -> AccessTags | None:
     """Resolve access tags from a request body that uses the deprecated spelling.
 
     Callers gate this on ``legacy_access_blob``, so the body is known to carry

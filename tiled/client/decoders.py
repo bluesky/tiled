@@ -1,4 +1,4 @@
-from typing import Iterator
+from collections.abc import Iterator
 
 # There is no public API in httpx2 to injecting additional decoders.
 from httpx2._decoders import SUPPORTED_DECODERS
@@ -34,7 +34,7 @@ if modules_available("blosc2"):
                 _, cbytes, _ = blosc2.get_cbuffer_sizes(view[offset:])
                 if cbytes <= 0:
                     break
-                frame = view[offset : offset + cbytes]  # noqa: E203
+                frame = view[offset : offset + cbytes]
                 yield blosc2.decompress(frame)
                 offset += cbytes
 

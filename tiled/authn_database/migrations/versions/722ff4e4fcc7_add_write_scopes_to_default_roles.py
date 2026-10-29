@@ -1,10 +1,11 @@
-""""Add write scopes to default Roles."
+"""Add write scopes to default Roles."
 
 Revision ID: 722ff4e4fcc7
 Revises: 481830dd6c11
 Create Date: 2022-03-22 16:54:02.764016
 
 """
+
 from alembic import op
 from sqlalchemy.orm.session import Session
 

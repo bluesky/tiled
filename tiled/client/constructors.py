@@ -3,7 +3,6 @@ import collections.abc
 import pathlib
 import threading
 import warnings
-from typing import Optional, Union
 from urllib.parse import parse_qs, urlparse
 
 import httpx2 as httpx
@@ -28,8 +27,8 @@ def from_uri(
     headers=None,
     timeout=None,
     include_data_sources=False,
-    auth: Optional[httpx.Auth] = None,
-    cookies: Optional[httpx.Cookies | dict] = None,
+    auth: httpx.Auth | None = None,
+    cookies: httpx.Cookies | dict | None = None,
     max_connections: int = MAX_CONCURRENT_CONNECTIONS,
     show_progress=None,
     trust_env=True,
@@ -286,10 +285,10 @@ def from_profile(name, structure_clients=None, **kwargs):
 
 
 def simple(
-    directory: Optional[Union[str, pathlib.Path]] = None,
-    api_key: Optional[str] = None,
+    directory: str | pathlib.Path | None = None,
+    api_key: str | None = None,
     port: int = 0,
-    readable_storage: Optional[Union[str, pathlib.Path]] = None,
+    readable_storage: str | pathlib.Path | None = None,
     quiet: bool = False,
 ):
     """

@@ -7,6 +7,7 @@ Streaming authenticates via the Authorization header on the WebSocket
 handshake: 'Apikey SECRET' or 'Bearer TOKEN'. The server side of this lives in
 tiled.server.authentication.websocket_credentials.
 """
+
 from unittest.mock import MagicMock, patch
 
 import httpx

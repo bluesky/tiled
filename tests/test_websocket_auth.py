@@ -6,6 +6,7 @@ can send one), a query parameter, or a first message on the open connection.
 These tests cover the first two, which are resolved by FastAPI dependencies
 before the handshake completes.
 """
+
 import uuid
 from unittest.mock import MagicMock, patch
 

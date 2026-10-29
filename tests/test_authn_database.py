@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy import event
@@ -29,7 +29,7 @@ async def db_session():
 
 async def test_purge_expired_api_keys(db_session):
     principal = await create_user(db_session, "test", "alice")
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     expired = orm.APIKey(
         principal_id=principal.id,
         expiration_time=now - timedelta(seconds=10),
@@ -66,7 +66,7 @@ async def test_purge_expired_api_keys(db_session):
 
 async def test_purge_expired_sessions(db_session):
     principal = await create_user(db_session, "test", "alice")
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     expired = orm.Session(
         principal_id=principal.id,
         expiration_time=now - timedelta(seconds=10),
@@ -88,7 +88,7 @@ async def test_purge_expired_sessions(db_session):
 
 
 async def test_purge_expired_pending_sessions(db_session):
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     expired = orm.PendingSession(
         hashed_device_code=b"e" * 32,
         user_code="AAAABBBB",
@@ -118,7 +118,7 @@ async def test_purging_session_nulls_pending_session_reference(db_session):
     reference instead, returning the pending session to its unapproved state.
     """
     principal = await create_user(db_session, "test", "alice")
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     expired_session = orm.Session(
         principal_id=principal.id,
         expiration_time=now - timedelta(seconds=10),

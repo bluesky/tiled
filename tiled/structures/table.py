@@ -2,7 +2,7 @@ import base64
 import io
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, List, Tuple, Union
+from typing import Any
 
 import pyarrow
 
@@ -29,8 +29,8 @@ class TableStructure(Structure):
     # If it does, we could switch to using that here.
     arrow_schema: str
     npartitions: int
-    columns: List[str]
-    resizable: Union[bool, Tuple[bool, ...]] = False
+    columns: list[str]
+    resizable: bool | tuple[bool, ...] = False
 
     def __post_init__(self):
         self.columns = list(map(str, self.columns))  # Ensure all column names are str
@@ -71,7 +71,7 @@ class TableStructure(Structure):
         )
 
     @classmethod
-    def from_arrays(cls, arr, names: List[str]) -> "TableStructure":
+    def from_arrays(cls, arr, names: list[str]) -> "TableStructure":
         schema = pyarrow.Table.from_arrays(arr, names).schema
         return cls(
             arrow_schema=_uri_from_schema(schema), npartitions=1, columns=list(names)
@@ -105,9 +105,7 @@ class TableStructure(Structure):
                 f"Expected base64-encoded data prefixed with {B64_ENCODED_PREFIX}."
             )
 
-        payload = self.arrow_schema[len(B64_ENCODED_PREFIX) :].encode(  # noqa: E203
-            "utf-8"
-        )
+        payload = self.arrow_schema[len(B64_ENCODED_PREFIX) :].encode("utf-8")
         return pyarrow.ipc.read_schema(io.BytesIO(base64.b64decode(payload)))
 
     @property

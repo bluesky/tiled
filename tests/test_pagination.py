@@ -265,9 +265,9 @@ def _paginate_all(client, sort=None, page_size=2):
         resp = http_client.get(
             client.uri.replace("/api/v1/metadata/", "/api/v1/search/"), params=params
         )
-        assert (
-            resp.status_code == 200
-        ), f"HTTP {resp.status_code}: {resp.json().get('detail')}"
+        assert resp.status_code == 200, (
+            f"HTTP {resp.status_code}: {resp.json().get('detail')}"
+        )
         body = resp.json()
         page_keys = [item["id"] for item in body["data"]]
         all_keys.extend(page_keys)
@@ -291,17 +291,17 @@ def test_cursor_pagination_default_sort(sorted_client):
 
     next_link = body1["links"]["next"]
     assert next_link is not None, "Expected a 'next' link after the first page"
-    assert (
-        "page[cursor]=" in next_link
-    ), "Default sort should produce a cursor-based next link"
+    assert "page[cursor]=" in next_link, (
+        "Default sort should produce a cursor-based next link"
+    )
 
     resp2 = http_client.get(search_url, params=_params_from_next_link(next_link))
     assert resp2.status_code == 200
     page2_keys = [item["id"] for item in resp2.json()["data"]]
     assert len(page2_keys) == 2
-    assert (
-        set(page1_keys) & set(page2_keys) == set()
-    ), f"Pages overlap: {page1_keys}, {page2_keys}"
+    assert set(page1_keys) & set(page2_keys) == set(), (
+        f"Pages overlap: {page1_keys}, {page2_keys}"
+    )
     # Together they must be exactly the first four items (insertion order: e,b,d,a,c).
     assert set(page1_keys) | set(page2_keys) == {"e", "b", "d", "a"}
 
@@ -323,9 +323,9 @@ def test_offset_fallback_non_default_sort_second_page(sorted_client):
 
     next_link = resp1.json()["links"]["next"]
     assert next_link is not None, "Expected a 'next' link"
-    assert (
-        "page[offset]=" in next_link
-    ), "Non-default sort should produce an offset-based next link, not a cursor"
+    assert "page[offset]=" in next_link, (
+        "Non-default sort should produce an offset-based next link, not a cursor"
+    )
 
     resp2 = http_client.get(
         search_url, params=_params_from_next_link(next_link, sort="id")
@@ -343,9 +343,9 @@ def test_full_traversal_default_sort_descending(sorted_client):
     search_url = sorted_client.uri.replace("/api/v1/metadata/", "/api/v1/search/")
 
     resp = http_client.get(search_url, params={"sort": "-", "page[limit]": 2})
-    assert (
-        resp.status_code == 200
-    ), f"HTTP {resp.status_code}: {resp.json().get('detail')}"
+    assert resp.status_code == 200, (
+        f"HTTP {resp.status_code}: {resp.json().get('detail')}"
+    )
     next_link = resp.json()["links"]["next"]
     assert next_link is not None
     assert "page[cursor]=" in next_link
@@ -434,9 +434,9 @@ def test_plus_prefix_sort_accepted(sorted_client):
         sorted_client.uri.replace("/api/v1/metadata/", "/api/v1/search/"),
         params={"sort": "+id", "page[limit]": 5},
     )
-    assert (
-        resp.status_code == 200
-    ), f"HTTP {resp.status_code}: {resp.json().get('detail')}"
+    assert resp.status_code == 200, (
+        f"HTTP {resp.status_code}: {resp.json().get('detail')}"
+    )
     keys = [item["id"] for item in resp.json()["data"]]
     assert keys == sorted(keys)
 

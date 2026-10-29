@@ -11,6 +11,7 @@ stopped here has no index over `nodes.metadata`, while one built by
 migration, released and deployed together with this one, puts a replacement
 index in place and reconciles the two.
 """
+
 import sqlalchemy as sa
 from alembic import op
 

@@ -24,8 +24,7 @@ import json
 import logging
 import socket
 import uuid
-from datetime import datetime, timedelta, timezone
-from typing import Optional
+from datetime import UTC, datetime, timedelta
 from urllib.parse import urlparse
 
 import httpx2 as httpx
@@ -106,7 +105,7 @@ _STANDARD_BLOCKED_NETWORKS: list[ipaddress.IPv4Network | ipaddress.IPv6Network] 
 
 
 def get_combined_blocked_networks(
-    local_blocked_networks: Optional[list[str]],
+    local_blocked_networks: list[str] | None,
 ) -> list[ipaddress.IPv4Network | ipaddress.IPv6Network]:
     """Return the union of the standard blocked networks and any local overrides."""
     return (
@@ -119,8 +118,8 @@ def get_combined_blocked_networks(
 
 def check_url_ssrf_safety(
     url: str,
-    local_blocked_networks: Optional[list[str]] = None,
-    allow_delivery_hosts: Optional[list[str]] = None,
+    local_blocked_networks: list[str] | None = None,
+    allow_delivery_hosts: list[str] | None = None,
 ) -> None:
     """Raise ``ValueError`` if *url* resolves to a private/loopback/reserved address.
 
@@ -305,7 +304,7 @@ async def _deliver(
             delivery.attempts = last_attempt
             delivery.outcome = outcome
             delivery.error_detail = error_detail
-            delivery.delivered_at = datetime.now(tz=timezone.utc).replace(tzinfo=None)
+            delivery.delivered_at = datetime.now(tz=UTC).replace(tzinfo=None)
             await db.commit()
 
     if outcome == DeliveryOutcome.failed:
@@ -330,7 +329,7 @@ async def _prune_old_deliveries(
     wait = interval
     while True:
         await asyncio.sleep(wait)
-        cutoff = datetime.now(tz=timezone.utc).replace(tzinfo=None) - timedelta(
+        cutoff = datetime.now(tz=UTC).replace(tzinfo=None) - timedelta(
             days=max_age_days
         )
         try:
@@ -450,7 +449,7 @@ class WebhookDispatcher:
             # (webhook, delivery_id, plaintext_secret) for the tasks below.
             deliveries_to_fire = []
             for wh, delivery, event_id in rows_to_insert:
-                plaintext_secret: Optional[str] = None
+                plaintext_secret: str | None = None
                 if wh.secret:
                     plaintext_secret = _decrypt_secret(wh.secret, self.secret_keys)
                 deliveries_to_fire.append((wh, delivery.id, plaintext_secret, event_id))
