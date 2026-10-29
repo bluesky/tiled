@@ -545,7 +545,7 @@ class ExternalPolicyDecisionPoint(AccessPolicy, ABC):
             self.build_input(principal, authn_access_tags, authn_scopes, access_tags),
             ResultHolder[bool],
         )
-        if decision:
+        if decision and decision.result:
             return (decision.result, access_tags or normalize_access_tags())
         raise ValueError("Permission denied not able to add the node")
 
@@ -568,7 +568,7 @@ class ExternalPolicyDecisionPoint(AccessPolicy, ABC):
             self.build_input(principal, authn_access_tags, authn_scopes, access_tags),
             ResultHolder[bool],
         )
-        if decision:
+        if decision and decision.result:
             return (decision.result, access_tags or normalize_access_tags())
         raise ValueError("Permission denied not able to add the node")
 
