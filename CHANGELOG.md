@@ -73,6 +73,10 @@ Write the date in place of the "Unreleased" in the case a new version is release
   parameter of `from_uri`, which was never emitted.
 - Fixed a double slash (e.g. `/metadata//x`) in the links returned when
   creating a node, which the client then followed for subsequent requests.
+- Fixed `ExternalPolicyDecisionPoint` allowing writes its policy service
+  denied. A `{"result": false}` reply was not treated as a denial, so nodes,
+  graph entities, and links were written anyway. Such writes now fail with
+  403 (a GraphQL error for graph writes).
 
 ## v0.2.19 (2026-10-13)
 

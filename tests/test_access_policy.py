@@ -68,12 +68,13 @@ async def test_node_access_denied(
     respx.post(external_policy._create_node).mock(
         return_value=Response(200, json={"result": False})
     )
-    assert await external_policy.init_node(
-        principal=principal,
-        authn_access_tags=normalize_access_tags(),
-        authn_scopes=set([]),
-        access_tags=normalize_access_tags(["beamline_x_user"]),
-    ) == (False, normalize_access_tags(["beamline_x_user"]))
+    with pytest.raises(ValueError):
+        await external_policy.init_node(
+            principal=principal,
+            authn_access_tags=normalize_access_tags(),
+            authn_scopes=set([]),
+            access_tags=normalize_access_tags(["beamline_x_user"]),
+        )
 
 
 @pytest.mark.asyncio
@@ -105,13 +106,14 @@ async def test_node_modify_denied(
     respx.post(external_policy._create_node).mock(
         return_value=Response(200, json={"result": False})
     )
-    assert await external_policy.modify_node(
-        node=node,
-        principal=principal,
-        authn_access_tags=normalize_access_tags(),
-        authn_scopes=set([]),
-        access_tags=normalize_access_tags(["beamline_x_user"]),
-    ) == (False, normalize_access_tags(["beamline_x_user"]))
+    with pytest.raises(ValueError):
+        await external_policy.modify_node(
+            node=node,
+            principal=principal,
+            authn_access_tags=normalize_access_tags(),
+            authn_scopes=set([]),
+            access_tags=normalize_access_tags(["beamline_x_user"]),
+        )
 
 
 @pytest.mark.asyncio
@@ -218,7 +220,7 @@ async def test_allowed_scopes_return_no_scopes_if_validation_error(
 @respx.mock
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "allow,remote_allow", [(True, None), (False, None), (None, True), (None, False)]
+    "allow,remote_allow", [(True, None), (False, None), (None, True)]
 )
 async def test_empty_access_tags_public(
     external_policy: ExternalPolicyDecisionPoint,
@@ -244,3 +246,20 @@ async def test_empty_access_tags_public(
 
     if route:
         assert route.call_count == 1
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_empty_access_tags_remote_denied(
+    external_policy: ExternalPolicyDecisionPoint, principal: Principal
+):
+    respx.post(external_policy._create_node).mock(
+        return_value=Response(200, json={"result": False})
+    )
+    with pytest.raises(ValueError):
+        await external_policy.init_node(
+            principal=principal,
+            authn_access_tags=normalize_access_tags(),
+            authn_scopes=set([]),
+            access_tags=None,
+        )
