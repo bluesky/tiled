@@ -65,9 +65,7 @@ class EmptyAwareEnvSettingsSource(EnvSettingsSource):
         if (is_complex or value_is_complex) and value == "":
             # Skip this field so its default (not an invalid empty string) wins.
             return None
-        return super().prepare_field_value(
-            field_name, field, value, value_is_complex
-        )
+        return super().prepare_field_value(field_name, field, value, value_is_complex)
 
 
 def settings_customise_sources(
