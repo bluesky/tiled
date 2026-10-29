@@ -252,7 +252,7 @@ REQUIRED_AT_STARTUP = "required_at_startup"
 
 
 def revisions_accepted_at_startup(
-    alembic_dir: Union[str, Path], required_revision: str
+    alembic_dir: str | Path, required_revision: str
 ) -> list[str]:
     """
     The database revisions at which a server requiring `required_revision` starts.
