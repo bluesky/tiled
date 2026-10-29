@@ -28,6 +28,8 @@ def upgrade():
     connection = op.get_bind()
     with Session(bind=connection) as db:
         role = db.query(Role).filter(Role.name == "admin").first()
+        if not role:
+            raise RuntimeError("Expected role 'admin' not found in db!")
         scopes = role.scopes.copy()
         scopes.append(SCOPE)
         role.scopes = scopes
@@ -41,6 +43,8 @@ def downgrade():
     connection = op.get_bind()
     with Session(bind=connection) as db:
         role = db.query(Role).filter(Role.name == "admin").first()
+        if not role:
+            raise RuntimeError("Expected role 'admin' not found in db!")
         scopes = role.scopes.copy()
         if SCOPE in scopes:
             scopes.remove(SCOPE)
