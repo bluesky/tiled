@@ -81,6 +81,10 @@ Write the date in place of the "Unreleased" in the case a new version is release
   denied. A `{"result": false}` reply was not treated as a denial, so nodes,
   graph entities, and links were written anyway. Such writes now fail with
   403 (a GraphQL error for graph writes).
+- Treat an empty-string environment variable for a list/dict configuration
+  field (e.g. `TILED_WEBHOOKS_SECRET_KEYS=`) as unset, falling back to the
+  field default instead of failing to start. This avoids startup errors when
+  such variables are populated by Docker Compose interpolation like `${VAR:-}`.
 
 ### Maintenance
 
