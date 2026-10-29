@@ -187,6 +187,10 @@ Write the date in place of the "Unreleased" in the case a new version is release
   leave a background task running and hang shutdown.
 - `from_uri` applies its `timeout` and `trust_env` arguments, or the default
   timeouts when none are given, to the first request it makes to an `http://` URI.
+<<<<<<< HEAD
+=======
+
+>>>>>>> b999d015d7f0ca46d0a56591ef5bfd0ebc63c017
 
 ## v0.2.18 (2026-09-02)
 
