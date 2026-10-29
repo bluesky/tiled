@@ -4,13 +4,12 @@ from collections.abc import MutableMapping
 from copy import copy, deepcopy
 from dataclasses import asdict
 from pathlib import Path
-from typing import Dict, List, Union
 from urllib.parse import parse_qs, urlparse
 
 import json_merge_patch
 import jsonpatch
 import orjson
-from httpx import URL
+from httpx2 import URL
 
 from tiled.client.context import Context
 
@@ -22,7 +21,7 @@ from .utils import MSGPACK_MIME_TYPE, handle_error, normalize_specs, retry_conte
 
 # TODO: Duplicated from  tiled.type_aliases to prevent importing numpy
 # After #1407 replace AnyAdapter with the BaseClass and remove this redefinition
-JSON_ITEM = Union[str, int, float, bool, Dict[str, "JSON_ITEM"], List["JSON_ITEM"]]
+JSON_ITEM = str | int | float | bool | dict[str, "JSON_ITEM"] | list["JSON_ITEM"]
 
 
 class MetadataRevisions:
@@ -104,7 +103,7 @@ class MetadataRevisions:
                 if len(result) == 0:
                     result = content.copy()
                 else:
-                    result["data"].append(content["data"])
+                    result["data"].extend(content["data"])
                 next_page_url = content["links"]["next"]
 
             return result["data"]
@@ -170,7 +169,7 @@ class BaseClient:
             )
         return self._structure
 
-    def login(self):
+    def login(self, *, overwrite_auth=False):
         """
         Depending on the server's authentication method, this will prompt for username/password:
 
@@ -186,7 +185,16 @@ class BaseClient:
         https://...
 
         and enter the code: XXXX-XXXX
+
+        Parameters
+        ----------
+        overwrite_auth: bool, optional
+            If True, any existing authentication will be overwritten.
+            If False, an error will be raised if authentication is already configured.
         """
+        # Fail fast, before any interactive prompt, if the client is already
+        # authenticated with another method (e.g. an external proxy Auth).
+        self.context._raise_if_auth_configured(overwrite_auth)
         self.context.authenticate()
 
     def logout(self):

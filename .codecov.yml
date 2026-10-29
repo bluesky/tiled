@@ -1,10 +1,20 @@
-# show coverage in CI status, not as a comment.
-comment: off
+# Comment on the PR only when coverage actually changed, briefly.
+comment:
+  layout: "condensed_header, diff, files"
+  require_changes: true
+
 coverage:
   status:
+    # Coverage of the whole project. Reported but never fails the PR: a change
+    # in the number of measured lines moves the percentage without any new
+    # line being uncovered, and a drop is a point for review, not a blocker.
     project:
       default:
         target: auto
+        threshold: 0.5%
+        informational: true
+    # Coverage of the lines changed by the PR. This is what the PR controls,
+    # so it is the check that can fail.
     patch:
       default:
-        target: auto
+        target: 85%

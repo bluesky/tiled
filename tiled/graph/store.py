@@ -22,15 +22,15 @@ it assumes the access tags of the referenced node.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
-from typing import Iterable, Optional
+from collections.abc import Iterable
+from datetime import UTC, datetime
 
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import and_, delete, false, insert, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from ..catalog.core import register_principal_tag_rows
+from ..catalog.core import register_principal_tag_rows, resolve_access_tag_ids
 from ..catalog.orm import AccessTag, Node, NodeAccessTagAssociation
 from ..queries import AccessTagsFilter
 from ..server.connection_pool import get_database_engine
@@ -58,13 +58,13 @@ class EntityRecord(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     id: str
-    node_id: Optional[int] = None
+    node_id: int | None = None
     entity_type: str
     name: str
-    uri: Optional[str]
+    uri: str | None
     properties: dict
     # None when node_id is set: access control is delegated to the node.
-    access_tags: Optional[frozenset[str]] = None
+    access_tags: frozenset[str] | None = None
     created_at: datetime
 
 
@@ -81,29 +81,42 @@ class LinkRecord(BaseModel):
 
 
 def _access_tags_match_condition(
-    assoc_table, assoc_id_column, owner_column, access_tag_names
+    assoc_table,
+    assoc_id_column,
+    owner_column,
+    access_tag_names,
+    access_tag_ids=None,
 ):
     """
     Rows tagged with at least one of the given access tags.
     EXISTS is used (vs IN) as it is much more preformant in SQLite,
-    though performance in Postgres appears similar for both.
+    though performance in Postgres appears similar for both. Resolved policy
+    filters use tag ID literals; the name join remains for direct callers.
     """
-    return (
+    statement = (
         select(assoc_id_column)
         .select_from(assoc_table)
-        .join(_access_tags, _access_tags.c.id == assoc_table.c.tag_id)
         .where(assoc_id_column == owner_column)
-        .where(_access_tags.c.name.in_(access_tag_names))
-        .exists()
     )
+    if access_tag_ids is not None:
+        statement = statement.where(assoc_table.c.tag_id.in_(access_tag_ids))
+    else:
+        statement = statement.join(
+            _access_tags, _access_tags.c.id == assoc_table.c.tag_id
+        ).where(_access_tags.c.name.in_(access_tag_names))
+    return statement.exists()
 
 
 def _link_access_condition(query: AccessTagsFilter):
-    if not query.tags:
+    if not query.tags or query.tag_ids == []:
         # Nothing can match an empty tag list.
         return false()
     return _access_tags_match_condition(
-        _link_access_tags, _link_access_tags.c.link_id, _links.c.id, query.tags
+        _link_access_tags,
+        _link_access_tags.c.link_id,
+        _links.c.id,
+        query.tags,
+        query.tag_ids,
     )
 
 
@@ -112,7 +125,7 @@ def _entity_access_condition(query: AccessTagsFilter):
     An entity matches if it carries one of the given tags itself, or, when it
     is node-backed (node_id set), if the referenced catalog node does.
     """
-    if not query.tags:
+    if not query.tags or query.tag_ids == []:
         return false()
     return or_(
         and_(
@@ -122,6 +135,7 @@ def _entity_access_condition(query: AccessTagsFilter):
                 _entity_access_tags.c.entity_id,
                 _entities.c.id,
                 query.tags,
+                query.tag_ids,
             ),
         ),
         and_(
@@ -131,6 +145,7 @@ def _entity_access_condition(query: AccessTagsFilter):
                 _node_access_tags.c.node_id,
                 _entities.c.node_id,
                 query.tags,
+                query.tag_ids,
             ),
         ),
     )
@@ -143,7 +158,9 @@ def _access_filters_condition(condition_builder, queries: list[AccessTagsFilter]
     return condition
 
 
-async def _resolve_access_tag_ids(conn, access_tag_names: Iterable[str]) -> list[int]:
+async def _resolve_access_tag_ids_for_write(
+    conn, access_tag_names: Iterable[str]
+) -> list[int]:
     """
     Resolve access tag names to access_tags ids. An association cannot
     reference a tag that has no row, so unknown names raise. Normally the
@@ -190,12 +207,17 @@ class GraphSQLAlchemyStore:
     async def from_database_settings(
         cls,
         database_settings: DatabaseSettings,
-    ) -> "GraphSQLAlchemyStore":
+    ) -> GraphSQLAlchemyStore:
         engine = get_database_engine(database_settings)
         return cls(engine, owns_engine=False)
 
+    async def resolve_access_tag_ids_for_read(self, names):
+        """Resolve access-tag names to IDs for access-filter query literals."""
+        async with self._engine.connect() as conn:
+            return await resolve_access_tag_ids(conn, names)
+
     @staticmethod
-    def _to_entity(row, access_tags: Optional[frozenset[str]]) -> EntityRecord:
+    def _to_entity(row, access_tags: frozenset[str] | None) -> EntityRecord:
         return EntityRecord(
             id=row.id,
             node_id=row.node_id,
@@ -211,7 +233,7 @@ class GraphSQLAlchemyStore:
         )
 
     @staticmethod
-    def _to_link(row, access_tags: Optional[frozenset[str]]) -> LinkRecord:
+    def _to_link(row, access_tags: frozenset[str] | None) -> LinkRecord:
         return LinkRecord(
             id=row.id,
             subject_id=row.subject_id,
@@ -250,7 +272,7 @@ class GraphSQLAlchemyStore:
             conn, _link_access_tags, _link_access_tags.c.link_id, ids
         )
 
-    async def _entity_record(self, conn, id: str) -> Optional[EntityRecord]:
+    async def _entity_record(self, conn, id: str) -> EntityRecord | None:
         row = (
             await conn.execute(select(_entities).where(_entities.c.id == id))
         ).one_or_none()
@@ -259,7 +281,7 @@ class GraphSQLAlchemyStore:
         access_tags = (await self._entity_access_tags_by_id(conn, [id])).get(id)
         return self._to_entity(row, access_tags)
 
-    async def _link_record(self, conn, id: str) -> Optional[LinkRecord]:
+    async def _link_record(self, conn, id: str) -> LinkRecord | None:
         row = (
             await conn.execute(select(_links).where(_links.c.id == id))
         ).one_or_none()
@@ -272,7 +294,7 @@ class GraphSQLAlchemyStore:
         self, conn, assoc_table, assoc_id_column_name: str, id: str, access_tag_names
     ) -> None:
         """Replace the access tag associations of an entity or link."""
-        access_tag_ids = await _resolve_access_tag_ids(conn, access_tag_names)
+        access_tag_ids = await _resolve_access_tag_ids_for_write(conn, access_tag_names)
         await conn.execute(
             delete(assoc_table).where(
                 getattr(assoc_table.c, assoc_id_column_name) == id
@@ -291,13 +313,13 @@ class GraphSQLAlchemyStore:
         self,
         entity_type: str,
         name: str,
-        node_id: Optional[int] = None,
-        uri: Optional[str] = None,
-        properties: Optional[dict] = None,
-        access_tags: Optional[Iterable[str]] = None,
+        node_id: int | None = None,
+        uri: str | None = None,
+        properties: dict | None = None,
+        access_tags: Iterable[str] | None = None,
     ) -> EntityRecord:
         id_ = str(uuid.uuid4())
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         if node_id is not None and access_tags:
             raise IntegrityError("entity node access tags", {}, None)
         async with self._engine.begin() as conn:
@@ -313,7 +335,9 @@ class GraphSQLAlchemyStore:
                 )
             )
             if node_id is None and access_tags:
-                access_tag_ids = await _resolve_access_tag_ids(conn, access_tags)
+                access_tag_ids = await _resolve_access_tag_ids_for_write(
+                    conn, access_tags
+                )
                 await conn.execute(
                     insert(_entity_access_tags),
                     [
@@ -324,11 +348,11 @@ class GraphSQLAlchemyStore:
             record = await self._entity_record(conn, id_)
         return record
 
-    async def get_entity(self, id: str) -> Optional[EntityRecord]:
+    async def get_entity(self, id: str) -> EntityRecord | None:
         async with self._engine.connect() as conn:
             return await self._entity_record(conn, id)
 
-    async def get_node_access_tags(self, node_id: int) -> Optional[frozenset[str]]:
+    async def get_node_access_tags(self, node_id: int) -> frozenset[str] | None:
         """
         Look up a catalog node's access tags, for resolving the effective
         access control of an entity that points to it (node_id is set).
@@ -356,11 +380,11 @@ class GraphSQLAlchemyStore:
 
     async def list_entities(
         self,
-        entity_type: Optional[str] = None,
-        node_id: Optional[int] = None,
+        entity_type: str | None = None,
+        node_id: int | None = None,
         limit: int = 100,
         offset: int = 0,
-        access_filters: Optional[list[AccessTagsFilter]] = None,
+        access_filters: list[AccessTagsFilter] | None = None,
     ) -> list[EntityRecord]:
         stmt = select(_entities).order_by(_entities.c.created_at)
         if entity_type is not None:
@@ -387,12 +411,12 @@ class GraphSQLAlchemyStore:
     async def update_entity(
         self,
         id: str,
-        name: Optional[str] = None,
+        name: str | None = None,
         node_id: object = UNSET,
         uri: object = UNSET,
-        entity_type: Optional[str] = None,
+        entity_type: str | None = None,
         access_tags: object = UNSET,
-    ) -> Optional[EntityRecord]:
+    ) -> EntityRecord | None:
         values: dict = {}
         if name is not None:
             values["name"] = name
@@ -452,11 +476,11 @@ class GraphSQLAlchemyStore:
         subject_id: str,
         predicate: str,
         object_id: str,
-        properties: Optional[dict] = None,
-        access_tags: Optional[Iterable[str]] = None,
+        properties: dict | None = None,
+        access_tags: Iterable[str] | None = None,
     ) -> LinkRecord:
         id_ = str(uuid.uuid4())
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         # The subject_id/object_id foreign keys reference entities.id, so the
         # database rejects a link to a nonexistent entity (SQLite enforces this
         # too: the shared pool sets PRAGMA foreign_keys=ON). Insert directly and
@@ -475,7 +499,9 @@ class GraphSQLAlchemyStore:
                     )
                 )
                 if access_tags:
-                    access_tag_ids = await _resolve_access_tag_ids(conn, access_tags)
+                    access_tag_ids = await _resolve_access_tag_ids_for_write(
+                        conn, access_tags
+                    )
                     await conn.execute(
                         insert(_link_access_tags),
                         [
@@ -495,18 +521,18 @@ class GraphSQLAlchemyStore:
             raise
         return record
 
-    async def get_link(self, id: str) -> Optional[LinkRecord]:
+    async def get_link(self, id: str) -> LinkRecord | None:
         async with self._engine.connect() as conn:
             return await self._link_record(conn, id)
 
     async def find_links(
         self,
-        subject_id: Optional[str] = None,
-        predicate: Optional[str] = None,
-        object_id: Optional[str] = None,
+        subject_id: str | None = None,
+        predicate: str | None = None,
+        object_id: str | None = None,
         limit: int = 100,
         offset: int = 0,
-        access_filters: Optional[list[AccessTagsFilter]] = None,
+        access_filters: list[AccessTagsFilter] | None = None,
     ) -> list[LinkRecord]:
         stmt = select(_links).order_by(_links.c.created_at)
         if subject_id is not None:
@@ -537,7 +563,7 @@ class GraphSQLAlchemyStore:
         id: str,
         predicate: object = UNSET,
         access_tags: object = UNSET,
-    ) -> Optional[LinkRecord]:
+    ) -> LinkRecord | None:
         values: dict = {}
         if predicate is not UNSET:
             values["predicate"] = predicate
@@ -570,7 +596,7 @@ class GraphSQLAlchemyStore:
                     insert(_namespaces).values(
                         prefix=prefix,
                         uri=uri,
-                        created_at=datetime.now(timezone.utc),
+                        created_at=datetime.now(UTC),
                     )
                 )
             else:
@@ -594,7 +620,7 @@ class GraphSQLAlchemyStore:
             )
         return result.rowcount > 0
 
-    async def resolve_node_id(self, path: list[str]) -> Optional[int]:
+    async def resolve_node_id(self, path: list[str]) -> int | None:
         """
         Look up the internal catalog node id for a path of key segments,
         e.g. ``["raw_dataset"]`` for a top-level entry or ``["a", "b"]``

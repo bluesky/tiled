@@ -1,12 +1,12 @@
 import concurrent.futures
 import functools
 import warnings
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 from urllib.parse import parse_qs, urlparse
 
 import dask
 import dask.dataframe
-import httpx
+import httpx2 as httpx
 
 from ..serialization.table import deserialize_arrow, serialize_arrow
 from ..utils import APACHE_ARROW_FILE_MIME_TYPE, UNCHANGED
@@ -18,6 +18,7 @@ from .utils import (
     export_util,
     handle_error,
     retry_context,
+    should_retry_if_unprocessed,
 )
 
 if TYPE_CHECKING:
@@ -245,7 +246,7 @@ class _DaskDataFrameClient(BaseClient):
         # The order of arguments has changed; check that the user input is correct
         if not isinstance(partition, int):
             warnings.warn(
-                "The order of arguments has changed: please use write_partition(partition, dataframe).",  # noqa: E501
+                "The order of arguments has changed: please use write_partition(partition, dataframe).",
                 DeprecationWarning,
                 stacklevel=2,
             )
@@ -267,7 +268,7 @@ class _DaskDataFrameClient(BaseClient):
         # The order of arguments has changed; check that the user input is correct
         if not isinstance(partition, int):
             warnings.warn(
-                "The order of arguments has changed: please use append_partition(partition, dataframe).",  # noqa: E501
+                "The order of arguments has changed: please use append_partition(partition, dataframe).",
                 DeprecationWarning,
                 stacklevel=2,
             )
@@ -275,7 +276,12 @@ class _DaskDataFrameClient(BaseClient):
 
         if partition > self.structure().npartitions:
             raise ValueError(f"Table has {self.structure().npartitions} partitions")
-        for attempt in retry_context():
+        # Appending rows is not idempotent: if the server processed the request
+        # but the response was lost (e.g. a read timeout or a 5xx from a proxy),
+        # retrying would append the same rows a second time. Only retry errors
+        # that guarantee the request was never processed; raise the rest to the
+        # caller, who can inspect the table before deciding to re-append.
+        for attempt in retry_context(on=should_retry_if_unprocessed):
             with attempt:
                 handle_error(
                     self.context.http_client.patch(
@@ -315,7 +321,7 @@ class _DaskDataFrameClient(BaseClient):
 
     def subscribe(
         self,
-        executor: Optional[concurrent.futures.Executor] = None,
+        executor: concurrent.futures.Executor | None = None,
     ) -> "TableSubscription":
         """
         Subscribe to streaming updates about this table.

@@ -5,10 +5,11 @@ See profiles.py for client configuration.
 """
 
 import copy
+from collections.abc import Iterator
 from datetime import timedelta
 from functools import cached_property
 from pathlib import Path
-from typing import Annotated, Any, Iterator, Optional, Union
+from typing import Annotated, Any
 
 from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
 from pydantic_settings import (
@@ -32,6 +33,7 @@ from .media_type_registration import (
 )
 from .query_registration import default_query_registry
 from .server.settings import get_settings
+from .server.utils import normalize_root_path
 from .structures.core import Spec
 from .type_aliases import EntryPointString
 from .utils import parse, prepend_to_sys_path
@@ -87,14 +89,14 @@ def settings_customise_sources(
 
 class CatalogConfig(BaseSettings):
     uri: str
-    metadata: Optional[dict] = None
-    specs: Optional[list[Spec]] = None
-    writable_storage: Optional[list[str]] = None
-    readable_storage: Optional[list[str]] = None
+    metadata: dict | None = None
+    specs: list[Spec] | None = None
+    writable_storage: list[str] | None = None
+    readable_storage: list[str] | None = None
     init_if_not_exists: bool = False
-    adapters_by_mimetype: Optional[dict[str, EntryPointString]] = None
-    top_level_access_tags: Optional[list[str]] = None
-    mount_node: Optional[Union[str, list[str]]] = None
+    adapters_by_mimetype: dict[str, EntryPointString] | None = None
+    top_level_access_tags: list[str] | None = None
+    mount_node: str | list[str] | None = None
     catalog_pool_size: int = 5
     storage_pool_size: int = 5
     catalog_max_overflow: int = 10
@@ -107,7 +109,7 @@ class CatalogConfig(BaseSettings):
 class TreeSpec(BaseModel):
     tree_type: Annotated[EntryPointString, Field(alias="tree")]
     path: str
-    args: Optional[dict[str, Any]] = None
+    args: dict[str, Any] | None = None
 
     @model_validator(mode="after")
     def check_callable(self):
@@ -152,11 +154,11 @@ class TreeSpec(BaseModel):
 class AuthenticationProviderSpec(BaseModel):
     provider: str
     authenticator: EntryPointString
-    args: Optional[dict[str, Any]] = None
+    args: dict[str, Any] | None = None
 
     def into_auth_entry(
         self,
-    ) -> tuple[str, Union[InternalAuthenticator, ExternalAuthenticator]]:
+    ) -> tuple[str, InternalAuthenticator | ExternalAuthenticator]:
         auth = self.authenticator(**(self.args or {}))
         if not isinstance(auth, (InternalAuthenticator, ExternalAuthenticator)):
             raise ValueError(f"Type {auth.__class__} is not a known authenticator type")
@@ -170,14 +172,14 @@ class TiledAdmin(BaseModel):
 
 class Authentication(BaseSettings):
     # Defaults are all left as None to differentiate between unset and set to the default
-    providers: Optional[list[AuthenticationProviderSpec]] = None
-    tiled_admins: Optional[list[TiledAdmin]] = None
-    secret_keys: Optional[list[str]] = None
-    allow_anonymous_access: Optional[bool] = None
-    single_user_api_key: Annotated[Optional[str], Field(pattern="[a-zA-Z0-9]+")] = None
-    access_token_max_age: Optional[timedelta] = None
-    refresh_token_max_age: Optional[timedelta] = None
-    session_max_age: Optional[timedelta] = None
+    providers: list[AuthenticationProviderSpec] | None = None
+    tiled_admins: list[TiledAdmin] | None = None
+    secret_keys: list[str] | None = None
+    allow_anonymous_access: bool | None = None
+    single_user_api_key: Annotated[str | None, Field(pattern="[a-zA-Z0-9]+")] = None
+    access_token_max_age: timedelta | None = None
+    refresh_token_max_age: timedelta | None = None
+    session_max_age: timedelta | None = None
 
     @field_validator("providers", mode="after")
     @classmethod
@@ -192,7 +194,7 @@ class Authentication(BaseSettings):
     @cached_property
     def authenticators(
         self,
-    ) -> dict[str, Union[InternalAuthenticator, ExternalAuthenticator]]:
+    ) -> dict[str, InternalAuthenticator | ExternalAuthenticator]:
         return dict(auth.into_auth_entry() for auth in self.providers or ())
 
     @model_validator(mode="after")
@@ -219,11 +221,11 @@ class Authentication(BaseSettings):
 
 
 class Database(BaseSettings):
-    uri: Optional[str] = None
-    init_if_not_exists: Optional[bool] = None
-    pool_pre_ping: Optional[bool] = None
-    pool_size: Annotated[Optional[int], Field(ge=2)] = 5
-    max_overflow: Optional[int] = 10
+    uri: str | None = None
+    init_if_not_exists: bool | None = None
+    pool_pre_ping: bool | None = None
+    pool_size: Annotated[int | None, Field(ge=2)] = 5
+    max_overflow: int | None = 10
 
     model_config = SettingsConfigDict(env_prefix="TILED_AUTHN_DATABASSE")
     settings_customise_sources = classmethod(settings_customise_sources)
@@ -231,7 +233,7 @@ class Database(BaseSettings):
 
 class AccessControl(BaseSettings):
     access_policy: EntryPointString
-    args: Optional[dict[str, Any]]
+    args: dict[str, Any] | None
 
     def build(self):
         return self.access_policy(**(self.args or {}))
@@ -249,7 +251,7 @@ class MetricsConfig(BaseSettings):
 
 class ValidationSpec(BaseSettings):
     spec: str
-    validator: Optional[EntryPointString] = None
+    validator: EntryPointString | None = None
 
     model_config = SettingsConfigDict(env_prefix="TILED_VALIDATORS")
     settings_customise_sources = classmethod(settings_customise_sources)
@@ -257,13 +259,13 @@ class ValidationSpec(BaseSettings):
 
 class StreamingCacheConfig(BaseSettings):
     # A single standalone node: ``redis://`` / ``rediss://`` / ``memory``.
-    uri: Optional[str] = None
+    uri: str | None = None
     # Or a Redis Sentinel cluster: a list of ``"host:port"`` Sentinels plus
     # the ``service_name`` of the monitored primary. The client follows
     # failover to the current primary.
-    sentinels: Optional[list[str]] = None
-    service_name: Optional[str] = None
-    password: Optional[str] = None
+    sentinels: list[str] | None = None
+    service_name: str | None = None
+    password: str | None = None
     # TLS for the Sentinel path (the standalone ``uri`` path uses ``rediss://``
     # instead). Applies to both Sentinel discovery and data-node connections;
     # verification uses redis-py's default, matching ``rediss://``.
@@ -372,25 +374,25 @@ class WebhooksConfig(BaseSettings):
 
 
 class Config(BaseSettings):
-    catalog: Optional[CatalogConfig] = None  # recommended
-    trees: Optional[list[TreeSpec]] = None  # advanced alternative
+    catalog: CatalogConfig | None = None  # recommended
+    trees: list[TreeSpec] | None = None  # advanced alternative
     media_types: dict[str, dict[str, EntryPointString]] = {}
     file_extensions: dict[str, str] = {}
     authentication: Authentication = Authentication()
-    database: Optional[Database] = None
+    database: Database | None = None
     # TODO: Replace Any with AccessPolicy when #1044 is merged
-    access_policy: Annotated[Optional[Any], Field(alias="access_control")] = None
+    access_policy: Annotated[Any | None, Field(alias="access_control")] = None
     response_bytesize_limit: int = 300_000_000
-    exact_count_limit: Optional[int] = None
-    allow_origins: Optional[list[str]] = None
+    exact_count_limit: int | None = None
+    allow_origins: list[str] | None = None
     uvicorn: dict[str, Any] = {}
     metrics: MetricsConfig = MetricsConfig()
     specs: list[ValidationSpec] = []
     reject_undeclared_specs: bool = False
     expose_raw_assets: bool = True
     routers: list[EntryPointString] = []
-    streaming_cache: Optional[StreamingCacheConfig] = None
-    webhooks: Optional[WebhooksConfig] = None
+    streaming_cache: StreamingCacheConfig | None = None
+    webhooks: WebhooksConfig | None = None
     create_mount_nodes_if_not_exist: bool = False
 
     # If recommended 'catalog' config is used, these parameters are
@@ -505,10 +507,18 @@ class Config(BaseSettings):
                     list(self.webhooks.secret_keys) if self.webhooks else None
                 )
             if tree.tree_type is from_uri:
-                tree.args[
-                    "create_mount_nodes_if_not_exist"
-                ] = self.create_mount_nodes_if_not_exist
+                tree.args["create_mount_nodes_if_not_exist"] = (
+                    self.create_mount_nodes_if_not_exist
+                )
         return self
+
+    @field_validator("uvicorn")
+    @classmethod
+    def normalize_uvicorn_root_path(cls, uvicorn: dict[str, Any]) -> dict[str, Any]:
+        """Coerce root_path from a value like "tiled" or "/tiled/" to "/tiled"."""
+        if "root_path" in uvicorn:
+            uvicorn["root_path"] = normalize_root_path(uvicorn["root_path"])
+        return uvicorn
 
     @property
     def root_path(self) -> str:
@@ -573,7 +583,7 @@ class Config(BaseSettings):
         return base
 
 
-def parse_configs(src_file: Union[str, Path]) -> Config:
+def parse_configs(src_file: str | Path) -> Config:
     src_file = Path(src_file)
     if src_file.is_dir():
         conf = {}

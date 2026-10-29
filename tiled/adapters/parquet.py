@@ -1,7 +1,7 @@
 import copy
 from collections.abc import Set
 from pathlib import Path
-from typing import Any, List, Optional, Union
+from typing import Any
 from urllib.parse import quote_plus
 
 import dask.dataframe
@@ -11,24 +11,26 @@ from tiled.adapters.core import Adapter
 
 from ..catalog.orm import Node
 from ..storage import FileStorage, Storage
-from ..structures.core import Spec
-from ..structures.data_source import Asset, DataSource
+from ..structures.core import Spec, StructureFamily
+from ..structures.data_source import Asset, DataSource, Management
 from ..structures.table import TableStructure
 from ..type_aliases import JSON
-from ..utils import path_from_uri
+from ..utils import ensure_uri, path_from_uri
 from .array import ArrayAdapter
 from .dataframe import DataFrameAdapter
 from .utils import init_adapter_from_catalog
 
 
 class ParquetDatasetAdapter(Adapter[TableStructure]):
+    structure_family = StructureFamily.table
+
     def __init__(
         self,
-        data_uris: List[str],
+        data_uris: list[str],
         structure: TableStructure,
         *,
-        metadata: Optional[JSON] = None,
-        specs: Optional[List[Spec]] = None,
+        metadata: JSON | None = None,
+        specs: list[Spec] | None = None,
     ) -> None:
         # TODO Store data_uris instead and generalize to non-file schemes.
         if isinstance(data_uris, str):
@@ -46,9 +48,49 @@ class ParquetDatasetAdapter(Adapter[TableStructure]):
         data_source: DataSource[TableStructure],
         node: Node,
         /,
-        **kwargs: Optional[Any],
+        **kwargs: Any | None,
     ) -> "ParquetDatasetAdapter":
         return init_adapter_from_catalog(cls, data_source, node, **kwargs)
+
+    @classmethod
+    def from_uris(
+        cls,
+        *data_uris: str,
+        **kwargs: Any | None,
+    ) -> "ParquetDatasetAdapter":
+        # Each URI is one partition of a single table; infer the structure from
+        # all of them together.
+        paths = [path_from_uri(uri) for uri in data_uris]
+        ddf = dask.dataframe.read_parquet(paths, **kwargs)
+        structure = TableStructure.from_dask_dataframe(ddf)
+        return cls(list(data_uris), structure)
+
+    def generate_data_sources(
+        self,
+        mimetype: str,
+        item: str | Path,
+        is_directory: bool,
+        size: int | None = None,
+        parameters: dict[str, Any] | None = None,
+    ) -> list[DataSource[TableStructure]]:
+        return [
+            DataSource(
+                structure_family=self.structure_family,
+                mimetype=mimetype,
+                structure=self.structure(),
+                parameters=parameters or {},
+                management=Management.external,
+                assets=[
+                    Asset(
+                        data_uri=ensure_uri(item),
+                        is_directory=is_directory,
+                        parameter="data_uris",  # PLURAL: adapter expects a list
+                        size=size,
+                        num=0,  # this is the first (and here only) partition
+                    )
+                ],
+            )
+        ]
 
     @property
     def dataframe_adapter(self) -> DataFrameAdapter:
@@ -68,7 +110,7 @@ class ParquetDatasetAdapter(Adapter[TableStructure]):
         cls,
         storage: Storage,
         data_source: DataSource[TableStructure],
-        path_parts: List[str],
+        path_parts: list[str],
     ) -> DataSource[TableStructure]:
         data_source = copy.deepcopy(data_source)  # Do not mutate caller input.
         data_uri = storage.uri + "".join(
@@ -89,7 +131,7 @@ class ParquetDatasetAdapter(Adapter[TableStructure]):
         return data_source
 
     def write_partition(
-        self, partition: int, data: Union[dask.dataframe.DataFrame, pandas.DataFrame]
+        self, partition: int, data: dask.dataframe.DataFrame | pandas.DataFrame
     ) -> None:
         """Write data to a specific partition
 
@@ -104,7 +146,7 @@ class ParquetDatasetAdapter(Adapter[TableStructure]):
         uri = self._partition_paths[partition]
         data.to_parquet(uri)
 
-    def write(self, data: Union[dask.dataframe.DataFrame, pandas.DataFrame]) -> None:
+    def write(self, data: dask.dataframe.DataFrame | pandas.DataFrame) -> None:
         if self.structure().npartitions != 1:
             raise NotImplementedError
         uri = self._partition_paths[0]
@@ -116,5 +158,5 @@ class ParquetDatasetAdapter(Adapter[TableStructure]):
     def read_partition(self, *args: Any, **kwargs: Any) -> pandas.DataFrame:
         return self.dataframe_adapter.read_partition(*args, **kwargs)
 
-    def get(self, key: str) -> Union[ArrayAdapter, None]:
+    def get(self, key: str) -> ArrayAdapter | None:
         return self.dataframe_adapter.get(key)

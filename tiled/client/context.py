@@ -8,10 +8,10 @@ import urllib.parse
 import warnings
 from contextlib import contextmanager
 from pathlib import Path
-from typing import List, Literal, Optional
+from typing import Literal
 from urllib.parse import parse_qs, urlparse
 
-import httpx
+import httpx2 as httpx
 import platformdirs
 from pydantic import TypeAdapter
 
@@ -60,7 +60,7 @@ prompt the user to provide credentials in the stdin. Options:
 
 
 def identity_provider_input(
-    providers: List[AboutAuthenticationProvider],
+    providers: list[AboutAuthenticationProvider],
 ) -> AboutAuthenticationProvider:
     while True:
         print("Authentication providers:")
@@ -100,7 +100,7 @@ class PasswordRejected(RuntimeError):
     pass
 
 
-def prompt_for_credentials(http_client, providers: List[AboutAuthenticationProvider]):
+def prompt_for_credentials(http_client, providers: list[AboutAuthenticationProvider]):
     """
     Prompt for credentials or third-party login at an interactive terminal.
     """
@@ -175,6 +175,8 @@ class Context:
         *,
         headers=None,
         api_key=None,
+        auth: httpx.Auth | None = None,
+        cookies: httpx.Cookies | dict | None = None,
         cache=UNSET,
         timeout=None,
         verify=True,
@@ -186,6 +188,11 @@ class Context:
     ):
         # The uri is expected to reach the root API route.
         uri = httpx.URL(uri)
+        if auth is not None and not isinstance(auth, httpx.Auth):
+            raise TypeError(
+                f"Tiled client auth parameter has been set with {type(auth)}. "
+                "httpx.Auth or None allowed."
+            )
         headers = headers or {}
         # Define this here instead of at module scope so that the SUPPORTED_DECODERS
         # may be modified before Context instantiation.
@@ -246,6 +253,8 @@ class Context:
                 verify=verify,
                 timeout=timeout,
                 follow_redirects=True,
+                auth=auth,
+                cookies=cookies,
             )
             # Do this in the setter to avoid being overwritten.
             client.headers = headers
@@ -272,6 +281,8 @@ class Context:
             )
             client.timeout = timeout
             client.headers = headers
+            client.auth = auth
+            client.cookies = cookies
             # Do this in the setter to avoid being overwritten.
             client.follow_redirects = True
             client._transport = Transport(transport=client._transport, cache=cache)
@@ -317,7 +328,6 @@ class Context:
         # Make an initial "safe" request to:
         # (1) Get the server_info.
         # (2) Let the server set the CSRF cookie.
-        # No authentication has been set up yet, so these requests will be unauthenticated.
         # https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#double-submit-cookie
         for attempt in retry_context(self):
             with attempt:
@@ -352,7 +362,7 @@ class Context:
             else None
         )
         # To determine httpx.Auth used by Tiled client is TiledAuth(internal) or external Auth
-        self.has_external_auth = False
+        self.has_external_auth = auth is not None
 
     def __repr__(self):
         auth_info = []
@@ -373,7 +383,7 @@ class Context:
                     )
             if self.api_key is not None:
                 auth_info.append(
-                    f"with API key '{self.api_key[:min(len(self.api_key)//2, 8)]}...'"
+                    f"with API key '{self.api_key[: min(len(self.api_key) // 2, 8)]}...'"
                 )
         auth_repr = " ".join(auth_info)
         return f"<{type(self).__name__} {auth_repr}>"
@@ -694,6 +704,8 @@ class Context:
         *,
         headers=None,
         api_key=None,
+        auth: httpx.Auth | None = None,
+        cookies: httpx.Cookies | dict | None = None,
         cache=UNSET,
         timeout=None,
         verify=True,
@@ -715,9 +727,14 @@ class Context:
         # Logic will follow only one redirect, it is intended ONLY to toggle HTTPS.
         # The redirect will be followed only if the netloc host is identical to the original.
         if uri.scheme == "http":
+            probe_timeout = (
+                httpx.Timeout(**DEFAULT_TIMEOUT_PARAMS) if timeout is None else timeout
+            )
             for attempt in retry_context():
                 with attempt:
-                    response_from_http = httpx.get(uri)
+                    response_from_http = httpx.get(
+                        uri, timeout=probe_timeout, trust_env=trust_env
+                    )
             if response_from_http.is_redirect:
                 redirect_uri = httpx.URL(response_from_http.headers["location"])
                 if redirect_uri.scheme == "https" and redirect_uri.host == uri.host:
@@ -750,6 +767,8 @@ class Context:
             api_uri,
             headers=headers,
             api_key=api_key,
+            auth=auth,
+            cookies=cookies,
             cache=cache,
             timeout=timeout,
             verify=verify,
@@ -992,6 +1011,23 @@ class Context:
     # These two methods are aliased for convenience.
     login = authenticate
 
+    def _raise_if_auth_configured(self, overwrite=False):
+        """
+        Raise if an authentication method is already configured on the client.
+
+        Parameters
+        ----------
+        overwrite: bool, optional
+            If True, any existing authentication will be overwritten, so no
+            error is raised.
+        """
+        if self.http_client.auth is not None and not overwrite:
+            raise RuntimeError(
+                "An authentication method is already configured. To overwrite, "
+                "set overwrite=True. You can't combine Tiled OAuth2 authentication"
+                " with a proxy service like Jupyterhub."
+            )
+
     def configure_auth(self, tokens, remember_me=True):
         """
         Configure Tiled client with tokens for refresh flow.
@@ -1231,8 +1267,8 @@ class Admin:
         url_path = f"{self.base_url}/auth/principal"
         params = {
             **parse_qs(urlparse(url_path).query),
-            "offset": offset,
-            "limit": limit,
+            "page[offset]": offset,
+            "page[limit]": limit,
         }
         for attempt in retry_context(self.context):
             with attempt:
@@ -1377,8 +1413,8 @@ def password_grant(http_client, auth_endpoint, provider, username, password):
 def device_code_grant(
     http_client,
     auth_endpoint: str,
-    client_id: Optional[str],
-    token_endpoint: Optional[str],
+    client_id: str | None,
+    token_endpoint: str | None,
     scopes: str = "openid offline_access",
 ):
     for attempt in retry_context():
@@ -1420,13 +1456,13 @@ def device_code_grant(
                 verification_uri = verification["authorization_uri"]
     print(
         f"""
-You have {int(verification['expires_in']) // 60} minutes to visit this URL
+You have {int(verification["expires_in"]) // 60} minutes to visit this URL
 
 {verification_uri}
 
 and enter the code:
 
-{verification['user_code']}
+{verification["user_code"]}
 
 """,
         end="",

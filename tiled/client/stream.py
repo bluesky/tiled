@@ -2,18 +2,13 @@ import abc
 import concurrent.futures
 import inspect
 import logging
-import sys
 import threading
 import weakref
-from typing import Any, Callable, Generic, List, Optional, TypeVar
-
-if sys.version_info >= (3, 11):
-    from typing import Self
-else:
-    from typing_extensions import Self
+from collections.abc import Callable
+from typing import Any, Generic, Self, TypeVar
 
 import anyio
-import httpx
+import httpx2 as httpx
 import msgpack
 import stamina
 import websockets.exceptions
@@ -69,8 +64,8 @@ class _TestClientWebsocketWrapper:
 
     def connect(
         self,
-        api_key: Optional[str],
-        start: Optional[int] = None,
+        api_key: str | None,
+        start: int | None = None,
         max_size: int = 1_000_000,
     ):
         """Connect to the websocket."""
@@ -116,8 +111,8 @@ class _RegularWebsocketWrapper:
 
     def connect(
         self,
-        api_key: Optional[str],
-        start: Optional[int] = None,
+        api_key: str | None,
+        start: int | None = None,
         max_size: int = 1_000_000,
     ):
         """Connect to the websocket."""
@@ -269,8 +264,8 @@ class Subscription(abc.ABC):
     def __init__(
         self,
         context: Context,
-        segments: List[str] = None,
-        executor: Optional[concurrent.futures.Executor] = None,
+        segments: list[str] | None = None,
+        executor: concurrent.futures.Executor | None = None,
     ):
         segments = segments or ["/"]
         self._context = context
@@ -298,10 +293,10 @@ class Subscription(abc.ABC):
             )
         else:
             self._websocket = _RegularWebsocketWrapper(context.http_client, self._uri)
-        self.stream_closed: CallbackRegistry["Subscription"] = CallbackRegistry(
+        self.stream_closed: CallbackRegistry[Subscription] = CallbackRegistry(
             self.executor
         )
-        self.disconnected: CallbackRegistry["Subscription"] = CallbackRegistry(
+        self.disconnected: CallbackRegistry[Subscription] = CallbackRegistry(
             self.executor
         )
 
@@ -317,10 +312,10 @@ class Subscription(abc.ABC):
         return self._context
 
     @property
-    def segments(self) -> List[str]:
+    def segments(self) -> list[str]:
         return self._segments
 
-    def _run(self, start: Optional[int] = None, max_size: int = 1_000_000) -> None:
+    def _run(self, start: int | None = None, max_size: int = 1_000_000) -> None:
         """Outer loop - runs for the lifecycle of the Subscription."""
         if self._disconnect_event.is_set():
             raise RuntimeError("Cannot be restarted once stopped.")
@@ -367,7 +362,7 @@ class Subscription(abc.ABC):
         attempts=TILED_RETRY_ATTEMPTS,
         wait_max=TILED_RETRY_TIMEOUT,
     )
-    def _connect(self, start: Optional[int] = None, max_size: int = 1_000_000) -> None:
+    def _connect(self, start: int | None = None, max_size: int = 1_000_000) -> None:
         """Connect to websocket with retry."""
         if self._disconnect_event.is_set():
             raise RuntimeError("Cannot be restarted once stopped.")
@@ -429,7 +424,7 @@ class Subscription(abc.ABC):
     def process(self, *args) -> None:
         pass
 
-    def start(self, start: Optional[int] = None, max_size: int = 1_000_000) -> None:
+    def start(self, start: int | None = None, max_size: int = 1_000_000) -> None:
         """
         Connect to the websocket, and block while receiving and processing updates.
 
@@ -463,7 +458,7 @@ class Subscription(abc.ABC):
             self.disconnect()
 
     def start_in_thread(
-        self, start: Optional[int] = None, max_size: int = 1_000_000
+        self, start: int | None = None, max_size: int = 1_000_000
     ) -> Self:
         """
         Start a thread to connect to the websocket and receive updates. Blocks until the
@@ -558,18 +553,18 @@ class ContainerSubscription(Subscription):
     def __init__(
         self,
         context: Context,
-        segments: List[str] = None,
-        executor: Optional[concurrent.futures.Executor] = None,
-        structure_clients: dict = None,
+        segments: list[str] | None = None,
+        executor: concurrent.futures.Executor | None = None,
+        structure_clients: dict | None = None,
     ):
         super().__init__(context, segments, executor)
         self.structure_clients = structure_clients
-        self.child_created: CallbackRegistry["LiveChildCreated"] = CallbackRegistry(
+        self.child_created: CallbackRegistry[LiveChildCreated] = CallbackRegistry(
             self.executor
         )
-        self.child_metadata_updated: CallbackRegistry[
-            "LiveChildMetadataUpdated"
-        ] = CallbackRegistry(self.executor)
+        self.child_metadata_updated: CallbackRegistry[LiveChildMetadataUpdated] = (
+            CallbackRegistry(self.executor)
+        )
 
     def process(self, update: Update):
         if update.type == "container-child-created":
@@ -598,13 +593,13 @@ class ArraySubscription(Subscription):
     def __init__(
         self,
         context: Context,
-        segments: List[str] = None,
-        executor: Optional[concurrent.futures.Executor] = None,
+        segments: list[str] | None = None,
+        executor: concurrent.futures.Executor | None = None,
     ):
         super().__init__(context, segments, executor)
-        self.new_data: CallbackRegistry[
-            "LiveArrayData" | "LiveArrayRef"
-        ] = CallbackRegistry(self.executor)
+        self.new_data: CallbackRegistry[LiveArrayData | LiveArrayRef] = (
+            CallbackRegistry(self.executor)
+        )
 
     def process(self, update: Update):
         self.new_data.process(update)
@@ -628,13 +623,11 @@ class TableSubscription(Subscription):
     def __init__(
         self,
         context: Context,
-        segments: List[str] = None,
-        executor: Optional[concurrent.futures.Executor] = None,
+        segments: list[str] | None = None,
+        executor: concurrent.futures.Executor | None = None,
     ):
         super().__init__(context, segments, executor)
-        self.new_data: CallbackRegistry["LiveTableData"] = CallbackRegistry(
-            self.executor
-        )
+        self.new_data: CallbackRegistry[LiveTableData] = CallbackRegistry(self.executor)
 
     def process(self, update: Update):
         self.new_data.process(update)
@@ -642,6 +635,7 @@ class TableSubscription(Subscription):
 
 class UnparseableMessage(RuntimeError):
     "Message can be decoded but cannot be interpreted by the application"
+
     pass
 
 

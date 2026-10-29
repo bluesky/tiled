@@ -69,7 +69,9 @@ def _read_jsonseq(client):
     """Export the df node as application/json-seq and return list of row dicts."""
     buf = io.BytesIO()
     client["df"].export(buf, format="application/json-seq")
-    return [json.loads(line) for line in buf.getvalue().splitlines() if line.strip()]
+    return [
+        json.loads(record) for record in buf.getvalue().split(b"\x1e") if record.strip()
+    ]
 
 
 @pytest.mark.parametrize("reader", [_read_json, _read_jsonseq])
@@ -162,14 +164,16 @@ def test_bytes_column(media_type):
 
     # b"abc": ASCII; "café".encode(): valid multi-byte UTF-8; b"\xff\xfe": not
     # valid UTF-8, so it exercises the latin-1 fallback (decoding to "ÿþ").
-    df = pandas.DataFrame({"bytes_col": [b"abc", "café".encode("utf-8"), b"\xff\xfe"]})
+    df = pandas.DataFrame({"bytes_col": [b"abc", "café".encode(), b"\xff\xfe"]})
     serializer = default_serialization_registry.dispatch(
         StructureFamily.table, media_type
     )
     output = serializer(media_type, df, {})
     if media_type == "application/json-seq":
         rows = [
-            json.loads(line) for line in b"".join(output).splitlines() if line.strip()
+            json.loads(record)
+            for record in b"".join(output).split(b"\x1e")
+            if record.strip()
         ]
         col = [row["bytes_col"] for row in rows]
     else:

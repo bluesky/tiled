@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Any
 
-import httpx
+import httpx2 as httpx
 import pytest
 import respx
 from fastapi import APIRouter
@@ -220,7 +220,7 @@ def test_duplicate_auth_providers():
 
 @respx.mock
 def test_proxied_authenticator_single_instance_required(
-    well_known_response: dict[str, Any]
+    well_known_response: dict[str, Any],
 ):
     respx.get("http://example.com").mock(
         side_effect=[
@@ -419,3 +419,24 @@ def test_include_routers(sqlite_or_postgres_uri):
             response = client.context.http_client.get(endpoint)
             assert response.status_code == 200
             assert response.json()["message"] == expected_message
+
+
+@pytest.mark.parametrize("configured,expected", [("tiled", "/tiled"), ("/", "")])
+def test_uvicorn_root_path_is_normalized(configured: str, expected: str):
+    config = Config.model_validate(
+        {
+            "trees": [{"path": "/", "tree": "tiled.examples.generated_minimal:tree"}],
+            "uvicorn": {"root_path": configured},
+        }
+    )
+    # Both the property and the dict handed to uvicorn must be normalized.
+    assert config.root_path == expected
+    assert config.uvicorn["root_path"] == expected
+
+
+def test_uvicorn_root_path_absent_is_left_alone():
+    config = Config.model_validate(
+        {"trees": [{"path": "/", "tree": "tiled.examples.generated_minimal:tree"}]}
+    )
+    assert config.root_path == ""
+    assert "root_path" not in config.uvicorn

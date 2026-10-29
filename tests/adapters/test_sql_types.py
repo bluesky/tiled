@@ -1,8 +1,9 @@
 import decimal
 import os
+from collections.abc import AsyncGenerator, Generator
 from contextlib import closing
 from pathlib import Path
-from typing import AsyncGenerator, Generator, Literal, cast
+from typing import Literal, cast
 
 import numpy
 import pyarrow as pa

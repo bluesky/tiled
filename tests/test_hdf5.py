@@ -187,6 +187,28 @@ def test_from_file(example_file, buffer):
         assert file["a"]["b"]["c"]["d"] is not None
 
 
+def test_from_file_with_empty_and_non_utf8_attrs(tmp_path):
+    """An empty or non-UTF-8 attribute anywhere should not break the file."""
+    h5py = pytest.importorskip("h5py")
+    file_path = tmp_path / "attrs.h5"
+    with h5py.File(file_path, "w") as file:
+        file["x"] = numpy.arange(3)
+        file["x"].attrs["units"] = numpy.bytes_("µm".encode("latin-1"))
+        file["x"].attrs["comment"] = h5py.Empty("S1")
+        file["x"].attrs["cp1252"] = numpy.bytes_("5–10 €".encode("cp1252"))
+        file["x"].attrs["latin1"] = numpy.bytes_(b"\x81")
+        file.attrs["empty"] = h5py.Empty("f")
+    tree = HDF5Adapter.from_uris(ensure_uri(file_path))
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        assert client.metadata["empty"] is None
+        assert client["x"].metadata["units"] == "µm"
+        assert client["x"].metadata["comment"] is None
+        assert client["x"].metadata["cp1252"] == "5–10 €"
+        assert client["x"].metadata["latin1"] == "\x81"
+        numpy.testing.assert_equal(client["x"].read(), numpy.arange(3))
+
+
 @pytest.mark.filterwarnings("ignore: The dataset")
 @pytest.mark.parametrize("key", ["d", "e", "f", "g", "h", "i"])
 def test_from_file_with_empty_data(example_file_with_empty_data, buffer, key):
@@ -387,7 +409,7 @@ def test_file_with_broken_links(example_file_with_links):
     with pytest.raises(BrokenLink):
         tree = HDF5Adapter.from_uris(example_file_with_links, dataset="a/b/soft_link")
 
-    with pytest.raises(KeyError):
+    with pytest.raises(BrokenLink):
         tree = HDF5Adapter.from_uris(example_file_with_links, dataset="a/b/c/d")
 
     tree = HDF5Adapter.from_uris(example_file_with_links, dataset="a")
@@ -402,7 +424,7 @@ def test_file_with_broken_links(example_file_with_links):
     with h5py.File(child_file_path, "r+") as file:
         file["z/y"].pop("x")
 
-    with pytest.raises(KeyError):
+    with pytest.raises(BrokenLink):
         tree = HDF5Adapter.from_uris(example_file_with_links, dataset="a/b/extr_link/x")
 
     tree = HDF5Adapter.from_uris(example_file_with_links, dataset="a/b/extr_link")
@@ -417,7 +439,7 @@ def test_file_with_broken_links(example_file_with_links):
     with h5py.File(child_file_path, "r+") as file:
         file["z"].pop("y")
 
-    with pytest.raises(KeyError):
+    with pytest.raises(BrokenLink):
         tree = HDF5Adapter.from_uris(example_file_with_links, dataset="a/b/extr_link")
 
     # A client can still be instantiated
@@ -551,6 +573,38 @@ def test_register_broken_hdf5_file(context, example_file_with_links):
 
     with pytest.raises(KeyError):
         list(client["ds_from_extr"].keys())
+
+
+def test_register_missing_hdf5_dataset(context, example_file):
+    """A registered array whose dataset is absent from the file is 410, not 500."""
+    client = from_context(context)
+    data_source = DataSource(
+        mimetype="application/x-hdf5",
+        assets=[
+            Asset(
+                data_uri=example_file,
+                is_directory=False,
+                parameter="data_uris",
+                num=0,
+            )
+        ],
+        structure_family=StructureFamily.array,
+        structure=ArrayStructure(
+            shape=(3, 3),
+            chunks=((3,), (3,)),
+            data_type=BuiltinDtype.from_numpy_dtype(numpy.dtype("int64")),
+        ),
+        parameters={"dataset": "a/b/c/does_not_exist"},
+        management=Management.external,
+    )
+    client.new(
+        structure_family=StructureFamily.array,
+        data_sources=[data_source],
+        key="missing_dataset",
+    )
+    # The client turns 410 Gone into a KeyError (see test_register_broken_hdf5_file)
+    with pytest.raises(KeyError, match="broken link"):
+        client["missing_dataset"].read()
 
 
 def test_update_datasource_with_properties(context, example_file):

@@ -16,70 +16,76 @@ TILED_SQL_TABLE_MIMETYPE = "application/x-tiled-sql-table"
 # TODO: make type[Adapter] after #1047
 DEFAULT_ADAPTERS_BY_MIMETYPE = OneShotCachedMap[str, type](
     {
-        "application/octet-stream": lambda: importlib.import_module(
-            "..adapters.bytes", __name__
-        ).BytesAdapter,
-        "image/tiff": lambda: importlib.import_module(
-            "..adapters.tiff", __name__
-        ).TiffAdapter,
-        "multipart/related;type=image/tiff": lambda: importlib.import_module(
-            "..adapters.tiff", __name__
-        ).TiffSequenceAdapter,
-        "image/jpeg": lambda: importlib.import_module(
-            "..adapters.jpeg", __name__
-        ).JPEGAdapter,
-        "multipart/related;type=image/jpeg": lambda: importlib.import_module(
-            "..adapters.jpeg", __name__
-        ).JPEGSequenceAdapter,
-        "text/csv": lambda: importlib.import_module(
-            "..adapters.csv", __name__
-        ).CSVAdapter,
-        "multipart/related;type=text/csv": lambda: importlib.import_module(
-            "..adapters.csv", __name__
-        ).CSVAdapter,
+        "application/octet-stream": lambda: (
+            importlib.import_module("..adapters.bytes", __name__).BytesAdapter
+        ),
+        "image/tiff": lambda: (
+            importlib.import_module("..adapters.tiff", __name__).TiffAdapter
+        ),
+        "multipart/related;type=image/tiff": lambda: (
+            importlib.import_module("..adapters.tiff", __name__).TiffSequenceAdapter
+        ),
+        "image/jpeg": lambda: (
+            importlib.import_module("..adapters.jpeg", __name__).JPEGAdapter
+        ),
+        "multipart/related;type=image/jpeg": lambda: (
+            importlib.import_module("..adapters.jpeg", __name__).JPEGSequenceAdapter
+        ),
+        "text/csv": lambda: (
+            importlib.import_module("..adapters.csv", __name__).CSVAdapter
+        ),
+        "multipart/related;type=text/csv": lambda: (
+            importlib.import_module("..adapters.csv", __name__).CSVAdapter
+        ),
         # https://www.rfc-editor.org/rfc/rfc4180#section-3
-        "text/csv;header=present": lambda: importlib.import_module(
-            "..adapters.csv", __name__
-        ).CSVAdapter,
-        "text/csv;header=absent": lambda: importlib.import_module(
-            "..adapters.csv", __name__
-        ).CSVArrayAdapter,
-        XLSX_MIME_TYPE: lambda: importlib.import_module(
-            "..adapters.excel", __name__
-        ).ExcelAdapter,
-        "application/x-hdf5": lambda: importlib.import_module(
-            "..adapters.hdf5", __name__
-        ).HDF5Adapter,
-        "application/x-netcdf": lambda: importlib.import_module(
-            "..adapters.netcdf", __name__
-        ).NetCDFAdapter,
-        "application/x-npy": lambda: importlib.import_module(
-            "..adapters.npy", __name__
-        ).NPYAdapter,
-        "multipart/related;type=application/x-npy": lambda: importlib.import_module(
-            "..adapters.npy", __name__
-        ).NPYSequenceAdapter,
-        PARQUET_MIMETYPE: lambda: importlib.import_module(
-            "..adapters.parquet", __name__
-        ).ParquetDatasetAdapter,
-        SPARSE_BLOCKS_PARQUET_MIMETYPE: lambda: importlib.import_module(
-            "..adapters.sparse_blocks_parquet", __name__
-        ).SparseBlocksParquetAdapter,
-        ZARR_MIMETYPE: lambda: importlib.import_module(
-            "..adapters.zarr", __name__
-        ).ZarrAdapter,
-        AWKWARD_BUFFERS_MIMETYPE: lambda: importlib.import_module(
-            "..adapters.awkward", __name__
-        ).AwkwardBuffersAdapter,
-        RAGGED_SQL_MIMETYPE: lambda: importlib.import_module(
-            "..adapters.ragged", __name__
-        ).RaggedSQLAdapter,
-        APACHE_ARROW_FILE_MIME_TYPE: lambda: importlib.import_module(
-            "..adapters.arrow", __name__
-        ).ArrowAdapter,
-        TILED_SQL_TABLE_MIMETYPE: lambda: importlib.import_module(
-            "..adapters.sql", __name__
-        ).SQLAdapter,
+        "text/csv;header=present": lambda: (
+            importlib.import_module("..adapters.csv", __name__).CSVAdapter
+        ),
+        "text/csv;header=absent": lambda: (
+            importlib.import_module("..adapters.csv", __name__).CSVArrayAdapter
+        ),
+        XLSX_MIME_TYPE: lambda: (
+            importlib.import_module("..adapters.excel", __name__).ExcelAdapter
+        ),
+        "application/x-hdf5": lambda: (
+            importlib.import_module("..adapters.hdf5", __name__).HDF5Adapter
+        ),
+        "application/x-netcdf": lambda: (
+            importlib.import_module("..adapters.netcdf", __name__).NetCDFAdapter
+        ),
+        "application/x-npy": lambda: (
+            importlib.import_module("..adapters.npy", __name__).NPYAdapter
+        ),
+        "multipart/related;type=application/x-npy": lambda: (
+            importlib.import_module("..adapters.npy", __name__).NPYSequenceAdapter
+        ),
+        PARQUET_MIMETYPE: lambda: (
+            importlib.import_module(
+                "..adapters.parquet", __name__
+            ).ParquetDatasetAdapter
+        ),
+        SPARSE_BLOCKS_PARQUET_MIMETYPE: lambda: (
+            importlib.import_module(
+                "..adapters.sparse_blocks_parquet", __name__
+            ).SparseBlocksParquetAdapter
+        ),
+        ZARR_MIMETYPE: lambda: (
+            importlib.import_module("..adapters.zarr", __name__).ZarrAdapter
+        ),
+        AWKWARD_BUFFERS_MIMETYPE: lambda: (
+            importlib.import_module(
+                "..adapters.awkward", __name__
+            ).AwkwardBuffersAdapter
+        ),
+        RAGGED_SQL_MIMETYPE: lambda: (
+            importlib.import_module("..adapters.ragged", __name__).RaggedSQLAdapter
+        ),
+        APACHE_ARROW_FILE_MIME_TYPE: lambda: (
+            importlib.import_module("..adapters.arrow", __name__).ArrowAdapter
+        ),
+        TILED_SQL_TABLE_MIMETYPE: lambda: (
+            importlib.import_module("..adapters.sql", __name__).SQLAdapter
+        ),
     }
 )
 
@@ -108,5 +114,6 @@ DEFAULT_MIMETYPES_BY_FILE_EXT = {
     ".hdf5": "application/x-hdf5",
     # on opensuse csv -> text/x-comma-separated-values
     ".csv": "text/csv",
+    ".parquet": PARQUET_MIMETYPE,
     ".zarr": ZARR_MIMETYPE,
 }
