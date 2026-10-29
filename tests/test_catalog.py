@@ -21,19 +21,25 @@ import tifffile
 import xarray
 from hypothesis import given, settings
 from hypothesis import strategies as st
-from sqlalchemy import text
+from sqlalchemy import event, text
 from sqlalchemy.dialects import postgresql as postgresql_dialect
 from sqlalchemy.dialects import sqlite as sqlite_dialect
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.pool import AsyncAdaptedQueuePool, QueuePool, StaticPool
 
+from tiled.access_control.access_policies import DummyAccessPolicy
+from tiled.access_control.protocols import ApprovedAccessTags
 from tiled.adapters.csv import CSVAdapter
 from tiled.adapters.dataframe import ArrayAdapter
 from tiled.adapters.tiff import TiffAdapter
 from tiled.adapters.utils import DataNotReadyError, IncompatibleShapeError
 from tiled.catalog import in_memory
 from tiled.catalog import orm as catalog_orm
-from tiled.catalog.adapter import WouldDeleteData, _access_tags_predicate
+from tiled.catalog.adapter import (
+    CatalogContainerAdapter,
+    WouldDeleteData,
+    _access_tags_predicate,
+)
 from tiled.catalog.explain import record_explanations
 from tiled.client import Context, from_context
 from tiled.client.register import register
@@ -81,6 +87,77 @@ async def test_root_node_has_default_access_tags(a):
         .all()
     )
     assert list(access_tags) == ["public"]
+
+
+@pytest.mark.asyncio
+async def test_new_access_tags_get_rows(a: CatalogContainerAdapter) -> None:
+    "Tags a policy approved apply without a pre-existing tag row."
+    approved = ApprovedAccessTags(["experiment:1234"])
+    x = await a.create_node(
+        StructureFamily.container, {}, key="x", access_tags=approved
+    )
+    assert x.access_tags == {"experiment:1234"}
+
+    y = await a.create_node(
+        StructureFamily.container, {}, key="y", access_tags=approved
+    )
+    assert y.access_tags == {"experiment:1234"}
+
+    await x.replace_metadata(access_tags=ApprovedAccessTags(["experiment:5678"]))
+    assert (await a.lookup_adapter(["x"])).access_tags == {"experiment:5678"}
+
+    # Longer than the name column (255).
+    with pytest.raises(Exception, match="not defined"):
+        await a.create_node(
+            StructureFamily.container,
+            {},
+            key="z",
+            access_tags=ApprovedAccessTags(["t" * 256]),
+        )
+
+    with pytest.raises(Exception, match="not defined"):
+        await a.create_node(
+            StructureFamily.container, {}, key="w", access_tags=["experiment:9999"]
+        )
+
+
+def test_policy_approved_tags_get_rows(
+    catalog_adapter: CatalogContainerAdapter,
+) -> None:
+    "The server passes the tags its access policy returned on as approved."
+    app = build_app(catalog_adapter, access_policy=DummyAccessPolicy())
+    with Context.from_app(app) as context:
+        client = from_context(context)
+        x = client.create_container("x", access_tags=["experiment:1234"])
+        assert x.access_tags == ["experiment:1234"]
+
+        x.replace_metadata(access_tags=["experiment:5678"])
+        assert client["x"].access_tags == ["experiment:5678"]
+
+
+@pytest.mark.asyncio
+async def test_known_access_tags_no_insert(a: CatalogContainerAdapter) -> None:
+    """
+    Writes with existing tags insert no tag rows.
+
+    On PostgreSQL, every INSERT uses up an id, even one ON CONFLICT DO NOTHING
+    skips, so a needless insert per write would burn through the ids.
+    """
+    approved = ApprovedAccessTags(["experiment:1234"])
+    x = await a.create_node(
+        StructureFamily.container, {}, key="x", access_tags=approved
+    )
+
+    # Record the SQL of every statement sent to the database from here on.
+    statements = []
+    event.listen(
+        a.context.engine.sync_engine,
+        "before_cursor_execute",
+        lambda conn, cursor, statement, *args: statements.append(statement),
+    )
+    await a.create_node(StructureFamily.container, {}, key="y", access_tags=approved)
+    await x.replace_metadata(access_tags=approved)
+    assert not [s for s in statements if s.startswith("INSERT INTO access_tags")]
 
 
 @pytest.mark.asyncio
