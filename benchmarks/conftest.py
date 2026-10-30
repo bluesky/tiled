@@ -24,6 +24,13 @@ from tiled.structures.core import StructureFamily
 
 TILED_TEST_POSTGRESQL_URI = os.getenv("TILED_TEST_POSTGRESQL_URI")
 
+# pytest-benchmark (up to 5.3.0) reads the private `_nodeid` attribute of
+# test items, which pytest 9.2 removed in favor of the public `nodeid`.
+# Remove once pytest-benchmark ships the fix
+# (https://github.com/ionelmc/pytest-benchmark/pull/323).
+if not hasattr(pytest.Item, "_nodeid"):
+    pytest.Item._nodeid = property(lambda self: self.nodeid)
+
 # Sizes of the populated collections. Benchmarks refer to these by name, so
 # that the dashboard series keep their identity when a size is tuned.
 SMALL = 1_000
