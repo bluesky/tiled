@@ -26,6 +26,7 @@ import anyio
 from fastapi import HTTPException
 from sqlalchemy import (
     Integer,
+    and_,
     any_,
     delete,
     exists,
@@ -2655,6 +2656,18 @@ def _get_value(value, type):
     return getattr(value, _TYPE_CONVERSION_MAP[type])()
 
 
+def _sqlite_json_value(attr):
+    """The JSON value at a path, as SQLite's JSON_EXTRACT returns it.
+
+    JSON_EXTRACT returns SQL values of the JSON value's own type, so comparing
+    them with a query value matches on type as well (0 does not equal '0').
+    The as_*() accessors cannot be used for this: from SQLAlchemy 2.1 they
+    render CAST(JSON_EXTRACT(...) AS <type>) on SQLite, which converts the
+    stored value to the query value's type before comparing.
+    """
+    return func.json_extract(attr.left, attr.right)
+
+
 def _prepare_structure(structure_family, structure):
     "Convert from pydantic model to dict."
     if structure is None:
@@ -2669,7 +2682,12 @@ def binary_op(query, tree, operation):
     keys = query.key.split(".")
     attr = orm.Node.metadata_[keys]
     if dialect_name == "sqlite":
-        condition = operation(_get_value(attr, type(query.value)), query.value)
+        if query.value is None and operation in (operator.eq, operator.ne):
+            # JSON_EXTRACT gives SQL NULL both for a JSON null and for a missing
+            # key; JSON_TYPE tells them apart ('null' vs SQL NULL).
+            condition = operation(func.json_type(attr.left, attr.right), "null")
+        else:
+            condition = operation(_sqlite_json_value(attr), query.value)
     # specific case where GIN optomized index can be used to speed up POSTGRES equals queries
     elif (dialect_name == "postgresql") and (operation == operator.eq):
         condition = orm.Node.metadata_.op("@>")(
@@ -2817,8 +2835,23 @@ def in_or_not_in_sqlite(query, tree, method):
         else:  # method == "not_in"
             # All results are always "not in" an empty list.
             condition = true()
+    elif None in query.value:
+        # SQL NULL never compares equal in IN / NOT IN, and JSON_EXTRACT gives
+        # it both for a JSON null and for a missing key, so match a JSON null
+        # with JSON_TYPE as Eq/NotEq do.
+        values = [value for value in query.value if value is not None]
+        json_type = func.json_type(attr.left, attr.right)
+        if method == "in_":
+            condition = json_type == "null"
+            if values:
+                condition = or_(condition, _sqlite_json_value(attr).in_(values))
+        else:  # method == "not_in"
+            # A missing key is excluded, as in a NotIn without None.
+            condition = json_type != "null"
+            if values:
+                condition = and_(condition, _sqlite_json_value(attr).not_in(values))
     else:
-        condition = getattr(_get_value(attr, type(query.value[0])), method)(query.value)
+        condition = getattr(_sqlite_json_value(attr), method)(query.value)
     return tree.new_variation(conditions=tree.conditions + [condition])
 
 
