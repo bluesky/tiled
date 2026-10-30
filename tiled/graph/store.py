@@ -30,7 +30,8 @@ from sqlalchemy import and_, delete, false, insert, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from ..catalog.core import register_principal_tag_rows, resolve_access_tag_ids
+from ..access_control.protocols import normalize_access_tags
+from ..catalog.core import register_tag_rows, resolve_access_tag_ids
 from ..catalog.orm import AccessTag, Node, NodeAccessTagAssociation
 from ..queries import AccessTagsFilter
 from ..server.connection_pool import get_database_engine
@@ -170,10 +171,10 @@ async def _resolve_access_tag_ids_for_write(
     Principal tags are slightly different: these need to exist at write,
     possibly before the tags compiler has been able to create them.
     """
-    names = set(access_tag_names)
+    names = normalize_access_tags(access_tag_names)
     if not names:
         return []
-    await register_principal_tag_rows(conn, names)
+    await register_tag_rows(conn, names)
     rows = (
         await conn.execute(
             select(_access_tags.c.id, _access_tags.c.name).where(

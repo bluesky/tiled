@@ -111,6 +111,11 @@ Write the date in place of the "Unreleased" in the case a new version is release
   and, as on PostgreSQL, match an explicit JSON null but not a missing key.
 - On SQLite, a `None` in an `In` or `NotIn` list matches an explicit JSON null
   but not a missing key, as `Eq`/`NotEq` and the in-memory adapter do.
+- Fixed access tags approved by an external access policy failing with 403
+  "Cannot apply access tags that are not defined" on nodes, graph entities,
+  and links. Since v0.2.19, a tag needs a row in the catalog database, and
+  only `user:` and `service:` tags got one on write. Tags an access policy
+  approved now get a row on first use.
 
 ### Maintenance
 

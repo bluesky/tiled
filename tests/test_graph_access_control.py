@@ -361,6 +361,36 @@ async def test_deleting_link_removes_tag_associations_but_not_tag(store):
 
 
 @pytest.mark.asyncio
+async def test_entity_new_tag_gets_row(
+    store: GraphSQLAlchemyStore, policy: FakeTagPolicy
+) -> None:
+    "A tag the policy approved gets a row on first use; others must have one."
+    scopes = {"read:metadata", "write:metadata"}
+    entity = {"entityType": "sample", "properties": {}}
+
+    alice_ctx = _context(store, policy, "alice", scopes)
+    input = {**entity, "name": "E1", "accessTags": ["experiment:1234"]}
+    result = await _execute(CREATE_ENTITY_MUTATION, alice_ctx, {"input": input})
+    assert result.errors is None
+    record = await store.get_entity(result.data["createEntity"]["id"])
+    assert record.access_tags == {"experiment:1234"}
+
+    no_policy_ctx = _context(store, None, "alice", scopes)
+    input = {**entity, "name": "E2", "accessTags": ["experiment:5678"]}
+    result = await _execute(CREATE_ENTITY_MUTATION, no_policy_ctx, {"input": input})
+    assert "not defined" in str(result.errors)
+
+
+@pytest.mark.asyncio
+async def test_bare_string_tags_fail(store: GraphSQLAlchemyStore) -> None:
+    "A bare string is not split into one tag per character."
+    with pytest.raises(TypeError):
+        await store.create_entity(
+            entity_type="sample", name="entity", access_tags="team"
+        )
+
+
+@pytest.mark.asyncio
 async def test_entity_create_defaults_to_user_tag_and_read_visibility(store, policy):
     """Create without tags, verify creator's principal tag and read visibility."""
 

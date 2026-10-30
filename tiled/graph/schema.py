@@ -40,7 +40,7 @@ from strawberry.types import Info
 from strawberry.types.unset import UNSET, UnsetType
 
 from tiled.access_control.access_policies import NO_ACCESS
-from tiled.access_control.protocols import normalize_access_tags
+from tiled.access_control.protocols import ApprovedAccessTags, normalize_access_tags
 from tiled.queries import AccessTagsFilter
 from tiled.type_aliases import AccessTags
 
@@ -198,7 +198,7 @@ async def _init_access_tags(info: Info, access_tags: AccessTags | None) -> Acces
             raise GraphQLError(f"Access policy rejects access tags: {exc}") from exc
         if not isinstance(new_access_tags, frozenset):
             raise TypeError("access policy must return a frozenset of access tags")
-        return new_access_tags
+        return ApprovedAccessTags(new_access_tags)
     return access_tags if access_tags is not None else normalize_access_tags()
 
 
@@ -221,7 +221,7 @@ async def _modify_access_tags(
             raise GraphQLError(f"Access policy rejects access tags: {exc}") from exc
         if not isinstance(new_access_tags, frozenset):
             raise TypeError("access policy must return a frozenset of access tags")
-        return new_access_tags
+        return ApprovedAccessTags(new_access_tags)
     if requested_access_tags is not None:
         return requested_access_tags
     return normalize_access_tags(current_access_tags or ())
