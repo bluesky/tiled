@@ -1283,7 +1283,7 @@ class CatalogNodeAdapter:
 
                 # Notify subscribers of the *parent* node about the new child.
                 sequence = await self.context.streaming_cache.incr_seq(self.node.id)
-                metadata = {
+                message = {
                     "type": "container-child-created",
                     "sequence": sequence,
                     "timestamp": datetime.now().isoformat(),
@@ -1298,7 +1298,7 @@ class CatalogNodeAdapter:
 
                 # Cache data in Redis with a TTL, and publish
                 # a notification about it.
-                await self.context.streaming_cache.set(self.node.id, sequence, metadata)
+                await self.context.streaming_cache.set(self.node.id, sequence, message)
             if self.context.webhook_dispatcher:
                 await self.context.webhook_dispatcher.dispatch(
                     ContainerChildCreatedEvent(
@@ -1881,7 +1881,7 @@ class CatalogNodeAdapter:
             # Upon successful update, inform websocket subscribers through redis
             if self.context.streaming_cache:
                 sequence = await self.context.streaming_cache.incr_seq(self.node.parent)
-                metadata = {
+                message = {
                     "type": "container-child-metadata-updated",
                     "key": self.node.key,
                     "sequence": sequence,
@@ -1890,9 +1890,9 @@ class CatalogNodeAdapter:
                     "metadata": metadata,
                 }
                 if not drop_revision:
-                    metadata["revision_number"] = next_revision_number
+                    message["revision_number"] = next_revision_number
                 await self.context.streaming_cache.set(
-                    self.node.parent, sequence, metadata
+                    self.node.parent, sequence, message
                 )
             if self.context.webhook_dispatcher:
                 segments = list(await self.path_segments())
