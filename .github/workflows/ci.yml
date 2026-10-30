@@ -14,6 +14,11 @@ on:
 
 env:
   TEST_TAG: bluesky/tiled:test
+  # Pull requests and pushes install the exact versions in the committed
+  # uv.lock, so a new release of a dependency cannot break unrelated PRs.
+  # The nightly scheduled run re-resolves to the latest releases, giving early
+  # warning of breakage that users installing tiled from PyPI would see.
+  UV_SYNC_FLAGS: ${{ github.event_name == 'schedule' && '--upgrade' || '--locked' }}
 
 jobs:
   pre-commit:
@@ -48,7 +53,10 @@ jobs:
         python-version: ${{ matrix.python-version }}
 
     - name: Install tiled
-      run: uv sync --all-extras
+      run: uv sync --all-extras ${{ env.UV_SYNC_FLAGS }}
+
+    - name: List installed packages
+      run: uv pip list
 
     # TODO Find a new image to use.
     # https://github.com/bluesky/tiled/issues/1109
@@ -153,7 +161,7 @@ jobs:
         python-version: ${{ matrix.python-version }}
 
     - name: Install tiled
-      run: uv sync --all-extras
+      run: uv sync --all-extras ${{ env.UV_SYNC_FLAGS }}
       env:
         TILED_BUILD_SKIP_UI: 1
 

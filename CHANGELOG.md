@@ -128,6 +128,14 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 - Fixed flaky `test_thread_lock`, which started its timer after the worker
   threads had already started.
+- Commit `uv.lock` and `pixi.lock`. CI on pull requests and pushes installs
+  the locked versions (`uv sync --locked`), so a new release of a dependency
+  cannot break unrelated pull requests; the nightly scheduled run re-resolves
+  to the latest releases (`uv sync --upgrade`) to catch such breakage early.
+  Both lockfiles are refreshed by pull requests on the 1st and 15th of each
+  month (Dependabot for `uv.lock`, a workflow for `pixi.lock`). Contributors
+  who change dependencies should run `uv lock` (for `pyproject.toml`) or
+  `pixi lock` (for `pixi.toml`) and commit the updated lockfile.
 
 ## v0.2.19 (2026-10-13)
 

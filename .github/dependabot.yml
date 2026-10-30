@@ -11,3 +11,22 @@ updates:
     schedule:
       interval: cron
       cronjob: "0 0 1,15 * *"
+
+  # Refresh uv.lock. Dependabot does not support pixi, so pixi.lock is
+  # refreshed on the same schedule by .github/workflows/update-pixi-lock.yml.
+  - package-ecosystem: uv
+    directory: /
+    schedule:
+      interval: cron
+      cronjob: "0 0 1,15 * *"
+    # Update only the lockfile; leave the version constraints in
+    # pyproject.toml alone.
+    versioning-strategy: lockfile-only
+    allow:
+      # Include transitive dependencies, not only those named in pyproject.toml.
+      - dependency-type: all
+    groups:
+      # Open a single PR for all updates rather than one per package.
+      uv-lock:
+        patterns:
+          - "*"

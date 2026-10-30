@@ -1,0 +1,63 @@
+name: Update pixi.lock
+
+# Dependabot does not support pixi, so refresh pixi.lock on the same schedule
+# that .github/dependabot.yml uses for uv.lock and open a PR with the changes.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 0 1,15 * *"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  pixi-update:
+    if: github.repository_owner == 'bluesky'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # create-pull-request authenticates with its own token input.
+          persist-credentials: false
+
+      - name: Set up pixi
+        uses: prefix-dev/setup-pixi@ad1da6449d9e506fd127fd67ab2d054a769f6a94  # v0.11.2
+        with:
+          pixi-version: v0.83.0
+          run-install: false
+          cache: false
+
+      - name: Update pixi.lock
+        run: |
+          set -euo pipefail
+          pixi update --json --no-install > diff.json
+          # Render the changes as markdown tables. With many environments and
+          # platforms, merge them into one deduplicated table.
+          pixi exec --spec pixi-diff-to-markdown==0.3.11 \
+            pixi-diff-to-markdown --merge-dependencies=yes < diff.json > diff.md
+          cat diff.md >> "$GITHUB_STEP_SUMMARY"
+          # GitHub caps a PR description at 65536 characters, and
+          # create-pull-request would cut the tables off mid-row. If the
+          # changes do not fit, link to this run's summary instead.
+          if [ "$(wc -c < diff.md)" -gt 60000 ]; then
+            {
+              echo "The list of changes is too long for a PR description."
+              echo "See the summary of the workflow run that opened this PR:"
+              echo
+              echo "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            } > diff.md
+          fi
+
+      - name: Create pull request
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1  # v8.1.1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "MNT: update pixi.lock"
+          title: "MNT: update pixi.lock"
+          body-path: diff.md
+          branch: update-pixi-lock
+          base: main
+          delete-branch: true
+          add-paths: pixi.lock
