@@ -11,6 +11,9 @@ services:
       - OTEL_SERVICE_NAME=tiled
       # Don't trace health checks and metrics scrapes (operational chatter).
       - OTEL_PYTHON_FASTAPI_EXCLUDED_URLS=healthz,api/v1/metrics
+      # Sample a fraction of traces in production (default: trace everything).
+      # - OTEL_TRACES_SAMPLER=parentbased_traceidratio
+      # - OTEL_TRACES_SAMPLER_ARG=0.1
 
   prometheus:
     image: docker.io/prom/prometheus:v2.42.0
@@ -21,6 +24,8 @@ services:
       - '--storage.tsdb.path=/prometheus'
       - '--web.console.libraries=/usr/share/prometheus/console_libraries'
       - '--web.console.templates=/usr/share/prometheus/consoles'
+      # Accept remote-written metrics from Tempo's metrics generator (service graph).
+      - '--web.enable-remote-write-receiver'
     networks:
       - backend
     restart: unless-stopped

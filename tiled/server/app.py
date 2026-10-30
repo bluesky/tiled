@@ -1184,6 +1184,50 @@ def _setup_opentelemetry_tracing(app: FastAPI) -> None:
         trace.set_tracer_provider(provider)
     FastAPIInstrumentor.instrument_app(app)
 
+    # Emit spans for calls to the PostgreSQL driver (asyncpg), Redis, and
+    # outbound HTTP (httpx: OIDC, webhooks, external policy servers). These
+    # patch the libraries globally, so they are no-ops until a request uses them.
+    try:
+        from opentelemetry.instrumentation.asyncpg import AsyncPGInstrumentor
+    except ImportError:
+        pass
+    else:
+        AsyncPGInstrumentor().instrument()
+    try:
+        from opentelemetry.instrumentation.redis import RedisInstrumentor
+    except ImportError:
+        pass
+    else:
+        RedisInstrumentor().instrument()
+    try:
+        # Tiled's HTTP clients (webhook delivery, OIDC, external access
+        # policies) are httpx2 clients, which the httpx instrumentation traces
+        # through its httpx2 instrumentor (0.65b0 or newer).
+        from opentelemetry.instrumentation.httpx import HTTPX2ClientInstrumentor
+    except ImportError:
+        pass
+    else:
+
+        def _set_peer_service(span, request):
+            # Name the downstream dependency so it becomes its own node in the
+            # Tempo service graph (via peer.service) and is filterable in Jaeger.
+            # Bundle every webhook delivery under a single 'webhooks' node; name
+            # other outbound calls (OIDC, external policy servers) by their host.
+            if span is None or not span.is_recording():
+                return
+            if "x-tiled-event-id" in request.headers:
+                span.set_attribute("peer.service", "webhooks")
+            elif request.url.host:
+                span.set_attribute("peer.service", request.url.host)
+
+        async def _set_peer_service_async(span, request):
+            _set_peer_service(span, request)
+
+        HTTPX2ClientInstrumentor().instrument(
+            request_hook=_set_peer_service,
+            async_request_hook=_set_peer_service_async,
+        )
+
 
 def build_app_from_config(config: Config | dict[str, Any], scalable=False):
     """

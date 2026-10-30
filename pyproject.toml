@@ -90,7 +90,11 @@ all = [
     "obstore",
     "openpyxl",
     "opentelemetry-exporter-otlp-proto-http",
+    "opentelemetry-instrumentation-asyncpg",
+    "opentelemetry-instrumentation-dbapi",
     "opentelemetry-instrumentation-fastapi",
+    "opentelemetry-instrumentation-httpx >=0.65b0", # traces httpx2 clients
+    "opentelemetry-instrumentation-redis",
     "opentelemetry-sdk",
     "packaging",
     "pandas <3",
@@ -234,7 +238,11 @@ server = [
     "obstore",
     "openpyxl",
     "opentelemetry-exporter-otlp-proto-http",
+    "opentelemetry-instrumentation-asyncpg",
+    "opentelemetry-instrumentation-dbapi",
     "opentelemetry-instrumentation-fastapi",
+    "opentelemetry-instrumentation-httpx >=0.65b0", # traces httpx2 clients
+    "opentelemetry-instrumentation-redis",
     "opentelemetry-sdk",
     "packaging",
     "pandas",
