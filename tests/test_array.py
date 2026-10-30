@@ -4,7 +4,7 @@ import warnings
 from pathlib import Path
 
 import dask.array
-import httpx
+import httpx2 as httpx
 import numpy
 import pytest
 from starlette.status import (
@@ -167,7 +167,7 @@ def test_nan_infinity_handler(tmpdir, context):
     def strict_parse_constant(c):
         raise ValueError(f"{c} is not valid JSON")
 
-    with open(Path(tmpdir, "testjson", "test.json"), "r") as json_file:
+    with open(Path(tmpdir, "testjson", "test.json")) as json_file:
         open_json = json.load(json_file, parse_constant=strict_parse_constant)
 
     expected_list = [0.0, 1.0, None, None, None]

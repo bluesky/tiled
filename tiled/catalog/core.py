@@ -1,7 +1,14 @@
 from sqlalchemy import literal, select, text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from ..alembic_utils import DatabaseUpgradeNeeded, UninitializedDatabase, check_database
+from ..alembic_utils import (
+    DatabaseUpgradeNeeded,
+    UninitializedDatabase,
+    check_database,
+    initialize_database_if_needed,
+)
+from ..utils import ensure_specified_sql_driver
+from .alembic_constants import ALEMBIC_DIR, ALEMBIC_INI_TEMPLATE_PATH
 from .base import Base
 
 # This is list of all valid revisions (from current to oldest).
@@ -41,7 +48,7 @@ REQUIRED_REVISION = ALL_REVISIONS[0]
 async def initialize_database(engine: AsyncEngine):
     # The definitions in .orm alter Base.metadata.
     from ..graph import orm as graph_orm  # noqa: F401
-    from . import orm  # noqa: F401
+    from . import orm
 
     async with engine.connect() as connection:
         # Install extensions
@@ -87,6 +94,25 @@ async def initialize_database(engine: AsyncEngine):
             # https://www.sqlite.org/wal.html
             await connection.execute(text("PRAGMA journal_mode=WAL;"))
         await connection.commit()
+
+
+def initialize_catalog_database(uri: str) -> bool:
+    """
+    Initialize the catalog database at `uri`, unless it already is initialized.
+
+    This creates the tables and stamps the head alembic revision, as
+    `tiled catalog init --if-not-exists` does. Returns True if the database was
+    initialized by this call. It is a blocking call, safe to make from a thread that
+    is running an event loop.
+    """
+    return initialize_database_if_needed(
+        ensure_specified_sql_driver(uri),
+        initialize_database,
+        REQUIRED_REVISION,
+        ALL_REVISIONS,
+        ALEMBIC_INI_TEMPLATE_PATH,
+        ALEMBIC_DIR,
+    )
 
 
 async def register_principal_tag_rows(connection, access_tag_names):

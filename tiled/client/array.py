@@ -1,12 +1,12 @@
 import concurrent.futures
 import itertools
 import math
-from typing import TYPE_CHECKING, Optional, Union
+from typing import TYPE_CHECKING
 from urllib.parse import parse_qs, urlparse
 
 import dask
 import dask.array
-import httpx
+import httpx2 as httpx
 import numpy
 from numpy.typing import NDArray
 
@@ -86,7 +86,7 @@ class _DaskArrayClient(BaseClient):
     def __array__(self, *args, **kwargs):
         return self.read().__array__(*args, **kwargs)
 
-    def _get_block(self, block: NDBlock, block_slice: Optional[NDSlice] = None):
+    def _get_block(self, block: NDBlock, block_slice: NDSlice | None = None):
         """Fetch the data for one chunk (block) in a chunked array.
 
         This private method is used internally by the client and requires the
@@ -283,7 +283,7 @@ class _DaskArrayClient(BaseClient):
         )
 
         # Build a client-side dask array whose chunks correspond to subsplits of the slice
-        name = "remote-dask-array-" f"{self.uri}"
+        name = f"remote-dask-array-{self.uri}"
         dask_tasks = {
             (name,) + indx: (self._get_slice, slc)
             for indx, (slc) in indexed_slices.items()
@@ -342,7 +342,7 @@ class _DaskArrayClient(BaseClient):
     def patch(
         self,
         array: NDArray,
-        offset: Union[int, tuple[int, ...]],
+        offset: int | tuple[int, ...],
         extend=False,
         persist=True,
     ):
@@ -507,7 +507,7 @@ class _DaskArrayClient(BaseClient):
 
     def subscribe(
         self,
-        executor: Optional[concurrent.futures.Executor] = None,
+        executor: concurrent.futures.Executor | None = None,
     ) -> "ArraySubscription":
         """
         Subscribe to streaming updates about this array.

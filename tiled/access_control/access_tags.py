@@ -743,7 +743,7 @@ class AccessTagsCompiler:
             if not set(role["scopes"]).issubset(self.scopes):
                 raise ValueError(
                     f"Scopes for {role=} are not in the valid set of scopes. The invalid scopes are:"
-                    f'{set(role["scopes"]).difference(self.scopes)}'
+                    f"{set(role['scopes']).difference(self.scopes)}"
                 )
 
         for tag in self.tag_owners:

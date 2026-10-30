@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Union
+from typing import Any
 from urllib.parse import parse_qs, urlparse
 
-import httpx
+import httpx2 as httpx
 import numpy as np
 import orjson
 import ragged
@@ -53,7 +53,7 @@ class RaggedClient(BaseClient):
     def write_block(
         self,
         array: RaggedCompatibleType,
-        block: Union[int, tuple[int, ...]],
+        block: int | tuple[int, ...],
         persist=True,
     ):
         """Write a block of ragged array data.
@@ -96,7 +96,7 @@ class RaggedClient(BaseClient):
     def patch(
         self,
         array: RaggedCompatibleType,
-        offset: Union[int, tuple[int, ...]],
+        offset: int | tuple[int, ...],
         extend=False,
         persist=True,
     ):

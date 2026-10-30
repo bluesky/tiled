@@ -1,9 +1,10 @@
 import hashlib
 import secrets
 import uuid as uuid_module
-from datetime import datetime, timedelta, timezone
+from collections.abc import Callable, Sequence
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Annotated, Any, Callable, List, Optional, Sequence
+from typing import Annotated, Any
 
 import jwt
 from fastapi import (
@@ -84,7 +85,7 @@ DEVICE_CODE_POLLING_INTERVAL = 5  # seconds
 
 def utcnow():
     "UTC now with second resolution"
-    return datetime.now(timezone.utc).replace(microsecond=0)
+    return datetime.now(UTC).replace(microsecond=0)
 
 
 class Token(BaseModel):
@@ -93,7 +94,7 @@ class Token(BaseModel):
 
 
 class TokenData(BaseModel):
-    username: Optional[str] = None
+    username: str | None = None
 
 
 class StrictAPIKeyHeader(APIKeyHeader):
@@ -104,8 +105,8 @@ class StrictAPIKeyHeader(APIKeyHeader):
     Additionally strips the scheme, as expected by current handling.
     """
 
-    async def __call__(self, request: Request) -> Optional[str]:
-        api_key: Optional[str] = request.headers.get(self.model.name)
+    async def __call__(self, request: Request) -> str | None:
+        api_key: str | None = request.headers.get(self.model.name)
         scheme, param = get_authorization_scheme_param(api_key)
         if not scheme or scheme.lower() == "bearer":
             return self.check_api_key(None)
@@ -146,8 +147,8 @@ def create_refresh_token(session_id, secret_key, expires_delta):
 
 def decode_token(
     token: str,
-    secret_keys: List[str],
-    proxied_authenticator: Optional[ProxiedOIDCAuthenticator] = None,
+    secret_keys: list[str],
+    proxied_authenticator: ProxiedOIDCAuthenticator | None = None,
 ) -> dict[str, Any]:
     credentials_exception = HTTPException(
         status_code=HTTP_401_UNAUTHORIZED,
@@ -180,10 +181,8 @@ def decode_token(
 
 
 async def get_api_key(
-    api_key_query: Optional[str] = Depends(
-        APIKeyQuery(name="api_key", auto_error=False)
-    ),
-    api_key_header: Optional[str] = Depends(
+    api_key_query: str | None = Depends(APIKeyQuery(name="api_key", auto_error=False)),
+    api_key_header: str | None = Depends(
         StrictAPIKeyHeader(
             name="Authorization",
             description="Prefix value with 'Apikey ' as in, 'Apikey SECRET'",
@@ -191,10 +190,10 @@ async def get_api_key(
             auto_error=False,
         )
     ),
-    api_key_cookie: Optional[str] = Depends(
+    api_key_cookie: str | None = Depends(
         APIKeyCookie(name=API_KEY_COOKIE_NAME, auto_error=False)
     ),
-) -> Optional[str]:
+) -> str | None:
     for api_key in [api_key_query, api_key_header, api_key_cookie]:
         if api_key is not None:
             return api_key
@@ -242,8 +241,8 @@ async def get_session_state(decoded_access_token=Depends(get_decoded_access_toke
 
 
 async def get_access_tags_from_api_key(
-    api_key: str, authenticated: bool, db: Optional[AsyncSession]
-) -> Optional[AccessTags]:
+    api_key: str, authenticated: bool, db: AsyncSession | None
+) -> AccessTags | None:
     if not authenticated:
         # Tiled is in a "single user" mode with only one API key.
         # In this mode, there is no meaningful access tag limit.
@@ -267,11 +266,11 @@ async def get_access_tags_from_api_key(
 
 async def get_current_access_tags(
     request: Request,
-    api_key: Optional[str] = Depends(get_api_key),
-    db_factory: Callable[[], Optional[AsyncSession]] = Depends(
+    api_key: str | None = Depends(get_api_key),
+    db_factory: Callable[[], AsyncSession | None] = Depends(
         get_database_session_factory
     ),
-) -> Optional[AccessTags]:
+) -> AccessTags | None:
     if api_key is not None:
         async with db_factory() as db:
             return await get_access_tags_from_api_key(
@@ -283,8 +282,8 @@ async def get_current_access_tags(
 
 
 def get_api_key_websocket(
-    authorization: Annotated[Optional[str], Header()] = None,
-) -> Optional[str]:
+    authorization: Annotated[str | None, Header()] = None,
+) -> str | None:
     if authorization is None:
         return None
     scheme, api_key = get_authorization_scheme_param(authorization)
@@ -298,9 +297,9 @@ def get_api_key_websocket(
 
 def get_decoded_access_token_websocket(
     websocket: WebSocket,
-    access_token: Optional[str] = Query(None),
+    access_token: str | None = Query(None),
     settings: Settings = Depends(get_settings),
-) -> Optional[dict]:
+) -> dict | None:
     """Decode a JWT access token passed as a query parameter on WebSocket connections."""
     if not access_token:
         return None
@@ -315,11 +314,11 @@ def get_decoded_access_token_websocket(
 
 async def get_current_access_tags_websocket(
     websocket: WebSocket,
-    api_key: Optional[str] = Depends(get_api_key_websocket),
-    db_factory: Callable[[], Optional[AsyncSession]] = Depends(
+    api_key: str | None = Depends(get_api_key_websocket),
+    db_factory: Callable[[], AsyncSession | None] = Depends(
         get_database_session_factory
     ),
-) -> Optional[AccessTags]:
+) -> AccessTags | None:
     if api_key is not None:
         async with db_factory() as db:
             return await get_access_tags_from_api_key(
@@ -330,7 +329,7 @@ async def get_current_access_tags_websocket(
         return None
 
 
-async def move_api_key(request: Request, api_key: Optional[str] = Depends(get_api_key)):
+async def move_api_key(request: Request, api_key: str | None = Depends(get_api_key)):
     """
     Move API key from query parameter to cookie.
 
@@ -347,7 +346,7 @@ async def move_api_key(request: Request, api_key: Optional[str] = Depends(get_ap
 
 
 async def get_scopes_from_api_key(
-    api_key: str, settings: Settings, authenticated: bool, db: Optional[AsyncSession]
+    api_key: str, settings: Settings, authenticated: bool, db: AsyncSession | None
 ) -> Sequence[str]:
     if not authenticated:
         # Tiled is in a "single user" mode with only one API key.
@@ -385,7 +384,7 @@ async def get_scopes_from_api_key(
 
 def _extract_scopes(
     decoded_access_token: dict[str, Any],
-    authenticator: Optional[ProxiedOIDCAuthenticator],
+    authenticator: ProxiedOIDCAuthenticator | None,
 ) -> set[str]:
     """Extract scopes from a decoded access token.
 
@@ -403,10 +402,10 @@ def _extract_scopes(
 
 async def get_current_scopes(
     request: Request,
-    decoded_access_token: Optional[dict[str, Any]] = Depends(get_decoded_access_token),
-    api_key: Optional[str] = Depends(get_api_key),
+    decoded_access_token: dict[str, Any] | None = Depends(get_decoded_access_token),
+    api_key: str | None = Depends(get_api_key),
     settings: Settings = Depends(get_settings),
-    db_factory: Callable[[], Optional[AsyncSession]] = Depends(
+    db_factory: Callable[[], AsyncSession | None] = Depends(
         get_database_session_factory
     ),
 ) -> set[str]:
@@ -441,10 +440,10 @@ async def get_current_scopes(
 
 async def get_current_scopes_websocket(
     websocket: WebSocket,
-    api_key: Optional[str] = Depends(get_api_key_websocket),
-    decoded_access_token: Optional[dict] = Depends(get_decoded_access_token_websocket),
+    api_key: str | None = Depends(get_api_key_websocket),
+    decoded_access_token: dict | None = Depends(get_decoded_access_token_websocket),
     settings: Settings = Depends(get_settings),
-    db_factory: Callable[[], Optional[AsyncSession]] = Depends(
+    db_factory: Callable[[], AsyncSession | None] = Depends(
         get_database_session_factory
     ),
 ) -> set[str]:
@@ -464,7 +463,7 @@ async def authenticate_websocket_first_message(
     message: dict,
     settings: Settings,
     db_factory: Callable,
-) -> tuple[bool, Optional[schemas.Principal], Optional[set], set]:
+) -> tuple[bool, schemas.Principal | None, set | None, set]:
     """Authenticate a WebSocket connection from a 'first message' payload.
 
     Supports two credential types:
@@ -610,11 +609,11 @@ async def get_current_principal_from_api_key(
 
 async def get_current_principal_websocket(
     websocket: WebSocket,
-    api_key: Optional[str] = Depends(get_api_key_websocket),
-    access_token: Optional[str] = Query(None),
-    decoded_access_token: Optional[dict] = Depends(get_decoded_access_token_websocket),
+    api_key: str | None = Depends(get_api_key_websocket),
+    access_token: str | None = Query(None),
+    decoded_access_token: dict | None = Depends(get_decoded_access_token_websocket),
     settings: Settings = Depends(get_settings),
-    db_factory: Callable[[], Optional[AsyncSession]] = Depends(
+    db_factory: Callable[[], AsyncSession | None] = Depends(
         get_database_session_factory
     ),
 ):
@@ -674,11 +673,11 @@ async def get_current_principal(
     decoded_access_token: str = Depends(get_decoded_access_token),
     api_key: str = Depends(get_api_key),
     settings: Settings = Depends(get_settings),
-    db_factory: Callable[[], Optional[AsyncSession]] = Depends(
+    db_factory: Callable[[], AsyncSession | None] = Depends(
         get_database_session_factory
     ),
     _=Depends(move_api_key),
-) -> Optional[schemas.Principal]:
+) -> schemas.Principal | None:
     """
     Get current Principal from:
     - API key in 'api_key' query parameter
@@ -900,14 +899,14 @@ def add_external_routes(
         request: Request,
         response: Response,
         settings: Settings = Depends(get_settings),
-        db_factory: Callable[[], Optional[AsyncSession]] = Depends(
+        db_factory: Callable[[], AsyncSession | None] = Depends(
             get_database_session_factory
         ),
     ):
         request.state.endpoint = "auth"
-        user_session_state: Optional[
-            UserSessionState
-        ] = await authenticator.authenticate(request)
+        user_session_state: UserSessionState | None = await authenticator.authenticate(
+            request
+        )
         if not user_session_state:
             if authenticator.redirect_on_failure:
                 return RedirectResponse(
@@ -945,7 +944,7 @@ def add_external_routes(
     @router.get(f"/provider/{provider}/authorize")
     async def authorize_redirect_route(
         request: Request,
-        state: Optional[str] = Query(None),
+        state: str | None = Query(None),
     ):
         """Redirect browser to OAuth provider for authentication."""
 
@@ -971,7 +970,7 @@ def add_external_routes(
     @router.post(f"/provider/{provider}/authorize")
     async def device_code_authorize_route(
         request: Request,
-        db_factory: Callable[[], Optional[AsyncSession]] = Depends(
+        db_factory: Callable[[], AsyncSession | None] = Depends(
             get_database_session_factory
         ),
     ):
@@ -1025,7 +1024,7 @@ def add_external_routes(
         code: str = Form(),
         user_code: str = Form(),
         settings: Settings = Depends(get_settings),
-        db_factory: Callable[[], Optional[AsyncSession]] = Depends(
+        db_factory: Callable[[], AsyncSession | None] = Depends(
             get_database_session_factory
         ),
     ):
@@ -1050,9 +1049,9 @@ def add_external_routes(
                     },
                     status_code=HTTP_401_UNAUTHORIZED,
                 )
-            user_session_state: Optional[
-                UserSessionState
-            ] = await authenticator.authenticate(request)
+            user_session_state: (
+                UserSessionState | None
+            ) = await authenticator.authenticate(request)
             if not user_session_state:
                 return templates.TemplateResponse(
                     request,
@@ -1090,7 +1089,7 @@ def add_external_routes(
         request: Request,
         body: schemas.DeviceCode,
         settings: Settings = Depends(get_settings),
-        db_factory: Callable[[], Optional[AsyncSession]] = Depends(
+        db_factory: Callable[[], AsyncSession | None] = Depends(
             get_database_session_factory
         ),
     ):
@@ -1134,14 +1133,12 @@ def add_internal_routes(
         request: Request,
         form_data: OAuth2PasswordRequestForm = Depends(),
         settings: Settings = Depends(get_settings),
-        db_factory: Callable[[], Optional[AsyncSession]] = Depends(
+        db_factory: Callable[[], AsyncSession | None] = Depends(
             get_database_session_factory
         ),
     ):
         request.state.endpoint = "auth"
-        user_session_state: Optional[
-            UserSessionState
-        ] = await authenticator.authenticate(
+        user_session_state: UserSessionState | None = await authenticator.authenticate(
             username=form_data.username, password=form_data.password
         )
         if not user_session_state or not user_session_state.user_name:
@@ -1237,13 +1234,13 @@ def authentication_router() -> APIRouter:
     )
     async def principal_list(
         request: Request,
-        offset: Optional[int] = Query(0, alias="page[offset]", ge=0),
-        limit: Optional[int] = Query(
+        offset: int | None = Query(0, alias="page[offset]", ge=0),
+        limit: int | None = Query(
             DEFAULT_PAGE_SIZE, alias="page[limit]", ge=0, le=MAX_PAGE_SIZE
         ),
-        principal: Optional[schemas.Principal] = Depends(get_current_principal),
+        principal: schemas.Principal | None = Depends(get_current_principal),
         _=Security(check_scopes, scopes=["read:principals"]),
-        db_factory: Callable[[], Optional[AsyncSession]] = Depends(
+        db_factory: Callable[[], AsyncSession | None] = Depends(
             get_database_session_factory
         ),
     ):
@@ -1254,6 +1251,7 @@ def authentication_router() -> APIRouter:
                 (
                     await db.execute(
                         select(orm.Principal)
+                        .order_by(orm.Principal.id)
                         .offset(offset)
                         .limit(limit)
                         .options(
@@ -1282,9 +1280,9 @@ def authentication_router() -> APIRouter:
     )
     async def create_service_principal(
         request: Request,
-        principal: Optional[schemas.Principal] = Depends(get_current_principal),
+        principal: schemas.Principal | None = Depends(get_current_principal),
         _=Security(check_scopes, scopes=["write:principals"]),
-        db_factory: Callable[[], Optional[AsyncSession]] = Depends(
+        db_factory: Callable[[], AsyncSession | None] = Depends(
             get_database_session_factory
         ),
         role: str = Query(...),
@@ -1321,7 +1319,7 @@ def authentication_router() -> APIRouter:
         request: Request,
         uuid: uuid_module.UUID,
         _=Security(check_scopes, scopes=["read:principals"]),
-        db_factory: Callable[[], Optional[AsyncSession]] = Depends(
+        db_factory: Callable[[], AsyncSession | None] = Depends(
             get_database_session_factory
         ),
     ):
@@ -1360,7 +1358,7 @@ def authentication_router() -> APIRouter:
         uuid: uuid_module.UUID,
         first_eight: str,
         _=Security(check_scopes, scopes=["admin:apikeys"]),
-        db_factory: Callable[[], Optional[AsyncSession]] = Depends(
+        db_factory: Callable[[], AsyncSession | None] = Depends(
             get_database_session_factory
         ),
     ):
@@ -1390,9 +1388,9 @@ def authentication_router() -> APIRouter:
         request: Request,
         uuid: uuid_module.UUID,
         apikey_params: schemas.APIKeyRequestParams,
-        principal: Optional[schemas.Principal] = Depends(get_current_principal),
+        principal: schemas.Principal | None = Depends(get_current_principal),
         _=Security(check_scopes, scopes=["admin:apikeys"]),
-        db_factory: Callable[[], Optional[AsyncSession]] = Depends(
+        db_factory: Callable[[], AsyncSession | None] = Depends(
             get_database_session_factory
         ),
     ):
@@ -1415,7 +1413,7 @@ def authentication_router() -> APIRouter:
         request: Request,
         refresh_token: schemas.RefreshToken,
         settings: Settings = Depends(get_settings),
-        db_factory: Callable[[], Optional[AsyncSession]] = Depends(
+        db_factory: Callable[[], AsyncSession | None] = Depends(
             get_database_session_factory
         ),
     ):
@@ -1430,7 +1428,7 @@ def authentication_router() -> APIRouter:
         request: Request,
         refresh_token: schemas.RefreshToken,
         settings: Settings = Depends(get_settings),
-        db_factory: Callable[[], Optional[AsyncSession]] = Depends(
+        db_factory: Callable[[], AsyncSession | None] = Depends(
             get_database_session_factory
         ),
     ):
@@ -1454,8 +1452,8 @@ def authentication_router() -> APIRouter:
     async def revoke_session_by_id(
         session_id: str,  # from path parameter
         request: Request,
-        principal: Optional[schemas.Principal] = Depends(get_current_principal),
-        db_factory: Callable[[], Optional[AsyncSession]] = Depends(
+        principal: schemas.Principal | None = Depends(get_current_principal),
+        db_factory: Callable[[], AsyncSession | None] = Depends(
             get_database_session_factory
         ),
     ):
@@ -1493,7 +1491,7 @@ def authentication_router() -> APIRouter:
         if (
             (session is None)
             or session.revoked
-            or (session.expiration_time.replace(tzinfo=timezone.utc) < now)
+            or (session.expiration_time.replace(tzinfo=UTC) < now)
         ):
             # Do not leak (to a potential attacker) whether this has been *revoked*
             # specifically. Give the same error as if it had expired.
@@ -1548,9 +1546,9 @@ def authentication_router() -> APIRouter:
     async def new_apikey(
         request: Request,
         apikey_params: schemas.APIKeyRequestParams,
-        principal: Optional[schemas.Principal] = Depends(get_current_principal),
+        principal: schemas.Principal | None = Depends(get_current_principal),
         _=Security(check_scopes, scopes=["create:apikeys"]),
-        db_factory: Callable[[], Optional[AsyncSession]] = Depends(
+        db_factory: Callable[[], AsyncSession | None] = Depends(
             get_database_session_factory
         ),
     ):
@@ -1576,7 +1574,7 @@ def authentication_router() -> APIRouter:
     async def current_apikey_info(
         request: Request,
         api_key: str = Depends(get_api_key),
-        db_factory: Callable[[], Optional[AsyncSession]] = Depends(
+        db_factory: Callable[[], AsyncSession | None] = Depends(
             get_database_session_factory
         ),
     ):
@@ -1613,9 +1611,9 @@ def authentication_router() -> APIRouter:
     async def revoke_apikey(
         request: Request,
         first_eight: str,
-        principal: Optional[schemas.Principal] = Depends(get_current_principal),
+        principal: schemas.Principal | None = Depends(get_current_principal),
         _=Security(check_scopes, scopes=["revoke:apikeys"]),
-        db_factory: Callable[[], Optional[AsyncSession]] = Depends(
+        db_factory: Callable[[], AsyncSession | None] = Depends(
             get_database_session_factory
         ),
     ):
@@ -1646,8 +1644,8 @@ def authentication_router() -> APIRouter:
     )
     async def whoami(
         request: Request,
-        principal: Optional[schemas.Principal] = Depends(get_current_principal),
-        db_factory: Callable[[], Optional[AsyncSession]] = Depends(
+        principal: schemas.Principal | None = Depends(get_current_principal),
+        db_factory: Callable[[], AsyncSession | None] = Depends(
             get_database_session_factory
         ),
     ):

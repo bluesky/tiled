@@ -158,8 +158,7 @@ WHERE node.id = assignment.node_id
         # CREATE INDEX uses maintenance_work_mem rather than work_mem. SET
         # LOCAL keeps this setting scoped to the migration transaction.
         op.execute(
-            "SET LOCAL maintenance_work_mem = "
-            f"'{POSTGRES_INDEX_MAINTENANCE_WORK_MEM}'"
+            f"SET LOCAL maintenance_work_mem = '{POSTGRES_INDEX_MAINTENANCE_WORK_MEM}'"
         )
         op.create_index(
             INDEX_NAME,

@@ -18,7 +18,7 @@ from urllib.parse import urljoin, urlparse
 import awkward
 import boto3
 import dask.dataframe
-import httpx
+import httpx2 as httpx
 import numpy
 import pandas
 import pandas.testing
@@ -132,6 +132,18 @@ def metadata_client(module_tmp_path):
         client = from_context(context)
         client.write_array([1, 2, 3], key="invalid_check")
         yield client
+
+
+def test_created_node_links_have_no_double_slash(tree):
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        with record_history() as history:
+            x = client.write_array([1, 2, 3], key="x")
+            y = client.create_container("c").write_array([1, 2, 3], key="y")
+        for node in (x, y):
+            for url in node.item["links"].values():
+                assert "//" not in urlparse(url).path
+        assert all("//" not in r.url.path for r in history.requests)
 
 
 def test_write_array_full(tree):
@@ -269,6 +281,33 @@ def test_extend_array(tree):
         # Data type must match.
         with pytest.raises(ValueError):
             ac.patch(ones.astype("uint8"), offset=9, extend=True)
+
+
+def test_patch_array_with_partial_last_chunk(tree):
+    "Patch an array whose shape is not a whole number of chunks."
+    with Context.from_app(
+        build_app(tree, validation_registry=validation_registry)
+    ) as context:
+        client = from_context(context)
+
+        a = numpy.arange(10)
+        ac = client.write_array(dask.array.from_array(a, chunks=3))
+        assert ac.chunks == ((3, 3, 3, 1),)
+
+        # Writing past the end without extend=True is refused.
+        with pytest.raises(Conflicts):
+            ac.patch(numpy.array([10, 11]), offset=(10,))
+        numpy.testing.assert_equal(ac.read(), a)
+
+        # Extending by one element grows the array by one element.
+        ac.patch(numpy.array([10]), offset=(10,), extend=True)
+        assert ac.shape == (11,)
+        assert ac.chunks == ((3, 3, 3, 2),)
+        numpy.testing.assert_equal(ac.read(), numpy.arange(11))
+
+        ac.patch(numpy.array([11, 12]), offset=(11,), extend=True)
+        assert ac.shape == (13,)
+        numpy.testing.assert_equal(ac.read(), numpy.arange(13))
 
 
 def test_write_table_full(tree):

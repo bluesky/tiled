@@ -7,22 +7,17 @@ import logging
 import operator
 import os
 import shutil
-import sys
 import time
 import uuid
+from collections.abc import Callable
 from contextlib import closing
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from functools import partial, reduce
 from pathlib import Path
 from typing import (
     TYPE_CHECKING,
     Any,
-    Callable,
-    Dict,
-    List,
     Literal,
-    Optional,
-    Union,
     cast,
 )
 from urllib.parse import urlparse
@@ -30,7 +25,9 @@ from urllib.parse import urlparse
 import anyio
 from fastapi import HTTPException
 from sqlalchemy import (
+    Integer,
     and_,
+    any_,
     delete,
     exists,
     false,
@@ -45,6 +42,7 @@ from sqlalchemy import (
     update,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, REGCONFIG, TEXT
+from sqlalchemy.engine import make_url
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased, selectinload
@@ -130,6 +128,7 @@ from ..utils import (
 from . import orm
 from .core import (
     check_catalog_database,
+    initialize_catalog_database,
     initialize_database,
     register_principal_tag_rows,
     resolve_access_tag_ids,
@@ -169,30 +168,36 @@ DEFAULT_CREATION_MIMETYPE = {
 # TODO: make type[Adapter] after #1047
 STORAGE_ADAPTERS_BY_MIMETYPE = OneShotCachedMap[str, type](
     {
-        ZARR_MIMETYPE: lambda: importlib.import_module(
-            "...adapters.zarr", __name__
-        ).ZarrArrayAdapter,
-        AWKWARD_BUFFERS_MIMETYPE: lambda: importlib.import_module(
-            "...adapters.awkward", __name__
-        ).AwkwardBuffersAdapter,
-        PARQUET_MIMETYPE: lambda: importlib.import_module(
-            "...adapters.parquet", __name__
-        ).ParquetDatasetAdapter,
-        "text/csv": lambda: importlib.import_module(
-            "...adapters.csv", __name__
-        ).CSVAdapter,
-        SPARSE_BLOCKS_PARQUET_MIMETYPE: lambda: importlib.import_module(
-            "...adapters.sparse_blocks_parquet", __name__
-        ).SparseBlocksParquetAdapter,
-        APACHE_ARROW_FILE_MIME_TYPE: lambda: importlib.import_module(
-            "...adapters.arrow", __name__
-        ).ArrowAdapter,
-        TILED_SQL_TABLE_MIMETYPE: lambda: importlib.import_module(
-            "...adapters.sql", __name__
-        ).SQLAdapter,
-        RAGGED_SQL_MIMETYPE: lambda: importlib.import_module(
-            "...adapters.ragged", __name__
-        ).RaggedSQLAdapter,
+        ZARR_MIMETYPE: lambda: (
+            importlib.import_module("...adapters.zarr", __name__).ZarrArrayAdapter
+        ),
+        AWKWARD_BUFFERS_MIMETYPE: lambda: (
+            importlib.import_module(
+                "...adapters.awkward", __name__
+            ).AwkwardBuffersAdapter
+        ),
+        PARQUET_MIMETYPE: lambda: (
+            importlib.import_module(
+                "...adapters.parquet", __name__
+            ).ParquetDatasetAdapter
+        ),
+        "text/csv": lambda: (
+            importlib.import_module("...adapters.csv", __name__).CSVAdapter
+        ),
+        SPARSE_BLOCKS_PARQUET_MIMETYPE: lambda: (
+            importlib.import_module(
+                "...adapters.sparse_blocks_parquet", __name__
+            ).SparseBlocksParquetAdapter
+        ),
+        APACHE_ARROW_FILE_MIME_TYPE: lambda: (
+            importlib.import_module("...adapters.arrow", __name__).ArrowAdapter
+        ),
+        TILED_SQL_TABLE_MIMETYPE: lambda: (
+            importlib.import_module("...adapters.sql", __name__).SQLAdapter
+        ),
+        RAGGED_SQL_MIMETYPE: lambda: (
+            importlib.import_module("...adapters.ragged", __name__).RaggedSQLAdapter
+        ),
     }
 )
 
@@ -265,7 +270,7 @@ class Context:
         key_maker=lambda: str(uuid.uuid4()),
         storage_pool_size=5,
         storage_max_overflow=10,
-        webhook_secret_keys: Optional[List[str]] = None,
+        webhook_secret_keys: list[str] | None = None,
     ):
         self.engine = get_database_engine(database_settings)
         self.database_settings = database_settings
@@ -314,7 +319,7 @@ class Context:
         )
         self.adapters_by_mimetype = merged_adapters_by_mimetype
         self.cache_config = cache_config
-        self.webhook_secret_keys: List[str] = webhook_secret_keys or []
+        self.webhook_secret_keys: list[str] = webhook_secret_keys or []
         self.webhook_dispatcher = None
 
     def session(self):
@@ -399,11 +404,11 @@ class CatalogNodeAdapter:
         *,
         conditions=None,
         queries=None,
-        sorting: Optional[list[tuple[str, Literal[1, -1]]]] = None,
-        mount_path: Optional[list[str]] = None,
+        sorting: list[tuple[str, Literal[1, -1]]] | None = None,
+        mount_path: list[str] | None = None,
         create_mount_nodes_if_not_exist: bool = False,
         deep: bool = False,
-        max_depth: Optional[int] = None,
+        max_depth: int | None = None,
         access_filters=None,
     ):
         self.context = context
@@ -620,7 +625,7 @@ class CatalogNodeAdapter:
         async with self.context.session() as db:
             return (await db.execute(statement)).scalar_one()
 
-    async def approx_len(self) -> Optional[int]:
+    async def approx_len(self) -> int | None:
         """Get an approximate number of child nodes using table statistics.
 
         This only works for PostgreSQL databases and does not take into account
@@ -777,9 +782,9 @@ class CatalogNodeAdapter:
     async def _get_lazy_adapter(
         self,
         *,
-        block: Optional["NDBlock"] = None,
+        block: "NDBlock | None" = None,
         slice: Any = ...,
-    ) -> Optional["AnyAdapter"]:
+    ) -> "AnyAdapter | None":
         """Build an I/O adapter that resolves only the assets a read will touch.
 
         Returns `None` (so the caller falls back to :meth:`get_adapter`) unless
@@ -995,9 +1000,10 @@ class CatalogNodeAdapter:
         ).where(orm.NodesClosure.ancestor == self.node.id, orm.NodesClosure.depth >= 1)
         if self.max_depth is not None:
             statement = statement.where(orm.NodesClosure.depth <= self.max_depth)
+        dialect_name = self.context.engine.dialect.name
         for query, _ in self.access_filters:
             statement = statement.where(
-                _access_tags_predicate(query, orm.Node, orm.Node.parent)
+                _access_tags_predicate(query, orm.Node, orm.Node.parent, dialect_name)
             )
             # No container strictly between this node and the match may fail
             # the policy: otherwise results leak the paths of hidden containers.
@@ -1011,7 +1017,13 @@ class CatalogNodeAdapter:
                 .join(hidden, hidden.id == to_match.ancestor)
                 .where(to_match.descendant == orm.Node.id, to_match.depth >= 1)
                 .where(from_root.ancestor == self.node.id, from_root.depth >= 1)
-                .where(not_(_access_tags_predicate(query, hidden, hidden.parent)))
+                .where(
+                    not_(
+                        _access_tags_predicate(
+                            query, hidden, hidden.parent, dialect_name
+                        )
+                    )
+                )
                 .exists()
             )
             statement = statement.where(not_(hidden_ancestor))
@@ -1291,7 +1303,7 @@ class CatalogNodeAdapter:
             if self.context.webhook_dispatcher:
                 await self.context.webhook_dispatcher.dispatch(
                     ContainerChildCreatedEvent(
-                        timestamp=datetime.now(tz=timezone.utc),
+                        timestamp=datetime.now(tz=UTC),
                         key=key,
                         structure_family=structure_family,
                         specs=[spec.model_dump() for spec in (specs or [])],
@@ -1805,9 +1817,9 @@ class CatalogNodeAdapter:
                     status_code=HTTP_404_NOT_FOUND,
                     detail=f"No revision {number} for node {self.node.id}",
                 )
-            assert (
-                result.rowcount == 1
-            ), f"Deletion would affect {result.rowcount} rows; rolling back"
+            assert result.rowcount == 1, (
+                f"Deletion would affect {result.rowcount} rows; rolling back"
+            )
             await db.commit()
 
     async def replace_metadata(
@@ -1902,7 +1914,7 @@ class CatalogNodeAdapter:
                     else (current.specs if not drop_revision else self.node.specs) or []
                 )
                 ev = ContainerChildMetadataUpdatedEvent(
-                    timestamp=datetime.now(tz=timezone.utc),
+                    timestamp=datetime.now(tz=UTC),
                     key=self.node.key,
                     specs=[spec.model_dump() for spec in effective_specs],
                     metadata=effective_metadata,
@@ -1920,7 +1932,7 @@ class CatalogNodeAdapter:
             segments = list(await self.path_segments())
             await self.context.webhook_dispatcher.dispatch(
                 StreamClosedEvent(
-                    timestamp=datetime.now(tz=timezone.utc),
+                    timestamp=datetime.now(tz=UTC),
                     key=self.node.key,
                     path=segments,
                 ),
@@ -1971,8 +1983,8 @@ class CatalogContainerAdapter(CatalogNodeAdapter):
 
     async def keys_page(
         self,
-        cursor: Optional[int] = None,
-        limit: Optional[int] = None,
+        cursor: int | None = None,
+        limit: int | None = None,
     ):
         """Return a page of keys and the cursor for the next page.
 
@@ -2023,7 +2035,7 @@ class CatalogContainerAdapter(CatalogNodeAdapter):
             return [relative_keys[row[1]] for row in rows], next_cursor
         return [row[0] for row in rows], next_cursor
 
-    async def keys_range(self, offset: int = 0, limit: Optional[int] = None):
+    async def keys_range(self, offset: int = 0, limit: int | None = None):
         """Return a list of keys, starting at `offset` up to `limit`.
 
         The server uses `keys_page()` internally for cursor-based pagination.
@@ -2056,8 +2068,8 @@ class CatalogContainerAdapter(CatalogNodeAdapter):
 
     async def items_page(
         self,
-        cursor: Optional[int] = None,
-        limit: Optional[int] = None,
+        cursor: int | None = None,
+        limit: int | None = None,
     ):
         """Return a page of (key, adapter) pairs and the cursor for the next page.
 
@@ -2118,7 +2130,7 @@ class CatalogContainerAdapter(CatalogNodeAdapter):
             next_cursor,
         )
 
-    async def items_range(self, offset: int = 0, limit: Optional[int] = None):
+    async def items_range(self, offset: int = 0, limit: int | None = None):
         """Return a list of (key, adapter) pairs, starting at `offset` up to `limit`.
 
         The server uses `items_page()` internally for cursor-based pagination.
@@ -2156,7 +2168,7 @@ class CatalogContainerAdapter(CatalogNodeAdapter):
             for node in nodes
         ]
 
-    async def cursor_for_offset(self, offset: int) -> Optional[int]:
+    async def cursor_for_offset(self, offset: int) -> int | None:
         """Return the id of the node just before the given offset, for cursor pagination.
 
         Returns None when cursor pagination is not applicable:
@@ -2196,7 +2208,7 @@ class CatalogContainerAdapter(CatalogNodeAdapter):
 
 
 class CatalogArrayAdapter(CatalogNodeAdapter):
-    async def _assets_recently_modified(self) -> Optional[bool]:
+    async def _assets_recently_modified(self) -> bool | None:
         """Report whether a backing asset was modified within the freshness window.
 
         Returns `True` if at least one backing asset was modified within
@@ -2589,7 +2601,7 @@ def construct_order_by_clauses(sorting):
             # "metadata.color" to avoid the possibility of a name collision
             # with the standard sort keys.
             if key.startswith("metadata."):
-                key = key[len("metadata.") :]  # noqa: E203
+                key = key[len("metadata.") :]
             clause = orm.Node.metadata_
             for segment in key.split("."):
                 clause = clause[segment]
@@ -2749,7 +2761,7 @@ def specs(query, tree):
     return tree.new_variation(conditions=tree.conditions + conditions)
 
 
-def _access_tags_predicate(query, node, parent):
+def _access_tags_predicate(query, node, parent, dialect_name):
     """Condition: `node` carries one of the query's tags, as a child of `parent`.
 
     `parent` is a literal id (`/search`: all candidates share one parent) or
@@ -2771,11 +2783,22 @@ def _access_tags_predicate(query, node, parent):
         if not query.tag_ids:
             # None of the requested tag names exist; match nothing.
             return false()
+        # Deduplicate and sort so the parameter value is stable across
+        # requests (helps prepared-statement / plan reuse).
+        tag_ids = sorted(set(query.tag_ids))
+        if dialect_name == "postgresql":
+            # Pass all ids in a single array parameter: `tag_id = ANY(...)`.
+            tag_match = orm.NodeAccessTagAssociation.tag_id == any_(
+                literal(tag_ids, ARRAY(Integer))
+            )
+        else:
+            # SQLite has no array type; use a plain IN list.
+            tag_match = orm.NodeAccessTagAssociation.tag_id.in_(tag_ids)
         return (
             select(orm.NodeAccessTagAssociation.node_id)
             .where(orm.NodeAccessTagAssociation.node_id == node.id)
             .where(orm.NodeAccessTagAssociation.parent_id == parent)
-            .where(orm.NodeAccessTagAssociation.tag_id.in_(query.tag_ids))
+            .where(tag_match)
             .exists()
         )
     # Nodes carrying at least one of the given access tags.
@@ -2792,7 +2815,9 @@ def _access_tags_predicate(query, node, parent):
 
 
 def access_tags_filter(query, tree):
-    condition = _access_tags_predicate(query, orm.Node, tree.node.id)
+    condition = _access_tags_predicate(
+        query, orm.Node, tree.node.id, tree.context.engine.dialect.name
+    )
     return tree.new_variation(
         access_filters=tree.access_filters + [(query, condition)],
     )
@@ -2858,7 +2883,7 @@ def in_or_not_in_postgresql(query, tree, method):
     return tree.new_variation(conditions=tree.conditions + [condition])
 
 
-_IN_OR_NOT_IN_DIALECT_DISPATCH: Dict[str, Callable] = {
+_IN_OR_NOT_IN_DIALECT_DISPATCH: dict[str, Callable] = {
     "sqlite": in_or_not_in_sqlite,
     "postgresql": in_or_not_in_postgresql,
 }
@@ -2879,8 +2904,7 @@ def key_present(query, tree):
     else:
         keys = query.key.split(".")
         condition = (
-            orm.Node.metadata_.op("#>")(sql_cast(keys, ARRAY(TEXT)))
-            != None  # noqa: E711
+            orm.Node.metadata_.op("#>")(sql_cast(keys, ARRAY(TEXT))) != None  # noqa: E711
         )
     condition = condition if getattr(query, "exists", True) else not_(condition)
     return tree.new_variation(conditions=tree.conditions + [condition])
@@ -2921,7 +2945,7 @@ def in_memory(
     adapters_by_mimetype=None,
     top_level_access_tags=None,
     cache_config=None,
-    webhook_secret_keys: Optional[List[str]] = None,
+    webhook_secret_keys: list[str] | None = None,
 ):
     if not named_memory:
         uri = "sqlite:///:memory:"
@@ -3025,36 +3049,23 @@ def from_uri(
     init_if_not_exists=False,
     adapters_by_mimetype=None,
     top_level_access_tags=None,
-    mount_node: Optional[Union[str, List[str]]] = None,
+    mount_node: str | list[str] | None = None,
     create_mount_nodes_if_not_exist=False,
     cache_config=None,
-    webhook_secret_keys: Optional[List[str]] = None,
+    webhook_secret_keys: list[str] | None = None,
     catalog_pool_size=5,
     storage_pool_size=5,
     catalog_max_overflow=10,
     storage_max_overflow=10,
 ):
     uri = ensure_specified_sql_driver(uri)
-    if init_if_not_exists:
-        # The alembic stamping can only be done synchronously.
-        # The cleanest option available is to start a subprocess
-        # because SQLite is allergic to threads.
-        import subprocess
-        from subprocess import CalledProcessError
-
-        # TODO Check if catalog exists.
-        cmd = [sys.executable, "-m", "tiled", "catalog", "init", "--if-not-exists", uri]
-        try:
-            process = subprocess.run(
-                cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True
-            )
-            # Capture stdout and stderr from the subprocess and write to logging
-            logger.info(f"Subprocess stdout: {process.stdout.decode()}")
-            logger.info(f"Subprocess stderr: {process.stderr.decode()}")
-
-        except CalledProcessError as cpe:
-            # Drop cpe: its message echoes cmd, which holds the URI and password.
-            raise DatabaseInitializationError(cpe.stderr.decode()) from None
+    if init_if_not_exists and not is_memory_sqlite(uri):
+        # An in-memory SQLite database is transient and private to the connection
+        # pool that `startup()` opens, so it is initialized there (without alembic).
+        # Only a persistent database needs to be created and stamped here.
+        if initialize_catalog_database(uri):
+            redacted_url = make_url(uri)._replace(password="[redacted]")
+            logger.info(f"Initialized new catalog database at {redacted_url}.")
 
     database_settings = DatabaseSettings(
         uri=uri,
@@ -3192,7 +3203,3 @@ STRUCTURES = {
     StructureFamily.sparse: CatalogSparseAdapter,
     StructureFamily.table: CatalogTableAdapter,
 }
-
-
-class DatabaseInitializationError(Exception):
-    pass

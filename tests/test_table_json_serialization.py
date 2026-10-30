@@ -164,7 +164,7 @@ def test_bytes_column(media_type):
 
     # b"abc": ASCII; "café".encode(): valid multi-byte UTF-8; b"\xff\xfe": not
     # valid UTF-8, so it exercises the latin-1 fallback (decoding to "ÿþ").
-    df = pandas.DataFrame({"bytes_col": [b"abc", "café".encode("utf-8"), b"\xff\xfe"]})
+    df = pandas.DataFrame({"bytes_col": [b"abc", "café".encode(), b"\xff\xfe"]})
     serializer = default_serialization_registry.dispatch(
         StructureFamily.table, media_type
     )

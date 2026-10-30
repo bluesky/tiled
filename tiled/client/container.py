@@ -8,13 +8,14 @@ import logging
 import time
 import uuid
 import warnings
+from collections.abc import Iterable
 from dataclasses import asdict
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Iterable, Optional, Union
+from typing import TYPE_CHECKING, Any
 from urllib.parse import parse_qs, urlparse
 
 import entrypoints
-import httpx
+import httpx2 as httpx
 import orjson
 from packaging.version import Version
 
@@ -129,9 +130,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             server_sorting = item["attributes"].get("sorting") or []
             self._sorting = [
                 (s["key"], int(s["direction"])) for s in server_sorting
-            ] or [
-                ("", 1)
-            ]  # fall back to server default when not specified
+            ] or [("", 1)]  # fall back to server default when not specified
         sorting_list = [
             f"{'-' if item[1] < 0 else ''}{item[0]}" for item in self._sorting
         ]
@@ -319,9 +318,9 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             data = content["data"]
             if not data:
                 raise KeyError(key)
-            assert (
-                len(data) == 1
-            ), "The key lookup query must never return more than one result."
+            assert len(data) == 1, (
+                "The key lookup query must never return more than one result."
+            )
             (item,) = data
             result = client_for_item(
                 self.context,
@@ -356,9 +355,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                         item,
                         include_data_sources=self._include_data_sources,
                     )
-                    return (
-                        result[keys[i + 1 :]] if keys[i + 1 :] else result  # noqa: E203
-                    )
+                    return result[keys[i + 1 :]] if keys[i + 1 :] else result
                 else:
                     # The item was not inlined, either because nothing was inlined
                     # or because it was added after we fetched the inlined contents.
@@ -402,7 +399,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
 
     def delete_contents(
         self,
-        keys: Optional[Union[str, Iterable[str]]] = None,
+        keys: str | Iterable[str] | None = None,
         recursive: bool = False,
         external_only: bool = True,
     ) -> "Container":
@@ -1314,7 +1311,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         metadata=None,
         specs=None,
         access_tags=None,
-        table_name: Optional[str] = None,
+        table_name: str | None = None,
     ):
         """Initialize a table whose rows can be appended to a partition.
 
@@ -1370,7 +1367,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
 
     def write_table(
         self,
-        data: Union["pandas.DataFrame", dict[str, Any]],
+        data: "pandas.DataFrame | dict[str, Any]",
         *,
         key=None,
         metadata=None,
@@ -1457,7 +1454,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
 
     def subscribe(
         self,
-        executor: Optional[concurrent.futures.Executor] = None,
+        executor: concurrent.futures.Executor | None = None,
     ) -> "ContainerSubscription":
         """
         Subscribe to streaming updates about this container.
@@ -1484,14 +1481,14 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
 
     def register(
         self,
-        *uris: Union[str, Path],
-        key: Optional[str] = None,
-        structure: Optional[Any] = None,
-        mimetype: Optional[str] = None,
-        parameters: Optional[dict[str, Any]] = None,
-        metadata: Optional[dict[str, Any]] = None,
-        specs: Optional[list[Spec]] = None,
-        access_tags: Optional[list[str]] = None,
+        *uris: str | Path,
+        key: str | None = None,
+        structure: Any | None = None,
+        mimetype: str | None = None,
+        parameters: dict[str, Any] | None = None,
+        metadata: dict[str, Any] | None = None,
+        specs: list[Spec] | None = None,
+        access_tags: list[str] | None = None,
     ):
         """Register externally-managed file(s) as a single dataset in this Container.
 
@@ -1747,12 +1744,15 @@ class DeepSearchResults(collections.abc.Mapping):
                 # `ancestors` is server-absolute; make the key relative to
                 # the Node that `search_deep` was called on.
                 full_path = tuple(item["attributes"]["ancestors"]) + (item["id"],)
-                key = full_path[len(self._root_path_parts) :]  # noqa: E203
-                yield key, client_for_item(
-                    self.context,
-                    self.structure_clients,
-                    item,
-                    include_data_sources=self._include_data_sources,
+                key = full_path[len(self._root_path_parts) :]
+                yield (
+                    key,
+                    client_for_item(
+                        self.context,
+                        self.structure_clients,
+                        item,
+                        include_data_sources=self._include_data_sources,
+                    ),
                 )
                 if stop is not None and next(item_counter) == stop - 1:
                     return
