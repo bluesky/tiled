@@ -285,32 +285,61 @@ properties:
         logger.info("No JWKS key matches kid %r", kid)
         raise jwt.InvalidKeyError(f"No JWKS key matches kid {kid!r}")
 
-    def decode_token(
+    def _calc_at_hash(self, access_token: str, algorithm: str):
+        """
+        Calculates "at_hash" claim which is not done by pyjwt.
+
+        See https://pyjwt.readthedocs.io/en/stable/usage.html#oidc-login-flow
+        """
+        alg_obj = jwt.get_algorithm_by_name(algorithm)
+        digest = alg_obj.compute_hash_digest(access_token.encode("utf-8"))
+        return (
+            base64.urlsafe_b64encode(digest[: (len(digest) // 2)])
+            .decode("utf-8")
+            .rstrip("=")
+        )
+
+    def verify_login(
         self, id_token: str, access_token: str | None = None
     ) -> dict[str, Any]:
-        header = jwt.get_unverified_header(id_token)
-        key = self._signing_key(header.get("kid"))
-        claims = jwt.decode(
+        """Verify an id_token and return its claims.
+
+        If the id_token carries an at_hash claim, confirm it matches the paired
+        access_token, i.e. the OIDC provider issued both tokens as a pair.
+        See https://openid.net/specs/openid-connect-core-1_0.html#CodeIDToken
+        """
+        signing_key = self._signing_key(jwt.get_unverified_header(id_token).get("kid"))
+        decoded = jwt.decode_complete(
             id_token,
-            key=key,
-            algorithms=self.id_token_signing_alg_values_supported,
-            audience=self._audience,
+            key=signing_key,
+            audience=self._client_id,
             issuer=self.issuer,
-            # Clocks on the provider and this server drift apart, so accept
-            # a fresh token whose iat is slightly in the future.
+            algorithms=self.id_token_signing_alg_values_supported,
+            # Provider and server clocks drift; accept an iat slightly in the future.
             options={"verify_iat": False},
         )
-        # PyJWT does not check the OIDC at_hash claim, which binds an
-        # id_token to the access_token issued alongside it.
-        if "at_hash" in claims:
-            if not access_token:
-                raise jwt.InvalidTokenError("No access_token to check at_hash against")
-            algorithm = jwt.get_algorithm_by_name(header["alg"])
-            digest = algorithm.compute_hash_digest(access_token.encode())
-            at_hash = base64.urlsafe_b64encode(digest[: len(digest) // 2])
-            if claims["at_hash"] != at_hash.rstrip(b"=").decode():
-                raise jwt.InvalidTokenError("at_hash claim does not match access_token")
-        return claims
+        payload, header = decoded["payload"], decoded["header"]
+        at_hash = payload.get("at_hash")
+        if at_hash is not None and (
+            access_token is None
+            or self._calc_at_hash(access_token, header["alg"]) != at_hash
+        ):
+            raise jwt.InvalidTokenError("id_token at_hash does not match access_token")
+        return payload
+
+    def decode_token(self, access_token: str) -> dict[str, Any]:
+        signing_key = self._signing_key(
+            jwt.get_unverified_header(access_token).get("kid")
+        )
+        return jwt.decode(
+            access_token,
+            key=signing_key,
+            audience=self._audience,
+            issuer=self.issuer,
+            algorithms=self.id_token_signing_alg_values_supported,
+            # Provider and server clocks drift; accept an iat slightly in the future.
+            options={"verify_iat": False},
+        )
 
     async def authenticate(self, request: Request) -> UserSessionState | None:
         code = request.query_params.get("code")
@@ -338,12 +367,9 @@ properties:
         id_token = response_body["id_token"]
         access_token = response_body["access_token"]
         try:
-            verified_body = self.decode_token(id_token, access_token)
+            verified_body = self.verify_login(id_token, access_token)
         except jwt.PyJWTError:
-            logger.exception(
-                "Authentication error. Unverified token: %r",
-                jwt.decode(id_token, options={"verify_signature": False}),
-            )
+            logger.exception("Authentication error: id_token verification failed.")
             return None
         return UserSessionState(verified_body[self.user_id_claim], {})
 
@@ -425,10 +451,8 @@ properties:
             combined.update(tiled_scopes)
         return sorted(combined)
 
-    def decode_token(
-        self, id_token: str, access_token: str | None = None
-    ) -> dict[str, Any]:
-        claims = super().decode_token(id_token, access_token)
+    def decode_token(self, access_token: str) -> dict[str, Any]:
+        claims = super().decode_token(access_token)
         # Translate identity-provider scopes to Tiled scopes via scopes_map.
         # The provider "scp" claim is present in access tokens but may be absent
         # from id_tokens (e.g. during the authorization-code flow).  When absent,
@@ -485,12 +509,17 @@ class EntraAuthenticator(ProxiedOIDCAuthenticator):
         if client_secret:
             self._client_secret = Secret(client_secret)
 
-    def decode_token(
+    def decode_token(self, access_token: str) -> dict[str, Any]:
+        # Handle scope translation (scp -> Tiled scopes via scopes_map) in super()
+        return self._add_entra_identity(super().decode_token(access_token))
+
+    def verify_login(
         self, id_token: str, access_token: str | None = None
     ) -> dict[str, Any]:
-        # Handle scope translation (scp -> Tiled scopes via scopes_map) in super()
-        claims = super().decode_token(id_token, access_token)
+        return self._add_entra_identity(super().verify_login(id_token, access_token))
 
+    @staticmethod
+    def _add_entra_identity(claims: dict[str, Any]) -> dict[str, Any]:
         # sub generated by Entra is an opaque string; generate a stable UUID
         # for Tiled based on "iss|sub" for uniqueness across tenants.
         # Preserve the original Entra sub separately so it can be used as a
@@ -585,12 +614,9 @@ class EntraAuthenticator(ProxiedOIDCAuthenticator):
         access_token = response_body.get("access_token")
         refresh_token = response_body.get("refresh_token")
         try:
-            verified_body = self.decode_token(id_token, access_token)
+            verified_body = self.verify_login(id_token, access_token)
         except jwt.PyJWTError:
-            logger.exception(
-                "Authentication error. Unverified token: %r",
-                jwt.decode(id_token, options={"verify_signature": False}),
-            )
+            logger.exception("Authentication error: id_token verification failed.")
             return None
         # Log the id_token claims available for username resolution so
         # misconfigurations (missing optional claims) are easy to diagnose.
