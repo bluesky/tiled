@@ -133,9 +133,12 @@ Write the date in place of the "Unreleased" in the case a new version is release
   cannot break unrelated pull requests; the nightly scheduled run re-resolves
   to the latest releases (`uv sync --upgrade`) to catch such breakage early.
   Both lockfiles are refreshed by pull requests on the 1st and 15th of each
-  month (Dependabot for `uv.lock`, a workflow for `pixi.lock`). Contributors
-  who change dependencies should run `uv lock` (for `pyproject.toml`) or
-  `pixi lock` (for `pixi.toml`) and commit the updated lockfile.
+  month (Dependabot for `uv.lock`, a workflow for `pixi.lock`), skipping
+  releases less than 3 days old (Dependabot's cooldown, and
+  `exclude-newer = "3d"` in `pixi.toml`). `pixi.toml` now requires
+  pixi >=0.83.0. Contributors who change dependencies should run `uv lock`
+  (for `pyproject.toml`) or `pixi lock` (for `pixi.toml`) and commit the
+  updated lockfile.
 
 ## v0.2.19 (2026-10-13)
 

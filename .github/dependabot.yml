@@ -22,6 +22,10 @@ updates:
     # Update only the lockfile; leave the version constraints in
     # pyproject.toml alone.
     versioning-strategy: lockfile-only
+    # Wait 3 days after a release before proposing it (Dependabot's default,
+    # stated here to match exclude-newer = "3d" in pixi.toml).
+    cooldown:
+      default-days: 3
     allow:
       # Include transitive dependencies, not only those named in pyproject.toml.
       - dependency-type: all
