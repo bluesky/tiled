@@ -15,6 +15,7 @@ OpenTelemetry's global tracer provider can only be set once per process, so a
 single provider is installed for the whole module and the exporter is cleared
 between tests.
 """
+
 import os
 from collections.abc import Generator
 from urllib.parse import urlparse
