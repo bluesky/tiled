@@ -5,6 +5,15 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## Unreleased
 
+### Added
+
+- A benchmark suite (`benchmarks/`, pytest-benchmark) timing common
+  operations against a PostgreSQL-backed server. It runs in CI on every push
+  to `main` and nightly, and the history is plotted at
+  <https://bluesky.github.io/tiled/dev/bench/>; on pull requests the results
+  are compared with `main` in the job summary. It replaces the unmaintained
+  asv configuration.
+
 ### Changed
 
 - On PostgreSQL, the access-control filter passes the resolved tag ids as a

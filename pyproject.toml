@@ -280,6 +280,7 @@ test = [
     "pre-commit",
     "pytest",
     "pytest-asyncio",
+    "pytest-benchmark",
     "pytest-mock",
     "pytest-rerunfailures",
     "respx", # Mocking library for httpx; works against httpx2 via httpx2.alias_httpx()

@@ -87,7 +87,6 @@ alembic.ini
 tiled/_version.py
 
 .env
-.asv/
 venv/
 # pixi environments
 .pixi
