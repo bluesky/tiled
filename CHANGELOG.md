@@ -47,6 +47,11 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Fixed
 
+- Fixed `read_partition` on a table with a string column, which failed with
+  a dtype mismatch (`object` in the structure, `string` in the data sent by
+  the server). The eager client now fetches the partition directly, without
+  dask; the dask client no longer checks the partition against the
+  structure's meta, as `read` already did not.
 - Fixed `ArrayClient.patch` on arrays whose shape is not a whole number of
   chunks. The check for writing past the end, and the new shape after
   `extend=True`, used the Zarr array's shape, which is rounded up to whole

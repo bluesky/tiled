@@ -334,6 +334,20 @@ def test_write_table_full(tree):
         assert result.metadata == metadata
         assert result.specs == specs
 
+        # A string column is `object` in the structure's meta (from the Arrow
+        # schema) but may be sent as `string` by the server (dask reads
+        # Parquet that way); reading a partition must not fail on that.
+        df = pandas.DataFrame({"number": [1.0, 2.0], "label": ["x", "y"]})
+        client.write_table(df, key="strings")
+        for structure_clients in ["numpy", "dask"]:
+            node = from_context(context, structure_clients=structure_clients)["strings"]
+            partition = node.read_partition(0)
+            if structure_clients == "dask":
+                partition = partition.compute()
+            assert list(partition["label"]) == ["x", "y"]
+            with pytest.raises(IndexError):
+                node.read_partition(1)
+
 
 @pytest.mark.parametrize(
     "column_name, table_name",
