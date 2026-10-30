@@ -88,7 +88,7 @@ def _build_app(
 def _is_descendant_of(
     span: ReadableSpan, ancestor_span_id: int, by_id: "dict[int, ReadableSpan]"
 ) -> bool:
-    seen: "set[int]" = set()
+    seen: set[int] = set()
     cur = span
     while cur is not None and cur.parent is not None:
         parent_id = cur.parent.span_id
