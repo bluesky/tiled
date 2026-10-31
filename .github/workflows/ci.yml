@@ -27,6 +27,18 @@ jobs:
     steps:
     - uses: actions/checkout@v7
     - uses: pre-commit/action@v3.0.1
+    # uv.lock staleness fails every job that runs `uv sync --locked`; give
+    # pixi.lock the same guarantee, so a PR that edits pixi.toml without
+    # running `pixi lock` is caught here rather than by the next scheduled
+    # lockfile refresh.
+    - name: Set up pixi
+      uses: prefix-dev/setup-pixi@ad1da6449d9e506fd127fd67ab2d054a769f6a94  # v0.11.2
+      with:
+        pixi-version: v0.83.0
+        run-install: false
+        cache: false
+    - name: Check that pixi.lock matches pixi.toml
+      run: pixi lock --check
 
   linux_checks:
 
