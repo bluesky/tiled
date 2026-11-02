@@ -1697,13 +1697,17 @@ class CatalogNodeAdapter:
         the given `asset_id` are removed. If, afterward, the Asset is no longer
         referenced by any DataSource (belonging to any Node), the Asset record
         is deleted; and, if it is internally managed, the underlying data (file,
-        directory, object, or storage-database rows) is deleted as well.
+        directory, or object) is deleted as well.
 
         If the Asset is still referenced by other Nodes/DataSources, only the
         association with this Node is removed; the Asset record and its
         underlying data are retained.
 
         Externally managed Assets are never physically deleted, even if unreferenced.
+
+        The Asset of an SQL-backed table is the storage database itself, shared by all
+        such tables; it cannot be deleted for one node (raises `Conflicts`).
+        Delete the node to remove its rows.
 
         Parameters
         ----------
@@ -1725,8 +1729,7 @@ class CatalogNodeAdapter:
                 select(
                     orm.DataSourceAssetAssociation.data_source_id,
                     orm.DataSource.management,
-                    # keep only table_name and dataset_id from parameters
-                    orm.DataSource.parameters["table_name"].label("table_name"),
+                    # Set only for SQL-backed tables (see below).
                     orm.DataSource.parameters["dataset_id"].label("dataset_id"),
                 )
                 .select_from(orm.DataSourceAssetAssociation)
@@ -1740,7 +1743,19 @@ class CatalogNodeAdapter:
             rows = (await db.execute(info_stmt)).all()
             if not rows:
                 return None  # This Node has no such Asset.
-            table_name, dataset_id = rows[0].table_name, rows[0].dataset_id
+
+            # For a SQL-backed table, the Asset is the storage database, shared
+            # by every such table on this server, and the node's data are rows
+            # in one of its tables. Dissociating the node from the database is
+            # not a meaningful operation: the Asset stays (other nodes use it),
+            # and the rows would be left behind with nothing referring to them.
+            # Deleting the node removes the rows, instead.
+            if rows[0].dataset_id is not None:
+                raise Conflicts(
+                    "This asset is the storage database shared by all SQL-backed "
+                    "tables on this server, so it cannot be deleted for one node. "
+                    "Delete the node instead to remove its data."
+                )
 
             # Safety check: refuse to delete internally-managed data unless the
             # caller explicitly opts in. Treat the Asset as internally managed
@@ -1792,13 +1807,7 @@ class CatalogNodeAdapter:
         if asset_deleted and is_internal:
             data_uri, is_directory = deleted
             await anyio.to_thread.run_sync(
-                partial(
-                    delete_physical_asset,
-                    data_uri,
-                    is_directory=is_directory,
-                    table_name=table_name,
-                    dataset_id=dataset_id,
-                )
+                partial(delete_physical_asset, data_uri, is_directory=is_directory)
             )
             data_deleted = True
 
