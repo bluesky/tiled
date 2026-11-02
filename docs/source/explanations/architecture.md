@@ -15,7 +15,7 @@ requests to transfer metadata and data.
 ### Connection _Context_
 When the user connects, a **Context** object is created. The Context is
 shared by all client-side objects that use this connection. It wraps an
-[httpx HTTP client][httpx], which in turn wraps an HTTP connection pool and (if
+[httpx2 HTTP client][httpx2], which in turn wraps an HTTP connection pool and (if
 applicable) authentication-related state---either an API key or a pair of
 OAuth2 access and refresh tokens.
 
@@ -121,7 +121,7 @@ providing a writable data store, the Catalog is used.
 See {doc}`catalog` for an explanation of the database.
 
 [FastAPI]: https://fastapi.tiangolo.com/
-[httpx]: https://www.python-httpx.org/
+[httpx2]: https://github.com/pydantic/httpx2
 [Starlette]: https://www.starlette.io/
 [OpenAPI]: https://www.openapis.org/
 [Pydantic]: https://docs.pydantic.dev/

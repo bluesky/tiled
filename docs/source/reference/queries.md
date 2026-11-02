@@ -46,7 +46,9 @@ Key("temperature") > 300
 used in searches like
 
 ```python
-c.search(Key("color") == "red").search(Key("shape") != "circle").search(Key("temperature") > 300)
+c.search(Key("color") == "red").search(Key("shape") != "circle").search(
+    Key("temperature") > 300
+)
 ```
 
 Notice that, to progressively narrow results, you may use repeated calls to
@@ -65,7 +67,11 @@ memory.
 a = c.search(...)
 b = c.search(...)
 c = c.search(...)
-combined_results = {**a, **b, **c}  # to handle repeats, must use {...} syntax not dict(...)
+combined_results = {
+    **a,
+    **b,
+    **c,
+}  # to handle repeats, must use {...} syntax not dict(...)
 ```
 
 ````{warning}

@@ -1,6 +1,7 @@
 """
 This tests the feature that is exercised by the --scalable CLI option.
 """
+
 from pathlib import Path
 
 import pytest

@@ -71,7 +71,7 @@ def _buffers_from_data(form: awkward.forms.Form, data):
 def to_json(
     mimetype: str,
     array: CanonicalRaggedArray,
-    metadata: dict,  # noqa: ARG001
+    metadata: dict,
 ) -> bytes:
     return safe_json_dump(array.tolist())
 
@@ -91,7 +91,7 @@ def from_json(
 def to_zipped_buffers(
     mimetype: str,
     array: CanonicalRaggedArray,
-    metadata: dict,  # noqa: ARG001
+    metadata: dict,
 ) -> bytes:
     if array.ndim == 0:
         raise SerializationError("Cannot serialize scalar values to zipped buffers")
@@ -114,7 +114,7 @@ def to_zipped_buffers(
 @default_deserialization_registry.register(StructureFamily.ragged, "application/zip")
 def from_zipped_buffers(
     buffer: bytes, structure: RaggedStructure
-) -> CanonicalRaggedArray:  # noqa: ARG001
+) -> CanonicalRaggedArray:
     file = io.BytesIO(buffer)
     with zipfile.ZipFile(file, "r") as fzip:
         form = awkward.forms.from_json(orjson.loads(fzip.read("form")))

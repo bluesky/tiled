@@ -2,8 +2,9 @@
 import builtins
 import copy
 import os
+from collections.abc import Iterator
 from importlib.metadata import version
-from typing import Any, Iterator, List, Optional, Set, Tuple, Union, cast
+from typing import Any, cast
 from urllib.parse import quote_plus, urljoin, urlparse
 
 import zarr
@@ -44,6 +45,20 @@ else:
 INLINED_DEPTH = int(os.getenv("TILED_HDF5_INLINED_CONTENTS_MAX_DEPTH", "7"))
 
 
+def dims_from_zarr_array(array: Any) -> tuple[str, ...] | None:
+    """Dimension names recorded in the store, or None unless every one is named.
+
+    Reads Zarr v3 ``dimension_names``, then the ``_ARRAY_DIMENSIONS`` attribute
+    that xarray writes to Zarr v2 arrays.
+    """
+    names = getattr(getattr(array, "metadata", None), "dimension_names", None)
+    if names is None:
+        names = array.attrs.get("_ARRAY_DIMENSIONS")
+    if names is None or any(name is None for name in names):
+        return None
+    return tuple(names)
+
+
 class ZarrArrayAdapter(Adapter[ArrayStructure]):
     "Adapter for Zarr arrays"
 
@@ -54,8 +69,8 @@ class ZarrArrayAdapter(Adapter[ArrayStructure]):
         array: zarr.Array,
         structure: ArrayStructure,
         *,
-        metadata: Optional[JSON] = None,
-        specs: Optional[List[Spec]] = None,
+        metadata: JSON | None = None,
+        specs: list[Spec] | None = None,
     ) -> None:
         self._array = array
         super().__init__(structure, metadata=metadata, specs=specs)
@@ -65,7 +80,7 @@ class ZarrArrayAdapter(Adapter[ArrayStructure]):
         cls,
         storage: Storage,
         data_source: DataSource[ArrayStructure],
-        path_parts: List[str],
+        path_parts: list[str],
     ) -> DataSource[ArrayStructure]:
         data_source = copy.deepcopy(data_source)  # Do not mutate caller input.
 
@@ -97,7 +112,7 @@ class ZarrArrayAdapter(Adapter[ArrayStructure]):
         return data_source
 
     @property
-    def dims(self) -> Optional[Tuple[str, ...]]:
+    def dims(self) -> tuple[str, ...] | None:
         return self._structure.dims
 
     @property
@@ -105,7 +120,7 @@ class ZarrArrayAdapter(Adapter[ArrayStructure]):
         """Trim overflow because Zarr always has equal-sized chunks."""
         return NDSlice(tuple(builtins.slice(0, dim) for dim in self.structure().shape))
 
-    def get(self, key: str) -> Union[ArrayAdapter, None]:
+    def get(self, key: str) -> ArrayAdapter | None:
         return None
 
     def read(self, slice: NDSlice = NDSlice(...)) -> NDArray[Any]:
@@ -128,9 +143,9 @@ class ZarrArrayAdapter(Adapter[ArrayStructure]):
     def patch(
         self,
         data: NDArray[Any],
-        offset: Tuple[int, ...],
+        offset: tuple[int, ...],
         extend: bool = False,
-    ) -> Tuple[Tuple[int, ...], Chunks]:
+    ) -> tuple[tuple[int, ...], Chunks]:
         """
         Write data into a slice of the array, maybe extending it.
 
@@ -152,7 +167,9 @@ class ZarrArrayAdapter(Adapter[ArrayStructure]):
             If slice does not fit wholly with the shape of the existing array
             and extend is False
         """
-        current_shape = self._array.shape
+        # Use the shape from the structure, not from the Zarr array, which
+        # init_storage may have padded out to a whole number of chunks.
+        current_shape = tuple(self.structure().shape)
         normalized_offset = [0] * len(current_shape)
         normalized_offset[: len(offset)] = list(offset)
         new_shape = []
@@ -186,12 +203,12 @@ class ZarrArrayAdapter(Adapter[ArrayStructure]):
         return new_shape_tuple, new_chunks_tuple
 
     @classmethod
-    def supported_storage(cls) -> Set[type[Storage]]:
+    def supported_storage(cls) -> set[type[Storage]]:
         return {FileStorage} if ZARR_LIB_V2 else {FileStorage, ObjectStorage}
 
 
 class ZarrGroupAdapter(
-    ContainerAdapter[Union["ArrayAdapter", "ZarrGroupAdapter"]],
+    ContainerAdapter["ArrayAdapter | ZarrGroupAdapter"],
     IndexersMixin,
 ):
     "Adapter for Zarr groups (containers)"
@@ -200,8 +217,8 @@ class ZarrGroupAdapter(
         self,
         zarr_group: zarr.Group,
         *,
-        metadata: Optional[JSON] = None,
-        specs: Optional[List[Spec]] = None,
+        metadata: JSON | None = None,
+        specs: list[Spec] | None = None,
     ) -> None:
         self._zarr_group = zarr_group
         self.specs = specs or []
@@ -221,12 +238,12 @@ class ZarrGroupAdapter(
     def __iter__(self) -> Iterator[Any]:
         yield from self._zarr_group
 
-    def __getitem__(self, key: str) -> Union[ArrayAdapter, "ZarrGroupAdapter"]:
+    def __getitem__(self, key: str) -> "ArrayAdapter | ZarrGroupAdapter":
         value = self._zarr_group[key]
         if isinstance(value, zarr.Group):
             return ZarrGroupAdapter(value)
         else:
-            return ArrayAdapter.from_array(value)
+            return ArrayAdapter.from_array(value, dims=dims_from_zarr_array(value))
 
     def __len__(self) -> int:
         return len(self._zarr_group)
@@ -243,7 +260,7 @@ class ZarrGroupAdapter(
     def search(self, query: Any) -> None:
         raise NotImplementedError
 
-    def read(self, fields: Optional[str]) -> "ZarrGroupAdapter":
+    def read(self, fields: str | None) -> "ZarrGroupAdapter":
         if fields is not None:
             raise NotImplementedError
         return self
@@ -251,16 +268,16 @@ class ZarrGroupAdapter(
     # The following two methods are used by keys(), values(), items().
 
     def _keys_slice(
-        self, start: int, stop: int, direction: int, page_size: Optional[int] = None
-    ) -> List[Any]:
+        self, start: int, stop: int, direction: int, page_size: int | None = None
+    ) -> list[Any]:
         keys = list(self._zarr_group)
         if direction < 0:
             keys = list(reversed(keys))
         return keys[start:stop]
 
     def _items_slice(
-        self, start: int, stop: int, direction: int, page_size: Optional[int] = None
-    ) -> List[Any]:
+        self, start: int, stop: int, direction: int, page_size: int | None = None
+    ) -> list[Any]:
         items = [(key, self[key]) for key in list(self)]
         if direction < 0:
             items = list(reversed(items))
@@ -275,11 +292,11 @@ class ZarrAdapter:
     def from_catalog(
         cls,
         # A Zarr node may reference an array or a group (container).
-        data_source: DataSource[Union[ArrayStructure, None]],
+        data_source: DataSource[ArrayStructure | None],
         node: Node,
         /,
-        **kwargs: Optional[Any],
-    ) -> Union[ZarrGroupAdapter, ZarrArrayAdapter]:
+        **kwargs: Any | None,
+    ) -> ZarrGroupAdapter | ZarrArrayAdapter:
         is_container_type = node.structure_family == StructureFamily.container
         uri = data_source.assets[0].data_uri
 
@@ -320,11 +337,13 @@ class ZarrAdapter:
 
     @classmethod
     def from_uris(
-        cls, data_uri: str, **kwargs: Optional[Any]
-    ) -> Union[ZarrArrayAdapter, ZarrGroupAdapter]:
+        cls, data_uri: str, **kwargs: Any | None
+    ) -> ZarrArrayAdapter | ZarrGroupAdapter:
         zarr_obj = zarr.open(path_from_uri(data_uri))  # Group or Array
         if isinstance(zarr_obj, zarr.Group):
             return ZarrGroupAdapter(zarr_obj, **kwargs)
         else:
-            structure = ArrayStructure.from_array(zarr_obj)
+            structure = ArrayStructure.from_array(
+                zarr_obj, dims=dims_from_zarr_array(zarr_obj)
+            )
             return ZarrArrayAdapter(zarr_obj, structure=structure, **kwargs)

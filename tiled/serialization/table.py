@@ -153,18 +153,19 @@ if modules_available("orjson"):
         ),
     )
 
-    # Newline-delimited JSON. For example, this DataFrame:
+    # RFC 7464 JSON text sequence. For example, this DataFrame:
     #
     # >>> pandas.DataFrame({"a": [1,2,3], "b": [4,5,6]})
     #
-    # renders as this multi-line output:
+    # renders as this sequence, where each line starts with the ASCII record
+    # separator (shown here as RS) and ends with a line feed:
     #
-    # {'a': 1, 'b': 4}
-    # {'a': 2, 'b': 5}
-    # {'a': 3, 'b': 6}
+    # RS{'a': 1, 'b': 4}
+    # RS{'a': 2, 'b': 5}
+    # RS{'a': 3, 'b': 6}
     @default_serialization_registry.register(
         StructureFamily.table,
-        "application/json-seq",  # official mimetype for newline-delimited JSON
+        "application/json-seq",
     )
     def json_sequence(mimetype, df, metadata):
         # Build a JSON-safe version of the dataframe once, then emit row-by-row.
@@ -174,10 +175,10 @@ if modules_available("orjson"):
             yield b""
             return
         columns = list(safe)
-        # First row has no leading newline; subsequent rows do.
-        yield orjson.dumps({col: safe[col][0] for col in columns})
-        for i in range(1, n):
-            yield b"\n" + orjson.dumps({col: safe[col][i] for col in columns})
+        for i in range(n):
+            yield (
+                b"\x1e" + orjson.dumps({col: safe[col][i] for col in columns}) + b"\n"
+            )
 
 
 if modules_available("h5py"):

@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 from typing import Any
 
-import httpx
+import httpx2 as httpx
 from create_datasets import DATASETS
 
 UPSERT_NAMESPACE_MUTATION = """

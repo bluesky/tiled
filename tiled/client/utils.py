@@ -8,11 +8,10 @@ from collections.abc import Hashable
 from dataclasses import asdict
 from pathlib import Path
 from threading import Lock
-from typing import Optional, Union
 from urllib.parse import parse_qs, urlparse
 from weakref import WeakValueDictionary
 
-import httpx
+import httpx2 as httpx
 import msgpack
 import stamina
 import stamina.instrumentation
@@ -33,11 +32,12 @@ MSGPACK_MIME_TYPE = "application/x-msgpack"
 
 def raise_for_status(response) -> None:
     """
-    Raise the `httpx.HTTPStatusError` if one occurred. Include correlation ID.
+    Raise the `httpx.HTTPStatusError` if one occurred. Include correlation ID
+    and, if the server traced the request, trace ID.
     """
     # This is adapted from the method httpx.Response.raise_for_status, modified to
     # remove the generic link to HTTP status documentation and include the
-    # correlation ID.
+    # correlation ID and trace ID.
     request = response._request
     if request is None:
         raise RuntimeError(
@@ -50,19 +50,23 @@ def raise_for_status(response) -> None:
 
     # correlation ID may be missing if request didn't make it to the server
     correlation_id = response.headers.get("x-tiled-request-id", None)
+    lookup = f"correlation ID {correlation_id}"
+    # trace ID is only present if the server has tracing enabled
+    if trace_id := response.headers.get("x-tiled-trace-id", None):
+        lookup += f" and traces for trace ID {trace_id}"
 
     if response.has_redirect_location:
         message = (
             "{error_type} '{0.status_code} {0.reason_phrase}' for url '{0.url}'\n"
             "Redirect location: '{0.headers[location]}'\n"
             "For more information, server admin can search server logs for "
-            "correlation ID {correlation_id}."
+            "{lookup}."
         )
     else:
         message = (
             "{error_type} '{0.status_code} {0.reason_phrase}' for url '{0.url}'\n"
             "For more information, server admin can search server logs for "
-            "correlation ID {correlation_id}."
+            "{lookup}."
         )
 
     status_class = response.status_code // 100
@@ -73,9 +77,7 @@ def raise_for_status(response) -> None:
         5: "Server error",
     }
     error_type = error_types.get(status_class, "Invalid status code")
-    message = message.format(
-        response, error_type=error_type, correlation_id=correlation_id
-    )
+    message = message.format(response, error_type=error_type, lookup=lookup)
     raise httpx.HTTPStatusError(message, request=request, response=response)
 
 
@@ -103,7 +105,7 @@ def handle_error(response):
                 # Use the stock "reason phrase" for the error code
                 # instead of dumping HTML into the terminal.
                 detail = response.reason_phrase
-            message = f"{exc.response.status_code}: " f"{detail} " f"{exc.request.url}"
+            message = f"{exc.response.status_code}: {detail} {exc.request.url}"
             raise ClientError(message, exc.request, exc.response) from exc
         else:
             raise
@@ -139,6 +141,48 @@ def should_retry(exception: Exception) -> "bool | float":
 
     # Otherwise retry on all httpx errors.
     return isinstance(exception, httpx.HTTPError)
+
+
+# Transport errors that can occur only *after* the request has been handed to
+# the network layer: the server may have received and fully processed the
+# request even though the client never received the response.
+SENT_REQUEST_TRANSPORT_ERRORS = (
+    httpx.ReadTimeout,
+    httpx.ReadError,
+    httpx.WriteTimeout,
+    httpx.WriteError,
+    httpx.RemoteProtocolError,
+)
+
+
+def should_retry_if_unprocessed(exception: Exception) -> "bool | float":
+    """Retry policy for non-idempotent requests (e.g. appending table rows).
+
+    Retry only when the failure guarantees that the server never received or
+    processed the request: connection-phase transport errors (the connection
+    was never established, or the request never left the local pool) and 429
+    rate-limit rejections (the server explicitly refused without processing).
+
+    Read/write-phase transport errors (e.g. a read timeout) and 5xx responses
+    (e.g. a 502/504 from a proxy in front of a slow server) can occur *after*
+    the server has fully processed the request; retrying would apply the
+    mutation a second time (e.g. duplicate appended rows). Those errors are
+    raised to the caller instead.
+    """
+    if isinstance(exception, httpx.HTTPStatusError):
+        if exception.response.status_code == 429:
+            # Same Retry-After handling as should_retry.
+            retry_after = exception.response.headers.get("Retry-After")
+            if retry_after is not None:
+                try:
+                    return float(retry_after)
+                except (ValueError, TypeError):
+                    pass
+            return True
+        return False
+    return isinstance(
+        exception, (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout)
+    )
 
 
 # Expose the timeout and max attempts as configurable via env vars. The rest of
@@ -197,14 +241,21 @@ class _LoggingAttempt:
         return result
 
 
-def retry_context(context=None):
-    "Iterable that yields a context manager per retry attempt"
+def retry_context(context=None, *, on=None):
+    """Iterable that yields a context manager per retry attempt.
+
+    The `on` parameter selects the retry predicate; it defaults to
+    `should_retry`. Non-idempotent requests (e.g. appending rows) should pass
+    `on=should_retry_if_unprocessed` so that errors which may have occurred
+    after the server processed the request are not retried.
+    """
+    on = on if on is not None else should_retry
     # When no context is provided (e.g. from_any_uri probing the server before
     # a Context object exists), we still want to show the retry indicator.
     # Use a standalone indicator owned by this generator so cleanup is guaranteed.
     standalone = StandaloneRetryIndicator() if context is None else None
     it = stamina.retry_context(
-        on=should_retry,
+        on=on,
         attempts=TILED_RETRY_ATTEMPTS,
         timeout=TILED_RETRY_TIMEOUT,
     ).__iter__()
@@ -405,11 +456,9 @@ def params_from_slice(slice):
                         "Slices with a 'step' other than 1 are not supported."
                     )
                 slices.append(
-                    (
-                        (str(dim.start) if dim.start else "")
-                        + ":"
-                        + (str(dim.stop) if dim.stop else "")
-                    )
+                    (str(dim.start) if dim.start else "")
+                    + ":"
+                    + (str(dim.stop) if dim.stop else "")
                 )
             else:
                 slices.append(str(int(dim)))
@@ -519,8 +568,8 @@ def chunks_repr(chunks: Chunks) -> str:
 
 
 def normalize_specs(
-    specs: Optional[Union[list[str], list[Spec], str]]
-) -> Optional[list[dict[str, str]]]:
+    specs: list[str] | list[Spec] | str | None,
+) -> list[dict[str, str]] | None:
     "Represent a list of Spec objects or strings as a list of dicts"
 
     if specs is None:

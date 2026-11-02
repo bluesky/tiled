@@ -344,8 +344,17 @@ chunkable_arrays = [
 ]
 
 
-@pytest.fixture(params=["duckdb_uri", "postgres_uri"], scope="function")
+@pytest.fixture(
+    params=["duckdb_uri_module", "postgres_uri_module"],
+    ids=["duckdb", "postgres"],
+    scope="module",
+)
 def sql_storage(request):
+    """SQL storage shared by all tests in the module.
+
+    Each data source initialized on it gets its own dataset id, so the tests
+    do not interfere.
+    """
     storage = cast(SQLStorage, parse_storage(request.getfixturevalue(request.param)))
     register_storage(storage)
 

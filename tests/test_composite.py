@@ -251,6 +251,21 @@ def test_iterate_parts(context):
         client["x"].base[part].read()
 
 
+def test_get_contents_maxlen(context):
+    # maxlen is a stop condition on pagination: fetching stops once at least
+    # maxlen items have been received or the pages are exhausted, whichever comes first.
+    client = from_context(context)
+    all_contents = client["x"].get_contents()
+    assert len(all_contents) > 0
+    # maxlen greater than the total: returns everything, without over-fetching.
+    contents = client["x"].get_contents(maxlen=len(all_contents) + 100)
+    assert contents.keys() == all_contents.keys()
+    # maxlen smaller than one page: stops after the first page, which may
+    # return more than maxlen items (maxlen is a stop condition, not a cap).
+    contents = client["x"].get_contents(maxlen=1)
+    assert len(contents) >= 1
+
+
 def test_reading_dask(context):
     client = from_context(context, "dask")
     a = client["x"].read(["A"]).compute()

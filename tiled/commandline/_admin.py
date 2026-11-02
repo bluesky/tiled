@@ -1,5 +1,4 @@
 from pathlib import Path
-from typing import Optional
 
 import typer
 
@@ -18,50 +17,28 @@ def initialize_database(database_uri: str):
     """
     Initialize a SQL database for use by Tiled.
     """
-    import asyncio
+    from sqlalchemy.engine import make_url
 
-    from sqlalchemy.ext.asyncio import create_async_engine
-
-    from ..alembic_utils import UninitializedDatabase, check_database, stamp_head
-    from ..authn_database.alembic_constants import (
-        ALEMBIC_DIR,
-        ALEMBIC_INI_TEMPLATE_PATH,
-    )
-    from ..authn_database.core import (
-        ALL_REVISIONS,
-        REQUIRED_REVISION,
-        initialize_database,
-    )
+    from ..authn_database.core import REQUIRED_REVISION, initialize_authn_database
     from ..utils import ensure_specified_sql_driver
 
     database_uri = ensure_specified_sql_driver(database_uri)
-
-    async def do_setup():
-        engine = create_async_engine(database_uri)
-        redacted_url = engine.url._replace(password="[redacted]")
-        try:
-            await check_database(engine, REQUIRED_REVISION, ALL_REVISIONS)
-        except UninitializedDatabase:
-            # Create tables and stamp (alembic) revision.
-            typer.echo(
-                f"Database {redacted_url} is new. Creating tables and marking revision {REQUIRED_REVISION}.",
-                err=True,
-            )
-            await initialize_database(engine)
-            typer.echo("Database initialized.", err=True)
-        else:
-            typer.echo(f"Database at {redacted_url} is already initialized.", err=True)
-            raise typer.Abort()
-        await engine.dispose()
-
-    asyncio.run(do_setup())
-    stamp_head(ALEMBIC_INI_TEMPLATE_PATH, ALEMBIC_DIR, database_uri)
+    redacted_url = make_url(database_uri)._replace(password="[redacted]")
+    if initialize_authn_database(database_uri):
+        typer.echo(
+            f"Database {redacted_url} is new. Created tables and marked revision {REQUIRED_REVISION}.",
+            err=True,
+        )
+        typer.echo("Database initialized.", err=True)
+    else:
+        typer.echo(f"Database at {redacted_url} is already initialized.", err=True)
+        raise typer.Abort()
 
 
 @admin_app.command("upgrade-database")
 def upgrade_database(
     database_uri: str,
-    revision: Optional[str] = typer.Argument(
+    revision: str | None = typer.Argument(
         None,
         help="The ID of a revision to upgrade to. By default, upgrade to the latest one.",
     ),
@@ -165,7 +142,7 @@ def check_config(
 
 @admin_app.command("list-principals")
 def list_principals(
-    profile: Optional[str] = typer.Option(
+    profile: str | None = typer.Option(
         None, help="If you use more than one Tiled server, use this to specify which."
     ),
     page_offset: int = typer.Argument(0),
@@ -183,7 +160,7 @@ def list_principals(
 
 @admin_app.command("show-principal")
 def show_principal(
-    profile: Optional[str] = typer.Option(
+    profile: str | None = typer.Option(
         None, help="If you use more than one Tiled server, use this to specify which."
     ),
     uuid: str = typer.Argument(..., help="UUID identifying Principal of interest"),
@@ -200,10 +177,10 @@ def show_principal(
 
 @admin_app.command("create-service-principal")
 def create_service_principal(
-    profile: Optional[str] = typer.Option(
+    profile: str | None = typer.Option(
         None, help="If you use more than one Tiled server, use this to specify which."
     ),
-    role: Optional[str] = typer.Option(
+    role: str | None = typer.Option(
         "user", help="Role of the new service principal (e.g. 'admin' or 'user')."
     ),
 ):

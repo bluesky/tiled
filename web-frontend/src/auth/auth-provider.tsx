@@ -1,9 +1,16 @@
-import React, { useEffect, useState, useRef, useCallback } from "react";
+import React, {
+  useContext,
+  useEffect,
+  useState,
+  useRef,
+  useCallback,
+} from "react";
 import axios, { AxiosError, InternalAxiosRequestConfig } from "axios";
 import { AuthContext } from "./auth-context";
 import { tokenManager } from "./token-manager";
 import { UserIdentity } from "./types";
 import { axiosInstance } from "../client";
+import { SettingsContext } from "../context/settings";
 import { components } from "../openapi_schemas";
 
 interface AuthProviderProps {
@@ -36,13 +43,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
   const [cookieChecked, setCookieChecked] = useState(false);
   const refreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const refreshPromiseRef = useRef<Promise<boolean> | null>(null);
+  const { api_url } = useContext(SettingsContext);
 
   // Shared refresh logic used by both proactive and reactive refresh.
   const doRefresh = useCallback(async (): Promise<boolean> => {
     const refreshToken = tokenManager.getRefreshToken();
     if (!refreshToken) return false;
     try {
-      const resp = await axios.post("/api/v1/auth/session/refresh", {
+      const resp = await axios.post(`${api_url}/auth/session/refresh`, {
         refresh_token: refreshToken,
       });
       tokenManager.saveTokens({
@@ -57,7 +65,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
       setIdentity(null);
       return false;
     }
-  }, []);
+  }, [api_url]);
 
   // Deduplicated refresh: multiple 401s only trigger one refresh request.
   const refreshOnce = useCallback(async (): Promise<boolean> => {
@@ -168,7 +176,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
     const probeCookieSession = async () => {
       if (hasProviders) {
         try {
-          const response = await axiosInstance.get("/api/v1/auth/whoami");
+          const response = await axiosInstance.get(`${api_url}/auth/whoami`);
           if (!mounted) return;
           const principal = response.data;
           if (principal) {
@@ -186,7 +194,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
       // Single-user mode: no /auth routes. A 200 from a protected endpoint
       // means the API-key cookie authenticated us; a 401 means it did not.
       try {
-        await axiosInstance.get("/api/v1/metadata/");
+        await axiosInstance.get(`${api_url}/metadata/`);
         if (!mounted) return;
         setIsAuthenticated(true);
       } catch {
@@ -225,7 +233,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
         clearTimeout(refreshTimeoutRef.current);
       }
     };
-  }, [authentication, refreshOnce, scheduleProactiveRefresh]);
+  }, [api_url, authentication, refreshOnce, scheduleProactiveRefresh]);
 
   const onLogin = useCallback(
     (accessToken: string, refreshToken: string, ident?: UserIdentity) => {

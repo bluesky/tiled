@@ -21,22 +21,32 @@ import tifffile
 import xarray
 from hypothesis import given, settings
 from hypothesis import strategies as st
-from sqlalchemy import text
+from sqlalchemy import event, text
+from sqlalchemy.dialects import postgresql as postgresql_dialect
+from sqlalchemy.dialects import sqlite as sqlite_dialect
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.pool import AsyncAdaptedQueuePool, QueuePool, StaticPool
+from starlette.status import HTTP_409_CONFLICT
 
+from tiled.access_control.access_policies import DummyAccessPolicy
+from tiled.access_control.protocols import ApprovedAccessTags
 from tiled.adapters.csv import CSVAdapter
 from tiled.adapters.dataframe import ArrayAdapter
 from tiled.adapters.tiff import TiffAdapter
 from tiled.adapters.utils import DataNotReadyError, IncompatibleShapeError
 from tiled.catalog import in_memory
-from tiled.catalog.adapter import WouldDeleteData
+from tiled.catalog import orm as catalog_orm
+from tiled.catalog.adapter import (
+    CatalogContainerAdapter,
+    WouldDeleteData,
+    _access_tags_predicate,
+)
 from tiled.catalog.explain import record_explanations
 from tiled.client import Context, from_context
 from tiled.client.register import register
 from tiled.client.utils import ClientError
 from tiled.client.xarray import write_xarray_dataset
-from tiled.queries import Eq, Key
+from tiled.queries import AccessTagsFilter, Eq, Key
 from tiled.server.app import build_app, build_app_from_config
 from tiled.server.schemas import Asset, DataSource, Management
 from tiled.storage import SQLStorage, get_storage, parse_storage, sanitize_uri
@@ -78,6 +88,77 @@ async def test_root_node_has_default_access_tags(a):
         .all()
     )
     assert list(access_tags) == ["public"]
+
+
+@pytest.mark.asyncio
+async def test_new_access_tags_get_rows(a: CatalogContainerAdapter) -> None:
+    "Tags a policy approved apply without a pre-existing tag row."
+    approved = ApprovedAccessTags(["experiment:1234"])
+    x = await a.create_node(
+        StructureFamily.container, {}, key="x", access_tags=approved
+    )
+    assert x.access_tags == {"experiment:1234"}
+
+    y = await a.create_node(
+        StructureFamily.container, {}, key="y", access_tags=approved
+    )
+    assert y.access_tags == {"experiment:1234"}
+
+    await x.replace_metadata(access_tags=ApprovedAccessTags(["experiment:5678"]))
+    assert (await a.lookup_adapter(["x"])).access_tags == {"experiment:5678"}
+
+    # Longer than the name column (255).
+    with pytest.raises(Exception, match="not defined"):
+        await a.create_node(
+            StructureFamily.container,
+            {},
+            key="z",
+            access_tags=ApprovedAccessTags(["t" * 256]),
+        )
+
+    with pytest.raises(Exception, match="not defined"):
+        await a.create_node(
+            StructureFamily.container, {}, key="w", access_tags=["experiment:9999"]
+        )
+
+
+def test_policy_approved_tags_get_rows(
+    catalog_adapter: CatalogContainerAdapter,
+) -> None:
+    "The server passes the tags its access policy returned on as approved."
+    app = build_app(catalog_adapter, access_policy=DummyAccessPolicy())
+    with Context.from_app(app) as context:
+        client = from_context(context)
+        x = client.create_container("x", access_tags=["experiment:1234"])
+        assert x.access_tags == ["experiment:1234"]
+
+        x.replace_metadata(access_tags=["experiment:5678"])
+        assert client["x"].access_tags == ["experiment:5678"]
+
+
+@pytest.mark.asyncio
+async def test_known_access_tags_no_insert(a: CatalogContainerAdapter) -> None:
+    """
+    Writes with existing tags insert no tag rows.
+
+    On PostgreSQL, every INSERT uses up an id, even one ON CONFLICT DO NOTHING
+    skips, so a needless insert per write would burn through the ids.
+    """
+    approved = ApprovedAccessTags(["experiment:1234"])
+    x = await a.create_node(
+        StructureFamily.container, {}, key="x", access_tags=approved
+    )
+
+    # Record the SQL of every statement sent to the database from here on.
+    statements = []
+    event.listen(
+        a.context.engine.sync_engine,
+        "before_cursor_execute",
+        lambda conn, cursor, statement, *args: statements.append(statement),
+    )
+    await a.create_node(StructureFamily.container, {}, key="y", access_tags=approved)
+    await x.replace_metadata(access_tags=approved)
+    assert not [s for s in statements if s.startswith("INSERT INTO access_tags")]
 
 
 @pytest.mark.asyncio
@@ -202,19 +283,17 @@ async def test_search(a):
 
 
 @pytest.mark.asyncio
-@pytest.mark.skip(
-    reason="Disabled until the replacement PostgreSQL metadata index is added."
-)
 async def test_metadata_index_is_used(example_data_adapter):
     a = example_data_adapter  # for succinctness below
     # Check that an index is used by inspecting the content of an 'EXPLAIN ...'
     # query. The exact content is intended for humans and is not an API, but we
     # can coarsely check that the index of interest is mentioned.
-    # The 'top_level_metadata' GIN index is PostgreSQL-only. SQLite uses a
-    # B-tree covering index instead; we just verify any index is used.
+    # On PostgreSQL, metadata equality is compiled to a JSONB containment
+    # (metadata @> {...}) served by the 'ix_nodes_metadata' GIN index. SQLite
+    # has no GIN and uses the B-tree index on 'parent' plus a row filter.
     dialect = a.context.engine.url.get_dialect().name
     if dialect == "postgresql":
-        expected_index = "top_level_metadata"
+        expected_index = "ix_nodes_metadata"
     else:
         expected_index = "nodes_parent"  # B-tree index on parent (name varies by Alembic/SQLite version)
     await a.startup()
@@ -227,7 +306,7 @@ async def test_metadata_index_is_used(example_data_adapter):
         assert len(results[0]) == 1
         assert expected_index in str(e)
     with record_explanations() as e:
-        results = await a.search(Key("bool") == False).keys_page(limit=5)  # noqa: #712
+        results = await a.search(Key("bool") == False).keys_page(limit=5)  # noqa: E712
         assert len(results[0]) == 1
         assert expected_index in str(e)
     with record_explanations() as e:
@@ -241,7 +320,7 @@ async def test_metadata_index_is_used(example_data_adapter):
         assert len(results[0]) == 1
         assert expected_index in str(e)
     with record_explanations() as e:
-        results = await a.search(Key("nested.bool") == False).keys_page(  # noqa: #712
+        results = await a.search(Key("nested.bool") == False).keys_page(  # noqa: E712
             limit=5
         )
         assert len(results[0]) == 1
@@ -959,6 +1038,71 @@ async def test_delete_sql_assets(sql_storage_uri):
     storage.dispose()
 
 
+@pytest.mark.asyncio
+async def test_delete_internal_sql_asset(sql_storage_uri):
+    """
+    The Asset of a SQL-backed table is the storage database, shared by all
+    such tables. delete_asset refuses it; the rows of every dataset remain, and
+    deleting the node is what removes them.
+    """
+    tree = in_memory(writable_storage={"sql": sql_storage_uri})
+    storage = cast(SQLStorage, get_storage(parse_storage(sql_storage_uri).uri))
+    table = pyarrow.Table.from_pydict({"a": [1, 2, 3], "b": [4.0, 5.0, 6.0]})
+
+    def rows_per_dataset(table_name):
+        with closing(storage.connect()) as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    f'SELECT _dataset_id, COUNT(*) FROM "{table_name}" '
+                    "GROUP BY _dataset_id ORDER BY _dataset_id"
+                )
+                return [(int(d), int(n)) for d, n in cursor.fetchall()]
+
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context, include_data_sources=True)
+        # Two nodes in the same table (same schema), both with data.
+        keep = client.create_appendable_table(schema=table.schema, key="keep")
+        keep.append_partition(0, table)
+        gone = client.create_appendable_table(schema=table.schema, key="gone")
+        gone.append_partition(0, table)
+        gone.append_partition(0, table)
+        table_name = keep.data_sources()[0].parameters["table_name"]
+        dataset_ids = {
+            key: client[key].data_sources()[0].parameters["dataset_id"]
+            for key in ("keep", "gone")
+        }
+        assert rows_per_dataset(table_name) == [
+            (dataset_ids["keep"], 3),
+            (dataset_ids["gone"], 6),
+        ]
+        asset_id = gone.data_sources()[0].assets[0].id
+
+        node = await tree.lookup_adapter(["gone"])
+        for external_only in (True, False):
+            with pytest.raises(Conflicts):
+                await node.delete_asset(asset_id, external_only=external_only)
+        # Over HTTP: 409, and nothing changed.
+        response = context.http_client.delete(
+            "/api/v1/asset/gone", params={"id": asset_id, "external_only": "false"}
+        )
+        assert response.status_code == HTTP_409_CONFLICT
+        assert rows_per_dataset(table_name) == [
+            (dataset_ids["keep"], 3),
+            (dataset_ids["gone"], 6),
+        ]
+        assets_after = (await tree.context.execute("SELECT * from assets")).all()
+        assert len(assets_after) == 1
+
+        # Deleting the node removes exactly its rows; the table stays for 'keep'.
+        client.delete_contents("gone", external_only=False)
+        assert rows_per_dataset(table_name) == [(dataset_ids["keep"], 3)]
+        # Deleting the last node drops the table.
+        client.delete_contents("keep", external_only=False)
+        with closing(storage.connect()) as conn:
+            assert not sql_table_exists(conn, storage.dialect, table_name)
+    storage.dispose()
+
+
 # ---------------------------------------------------------------------------
 # Hypothesis: pagination completeness
 # ---------------------------------------------------------------------------
@@ -981,6 +1125,21 @@ def sqlite_adapter_for_hypothesis(tmp_path_factory):
     yield adapter, loop
     loop.run_until_complete(adapter.shutdown())
     loop.close()
+
+
+def test_failed_init_does_not_leak_password():
+    # Init fails (nothing listens on port 1); the error must not echo the URI.
+    import traceback
+
+    from tiled.catalog import from_uri
+
+    password = "leaky-secret"
+    uri = f"postgresql+asyncpg://user:{password}@127.0.0.1:1/db"
+
+    with pytest.raises(Exception) as excinfo:
+        from_uri(uri, init_if_not_exists=True)
+
+    assert password not in "".join(traceback.format_exception(excinfo.value))
 
 
 @pytest.fixture(scope="module")
@@ -1083,9 +1242,9 @@ def test_cursor_pagination_completeness(
     if direction == 1:
         assert collected == keys_inserted, "ASC traversal must match insertion order"
     else:
-        assert collected == list(
-            reversed(keys_inserted)
-        ), "DESC traversal must match reverse insertion order"
+        assert collected == list(reversed(keys_inserted)), (
+            "DESC traversal must match reverse insertion order"
+        )
 
 
 @pytest.mark.asyncio
@@ -1146,6 +1305,55 @@ async def test_delete_external_asset_registered_twice(tmpdir):
             await tree.context.execute("SELECT * from assets")
         ).all()
         assert len(assets_after_second_delete) == 0
+
+
+@pytest.mark.asyncio
+async def test_delete_shared_external_asset(tmpdir):
+    """Deleting a shared external asset from one node dissociates it there but
+    retains the Asset record (and file) while other nodes still reference it."""
+    tree = in_memory(readable_storage=[str(tmpdir)])
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+
+        with open(tmpdir / "shared.csv", "w") as file:
+            file.write("a,b,c\n1,2,3\n4,5,6\n")
+
+        a = client.create_container("a")
+        b1 = a.create_container("b1")
+        b2 = a.create_container("b2")
+        await register(b1, tmpdir / "shared.csv")
+        await register(b2, tmpdir / "shared.csv")
+
+        assets_before = (await tree.context.execute("SELECT * from assets")).all()
+        assert len(assets_before) == 1  # single shared asset
+
+        # Find the asset id as seen from b1's leaf node.
+        b1_node = await tree.lookup_adapter(["a", "b1", "shared"])
+        (b1_ds,) = await b1_node.data_sources(include_assets=True)
+        asset_id = b1_ds.assets[0].id
+
+        # External assets are not internally managed, so external_only=True is
+        # permitted. Because the asset is still referenced by b2, only the
+        # association is removed.
+        result = await b1_node.delete_asset(asset_id, external_only=True)
+        assert result == {"asset_deleted": False, "data_deleted": False}
+
+        # The Asset record and the file remain; b2 can still read it.
+        assets_after_first = (await tree.context.execute("SELECT * from assets")).all()
+        assert len(assets_after_first) == 1
+        assert (tmpdir / "shared.csv").exists()
+        client["a"]["b2"]["shared"].read()
+        # b1 no longer has the asset.
+        assert await b1_node.asset_by_id(asset_id) is None
+
+        # Deleting from the last referencing node removes the Asset record, but
+        # (being external) leaves the file on disk.
+        b2_node = await tree.lookup_adapter(["a", "b2", "shared"])
+        result = await b2_node.delete_asset(asset_id, external_only=True)
+        assert result == {"asset_deleted": True, "data_deleted": False}
+        assets_after_second = (await tree.context.execute("SELECT * from assets")).all()
+        assert len(assets_after_second) == 0
+        assert (tmpdir / "shared.csv").exists()
 
 
 @pytest.mark.parametrize(
@@ -1395,3 +1603,34 @@ def test_pooling_config(sqlite_or_postgres_uri, sql_storage_uri, desired, expect
         assert storage._connection_pool._max_overflow == expected[3]
 
     storage.dispose()
+
+
+# ---- ACL predicate SQL shape (tag ids as a single array parameter) ----
+
+
+def test_access_predicate_uses_array_parameter_on_postgresql():
+    query = AccessTagsFilter(["a"])
+    query.tag_ids = [30, 10, 20, 10]
+    condition = _access_tags_predicate(query, catalog_orm.Node, 7, "postgresql")
+    sql = str(
+        condition.compile(
+            dialect=postgresql_dialect.dialect(),
+            compile_kwargs={"literal_binds": True},
+        )
+    )
+    assert "= ANY (ARRAY[10, 20, 30])" in sql  # deduplicated, sorted, one array
+    assert "IN (" not in sql
+    parameterized = str(condition.compile(dialect=postgresql_dialect.dialect()))
+    assert parameterized.count("%(") == 2  # parent id + the one array parameter
+
+
+def test_access_predicate_uses_in_list_on_sqlite():
+    query = AccessTagsFilter(["a"])
+    query.tag_ids = [2, 1]
+    condition = _access_tags_predicate(query, catalog_orm.Node, 7, "sqlite")
+    sql = str(
+        condition.compile(
+            dialect=sqlite_dialect.dialect(), compile_kwargs={"literal_binds": True}
+        )
+    )
+    assert "IN (1, 2)" in sql

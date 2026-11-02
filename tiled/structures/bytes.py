@@ -1,6 +1,6 @@
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Self
 
 from tiled.structures.root import Structure
 
@@ -14,5 +14,5 @@ class BytesStructure(Structure):
     """
 
     @classmethod
-    def from_json(cls, structure: Mapping[str, Any]) -> "BytesStructure":
+    def from_json(cls, structure: Mapping[str, Any]) -> Self:
         return cls()

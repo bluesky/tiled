@@ -12,6 +12,7 @@ import { about } from "./client";
 import { components } from "./openapi_schemas";
 import { Suspense, lazy } from "react";
 import Skeleton from "@mui/material/Skeleton";
+import { uiBasePath } from "./settings";
 
 // Expose React globals so external spec_view plugins (IIFE bundles)
 // can use React without bundling their own copy.
@@ -39,9 +40,6 @@ function RequireAuth({ children }: { children: React.ReactElement }) {
   if (authRequired && !isAuthenticated) return <Navigate to="/login" replace />;
   return children;
 }
-
-// This is set in vite.config.js. It is the base path of the ui.
-const basename = import.meta.env.BASE_URL;
 
 function App() {
   const [settings, setSettings] = useState(emptySettings);
@@ -78,7 +76,7 @@ function App() {
   return (
     <SettingsContext.Provider value={settings}>
       <AuthProvider authentication={authentication}>
-        <BrowserRouter basename={basename}>
+        <BrowserRouter basename={uiBasePath}>
           <ErrorBoundary>
             <Suspense fallback={<Skeleton variant="rectangular" />}>
               <Routes>
