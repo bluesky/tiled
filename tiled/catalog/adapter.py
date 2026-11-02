@@ -155,6 +155,9 @@ ARRAY_NOT_READY_WINDOW = float(os.getenv("TILED_ARRAY_NOT_READY_WINDOW", "10.0")
 # default (typically 4 MB) when deleting large subtrees.
 DELETE_ASSETS_WORK_MEM = os.getenv("TILED_DELETE_ASSETS_WORK_MEM", "256MB")
 
+# URI schemes of tabular storage databases, whose Asset is the whole database.
+SQL_STORAGE_SCHEMES = frozenset({"duckdb", "sqlite", "postgresql"})
+
 # When data is uploaded, how is it saved?
 # TODO: Make this configurable at Catalog construction time.
 DEFAULT_CREATION_MIMETYPE = {
@@ -1566,9 +1569,10 @@ class CatalogNodeAdapter:
                 # Select only data sources related to storage DBs
                 .where(
                     or_(
-                        orm.Asset.data_uri.startswith("postgresql"),
-                        orm.Asset.data_uri.startswith("sqlite"),
-                        orm.Asset.data_uri.startswith("duckdb"),
+                        *(
+                            orm.Asset.data_uri.startswith(scheme)
+                            for scheme in SQL_STORAGE_SCHEMES
+                        )
                     )
                 )
                 .distinct()
@@ -1729,13 +1733,15 @@ class CatalogNodeAdapter:
                 select(
                     orm.DataSourceAssetAssociation.data_source_id,
                     orm.DataSource.management,
-                    # Set only for SQL-backed tables (see below).
-                    orm.DataSource.parameters["dataset_id"].label("dataset_id"),
+                    orm.Asset.data_uri,
                 )
                 .select_from(orm.DataSourceAssetAssociation)
                 .join(
                     orm.DataSource,
                     orm.DataSource.id == orm.DataSourceAssetAssociation.data_source_id,
+                )
+                .join(
+                    orm.Asset, orm.Asset.id == orm.DataSourceAssetAssociation.asset_id
                 )
                 .where(orm.DataSource.node_id == self.node.id)
                 .where(orm.DataSourceAssetAssociation.asset_id == asset_id)
@@ -1750,7 +1756,7 @@ class CatalogNodeAdapter:
             # not a meaningful operation: the Asset stays (other nodes use it),
             # and the rows would be left behind with nothing referring to them.
             # Deleting the node removes the rows, instead.
-            if rows[0].dataset_id is not None:
+            if urlparse(rows[0].data_uri).scheme in SQL_STORAGE_SCHEMES:
                 raise Conflicts(
                     "This asset is the storage database shared by all SQL-backed "
                     "tables on this server, so it cannot be deleted for one node. "
@@ -2556,7 +2562,7 @@ def delete_physical_asset(
             shutil.rmtree(path)
         else:
             Path(path).unlink()
-    elif url.scheme in {"duckdb", "sqlite", "postgresql"}:
+    elif url.scheme in SQL_STORAGE_SCHEMES:
         if (table_name is not None) and (dataset_id is not None):
             storage = cast(SQLStorage, get_storage(data_uri))
             with closing(storage.connect()) as conn:
