@@ -32,7 +32,7 @@ from tiled.adapters.csv import CSVAdapter
 from tiled.adapters.dataframe import ArrayAdapter
 from tiled.adapters.tiff import TiffAdapter
 from tiled.adapters.utils import DataNotReadyError, IncompatibleShapeError
-from tiled.catalog import from_uri, in_memory
+from tiled.catalog import in_memory
 from tiled.catalog import orm as catalog_orm
 from tiled.catalog.adapter import WouldDeleteData, _access_tags_predicate
 from tiled.catalog.explain import record_explanations
@@ -962,7 +962,7 @@ async def test_delete_sql_assets(sql_storage_uri):
 
 
 @pytest.mark.asyncio
-async def test_delete_sql_asset_refused(sql_storage_uri):
+async def test_delete_internal_sql_asset(sql_storage_uri):
     """
     The Asset of a SQL-backed table is the storage database, shared by all
     such tables. delete_asset refuses it; the rows of every dataset remain, and
@@ -1054,6 +1054,8 @@ def test_failed_init_does_not_leak_password():
     # Init fails (nothing listens on port 1); the error must not echo the URI.
     import traceback
 
+    from tiled.catalog import from_uri
+
     password = "leaky-secret"
     uri = f"postgresql+asyncpg://user:{password}@127.0.0.1:1/db"
 
@@ -1065,6 +1067,7 @@ def test_failed_init_does_not_leak_password():
 
 @pytest.fixture(scope="module")
 def postgresql_adapter_for_hypothesis(tmp_path_factory):
+    from tiled.catalog import from_uri
 
     from .conftest import TILED_TEST_POSTGRESQL_URI, temp_postgres
 
