@@ -130,7 +130,7 @@ from .core import (
     check_catalog_database,
     initialize_catalog_database,
     initialize_database,
-    register_principal_tag_rows,
+    register_tag_rows,
     resolve_access_tag_ids,
 )
 from .explain import ExplainAsyncSession
@@ -240,7 +240,7 @@ async def _resolve_access_tags(db, access_tag_names):
     Principal tags are slightly different: these need to exist at write,
     possibly before the access tags compiler has been able to create them.
     """
-    await register_principal_tag_rows(await db.connection(), access_tag_names)
+    await register_tag_rows(await db.connection(), access_tag_names)
     tag_rows = (
         (
             await db.execute(

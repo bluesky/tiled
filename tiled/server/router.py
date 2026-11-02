@@ -50,7 +50,7 @@ from tiled.server.protocols import ExternalAuthenticator, InternalAuthenticator
 from tiled.server.schemas import Principal
 
 from .. import __version__
-from ..access_control.protocols import normalize_access_tags
+from ..access_control.protocols import ApprovedAccessTags, normalize_access_tags
 from ..links import links_for_node
 from ..ndslice import NDBlock, NDSlice
 from ..stream_messages import ArrayPatch
@@ -2070,6 +2070,7 @@ def get_router(
                 ) = await request.app.state.access_policy.init_node(
                     principal, authn_access_tags, authn_scopes, access_tags=access_tags
                 )
+                access_tags = ApprovedAccessTags(access_tags)
             except ValueError as e:
                 raise HTTPException(
                     status_code=HTTP_403_FORBIDDEN,
@@ -2612,6 +2613,7 @@ def get_router(
                 (access_tags_modified, access_tags) = await policy.modify_node(
                     entry, principal, authn_access_tags, authn_scopes, access_tags
                 )
+                access_tags = ApprovedAccessTags(access_tags)
             except ValueError as e:
                 raise HTTPException(
                     status_code=HTTP_403_FORBIDDEN,
@@ -2704,6 +2706,7 @@ def get_router(
                 (access_tags_modified, access_tags) = await policy.modify_node(
                     entry, principal, authn_access_tags, authn_scopes, access_tags
                 )
+                access_tags = ApprovedAccessTags(access_tags)
             except ValueError as e:
                 raise HTTPException(
                     status_code=HTTP_403_FORBIDDEN,
