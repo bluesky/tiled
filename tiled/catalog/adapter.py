@@ -103,6 +103,7 @@ from ..server.settings import DatabaseSettings
 from ..server.streaming import StreamingCache
 from ..server.webhooks import WebhookDispatcher
 from ..storage import (
+    SQL_STORAGE_SCHEMES,
     SUPPORTED_OBJECT_URI_SCHEMES,
     FileStorage,
     ObjectStorage,
@@ -154,9 +155,6 @@ ARRAY_NOT_READY_WINDOW = float(os.getenv("TILED_ARRAY_NOT_READY_WINDOW", "10.0")
 # subtree's closure and asset associations, which spill to disk at the server
 # default (typically 4 MB) when deleting large subtrees.
 DELETE_ASSETS_WORK_MEM = os.getenv("TILED_DELETE_ASSETS_WORK_MEM", "256MB")
-
-# URI schemes of tabular storage databases, whose Asset is the whole database.
-SQL_STORAGE_SCHEMES = frozenset({"duckdb", "sqlite", "postgresql"})
 
 # When data is uploaded, how is it saved?
 # TODO: Make this configurable at Catalog construction time.

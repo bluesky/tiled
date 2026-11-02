@@ -42,6 +42,10 @@ SUPPORTED_OBJECT_URI_SCHEMES = {"http", "https"}  # TODO: Add "s3", "gs", "azure
 
 POSTGRESQL_SCHEMES = frozenset({"postgresql", "postgres"})
 
+# URI schemes of tabular storage databases. The Asset of a data source stored
+# in one is the database itself, shared by every such data source.
+SQL_STORAGE_SCHEMES = frozenset({"postgresql", "sqlite", "duckdb"})
+
 # libpq connection parameters that determine *which* server and database a
 # connection reaches. Any other query parameter (connect_timeout, sslmode,
 # target_session_attrs, application_name, ...) only tunes *how* we connect.
@@ -525,7 +529,7 @@ def _parse_storage(
             result = RemoteSQLStorage(
                 item, pool_size=pool_size, max_overflow=max_overflow
             )
-        elif scheme in {"sqlite", "duckdb"}:
+        elif scheme in SQL_STORAGE_SCHEMES:
             result = EmbeddedSQLStorage(
                 item, pool_size=pool_size, max_overflow=max_overflow
             )
