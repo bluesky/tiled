@@ -10,6 +10,10 @@ from ..type_aliases import AccessTags, Filters, Scopes
 PRINCIPAL_TAG_PREFIXES = ("user:", "service:")
 
 
+class ApprovedAccessTags(frozenset[str]):
+    "Access tags an access policy approved; only these get new rows on write."
+
+
 def normalize_access_tags(tags: Iterable[str] = ()) -> AccessTags:
     """
     Validate tag names and normalize them to a frozenset.
@@ -21,6 +25,8 @@ def normalize_access_tags(tags: Iterable[str] = ()) -> AccessTags:
         raise TypeError(
             "access tags must be an iterable of strings, not a single string."
         )
+    if isinstance(tags, frozenset):
+        return tags  # keeps ApprovedAccessTags
     return frozenset(tags)
 
 

@@ -33,6 +33,9 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Changed
 
+- OIDC authenticators now verify id_tokens (and their `at_hash`) at login via
+  `verify_login`, while `decode_token` only decodes access tokens.
+
 - On PostgreSQL, the access-control filter passes the resolved tag ids as a
   single array parameter (`tag_id = ANY(...)`) instead of one bind parameter
   per tag. For principals with many tags this avoids huge, per-tag-count
@@ -76,6 +79,23 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - `DELETE /api/v1/asset/{path}?id=N` now refuses (409) the asset of a
   SQL-backed table. That asset is the storage database, shared by all such
   tables, so it can not be deleted; delete the node to remove its data.
+- Accept `Authorization: Bearer TOKEN` on WebSocket connections. The handshake
+  rejected any `Authorization` header that was not `Apikey SECRET` with a 400,
+  so a client holding an access token could not send it as a header. The
+  header is now dispatched on its scheme, matching the HTTP routes: `Bearer` is
+  read as an access token, `Apikey` as an API key, and any other scheme is
+  rejected with a 400 that is also logged on the server. The `access_token`
+  query parameter still works, for browsers that cannot set headers, and an
+  `api_key` query parameter is now accepted too, as on the HTTP routes.
+- Fix construction of the `Principal` for WebSocket connections authenticated
+  with an access token from an external (OIDC) provider, which raised
+  `AttributeError` and surfaced as a 500.
+- The Python client's subscriptions now authenticate the WebSocket with the
+  session's own credentials: its API key if it has one, otherwise its access
+  token as `Bearer`. Because a WebSocket handshake cannot prompt a refresh with
+  a 401, an access token within a minute of expiring is refreshed before
+  connecting. Only a session with neither falls back to minting a short-lived
+  API key per connection, and only a key minted this way is revoked afterwards.
 - Fixed `read_partition` on a table with a string column, which failed with
   a dtype mismatch (`object` in the structure, `string` in the data sent by
   the server). The eager client now fetches the partition directly, without
@@ -126,6 +146,11 @@ Write the date in place of the "Unreleased" in the case a new version is release
   and, as on PostgreSQL, match an explicit JSON null but not a missing key.
 - On SQLite, a `None` in an `In` or `NotIn` list matches an explicit JSON null
   but not a missing key, as `Eq`/`NotEq` and the in-memory adapter do.
+- Fixed access tags approved by an external access policy failing with 403
+  "Cannot apply access tags that are not defined" on nodes, graph entities,
+  and links. Since v0.2.19, a tag needs a row in the catalog database, and
+  only `user:` and `service:` tags got one on write. Tags an access policy
+  approved now get a row on first use.
 
 ### Maintenance
 
