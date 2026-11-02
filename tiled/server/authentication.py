@@ -1,4 +1,5 @@
 import hashlib
+import logging
 import secrets
 import uuid as uuid_module
 from collections.abc import Callable, Sequence
@@ -91,6 +92,9 @@ def utcnow():
 class Token(BaseModel):
     access_token: str
     token_type: str
+
+
+logger = logging.getLogger(__name__)
 
 
 class TokenData(BaseModel):
@@ -281,30 +285,71 @@ async def get_current_access_tags(
         return None
 
 
+def websocket_credentials(
+    authorization: str | None,
+) -> tuple[str | None, str | None]:
+    """Split a WebSocket Authorization header into (api_key, bearer_token).
+
+    Mirrors StrictAPIKeyHeader: an unrecognized scheme is an error, but a
+    scheme belonging to the *other* mechanism yields None so that the
+    dependency handling it can pick it up.
+    """
+    if authorization is None:
+        return None, None
+    scheme, param = get_authorization_scheme_param(authorization)
+    if scheme.lower() == "apikey":
+        return param, None
+    if scheme.lower() == "bearer":
+        return None, param
+    # The handshake is rejected with a bare status code; the detail below never
+    # reaches the client, so log it where an operator can actually see it.
+    logger.warning(
+        "Rejecting WebSocket connection: unrecognized Authorization scheme %r",
+        scheme,
+    )
+    raise HTTPException(
+        status_code=HTTP_400_BAD_REQUEST,
+        detail=(
+            "Authorization header must include the authorization type "
+            "followed by a space and then the secret, as in "
+            "'Bearer SECRET' or 'Apikey SECRET'. "
+        ),
+    )
+
+
 def get_api_key_websocket(
     authorization: Annotated[str | None, Header()] = None,
+    api_key_query: str | None = Query(None, alias="api_key"),
 ) -> str | None:
-    if authorization is None:
-        return None
-    scheme, api_key = get_authorization_scheme_param(authorization)
-    if scheme.lower() != "apikey":
-        raise HTTPException(
-            status_code=HTTP_400_BAD_REQUEST,
-            detail="Authorization header must be formatted like 'Apikey SECRET'",
-        )
-    return api_key
+    """Extract an API key from a WebSocket handshake.
+
+    Accepts an 'Apikey SECRET' header or an api_key query parameter, for
+    parity with the HTTP routes. A Bearer token is not an API key: it yields
+    None here and is handled by get_decoded_access_token_websocket.
+    """
+    api_key, _ = websocket_credentials(authorization)
+    return api_key if api_key is not None else api_key_query
 
 
 def get_decoded_access_token_websocket(
     websocket: WebSocket,
     access_token: str | None = Query(None),
+    authorization: Annotated[str | None, Header()] = None,
     settings: Settings = Depends(get_settings),
 ) -> dict | None:
-    """Decode a JWT access token passed as a query parameter on WebSocket connections."""
-    if not access_token:
+    """Decode a JWT access token from a WebSocket handshake.
+
+    Prefers a 'Bearer TOKEN' Authorization header, falling back to an
+    access_token query parameter. Browsers cannot set headers on a WebSocket
+    handshake, so the query parameter remains available for them, but clients
+    that can send headers should, to keep tokens out of access logs.
+    """
+    _, bearer_token = websocket_credentials(authorization)
+    token = bearer_token or access_token
+    if not token:
         return None
     try:
-        return decode_token(access_token, settings.secret_keys, settings.authenticator)
+        return decode_token(token, settings.secret_keys, settings.authenticator)
     except ExpiredSignatureError:
         raise HTTPException(
             status_code=HTTP_401_UNAUTHORIZED,
@@ -611,12 +656,16 @@ async def get_current_principal_websocket(
     websocket: WebSocket,
     api_key: str | None = Depends(get_api_key_websocket),
     access_token: str | None = Query(None),
+    authorization: Annotated[str | None, Header()] = None,
     decoded_access_token: dict | None = Depends(get_decoded_access_token_websocket),
     settings: Settings = Depends(get_settings),
     db_factory: Callable[[], AsyncSession | None] = Depends(
         get_database_session_factory
     ),
 ):
+    # Same precedence as get_decoded_access_token_websocket, so the raw token
+    # handed to the access policy is the one that was decoded.
+    access_token = websocket_credentials(authorization)[1] or access_token
     if api_key is not None:
         async with db_factory() as db:
             principal = await get_current_principal_from_api_key(
@@ -645,13 +694,13 @@ async def get_current_principal_websocket(
             )
             provider = websocket.app.state.provider
             async with db_factory() as db:
-                session = await get_or_create_principal(
+                principal_orm = await get_or_create_principal(
                     db,
                     provider,
                     identity_id,
                 )
             principal = schemas.Principal(
-                uuid=session.principal.uuid,
+                uuid=principal_orm.uuid,
                 type=schemas.PrincipalType.user,
                 identities=[schemas.Identity(id=identity_id, provider=provider)],
                 access_token=access_token,
