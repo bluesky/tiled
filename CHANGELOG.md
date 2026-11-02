@@ -29,6 +29,10 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Fixed
 
+- Treat `anyio.ClosedResourceError` as a normal disconnect in the
+  test-client websocket wrapper: starlette >=1.0 raises it when receiving
+  on a closed session, which previously killed streaming subscription
+  worker threads with unhandled exceptions during test teardown.
 - Extend to zarr routes the previous fix for reads of array data whose
   on-disk shape has diverged from the shape recorded in the catalog
   structure, which can happen while an array is being extended
