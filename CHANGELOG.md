@@ -5,7 +5,36 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## Unreleased
 
+### Added
+
+- OpenTelemetry tracing for the server, exported over OTLP. The example monitoring
+  stack (`compose.monitoring.yml`) now includes an OpenTelemetry Collector, Jaeger,
+  and Grafana Tempo (traces are sent to both backends), and the Collector also
+  scrapes and re-exposes Tiled's Prometheus metrics.
+- Emit OpenTelemetry spans for internal request phases (access control, read,
+  tokenize, pack) so they appear as child spans in a request's trace, giving a
+  per-request breakdown of where time is spent.
+- Return the request's OpenTelemetry trace ID in the `X-Tiled-Trace-ID` response
+  header (also on server errors, and exposed via CORS) when the request is
+  traced, and include it in the Python client's error messages and in the server's
+  log lines, so a failing or slow request can be looked up in the tracing backend.
+  The request's span records the correlation ID (`X-Tiled-Request-ID`) as the
+  `tiled.request_id` attribute, so the trace can also be found from it.
+- Disable FastAPI's built-in OpenTelemetry auto-configuration
+  (`telemetry={"auto_configure": False}`) so that, on FastAPI >=0.142, it does
+  not register a second OTLP exporter alongside Tiled's own tracing pipeline and
+  export every span twice.
+- Emit OpenTelemetry spans for PostgreSQL queries (asyncpg for the catalog and
+  authentication databases, ADBC for the storage database), Redis commands, and
+  outbound HTTP calls (httpx: OIDC, webhooks, external policy servers), so
+  external-service calls appear in traces. The example monitoring stack also
+  generates a service graph viewable in Grafana, with Tiled's separate Postgres
+  databases (catalog, storage, authn) and Redis shown as distinct nodes.
+
 ### Changed
+
+- OIDC authenticators now verify id_tokens (and their `at_hash`) at login via
+  `verify_login`, while `decode_token` only decodes access tokens.
 
 - On PostgreSQL, the access-control filter passes the resolved tag ids as a
   single array parameter (`tag_id = ANY(...)`) instead of one bind parameter
@@ -64,6 +93,15 @@ Write the date in place of the "Unreleased" in the case a new version is release
   a 401, an access token within a minute of expiring is refreshed before
   connecting. Only a session with neither falls back to minting a short-lived
   API key per connection, and only a key minted this way is revoked afterwards.
+- Fixed `read_partition` on a table with a string column, which failed with
+  a dtype mismatch (`object` in the structure, `string` in the data sent by
+  the server). The eager client now fetches the partition directly, without
+  dask; the dask client no longer checks the partition against the
+  structure's meta, as `read` already did not.
+- Iterating over `node.metadata_revisions` (e.g. `list(...)`) ends after the
+  last revision instead of failing with `ValueError`, and fetches the
+  revisions page by page rather than one request per revision. Indexing past
+  the end raises `IndexError`.
 - Fixed `ArrayClient.patch` on arrays whose shape is not a whole number of
   chunks. The check for writing past the end, and the new shape after
   `extend=True`, used the Zarr array's shape, which is rounded up to whole
@@ -98,11 +136,34 @@ Write the date in place of the "Unreleased" in the case a new version is release
   denied. A `{"result": false}` reply was not treated as a denial, so nodes,
   graph entities, and links were written anyway. Such writes now fail with
   403 (a GraphQL error for graph writes).
+- Metadata queries on SQLite compare the stored JSON value with its own type
+  again under SQLAlchemy 2.1 (e.g. `Eq("number", "0")` no longer matches a
+  stored `0`), and the `sqlalchemy <2.1` pin is removed.
+- `Eq(key, None)` and `NotEq(key, None)` work on SQLite (they raised an error)
+  and, as on PostgreSQL, match an explicit JSON null but not a missing key.
+- On SQLite, a `None` in an `In` or `NotIn` list matches an explicit JSON null
+  but not a missing key, as `Eq`/`NotEq` and the in-memory adapter do.
+- Fixed access tags approved by an external access policy failing with 403
+  "Cannot apply access tags that are not defined" on nodes, graph entities,
+  and links. Since v0.2.19, a tag needs a row in the catalog database, and
+  only `user:` and `service:` tags got one on write. Tags an access policy
+  approved now get a row on first use.
 
 ### Maintenance
 
 - Fixed flaky `test_thread_lock`, which started its timer after the worker
   threads had already started.
+- Commit `uv.lock` and `pixi.lock`. CI on pull requests and pushes installs
+  the locked versions (`uv sync --locked`), so a new release of a dependency
+  cannot break unrelated pull requests; the nightly scheduled run re-resolves
+  to the latest releases (`uv sync --upgrade`) to catch such breakage early.
+  Both lockfiles are refreshed by pull requests on the 1st and 15th of each
+  month (Dependabot for `uv.lock`, a workflow for `pixi.lock`), skipping
+  releases less than 3 days old (Dependabot's cooldown, and
+  `exclude-newer = "3d"` in `pixi.toml`). `pixi.toml` now requires
+  pixi >=0.83.0. Contributors who change dependencies should run `uv lock`
+  (for `pyproject.toml`) or `pixi lock` (for `pixi.toml`) and commit the
+  updated lockfile.
 
 ## v0.2.19 (2026-10-13)
 
@@ -120,6 +181,17 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - Add `Container.register`, a synchronous client method to register external,
   server-accessible files as a single dataset (array, table, etc.).
 - Add registration support for Parquet files.
+- OpenTelemetry tracing for the server, exported over OTLP. The example monitoring
+  stack (`compose.monitoring.yml`) now includes an OpenTelemetry Collector, Jaeger,
+  and Grafana Tempo (traces are sent to both backends), and the Collector also
+  scrapes and re-exposes Tiled's Prometheus metrics.
+- Emit OpenTelemetry spans for internal request phases (access control, read,
+  tokenize, pack) so they appear as child spans in a request's trace, giving a
+  per-request breakdown of where time is spent.
+- Disable FastAPI's built-in OpenTelemetry auto-configuration
+  (`telemetry={"auto_configure": False}`) so that, on FastAPI >=0.142, it does
+  not register a second OTLP exporter alongside Tiled's own tracing pipeline and
+  export every span twice.
 - Documentation: a user-guide page on validating metadata against custom specs
   via server configuration.
 - ACL filtering by access tags ids resolved from access tag names on the server.

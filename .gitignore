@@ -91,9 +91,7 @@ tiled/_version.py
 venv/
 # pixi environments
 .pixi
-pixi.lock
 # uv environments
-uv.lock
 .venv
 # pixi environments
 .pixi/*

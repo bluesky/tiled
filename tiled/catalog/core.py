@@ -1,5 +1,7 @@
+from collections.abc import Iterable
+
 from sqlalchemy import literal, select, text
-from sqlalchemy.ext.asyncio import AsyncEngine
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from ..alembic_utils import (
     DatabaseUpgradeNeeded,
@@ -63,7 +65,7 @@ async def initialize_database(engine: AsyncEngine):
         # association requires the 'public' tag row to exist (foreign key),
         # so it is created here if missing. Besides the access tags compiler,
         # tag rows are inserted only here and by the storage layers'
-        # auto-registration of principal tags (register_principal_tag_rows).
+        # auto-registration of tags on write (register_tag_rows).
         # On a server without an access policy, tags are ignored and
         # these rows are inert.
         if engine.dialect.name == "postgresql":
@@ -115,25 +117,43 @@ def initialize_catalog_database(uri: str) -> bool:
     )
 
 
-async def register_principal_tag_rows(connection, access_tag_names):
+async def register_tag_rows(
+    connection: AsyncConnection, access_tag_names: Iterable[str]
+) -> None:
     """
-    Auto-register bare access tag rows for any principal tags in
-    access_tag_names. Principal tags need to exist at write, possibly before
-    the access tags compiler has been able to create them.
+    Auto-register bare access tag rows for access_tag_names: all of them for
+    ApprovedAccessTags, else only principal tags, which can precede the
+    access tags compiler's next run. A bare row grants nothing.
 
     Call this on the same connection/transaction as the tag assignment, so
     that the row is never observed unassigned and the compiler's retention
     rules will never delete it. (An AsyncSession caller can pass
     `await session.connection()`.)
     """
-    from ..access_control.protocols import PRINCIPAL_TAG_PREFIXES
-
-    principal_tags = {
-        name for name in access_tag_names if name.startswith(PRINCIPAL_TAG_PREFIXES)
-    }
-    if not principal_tags:
-        return
+    from ..access_control.protocols import PRINCIPAL_TAG_PREFIXES, ApprovedAccessTags
     from . import orm
+
+    tags = orm.AccessTag.__table__
+
+    if not isinstance(access_tag_names, ApprovedAccessTags):
+        access_tag_names = [
+            name for name in access_tag_names if name.startswith(PRINCIPAL_TAG_PREFIXES)
+        ]
+
+    # Skip names the column cannot hold; the caller's lookup rejects them.
+    max_length = tags.c.name.type.length
+    names = {name for name in access_tag_names if len(name) <= max_length}
+    if not names:
+        return
+
+    # Insert only missing names: on PostgreSQL, ON CONFLICT DO NOTHING
+    # consumes an id even when the row exists.
+    existing = await connection.execute(
+        select(tags.c.name).where(tags.c.name.in_(names))
+    )
+    names -= set(existing.scalars())
+    if not names:
+        return
 
     if connection.dialect.name == "postgresql":
         from sqlalchemy.dialects.postgresql import insert as upsert
@@ -141,7 +161,7 @@ async def register_principal_tag_rows(connection, access_tag_names):
         from sqlalchemy.dialects.sqlite import insert as upsert
     await connection.execute(
         upsert(orm.AccessTag.__table__)
-        .values([{"name": name, "is_public": False} for name in sorted(principal_tags)])
+        .values([{"name": name, "is_public": False} for name in sorted(names)])
         .on_conflict_do_nothing(index_elements=["name"])
     )
 

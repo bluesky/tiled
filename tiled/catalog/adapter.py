@@ -26,6 +26,7 @@ import anyio
 from fastapi import HTTPException
 from sqlalchemy import (
     Integer,
+    and_,
     any_,
     delete,
     exists,
@@ -129,7 +130,7 @@ from .core import (
     check_catalog_database,
     initialize_catalog_database,
     initialize_database,
-    register_principal_tag_rows,
+    register_tag_rows,
     resolve_access_tag_ids,
 )
 from .explain import ExplainAsyncSession
@@ -239,7 +240,7 @@ async def _resolve_access_tags(db, access_tag_names):
     Principal tags are slightly different: these need to exist at write,
     possibly before the access tags compiler has been able to create them.
     """
-    await register_principal_tag_rows(await db.connection(), access_tag_names)
+    await register_tag_rows(await db.connection(), access_tag_names)
     tag_rows = (
         (
             await db.execute(
@@ -1283,7 +1284,7 @@ class CatalogNodeAdapter:
 
                 # Notify subscribers of the *parent* node about the new child.
                 sequence = await self.context.streaming_cache.incr_seq(self.node.id)
-                metadata = {
+                message = {
                     "type": "container-child-created",
                     "sequence": sequence,
                     "timestamp": datetime.now().isoformat(),
@@ -1298,7 +1299,7 @@ class CatalogNodeAdapter:
 
                 # Cache data in Redis with a TTL, and publish
                 # a notification about it.
-                await self.context.streaming_cache.set(self.node.id, sequence, metadata)
+                await self.context.streaming_cache.set(self.node.id, sequence, message)
             if self.context.webhook_dispatcher:
                 await self.context.webhook_dispatcher.dispatch(
                     ContainerChildCreatedEvent(
@@ -1881,7 +1882,7 @@ class CatalogNodeAdapter:
             # Upon successful update, inform websocket subscribers through redis
             if self.context.streaming_cache:
                 sequence = await self.context.streaming_cache.incr_seq(self.node.parent)
-                metadata = {
+                message = {
                     "type": "container-child-metadata-updated",
                     "key": self.node.key,
                     "sequence": sequence,
@@ -1890,9 +1891,9 @@ class CatalogNodeAdapter:
                     "metadata": metadata,
                 }
                 if not drop_revision:
-                    metadata["revision_number"] = next_revision_number
+                    message["revision_number"] = next_revision_number
                 await self.context.streaming_cache.set(
-                    self.node.parent, sequence, metadata
+                    self.node.parent, sequence, message
                 )
             if self.context.webhook_dispatcher:
                 segments = list(await self.path_segments())
@@ -2655,6 +2656,18 @@ def _get_value(value, type):
     return getattr(value, _TYPE_CONVERSION_MAP[type])()
 
 
+def _sqlite_json_value(attr):
+    """The JSON value at a path, as SQLite's JSON_EXTRACT returns it.
+
+    JSON_EXTRACT returns SQL values of the JSON value's own type, so comparing
+    them with a query value matches on type as well (0 does not equal '0').
+    The as_*() accessors cannot be used for this: from SQLAlchemy 2.1 they
+    render CAST(JSON_EXTRACT(...) AS <type>) on SQLite, which converts the
+    stored value to the query value's type before comparing.
+    """
+    return func.json_extract(attr.left, attr.right)
+
+
 def _prepare_structure(structure_family, structure):
     "Convert from pydantic model to dict."
     if structure is None:
@@ -2669,7 +2682,12 @@ def binary_op(query, tree, operation):
     keys = query.key.split(".")
     attr = orm.Node.metadata_[keys]
     if dialect_name == "sqlite":
-        condition = operation(_get_value(attr, type(query.value)), query.value)
+        if query.value is None and operation in (operator.eq, operator.ne):
+            # JSON_EXTRACT gives SQL NULL both for a JSON null and for a missing
+            # key; JSON_TYPE tells them apart ('null' vs SQL NULL).
+            condition = operation(func.json_type(attr.left, attr.right), "null")
+        else:
+            condition = operation(_sqlite_json_value(attr), query.value)
     # specific case where GIN optomized index can be used to speed up POSTGRES equals queries
     elif (dialect_name == "postgresql") and (operation == operator.eq):
         condition = orm.Node.metadata_.op("@>")(
@@ -2817,8 +2835,23 @@ def in_or_not_in_sqlite(query, tree, method):
         else:  # method == "not_in"
             # All results are always "not in" an empty list.
             condition = true()
+    elif None in query.value:
+        # SQL NULL never compares equal in IN / NOT IN, and JSON_EXTRACT gives
+        # it both for a JSON null and for a missing key, so match a JSON null
+        # with JSON_TYPE as Eq/NotEq do.
+        values = [value for value in query.value if value is not None]
+        json_type = func.json_type(attr.left, attr.right)
+        if method == "in_":
+            condition = json_type == "null"
+            if values:
+                condition = or_(condition, _sqlite_json_value(attr).in_(values))
+        else:  # method == "not_in"
+            # A missing key is excluded, as in a NotIn without None.
+            condition = json_type != "null"
+            if values:
+                condition = and_(condition, _sqlite_json_value(attr).not_in(values))
     else:
-        condition = getattr(_get_value(attr, type(query.value[0])), method)(query.value)
+        condition = getattr(_sqlite_json_value(attr), method)(query.value)
     return tree.new_variation(conditions=tree.conditions + [condition])
 
 

@@ -334,6 +334,20 @@ def test_write_table_full(tree):
         assert result.metadata == metadata
         assert result.specs == specs
 
+        # A string column is `object` in the structure's meta (from the Arrow
+        # schema) but may be sent as `string` by the server (dask reads
+        # Parquet that way); reading a partition must not fail on that.
+        df = pandas.DataFrame({"number": [1.0, 2.0], "label": ["x", "y"]})
+        client.write_table(df, key="strings")
+        for structure_clients in ["numpy", "dask"]:
+            node = from_context(context, structure_clients=structure_clients)["strings"]
+            partition = node.read_partition(0)
+            if structure_clients == "dask":
+                partition = partition.compute()
+            assert list(partition["label"]) == ["x", "y"]
+            with pytest.raises(IndexError):
+                node.read_partition(1)
+
 
 @pytest.mark.parametrize(
     "column_name, table_name",
@@ -557,6 +571,10 @@ def test_metadata_revisions(tree):
         client = from_context(context)
         ac = client.write_array([1, 2, 3], key="revise_me")
         assert len(ac.metadata_revisions[:]) == 0
+        # Iteration ends at once; indexing is out of range.
+        assert list(ac.metadata_revisions) == []
+        with pytest.raises(IndexError):
+            ac.metadata_revisions[0]
         ac.update_metadata(metadata={"a": 1})
         assert ac.metadata["a"] == 1
         assert client["revise_me"].metadata["a"] == 1
@@ -565,6 +583,11 @@ def test_metadata_revisions(tree):
         assert ac.metadata["a"] == 2
         assert client["revise_me"].metadata["a"] == 2
         assert len(ac.metadata_revisions[:]) == 2
+        # Iteration yields every revision once, then ends.
+        assert [r["revision_number"] for r in ac.metadata_revisions] == [1, 2]
+        assert ac.metadata_revisions[1]["revision_number"] == 2
+        with pytest.raises(IndexError):
+            ac.metadata_revisions[2]
         ac.metadata_revisions.delete_revision(1)
         assert len(ac.metadata_revisions[:]) == 1
         with fail_with_status_code(HTTP_404_NOT_FOUND):

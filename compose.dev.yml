@@ -14,6 +14,11 @@ services:
       - TILED_WEBHOOKS_ALLOW_DELIVERY_HOSTS=${TILED_WEBHOOKS_ALLOW_DELIVERY_HOSTS:-}
       - TILED_WEBHOOKS_ALLOW_HTTP=${TILED_WEBHOOKS_ALLOW_HTTP:-false}
       - TILED_WEBHOOKS_ALLOW_PRIVATE_ADDRESSES=${TILED_WEBHOOKS_ALLOW_PRIVATE_ADDRESSES:-false}
+      # Export OpenTelemetry traces to the collector (see compose.monitoring.yml).
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
+      - OTEL_SERVICE_NAME=tiled
+      # Don't trace health checks and metrics scrapes (operational chatter).
+      - OTEL_PYTHON_FASTAPI_EXCLUDED_URLS=healthz,api/v1/metrics
     volumes:
       - tiled_data:/storage
     ports:

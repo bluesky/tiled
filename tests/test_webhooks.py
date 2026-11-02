@@ -84,6 +84,8 @@ def _capturing_mock() -> list[dict[str, Any]]:
 def app(tmpdir_module: Any) -> FastAPI:
     tree = in_memory(
         writable_storage=[f"file://localhost{tmpdir_module / 'data'}"],
+        # Streaming cache on, as in production, to catch payload regressions.
+        cache_config={"uri": "memory://", "data_ttl": 60, "seq_ttl": 60},
     )
     return build_app(
         tree,
@@ -491,6 +493,7 @@ class TestWebhookIntegration:
         event = received[0]
         assert event["type"] == EventType.container_child_metadata_updated
         assert event["key"] == node_key
+        assert event["metadata"] == {"color": "red"}
 
     @respx.mock
     def test_event_filter_excludes_wrong_type(

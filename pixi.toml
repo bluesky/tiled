@@ -4,6 +4,14 @@ channels = ["conda-forge"]
 name = "tiled"
 platforms = ["linux-64", "linux-aarch64", "osx-arm64", "osx-64", "win-64"]
 version = "0.2.2"
+# Match the pixi version that .github/workflows/update-pixi-lock.yml uses, so
+# that pixi.lock is written the same way locally and in CI.
+requires-pixi = ">=0.83.0"
+# Ignore packages published in the last 3 days, matching Dependabot's default
+# cooldown for uv.lock, to reduce the risk of picking up a broken or
+# compromised release. To let a reviewed release through sooner, exempt it:
+#   pixi workspace exclude-newer exempt <package>==<version>
+exclude-newer = "3d"
 
 [tasks]
 
