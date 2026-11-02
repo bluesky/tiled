@@ -134,11 +134,16 @@ class _TestClientWebsocketWrapper:
         """Receive data from websocket with consistent interface."""
         # Hide this import because it is only used for ASGI (tests)
         # we do not want a server dependency in the client.
+        import anyio
         import starlette.websockets
 
         try:
             return self._websocket.receive_bytes()
         except starlette.websockets.WebSocketDisconnect:
+            return None
+        except anyio.ClosedResourceError:
+            # starlette >=1.0 raises this when receiving on a session that has been
+            # closed (e.g. the test session was torn down); treat it the same as a disconnect.
             return None
 
     def close(self):

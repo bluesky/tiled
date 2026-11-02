@@ -76,6 +76,10 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Fixed
 
+- Treat `anyio.ClosedResourceError` as a normal disconnect in the
+  test-client websocket wrapper: starlette >=1.0 raises it when receiving
+  on a closed session, which previously killed streaming subscription
+  worker threads with unhandled exceptions during test teardown.
 - `DELETE /api/v1/asset/{path}?id=N` now refuses (409) the asset of a
   SQL-backed table. That asset is the storage database, shared by all such
   tables, so it can not be deleted; delete the node to remove its data.
