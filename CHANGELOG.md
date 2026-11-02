@@ -76,6 +76,9 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Fixed
 
+- `DELETE /api/v1/asset/{path}?id=N` now refuses (409) the asset of a
+  SQL-backed table. That asset is the storage database, shared by all such
+  tables, so it can not be deleted; delete the node to remove its data.
 - Accept `Authorization: Bearer TOKEN` on WebSocket connections. The handshake
   rejected any `Authorization` header that was not `Apikey SECRET` with a 400,
   so a client holding an access token could not send it as a header. The
