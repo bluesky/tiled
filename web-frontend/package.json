@@ -15,7 +15,7 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "@babel/core": "^7.28.3",
+    "@babel/core": "^8.0.9",
     "@babel/helper-compilation-targets": "^7.27.2",
     "@base-ui-components/react": "^1.0.0-beta.2",
     "@emotion/react": "^11.7.1",
