@@ -394,6 +394,19 @@ def test_file_with_links(example_file_with_links, buffer):
     assert numpy.allclose(numpy.array(file["a/b/extr_link/x"]), 2 * numpy.ones((5, 5)))
 
 
+def test_file_with_links_export_preserves_soft_link(example_file_with_links, buffer):
+    """Export an internal soft link as a link, not as a copy of the data it points at."""
+
+    h5py = pytest.importorskip("h5py")
+    tree = HDF5Adapter.from_uris(example_file_with_links)
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+    client.export(buffer, format="application/x-hdf5")
+    file = h5py.File(buffer, "r")
+    assert isinstance(file.get("a/b/soft_link", getlink=True), h5py.SoftLink)
+    assert numpy.allclose(numpy.array(file["a/b/soft_link"]), numpy.ones((3, 3)))
+
+
 def test_file_with_broken_links(example_file_with_links):
     """Raise an error when accessing non-existing keys."""
 
