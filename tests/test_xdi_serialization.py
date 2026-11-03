@@ -11,6 +11,7 @@ with tables tagged with Spec("xdi", ...). The primary use case is:
 import collections
 import io
 import re
+import zipfile
 
 import pandas
 import pytest
@@ -107,6 +108,50 @@ def _build_tree():
             "plain_table": DataFrameAdapter.from_pandas(
                 XDI_DF.copy(),
                 npartitions=1,
+            ),
+            "xdi_collection": MapAdapter(
+                {
+                    "spectrum_1": DataFrameAdapter.from_pandas(
+                        XDI_DF.copy(),
+                        npartitions=1,
+                        metadata=XDI_METADATA,
+                        specs=[Spec("xdi", version="1.0")],
+                    ),
+                    "ion_chambers": DataFrameAdapter.from_pandas(
+                        XDI_DF[["i0"]].copy(),
+                        npartitions=1,
+                    ),
+                    "nested": MapAdapter(
+                        {
+                            "spectrum_2": DataFrameAdapter.from_pandas(
+                                XDI_DF[["energy", "mutrans"]].copy(),
+                                npartitions=1,
+                                metadata=XDI_METADATA_NO_COMMENTS,
+                                specs=[Spec("xdi", version="1.0")],
+                            ),
+                        }
+                    ),
+                },
+                specs=[Spec("xdi", version="1.0")],
+            ),
+            "xdi_collection_without_spectra": MapAdapter(
+                {
+                    "ion_chambers": DataFrameAdapter.from_pandas(
+                        XDI_DF[["i0"]].copy(),
+                        npartitions=1,
+                    ),
+                },
+                specs=[Spec("xdi", version="1.0")],
+            ),
+            "plain_collection": MapAdapter(
+                {
+                    "spectrum": DataFrameAdapter.from_pandas(
+                        XDI_DF.copy(),
+                        npartitions=1,
+                        metadata=XDI_METADATA,
+                        specs=[Spec("xdi", version="1.0")],
+                    ),
+                },
             ),
         }
     )
@@ -344,6 +389,39 @@ def test_xdi_format_alias(client):
     assert _export_to_string(client["xdi_table"], format="xdi") == _export_to_string(
         client["xdi_table"], format="application/x-xdi"
     )
+
+
+# ---------------------------------------------------------------------------
+# Tests: ZIP archive export for XDI-tagged containers
+# ---------------------------------------------------------------------------
+
+
+def test_xdi_container_exports_tagged_tables_as_zip(client):
+    """An XDI-tagged container exports only XDI-tagged table descendants."""
+    buffer = io.BytesIO()
+    client["xdi_collection"].export(buffer, format="application/zip")
+
+    buffer.seek(0)
+    with zipfile.ZipFile(buffer) as archive:
+        assert archive.namelist() == ["spectrum_1.xdi", "nested/spectrum_2.xdi"]
+        assert archive.read("spectrum_1.xdi").startswith(b"# XDI/1.0 GSE/1.0\n")
+        spectrum_2 = archive.read("nested/spectrum_2.xdi").decode()
+        assert spectrum_2.startswith("# XDI/1.0\n")
+        assert "# energy mutrans" in spectrum_2
+
+
+def test_xdi_zip_export_requires_tagged_descendant_table(client):
+    """An XDI-tagged container with no XDI tables fails with a clear error."""
+    with pytest.raises(ClientError, match="no descendant tables are tagged"):
+        _export_to_string(
+            client["xdi_collection_without_spectra"], format="application/zip"
+        )
+
+
+def test_untagged_container_cannot_export_xdi_zip(client):
+    """An untagged container cannot request the XDI ZIP media type."""
+    with pytest.raises(ClientError):
+        _export_to_string(client["plain_collection"], format="application/zip")
 
 
 # ---------------------------------------------------------------------------
