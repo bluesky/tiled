@@ -50,7 +50,7 @@
     "@types/react-dom": "^19.1.5",
     "@types/react-syntax-highlighter": "^13.5.2",
     "@types/recharts": "^1.8.23",
-    "@vitejs/plugin-react": "^5.0.1",
+    "@vitejs/plugin-react": "^6.1.2",
     "@vitest/coverage-v8": "^4.1.12",
     "jsdom": "^26.1.0",
     "playwright": "^1.52.0",
