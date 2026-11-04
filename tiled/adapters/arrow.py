@@ -6,7 +6,6 @@ from urllib.parse import quote_plus
 
 import pandas
 import pyarrow
-import pyarrow.feather as feather
 
 from tiled.adapters.core import Adapter
 
@@ -22,7 +21,13 @@ from .utils import init_adapter_from_catalog
 
 
 class ArrowAdapter(Adapter[TableStructure]):
-    """ArrowAdapter Class"""
+    """Read and write Arrow IPC file partitions.
+
+    Existing ``.arrow`` files and Feather v2 files can be opened and
+    registered. Feather v2, the default output of
+    ``pyarrow.feather.write_feather``, is an Arrow IPC file. Feather v1 and
+    the Arrow IPC stream format (``.arrows``) are not supported.
+    """
 
     structure_family: StructureFamily = StructureFamily.table
 
@@ -37,8 +42,19 @@ class ArrowAdapter(Adapter[TableStructure]):
         # TODO Store data_uris instead and generalize to non-file schemes.
         self._partition_paths = [path_from_uri(uri) for uri in data_uris]
         if structure is None:
-            table = feather.read_table(self._partition_paths)
-            structure = TableStructure.from_arrow_table(table)
+            if not self._partition_paths:
+                raise ValueError(
+                    "Cannot infer structure from an empty list of Arrow files"
+                )
+            # Infer structure without loading row data. Exhaust the iterator so
+            # that every reader is closed before checking partition schemas.
+            schemas = [reader.schema for reader in self.reader_handle_all()]
+            schema = schemas[0]
+            if any(not schema.equals(other) for other in schemas[1:]):
+                raise ValueError("Arrow files must have the same schema")
+            structure = TableStructure.from_schema(
+                schema, npartitions=len(self._partition_paths)
+            )
         super().__init__(structure, metadata=metadata, specs=specs)
 
     @classmethod
@@ -144,7 +160,15 @@ class ArrowAdapter(Adapter[TableStructure]):
             )
         ]
 
-    #
+    @classmethod
+    def from_uris(
+        cls,
+        *data_uris: str,
+        **kwargs: Any | None,
+    ) -> "ArrowAdapter":
+        """Open Arrow IPC files, including Feather v2, as one table."""
+        return cls(list(data_uris), **kwargs)
+
     @classmethod
     def from_single_file(
         cls,
