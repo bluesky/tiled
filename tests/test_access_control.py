@@ -1,7 +1,6 @@
 import asyncio
 import json
-import subprocess
-import sys
+from collections.abc import Callable
 from copy import deepcopy
 
 import numpy
@@ -13,7 +12,9 @@ from starlette.status import HTTP_403_FORBIDDEN
 
 from tiled.access_control.access_tags import AccessTagsCompiler
 from tiled.access_control.scopes import ALL_SCOPES
+from tiled.catalog.core import initialize_catalog_database
 from tiled.client import Context, from_context
+from tiled.client.container import Container
 from tiled.queries import Key
 from tiled.server.app import build_app_from_config
 from tiled.server.connection_pool import close_database_connection_pool
@@ -361,19 +362,7 @@ def compile_access_tags_tables(catalog_uri, tmp_path_factory):
     # as the app's init_if_not_exists path does, so a file-based catalog passes
     # the app's startup revision check. initialize_database alone does not
     # stamp.
-    subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "tiled",
-            "catalog",
-            "init",
-            "--if-not-exists",
-            ensure_specified_sql_driver(catalog_uri),
-        ],
-        check=True,
-        capture_output=True,
-    )
+    initialize_catalog_database(catalog_uri)
 
     compiler = _make_compiler(access_tag_config, catalog_uri)
     # Constructing the compiler opened a pooled catalog engine keyed by the
@@ -537,15 +526,15 @@ def _principal_has_scope_on_access_tag(
     """
     sql = (
         "SELECT 1 "
-        "FROM access_tag_principal_scopes_association aps "
-        "JOIN access_tags t ON t.id = aps.tag_id "
-        "JOIN access_tags_principals p ON p.id = aps.principal_id "
+        "FROM access_grants ag "
+        "JOIN access_tags t ON t.id = ag.tag_id "
+        "JOIN access_tags_principals p ON p.id = ag.principal_id "
     )
     params = {"t": access_tag_name, "p": principal}
     sql += "WHERE t.name = :t AND p.name = :p"
     if scope_name is not None:
         params["s"] = scope_name
-        sql += " AND aps.scope = :s"
+        sql += " AND ag.scope = :s"
     rows = catalog_db_execute(catalog_uri, [(sql, params)])
     return bool(rows)
 
@@ -708,7 +697,7 @@ async def test_catalog_rejects_an_invalid_scope(
             async with engine.begin() as conn:
                 await conn.execute(
                     text(
-                        "INSERT INTO access_tag_principal_scopes_association "
+                        "INSERT INTO access_grants "
                         "(tag_id, principal_id, scope) "
                         "VALUES (:t, :p, 'not:a:real:scope')"
                     ),
@@ -928,10 +917,10 @@ def test_auto_tag_does_not_leak_scopes_to_inherited_tag():
             result = await connection.execute(
                 text(
                     "SELECT t.name "
-                    "FROM access_tag_principal_scopes_association aps "
-                    "JOIN access_tags t ON t.id = aps.tag_id "
-                    "JOIN access_tags_principals p ON p.id = aps.principal_id "
-                    "WHERE p.name = :p AND aps.scope = :s"
+                    "FROM access_grants ag "
+                    "JOIN access_tags t ON t.id = ag.tag_id "
+                    "JOIN access_tags_principals p ON p.id = ag.principal_id "
+                    "WHERE p.name = :p AND ag.scope = :s"
                 ),
                 {"p": "sue", "s": "delete:node"},
             )
@@ -1166,7 +1155,9 @@ def test_public_anonymous_access_control(access_control_test_context_factory):
         anon_client[top][data]
 
 
-def test_admin_access_control(access_control_test_context_factory):
+def test_admin_access_control(
+    access_control_test_context_factory: Callable[..., Container], catalog_uri: str
+) -> None:
     """
     Test that admin accounts have various elevated privileges, including:
     - Apply/remove public tag to/from a node
@@ -1204,6 +1195,7 @@ def test_admin_access_control(access_control_test_context_factory):
         # apply a tag which is not defined
         with fail_with_status_code(HTTP_403_FORBIDDEN):
             admin_client[top][data].replace_metadata(access_tags=["undefined_tag"])
+        assert not _access_tag_exists(catalog_uri, "undefined_tag")
 
 
 def test_update_node_access_control(access_control_test_context_factory, catalog_uri):

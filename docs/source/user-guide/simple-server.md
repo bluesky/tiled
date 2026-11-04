@@ -19,7 +19,7 @@ from tiled.client import simple
 c = simple()
 
 # Or use persistent storage
-c = simple('path/to/some/directory')
+c = simple("path/to/some/directory")
 ```
 
 When the server starts, a URL is printed to the console. Each launch generates a
@@ -35,7 +35,7 @@ For security reasons, the server administrator must designate which directories
 data can be registered from, like so.
 
 ```python
-c = simple(readable_storage=['path/to/some/directory/', 'another_directory/'])
+c = simple(readable_storage=["path/to/some/directory/", "another_directory/"])
 ```
 
 ## Manual server management
@@ -55,7 +55,7 @@ The `readable_storage` option works the same way.
 
 ```python
 server = SimpleTiledServer(
-    readable_storage=['path/to/some/directory/', 'another_directory/']
+    readable_storage=["path/to/some/directory/", "another_directory/"]
 )
 ```
 

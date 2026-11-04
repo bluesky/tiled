@@ -7,6 +7,175 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Added
 
+- OpenTelemetry tracing for the server, exported over OTLP. The example monitoring
+  stack (`compose.monitoring.yml`) now includes an OpenTelemetry Collector, Jaeger,
+  and Grafana Tempo (traces are sent to both backends), and the Collector also
+  scrapes and re-exposes Tiled's Prometheus metrics.
+- Emit OpenTelemetry spans for internal request phases (access control, read,
+  tokenize, pack) so they appear as child spans in a request's trace, giving a
+  per-request breakdown of where time is spent.
+- Return the request's OpenTelemetry trace ID in the `X-Tiled-Trace-ID` response
+  header (also on server errors, and exposed via CORS) when the request is
+  traced, and include it in the Python client's error messages and in the server's
+  log lines, so a failing or slow request can be looked up in the tracing backend.
+  The request's span records the correlation ID (`X-Tiled-Request-ID`) as the
+  `tiled.request_id` attribute, so the trace can also be found from it.
+- Disable FastAPI's built-in OpenTelemetry auto-configuration
+  (`telemetry={"auto_configure": False}`) so that, on FastAPI >=0.142, it does
+  not register a second OTLP exporter alongside Tiled's own tracing pipeline and
+  export every span twice.
+- Emit OpenTelemetry spans for PostgreSQL queries (asyncpg for the catalog and
+  authentication databases, ADBC for the storage database), Redis commands, and
+  outbound HTTP calls (httpx: OIDC, webhooks, external policy servers), so
+  external-service calls appear in traces. The example monitoring stack also
+  generates a service graph viewable in Grafana, with Tiled's separate Postgres
+  databases (catalog, storage, authn) and Redis shown as distinct nodes.
+
+### Changed
+
+- OIDC authenticators now verify id_tokens (and their `at_hash`) at login via
+  `verify_login`, while `decode_token` only decodes access tokens.
+
+- On PostgreSQL, the access-control filter passes the resolved tag ids as a
+  single array parameter (`tag_id = ANY(...)`) instead of one bind parameter
+  per tag. For principals with many tags this avoids huge, per-tag-count
+  prepared statements, whose parameter-blind generic plans defeated the
+  planner statistics.
+
+- Tiled now manages its connection pools to tabular storage more correctly.
+  Also, it is now not allowed to use two storage databases with the same
+  database on different hosts.
+- Database initialization with `init_if_not_exists` (the catalog, via
+  `tiled.catalog.from_uri` and server configuration; and the authentication
+  database, via server configuration) is now done in-process instead of by
+  spawning a `tiled catalog init` or `tiled admin initialize-database`
+  subprocess, which took about 1-2 s per call. For an in-memory SQLite catalog
+  no initialization is done at all at this point, since it is transient and
+  initialized at server startup. This speeds up server startup, `SimpleTiledServer`,
+  and the test suite.
+- `tiled.utils.Conflicts` now subclasses `ValueError`, and
+  `ArrayClient.patch` raises `Conflicts` when the server reports a 409
+  (e.g. the patch would overwrite data without `extend=True`), matching
+  `RaggedClient.patch`. Code catching `ValueError` keeps working.
+- Replace the `httpx` dependency with `httpx2`. Objects passed into Tiled,
+  such as a custom `auth=` or `timeout=`, must now be `httpx2` types, and
+  exceptions raised are `httpx2` exceptions. Python 3.10 is no longer
+  supported, because httpx2 requires Python 3.11 or newer.
+- Python 3.14 is now officially supported.
+- String-valued enums (`StructureFamily`, `Kind`, `Endianness`, `Management`,
+  `SparseLayout`, `Operator`, `ScopeName`, `EntryFields`, `PrincipalType`,
+  `EnvelopeFormat`, `EventType`, `DeliveryOutcome`) now subclass
+  `enum.StrEnum`. Comparison with plain strings, `.value`, and serialization
+  are unchanged, but `str()`, `format()`, and f-strings of a member now give
+  its value (e.g. `"array"`) instead of its qualified name
+  (`"StructureFamily.array"`). Error messages that include these values
+  change accordingly.
+- Type annotations throughout use PEP 604 (`X | Y`) and built-in generics
+  (`list[str]`) instead of `typing.Union`, `Optional`, `List`, etc., enforced
+  by the ruff `UP` (pyupgrade) rules.
+
+### Fixed
+
+- Treat `anyio.ClosedResourceError` as a normal disconnect in the
+  test-client websocket wrapper: starlette >=1.0 raises it when receiving
+  on a closed session, which previously killed streaming subscription
+  worker threads with unhandled exceptions during test teardown.
+- `DELETE /api/v1/asset/{path}?id=N` now refuses (409) the asset of a
+  SQL-backed table. That asset is the storage database, shared by all such
+  tables, so it can not be deleted; delete the node to remove its data.
+- Accept `Authorization: Bearer TOKEN` on WebSocket connections. The handshake
+  rejected any `Authorization` header that was not `Apikey SECRET` with a 400,
+  so a client holding an access token could not send it as a header. The
+  header is now dispatched on its scheme, matching the HTTP routes: `Bearer` is
+  read as an access token, `Apikey` as an API key, and any other scheme is
+  rejected with a 400 that is also logged on the server. The `access_token`
+  query parameter still works, for browsers that cannot set headers, and an
+  `api_key` query parameter is now accepted too, as on the HTTP routes.
+- Fix construction of the `Principal` for WebSocket connections authenticated
+  with an access token from an external (OIDC) provider, which raised
+  `AttributeError` and surfaced as a 500.
+- The Python client's subscriptions now authenticate the WebSocket with the
+  session's own credentials: its API key if it has one, otherwise its access
+  token as `Bearer`. Because a WebSocket handshake cannot prompt a refresh with
+  a 401, an access token within a minute of expiring is refreshed before
+  connecting. Only a session with neither falls back to minting a short-lived
+  API key per connection, and only a key minted this way is revoked afterwards.
+- Fixed `read_partition` on a table with a string column, which failed with
+  a dtype mismatch (`object` in the structure, `string` in the data sent by
+  the server). The eager client now fetches the partition directly, without
+  dask; the dask client no longer checks the partition against the
+  structure's meta, as `read` already did not.
+- Iterating over `node.metadata_revisions` (e.g. `list(...)`) ends after the
+  last revision instead of failing with `ValueError`, and fetches the
+  revisions page by page rather than one request per revision. Indexing past
+  the end raises `IndexError`.
+- Fixed `ArrayClient.patch` on arrays whose shape is not a whole number of
+  chunks. The check for writing past the end, and the new shape after
+  `extend=True`, used the Zarr array's shape, which is rounded up to whole
+  chunks, so a patch could silently grow the array or add fill values.
+- Fixed serving HDF5 files that have an empty (null dataspace) attribute or a
+  byte-string attribute that is not valid UTF-8. Either one made every node
+  in the file fail to load. Empty attributes are now served as `null`, and
+  non-UTF-8 byte strings are decoded as Windows-1252, or as Latin-1 when
+  they are not valid Windows-1252 either.
+- Webhook URL validation performed a reverse DNS lookup (a network round-trip)
+  for every address the URL resolves to. It is now done only when the address
+  is in a blocked network and `allow_delivery_hosts` is configured, the only
+  case where its result is used.
+- Fixed `database.init_if_not_exists: true` in the server configuration for an
+  authentication database whose URI contains a password: the password was
+  masked in the URI handed to the initialization step, which then failed to
+  connect.
+- Improved the deletion of large subtrees with many associated assets (PostgreSQL only).
+- Fixed client-side accumulation of metadata revisions across pages: a slice
+  spanning more than one page (more than 100 revisions) returned subsequent
+  pages as nested lists instead of revision records.
+- Fixed `CompositeClient.get_contents(maxlen=...)`, which kept requesting a
+  `None` URL when the pages were exhausted before reaching `maxlen`.
+- Fixed `from_context` (and therefore `from_uri`) ignoring
+  `include_data_sources=True` in the initial metadata fetch, so a client
+  pointed directly at a node could not see its data sources.
+- Fixed the deprecation warning for the removed `prompt_for_reauthentication`
+  parameter of `from_uri`, which was never emitted.
+- Fixed a double slash (e.g. `/metadata//x`) in the links returned when
+  creating a node, which the client then followed for subsequent requests.
+- Fixed `ExternalPolicyDecisionPoint` allowing writes its policy service
+  denied. A `{"result": false}` reply was not treated as a denial, so nodes,
+  graph entities, and links were written anyway. Such writes now fail with
+  403 (a GraphQL error for graph writes).
+- Metadata queries on SQLite compare the stored JSON value with its own type
+  again under SQLAlchemy 2.1 (e.g. `Eq("number", "0")` no longer matches a
+  stored `0`), and the `sqlalchemy <2.1` pin is removed.
+- `Eq(key, None)` and `NotEq(key, None)` work on SQLite (they raised an error)
+  and, as on PostgreSQL, match an explicit JSON null but not a missing key.
+- On SQLite, a `None` in an `In` or `NotIn` list matches an explicit JSON null
+  but not a missing key, as `Eq`/`NotEq` and the in-memory adapter do.
+- Fixed access tags approved by an external access policy failing with 403
+  "Cannot apply access tags that are not defined" on nodes, graph entities,
+  and links. Since v0.2.19, a tag needs a row in the catalog database, and
+  only `user:` and `service:` tags got one on write. Tags an access policy
+  approved now get a row on first use.
+
+### Maintenance
+
+- Fixed flaky `test_thread_lock`, which started its timer after the worker
+  threads had already started.
+- Commit `uv.lock` and `pixi.lock`. CI on pull requests and pushes installs
+  the locked versions (`uv sync --locked`), so a new release of a dependency
+  cannot break unrelated pull requests; the nightly scheduled run re-resolves
+  to the latest releases (`uv sync --upgrade`) to catch such breakage early.
+  Both lockfiles are refreshed by pull requests on the 1st and 15th of each
+  month (Dependabot for `uv.lock`, a workflow for `pixi.lock`), skipping
+  releases less than 3 days old (Dependabot's cooldown, and
+  `exclude-newer = "3d"` in `pixi.toml`). `pixi.toml` now requires
+  pixi >=0.83.0. Contributors who change dependencies should run `uv lock`
+  (for `pyproject.toml`) or `pixi lock` (for `pixi.toml`) and commit the
+  updated lockfile.
+
+## v0.2.19 (2026-10-13)
+
+### Added
+
 - Expose the Deployment `strategy` in the helm chart, so that a deployment can
   use `Recreate` instead of the default `RollingUpdate`.
 - Add a `DELETE /api/v1/asset/{path}?id=N` endpoint to dissociate a single
@@ -19,6 +188,17 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - Add `Container.register`, a synchronous client method to register external,
   server-accessible files as a single dataset (array, table, etc.).
 - Add registration support for Parquet files.
+- OpenTelemetry tracing for the server, exported over OTLP. The example monitoring
+  stack (`compose.monitoring.yml`) now includes an OpenTelemetry Collector, Jaeger,
+  and Grafana Tempo (traces are sent to both backends), and the Collector also
+  scrapes and re-exposes Tiled's Prometheus metrics.
+- Emit OpenTelemetry spans for internal request phases (access control, read,
+  tokenize, pack) so they appear as child spans in a request's trace, giving a
+  per-request breakdown of where time is spent.
+- Disable FastAPI's built-in OpenTelemetry auto-configuration
+  (`telemetry={"auto_configure": False}`) so that, on FastAPI >=0.142, it does
+  not register a second OTLP exporter alongside Tiled's own tracing pipeline and
+  export every span twice.
 - Documentation: a user-guide page on validating metadata against custom specs
   via server configuration.
 - ACL filtering by access tags ids resolved from access tag names on the server.
@@ -55,17 +235,21 @@ Write the date in place of the "Unreleased" in the case a new version is release
   node associations but lose their grants, preventing transient configuration
   failures from erasing access-control information. The server remains
   compatible with older clients that use `access_blob`.
-- Deployment note: this change includes three sequential catalog migrations
-  (an intermediate blob-association schema, conversion to tags, and a
-  parent-scoped node-tag association). Apply the full migration chain without
-  stopping at an intermediate revision. This also drops the old metadata
-  index; deploy the improved replacement index from #1521 as well.
+- Deployment note: this change includes four sequential catalog migrations
+  (an intermediate blob-association schema, conversion to tags, a
+  parent-scoped node-tag association, and naming adjustment). Apply the full
+  migration chain without stopping at an intermediate revision. This also drops
+  the old metadata index; deploy the improved replacement index from #1521
+  as well.
 - Object-storage (S3) tests now run against an in-process `moto` S3 server
   started automatically by the test suite, instead of requiring a MinIO
   container (whose image was removed from Docker Hub). Set `TILED_TEST_BUCKET`
   to point the tests at a real MinIO/S3 endpoint instead.
 - The server depends on `PyJWT` instead of `python-jose` to sign and verify
   JSON Web Tokens.
+- Remove `curl` from the container image; it was only used for health checks.
+  The `compose.yml` and `compose.dev.yml` health checks now use `httpx`
+  instead.
 
 ### Fixed
 
@@ -81,8 +265,23 @@ Write the date in place of the "Unreleased" in the case a new version is release
   on-disk shape has diverged from the shape recorded in the catalog
   structure, which can happen while an array is being extended
   (e.g. streaming appends).
+- Make retrying of non-idempotent requests (create and append) safe against duplication.
 - `distinct` on a catalog node counted nodes across the whole catalog instead of
   only the node's children. It is now scoped to the requested node.
+- Fix the background task that purges expired Sessions and API keys. It
+  crashed on its first run and was never retried, so expired entries
+  (including the short-lived keys minted for websocket subscriptions)
+  could accumulate until a Principal hit the API-key limit. Expired entries
+  are now removed with a single bulk `DELETE`, so a large backlog is not loaded into
+  memory. The task also purges expired PendingSessions (device-code login attempts).
+- Deleting a Session is no longer blocked by a pending device-code login that
+  still references it: `pending_sessions.session_id` is now `ON DELETE SET
+  NULL`, so the reference is detached instead.
+- On shutdown, the server now stops its background tasks, and waits for them,
+  before closing the database connection pool. Closing the pool first could
+  leave a background task running and hang shutdown.
+- `from_uri` applies its `timeout` and `trust_env` arguments, or the default
+  timeouts when none are given, to the first request it makes to an `http://` URI.
 
 ## v0.2.18 (2026-09-02)
 

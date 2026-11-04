@@ -238,5 +238,9 @@ class PendingSession(Base):
     )
     user_code = Column(Unicode(8), index=True, nullable=False)
     expiration_time = Column(DateTime(timezone=True), nullable=False)
-    session_id = Column(Integer, ForeignKey("sessions.id"), nullable=True)
+    # SET NULL so that deleting a Session (e.g. purging an expired one) is
+    # never blocked by a pending session that still references it.
+    session_id = Column(
+        Integer, ForeignKey("sessions.id", ondelete="SET NULL"), nullable=True
+    )
     session: Mapped[Session] = relationship(lazy="joined")

@@ -1,6 +1,7 @@
 import asyncio
 import collections
 import contextvars
+import importlib.metadata
 import logging
 import os
 import secrets
@@ -9,9 +10,10 @@ import urllib.parse
 import warnings
 from contextlib import asynccontextmanager
 from functools import cache, partial
+from html import escape
 from pathlib import Path
 from textwrap import dedent
-from typing import Any, Optional, Union
+from typing import Any
 
 import anyio
 import packaging.version
@@ -24,6 +26,7 @@ from fastapi.openapi.utils import get_openapi
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.datastructures import MutableHeaders
 from starlette.middleware.base import RequestResponseEndpoint
 from starlette.responses import FileResponse
 from starlette.status import (
@@ -33,9 +36,11 @@ from starlette.status import (
     HTTP_403_FORBIDDEN,
     HTTP_404_NOT_FOUND,
     HTTP_409_CONFLICT,
+    HTTP_410_GONE,
     HTTP_422_UNPROCESSABLE_CONTENT,
     HTTP_500_INTERNAL_SERVER_ERROR,
 )
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from ..access_control.protocols import AccessPolicy
 from ..access_control.scopes import ScopeName
@@ -59,7 +64,13 @@ from ..media_type_registration import (
 )
 from ..query_registration import QueryRegistry, default_query_registry
 from ..type_aliases import AppTask, TaskMap
-from ..utils import SHARE_TILED_PATH, Conflicts, UnsafeIdentifier, UnsupportedQueryType
+from ..utils import (
+    SHARE_TILED_PATH,
+    BrokenLink,
+    Conflicts,
+    UnsafeIdentifier,
+    UnsupportedQueryType,
+)
 from ..validation_registration import ValidationRegistry, default_validation_registry
 from ._backcompat import raw_python_tiled_client_version
 from .authentication import move_api_key
@@ -67,7 +78,16 @@ from .compression import CompressionMiddleware
 from .protocols import ExternalAuthenticator, InternalAuthenticator
 from .router import get_metrics_router, get_router
 from .settings import Settings, get_settings
-from .utils import API_KEY_COOKIE_NAME, CSRF_COOKIE_NAME, get_root_url, record_timing
+from .utils import (
+    API_KEY_COOKIE_NAME,
+    CSRF_COOKIE_NAME,
+    TRACE_ID_HEADER_NAME,
+    get_root_url,
+    get_trace_id,
+    normalize_root_path,
+    record_timing,
+    request_trace_id,
+)
 from .webhook_router import UrlValidator, get_webhook_router
 from .zarr import get_zarr_router_v2, get_zarr_router_v3
 
@@ -79,6 +99,7 @@ CSRF_HEADER_NAME = "x-csrf"
 CSRF_QUERY_PARAMETER = "csrf"
 
 MINIMUM_SUPPORTED_PYTHON_CLIENT_VERSION = packaging.version.parse("0.1.0a104")
+FASTAPI_VERSION = packaging.version.Version(importlib.metadata.version("fastapi"))
 
 logger = logging.getLogger(__name__)
 logger.setLevel("INFO")
@@ -90,6 +111,15 @@ logger.addHandler(handler)
 
 # This is used to pass the currently-authenticated principal into the logger.
 current_principal = contextvars.ContextVar("current_principal")
+
+
+# Emitted by web-frontend's build; the prefix is unknown until runtime.
+UI_BASE_TAG = '<base href="/ui/" />'
+
+
+def render_ui_index(index_html: str, root_path: str) -> str:
+    """Point the UI's <base> at the prefix this server is served under."""
+    return index_html.replace(UI_BASE_TAG, f'<base href="{escape(root_path)}/ui/">')
 
 
 def custom_openapi(app):
@@ -149,18 +179,18 @@ def _find_catalog_context(tree):
 
 def build_app(
     tree,
-    authentication: Optional[Authentication] = None,
+    authentication: Authentication | None = None,
     server_settings=None,
-    query_registry: Optional[QueryRegistry] = None,
-    serialization_registry: Optional[SerializationRegistry] = None,
-    deserialization_registry: Optional[SerializationRegistry] = None,
-    compression_registry: Optional[CompressionRegistry] = None,
-    validation_registry: Optional[ValidationRegistry] = None,
-    tasks: Optional[dict[str, list[AppTask]]] = None,
+    query_registry: QueryRegistry | None = None,
+    serialization_registry: SerializationRegistry | None = None,
+    deserialization_registry: SerializationRegistry | None = None,
+    compression_registry: CompressionRegistry | None = None,
+    validation_registry: ValidationRegistry | None = None,
+    tasks: dict[str, list[AppTask]] | None = None,
     scalable=False,
-    access_policy: Optional[AccessPolicy] = None,
-    include_routers: Optional[list[APIRouter]] = None,
-    webhook_url_validator: Optional[UrlValidator] = None,
+    access_policy: AccessPolicy | None = None,
+    include_routers: list[APIRouter] | None = None,
+    webhook_url_validator: UrlValidator | None = None,
 ):
     """
     Serve a Tree
@@ -286,7 +316,17 @@ def build_app(
         finally:
             await shutdown_event()
 
-    app = FastAPI(lifespan=lifespan, strict_content_type=False)
+    # FastAPI >=0.142 ships built-in OpenTelemetry support that, when
+    # `OTEL_EXPORTER_OTLP_ENDPOINT` (or a related variable) is set,
+    # auto-registers its own OTLP export pipeline on the global tracer
+    # provider. Tiled configures and manages its own tracing pipeline (see
+    # `_setup_opentelemetry_tracing`), so FastAPI's auto-configuration
+    # would register a second exporter and emit every span twice. Opt out.
+    kwargs = dict(lifespan=lifespan, strict_content_type=False)
+    if FASTAPI_VERSION >= packaging.version.Version("0.142"):
+        kwargs["telemetry"] = {"auto_configure": False}
+
+    app = FastAPI(**kwargs)
 
     # Healthcheck for deployment to containerized systems, needs to preempt other responses.
     # Standardized for Kubernetes, but also used by other systems.
@@ -297,6 +337,16 @@ def build_app(
     if SHARE_TILED_PATH:
         # If the distribution includes static assets, serve UI routes.
 
+        index_html_path = Path(SHARE_TILED_PATH, "ui", "index.html")
+        index_html = index_html_path.read_text() if index_html_path.is_file() else None
+        # Without the tag the UI only works unmounted; a vendored UI is fine.
+        if index_html is not None and UI_BASE_TAG not in index_html:
+            logger.warning(
+                "%s lacks %s; serving it unmodified, so it works only at /.",
+                index_html_path,
+                UI_BASE_TAG,
+            )
+
         @app.get("/favicon.ico", include_in_schema=False)
         async def favicon():
             icon_path = Path(SHARE_TILED_PATH, "ui", "tiled-icon.ico")
@@ -306,15 +356,26 @@ def build_app(
 
         @app.get("/ui/{path:path}")
         async def ui(
+            request: Request,
             path,
             _=Depends(move_api_key),
         ):
-            response = await lookup_file(path)
+            response = await lookup_file(request, path)
             return response
 
-        async def lookup_file(path, try_app=True):
+        async def lookup_file(request: Request, path, try_app=True):
             if not path:
                 path = "index.html"
+            if path == "index.html" and index_html is not None:
+                return Response(
+                    content=render_ui_index(
+                        index_html, normalize_root_path(request.scope.get("root_path"))
+                    ),
+                    media_type="text/html",
+                    # A stale index references asset filenames that an upgrade
+                    # has already removed.
+                    headers={"Cache-Control": "no-store"},
+                )
             full_path = Path(SHARE_TILED_PATH, "ui", path)
             try:
                 stat_result = await anyio.to_thread.run_sync(os.stat, full_path)
@@ -325,7 +386,7 @@ def build_app(
                 # such as /ui//metadata/a/b/c.
                 # Serve index.html and let the client-side application sort it out.
                 if try_app:
-                    response = await lookup_file("index.html", try_app=False)
+                    response = await lookup_file(request, "index.html", try_app=False)
                     return response
                 raise HTTPException(status_code=HTTP_404_NOT_FOUND)
             except OSError:
@@ -372,11 +433,13 @@ def build_app(
             # comments. But they are served as JSON because that is easy to deal with
             # on the client side.
             ui_settings = yaml.safe_load(Path(TILED_UI_SETTINGS).read_text())
-            if root_path := server_settings.get("root_path", ""):
-                ui_settings["api_url"] = f"{root_path}{ui_settings['api_url']}"
 
             @app.get("/tiled-ui-settings")
-            async def tiled_ui_settings():
+            async def tiled_ui_settings(request: Request):
+                root_path = normalize_root_path(request.scope.get("root_path"))
+                api_url = ui_settings["api_url"]
+                if root_path and api_url.startswith("/"):
+                    return {**ui_settings, "api_url": f"{root_path}{api_url}"}
                 return ui_settings
 
     @app.exception_handler(Conflicts)
@@ -405,6 +468,13 @@ def build_app(
             content={"detail": exc.args[0]},
         )
 
+    @app.exception_handler(BrokenLink)
+    async def broken_link_exception_handler(request: Request, exc: BrokenLink):
+        return JSONResponse(
+            status_code=HTTP_410_GONE,
+            content={"detail": exc.args[0]},
+        )
+
     @app.exception_handler(UnsafeIdentifier)
     async def unsafe_identifier_exception_handler(
         request: Request, exc: UnsafeIdentifier
@@ -425,19 +495,23 @@ def build_app(
         # If we restrict the allowed_headers in future, remember to include
         # exemptions for these, related to asgi_correlation_id.
         # allow_headers=["X-Requested-With", "X-Tiled-Request-ID"],
-        expose_headers=["X-Tiled-Request-ID"],
+        expose_headers=["X-Tiled-Request-ID", TRACE_ID_HEADER_NAME],
     )
 
     @app.exception_handler(Exception)
     async def unhandled_exception_handler(
         request: Request, exc: Exception
     ) -> JSONResponse:
+        headers = {"X-Tiled-Request-ID": correlation_id.get() or ""}
+        # This response bypasses TraceIdMiddleware, so add the trace ID here.
+        if trace_id := get_trace_id():
+            headers[TRACE_ID_HEADER_NAME] = trace_id
         return await http_exception_handler(
             request,
             HTTPException(
                 HTTP_500_INTERNAL_SERVER_ERROR,
                 "Internal server error",
-                headers={"X-Tiled-Request-ID": correlation_id.get() or ""},
+                headers=headers,
             ),
         )
 
@@ -676,6 +750,7 @@ def build_app(
             from ..authn_database.core import (
                 ALL_REVISIONS,
                 REQUIRED_REVISION,
+                initialize_authn_database,
                 initialize_database,
                 make_admin_by_identity,
                 purge_expired,
@@ -697,24 +772,13 @@ def build_app(
                     await check_database(engine, REQUIRED_REVISION, ALL_REVISIONS)
                 except UninitializedDatabase:
                     if settings.database_init_if_not_exists:
-                        # The alembic stamping can only be does synchronously.
-                        # The cleanest option available is to start a subprocess
-                        # because SQLite is allergic to threads.
-                        import subprocess
-
-                        # TODO Check if catalog exists.
-                        subprocess.run(
-                            [
-                                sys.executable,
-                                "-m",
-                                "tiled",
-                                "admin",
-                                "initialize-database",
-                                str(engine.url),
-                            ],
-                            capture_output=True,
-                            check=True,
+                        # This is a blocking call (alembic drives its own event
+                        # loop), so keep it off the event loop thread.
+                        await asyncio.to_thread(
+                            initialize_authn_database,
+                            engine.url.render_as_string(hide_password=False),
                         )
+                        logger.info(f"Initialized new database at {redacted_url}.")
                     else:
                         print(
                             dedent(
@@ -779,9 +843,7 @@ def build_app(
                 # The scope set the catalog database enforces should match the
                 # ScopeName enum this server is running. A disagreement here
                 # points at a schema that was changed outside of a migration.
-                enforced_scopes = (
-                    await app.state.access_policy.access_tags_parser.get_enforced_scopes()
-                )
+                enforced_scopes = await app.state.access_policy.access_tags_parser.get_enforced_scopes()
                 # An empty set means the constraint is missing or could not be
                 # read. The catalog then stores any value as a scope, so this
                 # is reported on its own rather than compared: every scope
@@ -841,23 +903,39 @@ def build_app(
             async def purge_expired_sessions_and_api_keys():
                 PURGE_INTERVAL = 600  # seconds
                 while True:
-                    async with AsyncSession(
-                        engine, autoflush=False, expire_on_commit=False
-                    ) as db_session:
-                        num_expired_sessions = await purge_expired(
-                            db_session, orm.Session
-                        )
-                        if num_expired_sessions:
-                            logger.info(
-                                f"Purged {num_expired_sessions} expired Sessions from the database."
+                    try:
+                        async with AsyncSession(
+                            engine, autoflush=False, expire_on_commit=False
+                        ) as db_session:
+                            # Purge pending sessions first: they reference sessions,
+                            # so clearing expired ones first lets the sessions they point to be deleted in turn.
+                            num_expired_pending_sessions = await purge_expired(
+                                db_session, orm.PendingSession
                             )
-                        num_expired_api_keys = await purge_expired(
-                            db_session, orm.APIKey
-                        )
-                        if num_expired_api_keys:
-                            logger.info(
-                                f"Purged {num_expired_api_keys} expired API keys from the database."
+                            if num_expired_pending_sessions:
+                                logger.info(
+                                    f"Purged {num_expired_pending_sessions} "
+                                    "expired PendingSessions from the database."
+                                )
+                            num_expired_sessions = await purge_expired(
+                                db_session, orm.Session
                             )
+                            if num_expired_sessions:
+                                logger.info(
+                                    f"Purged {num_expired_sessions} expired Sessions from the database."
+                                )
+                            num_expired_api_keys = await purge_expired(
+                                db_session, orm.APIKey
+                            )
+                            if num_expired_api_keys:
+                                logger.info(
+                                    f"Purged {num_expired_api_keys} expired API keys from the database."
+                                )
+                    except Exception:
+                        logger.warning(
+                            "Failed to purge expired Sessions and API keys from the database.",
+                            exc_info=True,
+                        )
                     await asyncio.sleep(PURGE_INTERVAL)
 
             app.state.tasks.append(
@@ -869,13 +947,21 @@ def build_app(
         for task in tasks["shutdown"]:
             await task()
 
+        # Stop background tasks, and wait for them to finish, before closing the
+        # connection pool they may be using. If the pool were closed first, a task
+        # cancelled mid-query could fail while cleaning up its session, and that
+        # failure (raised in place of the CancelledError) could be caught by the
+        # task's error handling, leaving it running and blocking shutdown.
+        running_tasks = getattr(app.state, "tasks", [])
+        for task in running_tasks:
+            task.cancel()
+        await asyncio.gather(*running_tasks, return_exceptions=True)
+
         settings: Settings = app.dependency_overrides[get_settings]()
         if settings.database_settings.uri is not None:
             from .connection_pool import close_database_connection_pool
 
             await close_database_connection_pool(settings.database_settings)
-        for task in getattr(app.state, "tasks", []):
-            task.cancel()
 
     app.add_middleware(
         CompressionMiddleware,
@@ -1067,10 +1153,146 @@ def build_app(
         generator=lambda: secrets.token_hex(8),
     )
 
+    _setup_opentelemetry_tracing(app)
+
     return app
 
 
-def build_app_from_config(config: Union[Config, dict[str, Any]], scalable=False):
+def _setup_opentelemetry_tracing(app: FastAPI) -> None:
+    """Enable OpenTelemetry request tracing when an OTLP endpoint is configured.
+
+    Tracing is activated only when the standard `OTEL_EXPORTER_OTLP_ENDPOINT`
+    environment variable is set, so it is off by default and adds no overhead
+    unless explicitly enabled. Spans are exported over OTLP/HTTP.
+    """
+    if not os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT"):
+        return
+    try:
+        from opentelemetry import trace
+        from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
+            OTLPSpanExporter,
+        )
+        from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+        from opentelemetry.sdk.resources import Resource
+        from opentelemetry.sdk.trace import TracerProvider
+        from opentelemetry.sdk.trace.export import BatchSpanProcessor
+    except ImportError:
+        logger.warning(
+            "OTEL_EXPORTER_OTLP_ENDPOINT is set but the OpenTelemetry packages "
+            "are not installed; tracing is disabled."
+        )
+        return
+
+    # Configure the global tracer provider once per process.
+    if not isinstance(trace.get_tracer_provider(), TracerProvider):
+        resource = Resource.create(
+            {"service.name": os.getenv("OTEL_SERVICE_NAME", "tiled")}
+        )
+        provider = TracerProvider(resource=resource)
+        provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter()))
+        trace.set_tracer_provider(provider)
+    FastAPIInstrumentor.instrument_app(app)
+    app.add_middleware(TraceIdMiddleware)
+
+    # Emit spans for calls to the PostgreSQL driver (asyncpg), Redis, and
+    # outbound HTTP (httpx: OIDC, webhooks, external policy servers). These
+    # patch the libraries globally, so they are no-ops until a request uses them.
+    try:
+        from opentelemetry.instrumentation.asyncpg import AsyncPGInstrumentor
+    except ImportError:
+        pass
+    else:
+        AsyncPGInstrumentor().instrument()
+    try:
+        from opentelemetry.instrumentation.redis import RedisInstrumentor
+    except ImportError:
+        pass
+    else:
+        RedisInstrumentor().instrument()
+    try:
+        # Tiled's HTTP clients (webhook delivery, OIDC, external access
+        # policies) are httpx2 clients, which the httpx instrumentation traces
+        # through its httpx2 instrumentor (0.65b0 or newer).
+        from opentelemetry.instrumentation.httpx import HTTPX2ClientInstrumentor
+    except ImportError:
+        pass
+    else:
+
+        def _set_peer_service(span, request):
+            # Name the downstream dependency so it becomes its own node in the
+            # Tempo service graph (via peer.service) and is filterable in Jaeger.
+            # Bundle every webhook delivery under a single 'webhooks' node; name
+            # other outbound calls (OIDC, external policy servers) by their host.
+            if span is None or not span.is_recording():
+                return
+            if "x-tiled-event-id" in request.headers:
+                span.set_attribute("peer.service", "webhooks")
+            elif request.url.host:
+                span.set_attribute("peer.service", request.url.host)
+
+        async def _set_peer_service_async(span, request):
+            _set_peer_service(span, request)
+
+        HTTPX2ClientInstrumentor().instrument(
+            request_hook=_set_peer_service,
+            async_request_hook=_set_peer_service_async,
+        )
+
+
+class TraceIdMiddleware:
+    """Link the request's trace and its correlation ID.
+
+    Add the trace ID to the response headers (`X-Tiled-Trace-ID`), so a user or
+    client can report the trace of a failed or slow request, and record it in
+    `request_trace_id` for the log lines (see `logging_config.TraceIdFilter`).
+    Record the correlation ID (`X-Tiled-Request-ID`) on the request's server span
+    as `tiled.request_id`, so the trace can also be found from the correlation ID.
+    Added only when tracing is enabled. Responses to unhandled exceptions bypass
+    this middleware; the exception handler adds the header itself.
+    """
+
+    def __init__(self, app: ASGIApp) -> None:
+        from opentelemetry import trace
+
+        self.app = app
+        self._get_current_span = trace.get_current_span
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        trace_id = get_trace_id() if scope["type"] == "http" else None
+        if trace_id is None:
+            await self.app(scope, receive, send)
+            return
+        request_trace_id.set(trace_id)
+        # This middleware runs directly inside the FastAPI instrumentation, so the
+        # current span is the request's server span.
+        server_span = self._get_current_span()
+        response_started = False
+
+        def record_request_id() -> None:
+            # The correlation ID is assigned by CorrelationIdMiddleware, which runs
+            # inside this one, so it is only available once the request is handled.
+            if request_id := correlation_id.get():
+                server_span.set_attribute("tiled.request_id", request_id)
+
+        async def send_with_trace_id(message: Message) -> None:
+            nonlocal response_started
+            if message["type"] == "http.response.start":
+                response_started = True
+                MutableHeaders(scope=message).append(TRACE_ID_HEADER_NAME, trace_id)
+                # Record it now: the server span ends once the response is sent.
+                record_request_id()
+            await send(message)
+
+        try:
+            await self.app(scope, receive, send_with_trace_id)
+        finally:
+            if not response_started:
+                # An unhandled exception: the response is sent by the exception
+                # handler, outside this middleware, and the span is still open.
+                record_request_id()
+
+
+def build_app_from_config(config: Config | dict[str, Any], scalable=False):
     """
     Convenience function that calls build_app(...) given config as parsed Config instance
 

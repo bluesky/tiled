@@ -927,8 +927,7 @@ def test_expired_access_token_query_param(
         {
             "sub": "fake",
             "type": "access",
-            "exp": datetime.datetime.now(datetime.timezone.utc)
-            - datetime.timedelta(seconds=60),
+            "exp": datetime.datetime.now(datetime.UTC) - datetime.timedelta(seconds=60),
         },
         "SECRET",
         algorithm="HS256",

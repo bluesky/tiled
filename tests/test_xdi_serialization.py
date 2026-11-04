@@ -192,9 +192,9 @@ def test_xdi_output_extension_namespace(client):
 def test_xdi_output_defined_namespaces_before_extensions(client):
     """Defined namespaces (Element, Mono, ...) must precede extension namespaces."""
     content = _export_to_string(client["xdi_table"], format="application/x-xdi")
-    assert content.find("# Element.") < content.find(
-        "# GSE."
-    ), "Defined namespaces should appear before extension namespaces"
+    assert content.find("# Element.") < content.find("# GSE."), (
+        "Defined namespaces should appear before extension namespaces"
+    )
 
 
 def test_xdi_output_field_end_separator(client):
@@ -250,18 +250,18 @@ def test_xdi_output_column_labels_line(client):
 def test_xdi_output_column_labels_after_header_end(client):
     """Column labels must appear after the header-end separator."""
     content = _export_to_string(client["xdi_table"], format="application/x-xdi")
-    assert content.find("# energy i0 itrans mutrans") > content.rfind(
-        "# ----"
-    ), "Column labels should appear after the header-end separator"
+    assert content.find("# energy i0 itrans mutrans") > content.rfind("# ----"), (
+        "Column labels should appear after the header-end separator"
+    )
 
 
 def test_xdi_output_data_rows_present(client):
     """Data rows must be present in the output."""
     content = _export_to_string(client["xdi_table"], format="application/x-xdi")
     data_lines = [ln for ln in content.splitlines() if ln and not ln.startswith("#")]
-    assert len(data_lines) == len(
-        XDI_DF
-    ), f"Expected {len(XDI_DF)} data rows, got {len(data_lines)}"
+    assert len(data_lines) == len(XDI_DF), (
+        f"Expected {len(XDI_DF)} data rows, got {len(data_lines)}"
+    )
 
 
 def test_xdi_output_space_delimited_data(client):

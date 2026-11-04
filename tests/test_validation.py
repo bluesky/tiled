@@ -1,6 +1,7 @@
 """
 This tests tiled's validation registry
 """
+
 import uuid
 
 import numpy as np

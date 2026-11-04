@@ -1,7 +1,7 @@
 import copy
-from collections.abc import Set
+from collections.abc import Iterable, Iterator, Set
 from pathlib import Path
-from typing import Any, Dict, Iterable, Iterator, List, Optional, Tuple, Union
+from typing import Any
 from urllib.parse import quote_plus
 
 import dask.dataframe
@@ -31,11 +31,11 @@ class CSVAdapter(Adapter[TableStructure]):
     def __init__(
         self,
         data_uris: Iterable[str],
-        structure: Optional[TableStructure] = None,
+        structure: TableStructure | None = None,
         *,
-        metadata: Optional[JSON] = None,
-        specs: Optional[List[Spec]] = None,
-        **kwargs: Optional[Any],
+        metadata: JSON | None = None,
+        specs: list[Spec] | None = None,
+        **kwargs: Any | None,
     ) -> None:
         """Adapter for partitioned tabular data stored as a sequence of text (csv) files
 
@@ -67,7 +67,7 @@ class CSVAdapter(Adapter[TableStructure]):
         data_source: DataSource[TableStructure],
         node: Node,
         /,
-        **kwargs: Optional[Any],
+        **kwargs: Any | None,
     ) -> "CSVAdapter":
         return init_adapter_from_catalog(cls, data_source, node, **kwargs)
 
@@ -75,7 +75,7 @@ class CSVAdapter(Adapter[TableStructure]):
     def from_uris(
         cls,
         *data_uris: str,
-        **kwargs: Optional[Any],
+        **kwargs: Any | None,
     ) -> "CSVAdapter":
         return cls(data_uris, **kwargs)
 
@@ -87,7 +87,7 @@ class CSVAdapter(Adapter[TableStructure]):
         cls,
         storage: Storage,
         data_source: DataSource[TableStructure],
-        path_parts: List[str],
+        path_parts: list[str],
     ) -> DataSource[TableStructure]:
         """Initialize partitioned CSV storage
 
@@ -121,7 +121,7 @@ class CSVAdapter(Adapter[TableStructure]):
         return data_source
 
     def append_partition(
-        self, partition: int, data: Union[dask.dataframe.DataFrame, pandas.DataFrame]
+        self, partition: int, data: dask.dataframe.DataFrame | pandas.DataFrame
     ) -> None:
         """Append data to an existing partition
 
@@ -137,7 +137,7 @@ class CSVAdapter(Adapter[TableStructure]):
         data.to_csv(uri, index=False, mode="a", header=False)
 
     def write_partition(
-        self, partition: int, data: Union[dask.dataframe.DataFrame, pandas.DataFrame]
+        self, partition: int, data: dask.dataframe.DataFrame | pandas.DataFrame
     ) -> None:
         """Write data to a new partition or overwrite an existing one
 
@@ -152,7 +152,7 @@ class CSVAdapter(Adapter[TableStructure]):
         uri = self._file_paths[partition]
         data.to_csv(uri, index=False)
 
-    def write(self, data: Union[dask.dataframe.DataFrame, pandas.DataFrame]) -> None:
+    def write(self, data: dask.dataframe.DataFrame | pandas.DataFrame) -> None:
         """Default writing function to a dataset with a single partition
 
         Parameters
@@ -166,7 +166,7 @@ class CSVAdapter(Adapter[TableStructure]):
         uri = self._file_paths[0]
         data.to_csv(uri, index=False)
 
-    def read(self, fields: Optional[List[str]] = None) -> pandas.DataFrame:
+    def read(self, fields: list[str] | None = None) -> pandas.DataFrame:
         dfs = [
             self.read_partition(i, fields=fields) for i in range(len(self._file_paths))
         ]
@@ -174,7 +174,7 @@ class CSVAdapter(Adapter[TableStructure]):
         return pandas.concat(dfs, axis=0)
 
     def read_partition(
-        self, indx: int, fields: Optional[Union[List[str], List[int]]] = None
+        self, indx: int, fields: list[str] | list[int] | None = None
     ) -> pandas.DataFrame:
         """Read a single partition (a single csv file)
 
@@ -214,7 +214,7 @@ class CSVAdapter(Adapter[TableStructure]):
 
         return df
 
-    def get(self, key: str) -> Union[ArrayAdapter, None]:
+    def get(self, key: str) -> ArrayAdapter | None:
         if key not in self.structure().columns:
             return None
         return ArrayAdapter.from_array(self.read([key])[key].values)
@@ -222,11 +222,11 @@ class CSVAdapter(Adapter[TableStructure]):
     def generate_data_sources(
         self,
         mimetype: str,
-        item: Union[str, Path],
+        item: str | Path,
         is_directory: bool,
-        size: Optional[int] = None,
-        parameters: Optional[Dict[str, Any]] = None,
-    ) -> List[DataSource[TableStructure]]:
+        size: int | None = None,
+        parameters: dict[str, Any] | None = None,
+    ) -> list[DataSource[TableStructure]]:
         return [
             DataSource(
                 structure_family=StructureFamily.table,
@@ -250,7 +250,7 @@ class CSVAdapter(Adapter[TableStructure]):
         # Must compute to determine shape.
         return ArrayAdapter.from_array(self.read([key])[key].values)
 
-    def items(self) -> Iterator[Tuple[str, ArrayAdapter]]:
+    def items(self) -> Iterator[tuple[str, ArrayAdapter]]:
         """Iterator over table columns
 
         Returns
@@ -272,7 +272,7 @@ class CSVArrayAdapter(ArrayAdapter):
         data_source: DataSource[ArrayStructure],
         node: Node,
         /,
-        **kwargs: Optional[Any],
+        **kwargs: Any | None,
     ) -> "CSVArrayAdapter":
         """Adapter for partitioned array data stored as a sequence of csv files
 
@@ -331,7 +331,7 @@ class CSVArrayAdapter(ArrayAdapter):
     def from_uris(
         cls,
         *data_uris: str,
-        **kwargs: Optional[Any],
+        **kwargs: Any | None,
     ) -> "CSVArrayAdapter":
         tbl_adapter = CSVAdapter.from_uris(*data_uris, **{"header": None, **kwargs})
         tbl_structure = tbl_adapter.structure()
@@ -355,7 +355,7 @@ class CSVArrayAdapter(ArrayAdapter):
         df = pandas.concat(dfs, axis=0)
         n_cols = len(tbl_structure.columns) if not is_structured else 1
         true_shape, true_chunks = (sum(chunks_0), n_cols), (chunks_0, (n_cols,))
-        true_dtype: Union[BuiltinDtype, StructDtype]
+        true_dtype: BuiltinDtype | StructDtype
 
         if is_structured:
             # This is a table with heterogeneous column types; construct StructDtype

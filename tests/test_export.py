@@ -86,7 +86,7 @@ def client():
 
 
 def has_csv_header(filepath):
-    with open(filepath, "r") as csv_f:
+    with open(filepath) as csv_f:
         sniffer = csv.Sniffer()
         has_header = sniffer.has_header(csv_f.read(2048))
         csv_f.seek(0)

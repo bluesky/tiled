@@ -1,8 +1,8 @@
 import React from "react";
-import { Settings } from "../settings";
+import { Settings, bootstrapApiUrl } from "../settings";
 
 const emptySettings: Settings = {
-  api_url: "",
+  api_url: bootstrapApiUrl,
   specs: [],
   spec_views: [],
   structure_families: {},

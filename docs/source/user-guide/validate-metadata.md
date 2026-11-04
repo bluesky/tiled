@@ -29,8 +29,7 @@ def validate_my_spec(
     entry: Optional[AnyAdapter],
     structure_family: Optional[StructureFamily],
     structure: Optional[dict[str, Any]],
-) -> Optional[dict[str, Any]]:
-    ...
+) -> Optional[dict[str, Any]]: ...
 ```
 
 The function should either:
@@ -66,7 +65,9 @@ from tiled.validation_registration import ValidationError
 
 def validate_my_spec(spec, metadata, entry, structure_family, structure):
     if "sample_id" not in metadata:
-        raise ValidationError("The 'my-validated-spec' spec requires a 'sample_id' field.")
+        raise ValidationError(
+            "The 'my-validated-spec' spec requires a 'sample_id' field."
+        )
 
     # Optionally normalize and return the modified metadata.
     normalized = dict(metadata)

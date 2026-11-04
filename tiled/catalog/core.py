@@ -1,11 +1,21 @@
-from sqlalchemy import literal, select, text
-from sqlalchemy.ext.asyncio import AsyncEngine
+from collections.abc import Iterable
 
-from ..alembic_utils import DatabaseUpgradeNeeded, UninitializedDatabase, check_database
+from sqlalchemy import literal, select, text
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
+
+from ..alembic_utils import (
+    DatabaseUpgradeNeeded,
+    UninitializedDatabase,
+    check_database,
+    initialize_database_if_needed,
+)
+from ..utils import ensure_specified_sql_driver
+from .alembic_constants import ALEMBIC_DIR, ALEMBIC_INI_TEMPLATE_PATH
 from .base import Base
 
 # This is list of all valid revisions (from current to oldest).
 ALL_REVISIONS = [
+    "917dbbcfc4b1",
     "3e87cbeb195b",
     "0d4e1f2a3b4c",
     "3bc110ce44e9",
@@ -38,8 +48,9 @@ REQUIRED_REVISION = ALL_REVISIONS[0]
 
 
 async def initialize_database(engine: AsyncEngine):
+    # The definitions in .orm alter Base.metadata.
     from ..graph import orm as graph_orm  # noqa: F401
-    from . import orm  # noqa: F401
+    from . import orm
 
     async with engine.connect() as connection:
         # Install extensions
@@ -54,7 +65,7 @@ async def initialize_database(engine: AsyncEngine):
         # association requires the 'public' tag row to exist (foreign key),
         # so it is created here if missing. Besides the access tags compiler,
         # tag rows are inserted only here and by the storage layers'
-        # auto-registration of principal tags (register_principal_tag_rows).
+        # auto-registration of tags on write (register_tag_rows).
         # On a server without an access policy, tags are ignored and
         # these rows are inert.
         if engine.dialect.name == "postgresql":
@@ -87,34 +98,84 @@ async def initialize_database(engine: AsyncEngine):
         await connection.commit()
 
 
-async def register_principal_tag_rows(connection, access_tag_names):
+def initialize_catalog_database(uri: str) -> bool:
     """
-    Auto-register bare access tag rows for any principal tags in
-    access_tag_names. Principal tags need to exist at write, possibly before
-    the access tags compiler has been able to create them.
+    Initialize the catalog database at `uri`, unless it already is initialized.
+
+    This creates the tables and stamps the head alembic revision, as
+    `tiled catalog init --if-not-exists` does. Returns True if the database was
+    initialized by this call. It is a blocking call, safe to make from a thread that
+    is running an event loop.
+    """
+    return initialize_database_if_needed(
+        ensure_specified_sql_driver(uri),
+        initialize_database,
+        REQUIRED_REVISION,
+        ALL_REVISIONS,
+        ALEMBIC_INI_TEMPLATE_PATH,
+        ALEMBIC_DIR,
+    )
+
+
+async def register_tag_rows(
+    connection: AsyncConnection, access_tag_names: Iterable[str]
+) -> None:
+    """
+    Auto-register bare access tag rows for access_tag_names: all of them for
+    ApprovedAccessTags, else only principal tags, which can precede the
+    access tags compiler's next run. A bare row grants nothing.
 
     Call this on the same connection/transaction as the tag assignment, so
     that the row is never observed unassigned and the compiler's retention
     rules will never delete it. (An AsyncSession caller can pass
     `await session.connection()`.)
     """
-    from ..access_control.protocols import PRINCIPAL_TAG_PREFIXES
+    from ..access_control.protocols import PRINCIPAL_TAG_PREFIXES, ApprovedAccessTags
     from . import orm
 
-    principal_tags = {
-        name for name in access_tag_names if name.startswith(PRINCIPAL_TAG_PREFIXES)
-    }
-    if not principal_tags:
+    tags = orm.AccessTag.__table__
+
+    if not isinstance(access_tag_names, ApprovedAccessTags):
+        access_tag_names = [
+            name for name in access_tag_names if name.startswith(PRINCIPAL_TAG_PREFIXES)
+        ]
+
+    # Skip names the column cannot hold; the caller's lookup rejects them.
+    max_length = tags.c.name.type.length
+    names = {name for name in access_tag_names if len(name) <= max_length}
+    if not names:
         return
+
+    # Insert only missing names: on PostgreSQL, ON CONFLICT DO NOTHING
+    # consumes an id even when the row exists.
+    existing = await connection.execute(
+        select(tags.c.name).where(tags.c.name.in_(names))
+    )
+    names -= set(existing.scalars())
+    if not names:
+        return
+
     if connection.dialect.name == "postgresql":
         from sqlalchemy.dialects.postgresql import insert as upsert
     else:
         from sqlalchemy.dialects.sqlite import insert as upsert
     await connection.execute(
         upsert(orm.AccessTag.__table__)
-        .values([{"name": name, "is_public": False} for name in sorted(principal_tags)])
+        .values([{"name": name, "is_public": False} for name in sorted(names)])
         .on_conflict_do_nothing(index_elements=["name"])
     )
+
+
+async def resolve_access_tag_ids(connection, names):
+    """Resolve existing access-tag names to their integer IDs."""
+    if not names:
+        return []
+    from . import orm
+
+    result = await connection.execute(
+        select(orm.AccessTag.id).where(orm.AccessTag.name.in_(list(names)))
+    )
+    return list(result.scalars().all())
 
 
 async def check_catalog_database(engine: AsyncEngine):

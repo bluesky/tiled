@@ -69,7 +69,7 @@ def patched_make_record(
     if extra is not None:
         for key in extra:
             if (key in ["message", "asctime"]) or (key in rv.__dict__):
-                raise KeyError("Attempt to overwrite %r in LogRecord" % key)
+                raise KeyError(f"Attempt to overwrite {key!r} in LogRecord")
             rv.__dict__[key] = extra[key]
     return rv
 

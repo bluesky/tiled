@@ -1,6 +1,5 @@
 import asyncio
 import re
-from typing import List, Optional
 
 import typer
 
@@ -34,7 +33,7 @@ def register(
             "may break user (client-side) code."
         ),
     ),
-    include_ext: Optional[List[str]] = typer.Option(
+    include_ext: list[str] | None = typer.Option(
         None,
         "--include-ext",
         help=(
@@ -43,7 +42,7 @@ def register(
             "Include the leading '.' in the file extension."
         ),
     ),
-    ext: List[str] = typer.Option(
+    ext: list[str] = typer.Option(
         None,
         "--ext",
         help=(
@@ -61,7 +60,7 @@ def register(
             "Specify here as 'package.module:function'"
         ),
     ),
-    adapters: List[str] = typer.Option(
+    adapters: list[str] = typer.Option(
         None,
         "--adapter",
         help=(
@@ -69,7 +68,7 @@ def register(
             "Specify here as 'mimetype=package.module:function'"
         ),
     ),
-    walkers: List[str] = typer.Option(
+    walkers: list[str] = typer.Option(
         None,
         "--walker",
         help=(

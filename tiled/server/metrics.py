@@ -112,7 +112,7 @@ DB_POOL_FIRST_OVERFLOW_TOTAL = Counter(
 )
 DB_POOL_AT_MAX_TOTAL = Counter(
     "tiled_db_pool_at_max_total",
-    "Number of times a checkout occurred when the pool was at its absolute capacity",  # noqa
+    "Number of times a checkout occurred when the pool was at its absolute capacity",
     ["uri"],
 )
 

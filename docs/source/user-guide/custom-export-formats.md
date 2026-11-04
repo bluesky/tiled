@@ -35,6 +35,7 @@ Here is an implementation that exports an array as smiley-separated variables.
 ```py
 # custom_exporters.py
 
+
 def smiley_separated_variables(array, metadata):
     return "\n".join("🙂".join(str(number) for number in row) for row in array)
 ```
@@ -49,6 +50,7 @@ libraries support the following approach.
 ```py
 import io
 import numpy
+
 
 def smiley_separated_variables(array, metadata):
     # This StringIO presents a file-like interface that numpy can write to.
@@ -128,8 +130,9 @@ or using the Tiled Python client.
 
 ```py
 from tiled.client import from_uri
+
 c = from_uri("http://localhost:8000/api")
-c['A'][:5, :5].export("test.txt", format="application/x-smileys")
+c["A"][:5, :5].export("test.txt", format="application/x-smileys")
 ```
 
 ## Binary Format Example
@@ -147,6 +150,7 @@ binary buffer, `BytesIO`, instead of `StringIO`.
 import io
 from PIL import Image
 from tiled.structures.image_serializer_helpers import img_as_ubyte
+
 
 def to_jpeg(array, metadata):
     # PIL detail: ensure array has compatible data type before handing to PIL.

@@ -1,7 +1,8 @@
 import itertools as it
 import time
 import warnings
-from typing import TYPE_CHECKING, Iterable, Optional, Union
+from collections.abc import Iterable
+from typing import TYPE_CHECKING
 from urllib.parse import parse_qs, urlparse
 
 from ..structures.core import StructureFamily
@@ -16,9 +17,7 @@ class CompositeClient(Container):
     def get_contents(self, maxlen=None, include_metadata=False):
         result = {}
         next_page_url = f"{self.item['links']['search']}"
-        while (next_page_url is not None) or (
-            maxlen is not None and len(result) < maxlen
-        ):
+        while (next_page_url is not None) and (maxlen is None or len(result) < maxlen):
             for attempt in retry_context():
                 with attempt:
                     content = handle_error(
@@ -110,7 +109,7 @@ class CompositeClient(Container):
 
     def delete_contents(
         self,
-        keys: Optional[Union[str, Iterable[str]]] = None,
+        keys: str | Iterable[str] | None = None,
         external_only: bool = True,
     ) -> "CompositeClient":
         """Delete the contents of this Composite node.
@@ -278,7 +277,7 @@ class CompositeClient(Container):
         for var_name, arr in data_vars.items():
             if is_dim0_consistent:
                 dims = (dim0 or "dim0",) + tuple(
-                    f"{var_name}_dim{i+1}" for i in range(len(arr.shape) - 1)
+                    f"{var_name}_dim{i + 1}" for i in range(len(arr.shape) - 1)
                 )
             else:
                 dims = tuple(f"{var_name}_dim{i}" for i in range(len(arr.shape)))
@@ -325,7 +324,7 @@ class CompositeClient(Container):
         metadata=None,
         specs=None,
         access_tags=None,
-        table_name: Optional[str] = None,
+        table_name: str | None = None,
     ):
         if set(self.keys()).intersection(schema.names):
             raise ValueError(

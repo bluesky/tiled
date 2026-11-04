@@ -187,7 +187,7 @@ def test_roundtrip_register_and_download(http_client, tmp_path):
 def test_multi_asset_roundtrip(http_client, tmp_path):
     """A bytes node backed by multiple assets reports each size and is downloadable
     in `num` order; concatenating the parts reconstructs the original payload."""
-    chunks = [PAYLOAD[i : i + 7] for i in range(0, len(PAYLOAD), 7)]  # noqa: E203
+    chunks = [PAYLOAD[i : i + 7] for i in range(0, len(PAYLOAD), 7)]
     # Registered out of order; `num` defines the canonical order.
     _register_multi_asset_node(http_client, tmp_path, chunks, key="multi", reverse=True)
 
@@ -276,7 +276,7 @@ def test_raw_export_multi_asset(http_client, tmp_path, destination):
     keys take the form `<asset_id>/<filename>`. In either layout, ordering the
     handles by the asset's server-side `num` reproduces the original payload.
     """
-    chunks = [PAYLOAD[i : i + 7] for i in range(0, len(PAYLOAD), 7)]  # noqa: E203
+    chunks = [PAYLOAD[i : i + 7] for i in range(0, len(PAYLOAD), 7)]
     _register_multi_asset_node(http_client, tmp_path, chunks, key="multi")
     handles = http_client["multi"].raw_export(destination.arg)
     assert len(handles) == len(chunks)

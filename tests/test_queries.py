@@ -103,22 +103,11 @@ async def client(request, tmpdir_module):
             raise pytest.skip("No TILED_TEST_POSTGRESQL_URI configured")
         # Create temporary database.
         async with temp_postgres(TILED_TEST_POSTGRESQL_URI) as uri_with_database_name:
-            subprocess.run(
-                [
-                    sys.executable,
-                    "-m",
-                    "tiled",
-                    "catalog",
-                    "init",
-                    uri_with_database_name,
-                ],
-                check=True,
-                capture_output=True,
-            )
             tree = from_uri(
                 uri_with_database_name,
                 writable_storage=str(tmpdir_module / "postgresql"),
                 metadata={"backend": request.param},
+                init_if_not_exists=True,
             )
             app = build_app(tree)
             with Context.from_app(app) as context:
@@ -162,6 +151,33 @@ def test_noteq(client):
     assert list(client.search(NotEq("letter", "b"))) != ["b"]
     assert list(client.search(NotEq("number", 0))) != ["a"]
     assert list(client.search(NotEq("number", 1))) != ["b"]
+
+
+def test_eq_none_sqlite(tmpdir):
+    "On SQLite, a JSON null in the metadata is not confused with a missing key."
+    tree = in_memory(writable_storage=str(tmpdir))
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        client.create_container("null", metadata={"x": None})
+        client.create_container("one", metadata={"x": 1})
+        client.create_container("missing", metadata={"y": 2})
+        assert sorted(client.search(Eq("x", None))) == ["null"]
+        assert sorted(client.search(NotEq("x", None))) == ["one"]
+
+
+def test_in_none_sqlite(tmpdir):
+    "On SQLite, None in an In/NotIn list matches a JSON null, not a missing key."
+    tree = in_memory(writable_storage=str(tmpdir))
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        client.create_container("null", metadata={"x": None})
+        client.create_container("one", metadata={"x": 1})
+        client.create_container("two", metadata={"x": 2})
+        client.create_container("missing", metadata={"y": 2})
+        assert sorted(client.search(In("x", [None]))) == ["null"]
+        assert sorted(client.search(In("x", [None, 1]))) == ["null", "one"]
+        assert sorted(client.search(NotIn("x", [None]))) == ["one", "two"]
+        assert sorted(client.search(NotIn("x", [None, 1]))) == ["two"]
 
 
 def test_comparison(client):

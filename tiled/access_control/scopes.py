@@ -1,7 +1,7 @@
 import enum
 
 
-class ScopeName(str, enum.Enum):
+class ScopeName(enum.StrEnum):
     """
     The canonical set of permission scopes.
 

@@ -1,6 +1,6 @@
 import math
 from collections import defaultdict
-from typing import Any, Optional, Tuple, Union
+from typing import Any
 
 import dask.array
 import numpy as np
@@ -10,7 +10,7 @@ from tiled.adapters.core import A, S
 from ..structures.data_source import DataSource
 
 # for back-compat
-from ..utils import IndexersMixin  # noqa: F401
+from ..utils import IndexersMixin
 from ..utils import node_repr as tree_repr  # noqa: F401
 
 __all__ = [
@@ -68,7 +68,7 @@ def init_adapter_from_catalog(
     data_source: DataSource[S],
     node: Any,  # tiled.catalog.orm.Node ?
     /,
-    **kwargs: Optional[Any],
+    **kwargs: Any | None,
 ) -> A:
     # TODO: Sort out typing for Adapters
     """Factory function to produce Adapter instances given their parameters encoded in data sources"""
@@ -102,14 +102,14 @@ class IncompatibleShapeError(ShapeMismatchError):
 
 
 def force_reshape(
-    arr: Union[np.array, dask.array.Array], desired_shape: Tuple[int, ...]
-) -> Union[np.array, dask.array.Array]:
+    arr: np.ndarray | dask.array.Array, desired_shape: tuple[int, ...]
+) -> np.ndarray | dask.array.Array:
     """Reshape a numpy or dask array to match the desired shape, if possible.
 
     Parameters
     ----------
 
-    arr : Union[np.array, dask.array.Array]
+    arr : np.ndarray | dask.array.Array
         The original ND array to be reshaped
     desired_shape : Tuple[int, ...]
         The desired shape of the resulting array
@@ -168,8 +168,8 @@ def split_chunks(total: int, chunk: int) -> tuple[int, ...]:
 
 
 def grid_shape_for_files(
-    struct_shape: Tuple[int, ...], n_files: int
-) -> Optional[Tuple[int, ...]]:
+    struct_shape: tuple[int, ...], n_files: int
+) -> tuple[int, ...] | None:
     """For multi-asset datasets, return the leading axes of `struct_shape` that
     enumerate the files, one grid cell per file, or `None` when no clean split exists.
 

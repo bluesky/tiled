@@ -2,17 +2,12 @@ import copy
 import itertools
 import operator
 from collections import Counter
-from datetime import datetime, timedelta, timezone
+from collections.abc import Iterator
+from datetime import UTC, datetime, timedelta
 from typing import (
     TYPE_CHECKING,
     Any,
-    Dict,
     Generic,
-    Iterator,
-    List,
-    Optional,
-    Tuple,
-    Union,
     cast,
 )
 
@@ -22,6 +17,7 @@ from tiled.structures.container import ContainerStructure
 
 if TYPE_CHECKING:
     from fastapi import APIRouter
+
     from .merged import MergedDeepSearchAdapter
 
 from collections.abc import Iterable, Mapping
@@ -63,11 +59,11 @@ class MapAdapter(Generic[A], ContainerAdapter[A], IndexersMixin):
         self,
         mapping: Mapping[str, A],
         *,
-        metadata: Optional[JSON] = None,
-        sorting: Optional[List[SortingItem]] = None,
-        specs: Optional[List[Spec]] = None,
-        entries_stale_after: Optional[timedelta] = None,
-        metadata_stale_after: Optional[timedelta] = None,
+        metadata: JSON | None = None,
+        sorting: list[SortingItem] | None = None,
+        specs: list[Spec] | None = None,
+        entries_stale_after: timedelta | None = None,
+        metadata_stale_after: timedelta | None = None,
         must_revalidate: bool = True,
     ) -> None:
         """
@@ -97,8 +93,8 @@ class MapAdapter(Generic[A], ContainerAdapter[A], IndexersMixin):
             sorting = [SortingItem(key="_", direction=SortingDirection.ASCENDING)]
         self._sorting = sorting
         self._must_revalidate = must_revalidate
-        self.include_routers: List[APIRouter] = []
-        self.background_tasks: List[Any] = []
+        self.include_routers: list[APIRouter] = []
+        self.background_tasks: list[Any] = []
         self.entries_stale_after = entries_stale_after
         self.metadata_stale_after = metadata_stale_after
         super().__init__(
@@ -132,7 +128,7 @@ class MapAdapter(Generic[A], ContainerAdapter[A], IndexersMixin):
         self._must_revalidate = value
 
     @property
-    def sorting(self) -> List[SortingItem]:
+    def sorting(self) -> list[SortingItem]:
         """
 
         Returns
@@ -211,7 +207,7 @@ class MapAdapter(Generic[A], ContainerAdapter[A], IndexersMixin):
         return ItemsView(lambda: len(self), self._items_slice)
 
     @property
-    def metadata_stale_at(self) -> Optional[datetime]:
+    def metadata_stale_at(self) -> datetime | None:
         """
 
         Returns
@@ -220,10 +216,10 @@ class MapAdapter(Generic[A], ContainerAdapter[A], IndexersMixin):
         """
         if self.metadata_stale_after is None:
             return None
-        return self.metadata_stale_after + datetime.now(timezone.utc)
+        return self.metadata_stale_after + datetime.now(UTC)
 
     @property
-    def entries_stale_at(self) -> Optional[datetime]:
+    def entries_stale_at(self) -> datetime | None:
         """
 
         Returns
@@ -232,15 +228,15 @@ class MapAdapter(Generic[A], ContainerAdapter[A], IndexersMixin):
         """
         if self.entries_stale_after is None:
             return None
-        return self.entries_stale_after + datetime.now(timezone.utc)
+        return self.entries_stale_after + datetime.now(UTC)
 
     def new_variation(
         self,
         *args: Any,
-        mapping: Union[Sentinel, Mapping[str, A]] = UNCHANGED,
-        metadata: Union[Sentinel, JSON] = UNCHANGED,
-        sorting: Union[Sentinel, List[SortingItem]] = UNCHANGED,
-        must_revalidate: Union[Sentinel, bool] = UNCHANGED,
+        mapping: Sentinel | Mapping[str, A] = UNCHANGED,
+        metadata: Sentinel | JSON = UNCHANGED,
+        sorting: Sentinel | list[SortingItem] = UNCHANGED,
+        must_revalidate: Sentinel | bool = UNCHANGED,
         **kwargs: Any,
     ) -> "MapAdapter[A]":
         """
@@ -268,8 +264,8 @@ class MapAdapter(Generic[A], ContainerAdapter[A], IndexersMixin):
             must_revalidate = self.must_revalidate
         return type(self)(
             # *args,
-            mapping=cast(Dict[str, A], mapping),
-            sorting=cast(List[SortingItem], sorting),
+            mapping=cast(dict[str, A], mapping),
+            sorting=cast(list[SortingItem], sorting),
             metadata=cast(JSON, self._metadata),
             specs=self.specs,
             entries_stale_after=self.entries_stale_after,
@@ -278,7 +274,7 @@ class MapAdapter(Generic[A], ContainerAdapter[A], IndexersMixin):
             **kwargs,
         )
 
-    def read(self, fields: Optional[str] = None) -> "MapAdapter[A]":
+    def read(self, fields: str | None = None) -> "MapAdapter[A]":
         """
 
         Parameters
@@ -310,8 +306,8 @@ class MapAdapter(Generic[A], ContainerAdapter[A], IndexersMixin):
         return self.query_registry(query, self)
 
     def search_deep(
-        self, max_depth: Optional[int] = None
-    ) -> Union["MapAdapter[A]", "MergedDeepSearchAdapter"]:
+        self, max_depth: int | None = None
+    ) -> "MapAdapter[A] | MergedDeepSearchAdapter":
         """Return an adapter over ALL descendants of this node (any depth).
 
         The returned adapter's keys are "/"-joined paths relative to this
@@ -324,11 +320,11 @@ class MapAdapter(Generic[A], ContainerAdapter[A], IndexersMixin):
         `search_deep` are delegated to and their results merged in,
         via `MergedDeepSearchAdapter`, so mounted subtrees are still searched.
         """
-        flat: Dict[str, A] = {}
-        mounts: List[Tuple[str, Any]] = []
+        flat: dict[str, A] = {}
+        mounts: list[tuple[str, Any]] = []
 
         def _walk(
-            mapping: Mapping[str, A], prefix: Tuple[str, ...], depth: int
+            mapping: Mapping[str, A], prefix: tuple[str, ...], depth: int
         ) -> None:
             for key, value in mapping.items():
                 if "/" in key:
@@ -368,9 +364,9 @@ class MapAdapter(Generic[A], ContainerAdapter[A], IndexersMixin):
         self,
         metadata: JSON,
         structure_families: StructureFamily,
-        specs: List[Spec],
+        specs: list[Spec],
         counts: int,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
 
         Parameters
@@ -384,7 +380,7 @@ class MapAdapter(Generic[A], ContainerAdapter[A], IndexersMixin):
         -------
 
         """
-        data: Dict[str, Any] = {}
+        data: dict[str, Any] = {}
         # data: dict[str, list[dict[str, Any]]] = {}
 
         if metadata:
@@ -443,8 +439,8 @@ class MapAdapter(Generic[A], ContainerAdapter[A], IndexersMixin):
     # The following two methods are used by keys(), values(), items().
 
     def _keys_slice(
-        self, start: int, stop: int, direction: int, page_size: Optional[int] = None
-    ) -> Union[Iterator[str], List[str]]:
+        self, start: int, stop: int, direction: int, page_size: int | None = None
+    ) -> Iterator[str] | list[str]:
         """
 
         Parameters
@@ -473,8 +469,8 @@ class MapAdapter(Generic[A], ContainerAdapter[A], IndexersMixin):
             return keys
 
     def _items_slice(
-        self, start: int, stop: int, direction: int, page_size: Optional[int] = None
-    ) -> Iterator[Tuple[str, A]]:
+        self, start: int, stop: int, direction: int, page_size: int | None = None
+    ) -> Iterator[tuple[str, A]]:
         """
 
         Parameters
@@ -497,9 +493,7 @@ class MapAdapter(Generic[A], ContainerAdapter[A], IndexersMixin):
         )
 
 
-def walk_string_values(
-    tree: MapAdapter[Any], node: Optional[Any] = None
-) -> Iterator[str]:
+def walk_string_values(tree: MapAdapter[Any], node: Any | None = None) -> Iterator[str]:
     """
     >>> list(
     ...     walk_string_values(
@@ -533,7 +527,7 @@ def walk_string_values(
                     yield item
 
 
-def counter_to_dict(counter: Dict[str, Any], counts: Any) -> List[Dict[str, Any]]:
+def counter_to_dict(counter: dict[str, Any], counts: Any) -> list[dict[str, Any]]:
     """
 
     Parameters
@@ -555,7 +549,7 @@ def counter_to_dict(counter: Dict[str, Any], counts: Any) -> List[Dict[str, Any]
 
 def iter_child_metadata(
     query_key: Any, tree: MapAdapter[A]
-) -> Iterator[Tuple[str, Any, Any]]:
+) -> Iterator[tuple[str, Any, Any]]:
     """
 
     Parameters

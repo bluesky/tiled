@@ -92,6 +92,7 @@ Python function.
 ```python
 # custom.py
 
+
 def detect_mimetype(filepath, mimetype):
     if mimetype is None:
         # If we are here, detection based on file extension came up empty.
@@ -159,6 +160,7 @@ for each structure follow.
 # custom.py
 from tiled.adapters.array import ArrayAdapter
 
+
 def read_custom_format(filepath, metadata=None, **kwargs):
     # Extract an array and an optional dictionary of metadata
     # from your file.
@@ -173,6 +175,7 @@ def read_custom_format(filepath, metadata=None, **kwargs):
 ```py
 # custom.py
 from tiled.adapters.table import TableAdapter
+
 
 def read_custom_format(filepath, metadata=None, **kwargs):
     # Extract a DataFrame and an optional dictionary of metadata

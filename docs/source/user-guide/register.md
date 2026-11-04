@@ -251,7 +251,7 @@ from tiled.structures.array import ArrayStructure, BuiltinDtype
 client = from_uri("http://localhost:8000", api_key="...")
 
 structure = ArrayStructure(
-    data_type=BuiltinDtype.from_numpy_dtype(numpy.dtype('int32')),
+    data_type=BuiltinDtype.from_numpy_dtype(numpy.dtype("int32")),
     shape=(2, 512, 512),
     chunks=((1, 1), (512,), (512,)),
     dims=("time", "x", "y"),  # optional
@@ -265,10 +265,20 @@ client.new(
             management=Management.external,
             mimetype="multipart/related;type=image/tiff",
             structure_family=StructureFamily.array,
-	    structure=structure,
+            structure=structure,
             assets=[
-                Asset(data_uri="file:///path/to/image1.tiff", is_directory=False, parameter="data_uris", num=0),
-                Asset(data_uri="file:///path/to/image2.tiff", is_directory=False, parameter="data_uris", num=1),
+                Asset(
+                    data_uri="file:///path/to/image1.tiff",
+                    is_directory=False,
+                    parameter="data_uris",
+                    num=0,
+                ),
+                Asset(
+                    data_uri="file:///path/to/image2.tiff",
+                    is_directory=False,
+                    parameter="data_uris",
+                    num=1,
+                ),
             ],
         ),
     ],

@@ -1,5 +1,6 @@
 import builtins
-from typing import Any, Dict, Iterable, List, Optional, Tuple, Union, cast
+from collections.abc import Iterable
+from typing import Any, cast
 
 import tifffile
 from numpy._typing import NDArray
@@ -33,18 +34,18 @@ class TiffAdapter(Adapter[ArrayStructure]):
     def __init__(
         self,
         data_uri: str,
-        structure: Optional[ArrayStructure] = None,
+        structure: ArrayStructure | None = None,
         *,
-        metadata: Optional[JSON] = None,
-        specs: Optional[List[Spec]] = None,
+        metadata: JSON | None = None,
+        specs: list[Spec] | None = None,
     ) -> None:
         filepath = path_from_uri(data_uri)
         cache_key = (tifffile.TiffFile, filepath)
         self._file = with_resource_cache(cache_key, tifffile.TiffFile, filepath)
         if structure is None:
             if self._file.is_shaped:
-                from_file: Tuple[Dict[str, Any], ...] = cast(
-                    Tuple[Dict[str, Any], ...], self._file.shaped_metadata
+                from_file: tuple[dict[str, Any], ...] = cast(
+                    tuple[dict[str, Any], ...], self._file.shaped_metadata
                 )
                 shape = tuple(from_file[0]["shape"])
             else:
@@ -63,12 +64,12 @@ class TiffAdapter(Adapter[ArrayStructure]):
         data_source: DataSource[ArrayStructure],
         node: Node,
         /,
-        **kwargs: Optional[Any],
+        **kwargs: Any | None,
     ) -> "TiffAdapter":
         return init_adapter_from_catalog(cls, data_source, node, **kwargs)
 
     @classmethod
-    def from_uris(cls, data_uri: str, **kwargs: Optional[Any]) -> "TiffAdapter":
+    def from_uris(cls, data_uri: str, **kwargs: Any | None) -> "TiffAdapter":
         return cls(data_uri)
 
     def metadata(self) -> JSON:
@@ -88,7 +89,7 @@ class TiffAdapter(Adapter[ArrayStructure]):
         return arr[slice] if slice else arr
 
     def read_block(
-        self, block: Tuple[int, ...], slice: Optional[slice] = None
+        self, block: tuple[int, ...], slice: slice | None = None
     ) -> NDArray[Any]:
         # For simplicity, this adapter always treat a single TIFF file as one
         # chunk. This could be relaxed in the future.
@@ -104,7 +105,7 @@ class TiffAdapter(Adapter[ArrayStructure]):
 
 class TiffSequenceAdapter(FileSequenceAdapter):
     def _load_from_files(
-        self, slice: Union[builtins.slice, int, Iterable[int]] = slice(None)
+        self, slice: builtins.slice | int | Iterable[int] = slice(None)
     ) -> NDArray[Any]:
         selected = (
             [self.filepaths[i] for i in slice]

@@ -6,8 +6,6 @@ These tests are written based on discussion in issue #1368:
 https://github.com/bluesky/tiled/issues/1368#issuecomment-5284649768
 """
 
-import subprocess
-import sys
 import uuid
 from pathlib import Path
 
@@ -117,21 +115,10 @@ async def client(request, tmpdir_module):
         if not TILED_TEST_POSTGRESQL_URI:
             raise pytest.skip("No TILED_TEST_POSTGRESQL_URI configured")
         async with temp_postgres(TILED_TEST_POSTGRESQL_URI) as uri_with_database_name:
-            subprocess.run(
-                [
-                    sys.executable,
-                    "-m",
-                    "tiled",
-                    "catalog",
-                    "init",
-                    uri_with_database_name,
-                ],
-                check=True,
-                capture_output=True,
-            )
             tree = from_uri(
                 uri_with_database_name,
                 writable_storage=str(tmpdir_module / "postgresql"),
+                init_if_not_exists=True,
             )
             app = build_app(tree)
             with Context.from_app(app) as context:

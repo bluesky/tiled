@@ -25,6 +25,7 @@ Revises: 0d4e1f2a3b4c
 Create Date: 2026-09-16 00:00:00.000000
 
 """
+
 import sqlalchemy as sa
 from alembic import op
 
@@ -52,8 +53,7 @@ def upgrade():
         # GIN index construction uses maintenance_work_mem. Keep the increased
         # setting local to this migration transaction.
         op.execute(
-            "SET LOCAL maintenance_work_mem = "
-            f"'{POSTGRES_INDEX_MAINTENANCE_WORK_MEM}'"
+            f"SET LOCAL maintenance_work_mem = '{POSTGRES_INDEX_MAINTENANCE_WORK_MEM}'"
         )
         op.create_index(
             "ix_nodes_metadata",

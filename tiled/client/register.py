@@ -7,7 +7,7 @@ from functools import partial
 from pathlib import Path
 
 import anyio
-import httpx
+import httpx2 as httpx
 import watchfiles
 
 from ..mimetypes import (

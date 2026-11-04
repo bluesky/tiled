@@ -226,9 +226,9 @@ async def _insert_node(store, node_id, access_tags, key="node", parent=0):
             )
         )
         access_tag_ids = await _access_tag_ids(conn, access_tags)
-        assert len(access_tag_ids) == len(
-            set(access_tags)
-        ), f"undefined tags among {access_tags}"
+        assert len(access_tag_ids) == len(set(access_tags)), (
+            f"undefined tags among {access_tags}"
+        )
         if access_tag_ids:
             await conn.execute(
                 sa_insert(_node_access_tags),
@@ -358,6 +358,36 @@ async def test_deleting_link_removes_tag_associations_but_not_tag(store):
         )
     assert remaining_assoc is None
     assert surviving_access_tag == access_tag_id
+
+
+@pytest.mark.asyncio
+async def test_entity_new_tag_gets_row(
+    store: GraphSQLAlchemyStore, policy: FakeTagPolicy
+) -> None:
+    "A tag the policy approved gets a row on first use; others must have one."
+    scopes = {"read:metadata", "write:metadata"}
+    entity = {"entityType": "sample", "properties": {}}
+
+    alice_ctx = _context(store, policy, "alice", scopes)
+    input = {**entity, "name": "E1", "accessTags": ["experiment:1234"]}
+    result = await _execute(CREATE_ENTITY_MUTATION, alice_ctx, {"input": input})
+    assert result.errors is None
+    record = await store.get_entity(result.data["createEntity"]["id"])
+    assert record.access_tags == {"experiment:1234"}
+
+    no_policy_ctx = _context(store, None, "alice", scopes)
+    input = {**entity, "name": "E2", "accessTags": ["experiment:5678"]}
+    result = await _execute(CREATE_ENTITY_MUTATION, no_policy_ctx, {"input": input})
+    assert "not defined" in str(result.errors)
+
+
+@pytest.mark.asyncio
+async def test_bare_string_tags_fail(store: GraphSQLAlchemyStore) -> None:
+    "A bare string is not split into one tag per character."
+    with pytest.raises(TypeError):
+        await store.create_entity(
+            entity_type="sample", name="entity", access_tags="team"
+        )
 
 
 @pytest.mark.asyncio

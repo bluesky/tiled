@@ -5,6 +5,7 @@ Revises: 1cd99c02d0c7
 Create Date: 2024-01-22 20:44:23.132801
 
 """
+
 from datetime import datetime
 
 import orjson

@@ -1,39 +1,23 @@
-import sys
-
-from pydantic import AfterValidator
-
-if sys.version_info < (3, 10):
-    EllipsisType = type(Ellipsis)
-else:
-    from types import EllipsisType
-
+from collections.abc import Callable, Coroutine, Mapping, Sequence
+from types import EllipsisType
 from typing import (
     Annotated,
     Any,
-    Callable,
-    Coroutine,
-    FrozenSet,
-    List,
-    Mapping,
-    Sequence,
-    Set,
-    Tuple,
     TypedDict,
-    Union,
 )
+
+from pydantic import AfterValidator
 
 from .utils import import_object
 
-JSON_ITEM = Union[
-    str, int, float, Mapping[str, "JSON_ITEM"], Sequence["JSON_ITEM"], None
-]
+JSON_ITEM = str | int | float | Mapping[str, "JSON_ITEM"] | Sequence["JSON_ITEM"] | None
 JSON = Mapping[str, JSON_ITEM]
 
-AccessTags = FrozenSet[str]
-Scopes = Set[str]
+AccessTags = frozenset[str]
+Scopes = set[str]
 Query = Any  # for now...
-Filters = List[Query]
-Chunks = Tuple[Tuple[int, ...], ...]
+Filters = list[Query]
+Chunks = tuple[tuple[int, ...], ...]
 
 AppTask = Callable[[], Coroutine[None, None, Any]]
 """Async function to be run as part of the app's lifecycle"""

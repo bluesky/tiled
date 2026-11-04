@@ -1,13 +1,8 @@
 from __future__ import annotations
 
-import sys
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Iterable, NewType, Optional, Union, cast, runtime_checkable
-
-if sys.version_info >= (3, 11):
-    from typing import Self
-else:
-    from typing_extensions import Self
+from typing import NewType, Self, cast, runtime_checkable
 
 import awkward
 import numpy
@@ -19,9 +14,9 @@ from ..type_aliases import JSON
 from .array import BuiltinDtype, StructDtype
 from .root import Structure
 
-RaggedCompatibleType = Union[
-    ragged.array, awkward.Array, numpy.ndarray, SupportsDLPack, Iterable
-]
+RaggedCompatibleType = (
+    ragged.array | awkward.Array | numpy.ndarray | SupportsDLPack | Iterable
+)
 CanonicalRaggedArray = NewType("CanonicalRaggedArray", ragged.array)
 
 
@@ -189,7 +184,7 @@ class RaggedStructure(Structure):
                 form = awkward.forms.ListOffsetForm(
                     offsets="i64",
                     content=form,
-                    form_key=f"node{dim-1}",
+                    form_key=f"node{dim - 1}",
                 )
 
             elif form is not None:
@@ -197,7 +192,7 @@ class RaggedStructure(Structure):
                 form = awkward.forms.RegularForm(
                     content=form,
                     size=self.shape[dim],
-                    form_key=f"node{dim-1}",
+                    form_key=f"node{dim - 1}",
                 )
 
             else:
@@ -319,8 +314,8 @@ def _canonicalize_awkward_layout(
 
 def make_ragged_array(
     array: RaggedCompatibleType,
-    shape: Optional[tuple[int | None, ...]] = None,
-    slice: Optional[NDSlice] = None,
+    shape: tuple[int | None, ...] | None = None,
+    slice: NDSlice | None = None,
     regularize: bool = False,
 ) -> CanonicalRaggedArray:
     """Best-effort conversion of any numeric iterable to a ``ragged`` array.

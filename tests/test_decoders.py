@@ -67,13 +67,15 @@ def test_blosc2_decoder_multi_frame():
     expected = b"".join(parts)
 
     # Feed the frames across arbitrary `decode` calls to mimic streaming.
+    # decode()/flush() yield an iterator of byte chunks, per httpx2's decoder
+    # protocol (they no longer return a single concatenated `bytes` blob).
     decoder = Blosc2Decoder()
-    assert decoder.decode(blosc2.compress(parts[0])) == b""
-    assert decoder.decode(blosc2.compress(parts[1])) == b""
-    assert decoder.decode(blosc2.compress(parts[2])) == b""
-    assert decoder.flush() == expected
+    assert list(decoder.decode(blosc2.compress(parts[0]))) == []
+    assert list(decoder.decode(blosc2.compress(parts[1]))) == []
+    assert list(decoder.decode(blosc2.compress(parts[2]))) == []
+    assert b"".join(decoder.flush()) == expected
 
     # A single-frame body still round-trips.
     single = Blosc2Decoder()
-    single.decode(blosc2.compress(expected))
-    assert single.flush() == expected
+    list(single.decode(blosc2.compress(expected)))
+    assert b"".join(single.flush()) == expected

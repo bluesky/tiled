@@ -15,20 +15,12 @@ repos:
         exclude: ^helm/tiled/templates/
     -   id: debug-statements
 
--   repo: https://github.com/pycqa/flake8
-    rev: 6.1.0
+-   repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.17.3
     hooks:
-    -   id: flake8
-
--   repo: https://github.com/timothycrosley/isort
-    rev: 5.12.0
-    hooks:
-    -   id: isort
-
--   repo: https://github.com/psf/black
-    rev: 23.10.1
-    hooks:
-    -   id: black
+    -   id: ruff-check
+        args: [--fix]
+    -   id: ruff-format
 
 -   repo: https://github.com/pre-commit/mirrors-mypy
     rev: v1.9.0

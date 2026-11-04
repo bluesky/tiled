@@ -77,7 +77,8 @@ slice_missing_data = [
     ",:",
     ",,:,::,,::,:,,::,",
     ",1:2,,:3:4",
-    ",:1, 1::, ,, 1:5:2" "-2:4:1,,:5:2",
+    ",:1, 1::, ,, 1:5:2",
+    "-2:4:1,,:5:2",
 ]
 
 slice_typo_data = [
@@ -296,7 +297,7 @@ def ndslice_strategy(shape):
             start, stop = stop, start
 
         # Replace [start:stop] with Ellipsis
-        return slc[:start] + (Ellipsis,) + slc[stop + 1 :]  # noqa: E203
+        return slc[:start] + (Ellipsis,) + slc[stop + 1 :]
 
     return st.one_of(without_ellipsis(), with_ellipsis())
 

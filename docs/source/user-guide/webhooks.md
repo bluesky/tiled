@@ -92,10 +92,9 @@ Verify it in your receiver:
 ```python
 import hashlib, hmac
 
+
 def verify(body: bytes, secret: str, header: str) -> bool:
-    expected = "sha256=" + hmac.new(
-        secret.encode(), body, hashlib.sha256
-    ).hexdigest()
+    expected = "sha256=" + hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
     return hmac.compare_digest(expected, header)
 ```
 
@@ -104,6 +103,8 @@ you can use to deduplicate retried deliveries, for example:
 
 ```python
 seen = set()
+
+
 def handle(request):
     event_id = request.headers["X-Tiled-Event-ID"]
     if event_id in seen:

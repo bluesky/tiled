@@ -1,7 +1,7 @@
 import itertools
 import warnings
 
-import httpx
+import httpx2 as httpx
 
 from ..structures.core import StructureFamily
 from ..structures.data_source import DataSource, Management

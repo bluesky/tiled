@@ -20,8 +20,7 @@ def test_register_datastore_lowercases_name():
     try:
 
         @streaming.register_datastore("MiXeDCaSe")
-        class DummyStreamingDatastore:
-            ...
+        class DummyStreamingDatastore: ...
 
         assert streaming._DATASTORES["mixedcase"] is DummyStreamingDatastore
     finally:
