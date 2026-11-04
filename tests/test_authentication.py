@@ -3,10 +3,15 @@ import io
 import os
 import shutil
 import time
+from collections import Counter
+from contextlib import contextmanager
 from datetime import timedelta
 
 import numpy
 import pytest
+from sqlalchemy import event
+from sqlalchemy.engine import Engine
+from sqlalchemy.pool import Pool
 from starlette.status import (
     HTTP_400_BAD_REQUEST,
     HTTP_401_UNAUTHORIZED,
@@ -348,10 +353,12 @@ def test_admin(enter_username_password, config):
         assert "admin" in [role["name"] for role in admin_roles]
 
 
-def test_api_key_activity(enter_username_password, config):
+def test_api_key_activity(enter_username_password, config, monkeypatch):
     """
     Create and use an API. Verify that latest_activity updates.
     """
+    # Record every use, so the 2-second sleep below shows an increase.
+    monkeypatch.setattr(authentication, "API_KEY_ACTIVITY_INTERVAL", timedelta(0))
     with Context.from_app(build_app_from_config(config)) as context:
         # Log in as user.
         with enter_username_password("alice", "secret1"):
@@ -397,6 +404,47 @@ def test_api_key_activity(enter_username_password, config):
         context.api_key = secret
         # Now this works again.
         context.which_api_key()
+
+
+@contextmanager
+def count_db_work():
+    "Count pool checkouts and UPDATE statements across all engines."
+    counts = Counter()
+
+    def on_checkout(*args):
+        counts["checkouts"] += 1
+
+    def on_execute(conn, cursor, statement, *args):
+        if statement.lstrip().upper().startswith("UPDATE"):
+            counts["updates"] += 1
+
+    event.listen(Pool, "checkout", on_checkout)
+    event.listen(Engine, "before_cursor_execute", on_execute)
+    try:
+        yield counts
+    finally:
+        event.remove(Pool, "checkout", on_checkout)
+        event.remove(Engine, "before_cursor_execute", on_execute)
+
+
+def test_api_key_db_work(enter_username_password, config):
+    """
+    An API-key request validates the key in one authn checkout, and a
+    repeat use within API_KEY_ACTIVITY_INTERVAL writes nothing.
+    """
+    with Context.from_app(build_app_from_config(config)) as context:
+        with enter_username_password("alice", "secret1"):
+            context.authenticate()
+        key_info = context.create_api_key()
+        context.logout()
+        context.api_key = key_info["secret"]
+        # This first use records latest_activity.
+        client = from_context(context)
+
+        with count_db_work() as counts:
+            client["A1"]
+
+    assert counts == {"checkouts": 1}
 
 
 def test_api_key_scopes(enter_username_password, config):

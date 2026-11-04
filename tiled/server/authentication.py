@@ -82,6 +82,9 @@ SESSION_LIMIT = 200
 
 DEVICE_CODE_MAX_AGE = timedelta(minutes=15)
 DEVICE_CODE_POLLING_INTERVAL = 5  # seconds
+# Record API key use at most this often. Writing on every request makes
+# concurrent requests with one key queue on that row's lock.
+API_KEY_ACTIVITY_INTERVAL = timedelta(minutes=1)
 
 
 def utcnow():
@@ -244,45 +247,79 @@ async def get_session_state(decoded_access_token=Depends(get_decoded_access_toke
         return decoded_access_token.get("state")
 
 
-async def get_access_tags_from_api_key(
-    api_key: str, authenticated: bool, db: AsyncSession | None
-) -> AccessTags | None:
-    if not authenticated:
-        # Tiled is in a "single user" mode with only one API key.
-        # In this mode, there is no meaningful access tag limit.
+async def touch_api_key(db: AsyncSession, api_key_orm: orm.APIKey) -> None:
+    "Record use of an API key, at most once per API_KEY_ACTIVITY_INTERVAL."
+    now = utcnow()
+    latest = api_key_orm.latest_activity
+    if (latest is not None) and (
+        now - latest.replace(tzinfo=UTC) < API_KEY_ACTIVITY_INTERVAL
+    ):
+        return
+
+    api_key_orm.latest_activity = now
+    await db.commit()
+
+
+async def lookup_api_key(
+    api_key: str | None, authenticated: bool, db_factory: Callable
+) -> orm.APIKey | None:
+    """
+    Validate an API key in one authn session and record its use.
+
+    Returns None in single-user mode, where there is no database, and for
+    unknown, expired or malformed keys.
+    """
+    if (api_key is None) or not authenticated:
         return None
-    # Tiled is in a multi-user configuration with authentication providers.
+
     # We store the hashed value of the API key secret.
+    # By comparing hashes we protect against timing attacks.
+    # By storing only the hash of the (high-entropy) secret
+    # we reduce the value of that an attacker can extracted from a
+    # stolen database backup.
     try:
         secret = bytes.fromhex(api_key)
-    except Exception:
-        # access tag limit cannot be enforced without key information
+    except ValueError:
+        # Not valid hex, therefore not a valid API key
         return None
-    api_key_orm = await lookup_valid_api_key(db, secret)
-    if api_key_orm is None:
-        # access tag limit cannot be enforced without key information
-        return None
-    else:
-        if (access_tags := api_key_orm.access_tags) is not None:
-            access_tags = normalize_access_tags(access_tags)
-        return access_tags
+
+    async with db_factory() as db:
+        api_key_orm = await lookup_valid_api_key(db, secret)
+        if api_key_orm is not None:
+            await touch_api_key(db, api_key_orm)
+    return api_key_orm
 
 
-async def get_current_access_tags(
+async def get_api_key_orm(
     request: Request,
     api_key: str | None = Depends(get_api_key),
     db_factory: Callable[[], AsyncSession | None] = Depends(
         get_database_session_factory
     ),
-) -> AccessTags | None:
-    if api_key is not None:
-        async with db_factory() as db:
-            return await get_access_tags_from_api_key(
-                api_key, request.app.state.authenticated, db
-            )
-    else:
-        # Limits on access tags only available via API key auth
+) -> orm.APIKey | None:
+    # Memoize so the principal, scopes and access tags dependencies share
+    # one lookup. FastAPI's own cache misses: get_api_key is a security
+    # scheme, so its cache key includes each caller's security scopes.
+    if not hasattr(request.state, "api_key_orm"):
+        request.state.api_key_orm = await lookup_api_key(
+            api_key, request.app.state.authenticated, db_factory
+        )
+    return request.state.api_key_orm
+
+
+def get_access_tags_from_api_key(api_key_orm: orm.APIKey | None) -> AccessTags | None:
+    # Without key information (single-user mode or an invalid key) there
+    # is no access tag limit to enforce.
+    if (api_key_orm is None) or (api_key_orm.access_tags is None):
         return None
+    return normalize_access_tags(api_key_orm.access_tags)
+
+
+async def get_current_access_tags(
+    api_key_orm: orm.APIKey | None = Depends(get_api_key_orm),
+) -> AccessTags | None:
+    # Limits on access tags only available via API key auth
+    return get_access_tags_from_api_key(api_key_orm)
 
 
 def websocket_credentials(
@@ -357,21 +394,26 @@ def get_decoded_access_token_websocket(
         )
 
 
-async def get_current_access_tags_websocket(
+async def get_api_key_orm_websocket(
     websocket: WebSocket,
     api_key: str | None = Depends(get_api_key_websocket),
     db_factory: Callable[[], AsyncSession | None] = Depends(
         get_database_session_factory
     ),
+) -> orm.APIKey | None:
+    # WebSocket twin of get_api_key_orm.
+    if not hasattr(websocket.state, "api_key_orm"):
+        websocket.state.api_key_orm = await lookup_api_key(
+            api_key, websocket.app.state.authenticated, db_factory
+        )
+    return websocket.state.api_key_orm
+
+
+async def get_current_access_tags_websocket(
+    api_key_orm: orm.APIKey | None = Depends(get_api_key_orm_websocket),
 ) -> AccessTags | None:
-    if api_key is not None:
-        async with db_factory() as db:
-            return await get_access_tags_from_api_key(
-                api_key, websocket.app.state.authenticated, db
-            )
-    else:
-        # Limits on access tags only available via API key auth
-        return None
+    # Limits on access tags only available via API key auth
+    return get_access_tags_from_api_key(api_key_orm)
 
 
 async def move_api_key(request: Request, api_key: str | None = Depends(get_api_key)):
@@ -390,8 +432,11 @@ async def move_api_key(request: Request, api_key: str | None = Depends(get_api_k
         )
 
 
-async def get_scopes_from_api_key(
-    api_key: str, settings: Settings, authenticated: bool, db: AsyncSession | None
+def get_scopes_from_api_key(
+    api_key: str,
+    api_key_orm: orm.APIKey | None,
+    settings: Settings,
+    authenticated: bool,
 ) -> Sequence[str]:
     if not authenticated:
         # Tiled is in a "single user" mode with only one API key.
@@ -401,16 +446,6 @@ async def get_scopes_from_api_key(
             else set()
         )
     # Tiled is in a multi-user configuration with authentication providers.
-    # We store the hashed value of the API key secret.
-    # By comparing hashes we protect against timing attacks.
-    # By storing only the hash of the (high-entropy) secret
-    # we reduce the value of that an attacker can extracted from a
-    # stolen database backup.
-    try:
-        secret = bytes.fromhex(api_key)
-    except Exception:
-        return NO_SCOPES
-    api_key_orm = await lookup_valid_api_key(db, secret)
     if api_key_orm is None:
         return NO_SCOPES
     else:
@@ -449,16 +484,16 @@ async def get_current_scopes(
     request: Request,
     decoded_access_token: dict[str, Any] | None = Depends(get_decoded_access_token),
     api_key: str | None = Depends(get_api_key),
+    api_key_orm: orm.APIKey | None = Depends(get_api_key_orm),
     settings: Settings = Depends(get_settings),
     db_factory: Callable[[], AsyncSession | None] = Depends(
         get_database_session_factory
     ),
 ) -> set[str]:
     if api_key is not None:
-        async with db_factory() as db:
-            return await get_scopes_from_api_key(
-                api_key, settings, request.app.state.authenticated, db
-            )
+        return get_scopes_from_api_key(
+            api_key, api_key_orm, settings, request.app.state.authenticated
+        )
     elif decoded_access_token is not None:
         token_scopes = _extract_scopes(decoded_access_token, settings.authenticator)
         if isinstance(settings.authenticator, ProxiedOIDCAuthenticator):
@@ -486,17 +521,14 @@ async def get_current_scopes(
 async def get_current_scopes_websocket(
     websocket: WebSocket,
     api_key: str | None = Depends(get_api_key_websocket),
+    api_key_orm: orm.APIKey | None = Depends(get_api_key_orm_websocket),
     decoded_access_token: dict | None = Depends(get_decoded_access_token_websocket),
     settings: Settings = Depends(get_settings),
-    db_factory: Callable[[], AsyncSession | None] = Depends(
-        get_database_session_factory
-    ),
 ) -> set[str]:
     if api_key is not None:
-        async with db_factory() as db:
-            return await get_scopes_from_api_key(
-                api_key, settings, websocket.app.state.authenticated, db
-            )
+        return get_scopes_from_api_key(
+            api_key, api_key_orm, settings, websocket.app.state.authenticated
+        )
     elif decoded_access_token is not None:
         return _extract_scopes(decoded_access_token, settings.authenticator)
     else:
@@ -523,24 +555,19 @@ async def authenticate_websocket_first_message(
     access_token = message.get("access_token")
 
     if api_key is not None:
+        authenticated = websocket.app.state.authenticated
+        api_key_orm = await lookup_api_key(api_key, authenticated, db_factory)
         try:
-            async with db_factory() as db:
-                principal = await get_current_principal_from_api_key(
-                    api_key, websocket.app.state.authenticated, db, settings
-                )
+            principal = get_current_principal_from_api_key(
+                api_key, api_key_orm, authenticated, settings
+            )
         except HTTPException:
             return False, None, None, NO_SCOPES
-        if (principal is None) and websocket.app.state.authenticated:
+        if (principal is None) and authenticated:
             # In multi-user mode, None principal means key not found.
             return False, None, None, NO_SCOPES
-        async with db_factory() as db:
-            access_tags = await get_access_tags_from_api_key(
-                api_key, websocket.app.state.authenticated, db
-            )
-        async with db_factory() as db:
-            scopes = await get_scopes_from_api_key(
-                api_key, settings, websocket.app.state.authenticated, db
-            )
+        access_tags = get_access_tags_from_api_key(api_key_orm)
+        scopes = get_scopes_from_api_key(api_key, api_key_orm, settings, authenticated)
         return True, principal, access_tags, scopes
     elif access_token is not None:
         try:
@@ -605,41 +632,15 @@ async def check_scopes(
         )
 
 
-async def get_current_principal_from_api_key(
-    api_key: str, authenticated: bool, db: AsyncSession, settings: Settings
+def get_current_principal_from_api_key(
+    api_key: str,
+    api_key_orm: orm.APIKey | None,
+    authenticated: bool,
+    settings: Settings,
 ):
     if authenticated:
         # Tiled is in a multi-user configuration with authentication providers.
-        # We store the hashed value of the API key secret.
-        # By comparing hashes we protect against timing attacks.
-        # By storing only the hash of the (high-entropy) secret
-        # we reduce the value of that an attacker can extracted from a
-        # stolen database backup.
-        try:
-            secret = bytes.fromhex(api_key)
-        except Exception:
-            # Not valid hex, therefore not a valid API key
-            return None
-
-        api_key_orm = await lookup_valid_api_key(db, secret)
-        if api_key_orm is not None:
-            principal = api_key_orm.principal
-            principal_scopes = set().union(*[role.scopes for role in principal.roles])
-            # This intersection addresses the case where the Principal has
-            # lost a scope that they had when this key was created.
-            scopes = set(api_key_orm.scopes).intersection(
-                principal_scopes | {"inherit"}
-            )
-            if "inherit" in scopes:
-                # The scope "inherit" is a metascope that confers all the
-                # scopes for the Principal associated with this API,
-                # resolved at access time.
-                scopes.update(principal_scopes)
-            api_key_orm.latest_activity = utcnow()
-            await db.commit()
-            return principal
-        else:
-            return None
+        return None if api_key_orm is None else api_key_orm.principal
     else:
         # Tiled is in a "single user" mode with only one API key.
         if secrets.compare_digest(api_key, settings.single_user_api_key):
@@ -655,6 +656,7 @@ async def get_current_principal_from_api_key(
 async def get_current_principal_websocket(
     websocket: WebSocket,
     api_key: str | None = Depends(get_api_key_websocket),
+    api_key_orm: orm.APIKey | None = Depends(get_api_key_orm_websocket),
     access_token: str | None = Query(None),
     authorization: Annotated[str | None, Header()] = None,
     decoded_access_token: dict | None = Depends(get_decoded_access_token_websocket),
@@ -667,10 +669,9 @@ async def get_current_principal_websocket(
     # handed to the access policy is the one that was decoded.
     access_token = websocket_credentials(authorization)[1] or access_token
     if api_key is not None:
-        async with db_factory() as db:
-            principal = await get_current_principal_from_api_key(
-                api_key, websocket.app.state.authenticated, db, settings
-            )
+        principal = get_current_principal_from_api_key(
+            api_key, api_key_orm, websocket.app.state.authenticated, settings
+        )
         if (principal is None) and websocket.app.state.authenticated:
             raise HTTPException(
                 status_code=HTTP_401_UNAUTHORIZED, detail="Invalid API key"
@@ -721,6 +722,7 @@ async def get_current_principal(
     access_token: str = Depends(oauth2_scheme),
     decoded_access_token: str = Depends(get_decoded_access_token),
     api_key: str = Depends(get_api_key),
+    api_key_orm: orm.APIKey | None = Depends(get_api_key_orm),
     settings: Settings = Depends(get_settings),
     db_factory: Callable[[], AsyncSession | None] = Depends(
         get_database_session_factory
@@ -740,13 +742,12 @@ async def get_current_principal(
     logging with a SingleUserPrincipal sentinel
     """
     if api_key is not None:
-        async with db_factory() as db:
-            principal = await get_current_principal_from_api_key(
-                api_key,
-                request.app.state.authenticated,
-                db,
-                settings,
-            )
+        principal = get_current_principal_from_api_key(
+            api_key,
+            api_key_orm,
+            request.app.state.authenticated,
+            settings,
+        )
         if principal is None and request.app.state.authenticated:
             raise HTTPException(
                 status_code=HTTP_401_UNAUTHORIZED,

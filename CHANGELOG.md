@@ -33,6 +33,11 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Changed
 
+- Validate an API key once per request instead of up to four times, and
+  record its `latest_activity` at most once a minute instead of on every
+  request. This cuts each API-key request to one authentication-database
+  connection and removes a write that serialized concurrent requests
+  using the same key. `latest_activity` may now lag by up to a minute.
 - OIDC authenticators now verify id_tokens (and their `at_hash`) at login via
   `verify_login`, while `decode_token` only decodes access tokens.
 
