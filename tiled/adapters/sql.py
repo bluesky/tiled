@@ -54,6 +54,10 @@ except ImportError:  # OpenTelemetry is an optional dependency.
     _STORAGE_TRACER = None
 
 DIALECTS = Literal["postgresql", "sqlite", "duckdb"]
+# ADBC SQLite types each column from its first batch. The driver default for
+# adbc.sqlite.query.batch_rows is 1024, and a statement value >= 2**31 - 1 is rejected.
+_SQLITE_DEFAULT_INFERENCE_BATCH_ROWS = 1024
+_SQLITE_MAX_INFERENCE_BATCH_ROWS = 2**31 - 2
 TABLE_NAME_PATTERN = re.compile(r"^[a-z][a-z0-9_]*$")
 COLUMN_NAME_PATTERN = re.compile(r"^[a-zA-Z_].*$")
 FORBIDDEN_CHARACTERS = re.compile(
@@ -543,6 +547,81 @@ class SQLAdapter(Adapter[TableStructure]):
             ),
         )
 
+    def _sqlite_float_inference_batch_rows(
+        self,
+        connection: Any,
+        float_columns: Sequence[str],
+        order_by: list[str],
+        partition: int | None,
+    ) -> int | None:
+        """Return the inference batch size that includes the first real float.
+
+        ADBC SQLite fixes each column's Arrow type from the first batch and
+        rejects a later value that does not fit. NaN is stored as NULL, so a
+        float column that is NULL for all 1024 default rows is inferred as
+        INT64 and a later REAL fails the whole read. The driver reserves an
+        int64 buffer of the requested batch length per column, so this returns
+        the 1-based position of the latest first non-null float instead of a
+        constant large enough for every table. None keeps the driver default.
+
+        ``connection`` is not in autocommit. This probe and the following
+        read share that snapshot, including under WAL.
+        """
+        quoted_table = f'"{self.table_name}"'
+        where = f"WHERE _dataset_id={int(self.dataset_id)}"
+        if partition is not None:
+            where += f" AND _partition_id={int(partition)}"
+        order_sql = f" ORDER BY {', '.join(order_by)}" if order_by else ""
+        limit = _SQLITE_DEFAULT_INFERENCE_BATCH_ROWS
+        selected = ", ".join(f'"{column.lower()}"' for column in float_columns)
+        probe_sql = (
+            f"SELECT {selected} FROM {quoted_table} {where}{order_sql} LIMIT {limit}"
+        )
+        with connection.cursor() as cursor:
+            cursor.execute(probe_sql)
+            probe = cursor.fetch_arrow_table()
+        if probe.num_rows < limit:
+            return None
+        pending = [
+            column
+            for index, column in enumerate(float_columns)
+            if probe.column(index).null_count == probe.num_rows
+        ]
+        if not pending:
+            return None
+
+        projected = ", ".join(
+            f'"{column.lower()}" AS c{index}' for index, column in enumerate(pending)
+        )
+        aggregates = ", ".join(
+            f"MIN(CASE WHEN c{index} IS NOT NULL THEN pos END)"
+            for index in range(len(pending))
+        )
+        position_sql = (
+            f"SELECT {aggregates} FROM ("
+            "SELECT ROW_NUMBER() OVER ("
+            f"{order_sql}) AS pos, {projected} "
+            f"FROM {quoted_table} {where})"
+        )
+        with connection.cursor() as cursor:
+            cursor.execute(position_sql)
+            positions = cursor.fetchone()
+        if not positions:
+            return None
+        present = [int(position) for position in positions if position is not None]
+        if not present:
+            return None
+        needed = max(present)
+        if needed <= limit:
+            return None
+        if needed > _SQLITE_MAX_INFERENCE_BATCH_ROWS:
+            raise ValueError(
+                "The first stored float is past the largest inference batch "
+                "the SQLite driver accepts "
+                f"({_SQLITE_MAX_INFERENCE_BATCH_ROWS} rows)"
+            )
+        return needed
+
     def _read_full_table_or_partition(
         self, fields: list[str] | None = None, partition: int | None = None
     ) -> pyarrow.Table:
@@ -565,6 +644,11 @@ class SQLAdapter(Adapter[TableStructure]):
         # Make sure that requested columns exist and safe to put in SQL query.
         schema = self.structure().arrow_schema_decoded
         req_cols = set(schema.names).intersection(fields) if fields else schema.names
+        float_columns = [
+            column
+            for column in req_cols
+            if pyarrow.types.is_floating(schema.field(column).type)
+        ]
 
         query = (
             "SELECT " + ", ".join([f'"{c.lower()}"' for c in req_cols]) + " "
@@ -590,7 +674,17 @@ class SQLAdapter(Adapter[TableStructure]):
             query += " ORDER BY " + ", ".join(order_by)
 
         with closing(self.storage.connect()) as conn:
+            batch_rows = None
+            if self.storage.dialect == "sqlite" and float_columns:
+                # Same transaction as the read below: autocommit is off.
+                batch_rows = self._sqlite_float_inference_batch_rows(
+                    conn, float_columns, order_by, partition
+                )
             with conn.cursor() as cursor:
+                if batch_rows is not None:
+                    cursor.adbc_statement.set_options(
+                        **{"adbc.sqlite.query.batch_rows": batch_rows}
+                    )
                 cursor.execute(query)
                 data = cursor.fetch_arrow_table()
             conn.commit()
