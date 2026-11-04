@@ -10,6 +10,7 @@ from tiled.adapters.sql import (
     COLUMN_NAME_PATTERN,
     TABLE_NAME_PATTERN,
     SQLAdapter,
+    _OrderByArgs,
     is_safe_identifier,
 )
 from tiled.storage import (
@@ -1313,3 +1314,160 @@ def test_column_name_too_long(data_uri: str, request: pytest.FixtureRequest) -> 
         r'return_an_exception_because_it_is_over_sixty_three_characters": max bytes is 63+',
     ):
         SQLAdapter.init_storage(data_source=data_source, storage=storage)
+
+
+def _sqlite_storage(uri: str) -> SQLStorage:
+    storage = cast(SQLStorage, parse_storage(uri))
+    register_storage(storage)
+    return storage
+
+
+def _sqlite_adapter(
+    storage: SQLStorage,
+    table: pa.Table,
+    table_name: str,
+    *,
+    npartitions: int = 1,
+    order_by_args: list[_OrderByArgs] | None = None,
+) -> SQLAdapter:
+    parameters: dict[str, Any] = {"table_name": table_name}
+    if order_by_args is not None:
+        parameters["order_by_args"] = order_by_args
+    data_source = DataSource(
+        management=Management.writable,
+        mimetype="application/x-tiled-sql-table",
+        structure_family=StructureFamily.table,
+        structure=TableStructure.from_arrow_table(table, npartitions=npartitions),
+        parameters=parameters,
+        assets=[],
+    )
+    initialized = SQLAdapter.init_storage(data_source=data_source, storage=storage)
+    return SQLAdapter(
+        initialized.assets[0].data_uri,
+        initialized.structure,
+        initialized.parameters["table_name"],
+        initialized.parameters["dataset_id"],
+        order_by_args=order_by_args,
+    )
+
+
+def test_sqlite_read_float_after_leading_nulls(sqlite_uri: str) -> None:
+    """A float column whose first 1024 stored values are NULL stays readable.
+
+    SQLite stores NaN as NULL. The ADBC driver infers INT64 from a first
+    batch of NULLs and used to reject the later REAL.
+    """
+    storage = _sqlite_storage(sqlite_uri)
+    try:
+        leading_nulls = 1024
+        values = [None] * leading_nulls + [1.5]
+        table = pa.table(
+            {
+                "i": pa.array(range(len(values)), type=pa.int64()),
+                "y": pa.array([0.25] * len(values), type=pa.float64()),
+                "x": pa.array(values, type=pa.float64()),
+            }
+        )
+        adapter = _sqlite_adapter(storage, table, "leading_nulls")
+        adapter.append_partition(0, table)
+
+        frame = adapter.read()
+        assert frame["i"].tolist() == list(range(len(values)))
+        assert frame["y"].tolist() == [0.25] * len(values)
+        assert np.isnan(frame["x"].iloc[:-1]).all()
+        assert frame["x"].iloc[-1] == 1.5
+
+        only_x = adapter.read(fields=["x"])
+        assert only_x["x"].iloc[-1] == 1.5
+        partition = adapter.read_partition(0)
+        assert partition["x"].iloc[-1] == 1.5
+
+        # One short of the driver's default batch still takes the fast path.
+        short_values = [None] * (leading_nulls - 1) + [1.5]
+        short = pa.table({"x": pa.array(short_values, type=pa.float64())})
+        short_adapter = _sqlite_adapter(storage, short, "short_prefix")
+        short_adapter.append_partition(0, short)
+        short_frame = short_adapter.read()
+        assert np.isnan(short_frame["x"].iloc[:-1]).all()
+        assert short_frame["x"].iloc[-1] == 1.5
+
+        # An all-NULL float column is inferred as INT64 and cast back.
+        empty_values = [None] * (leading_nulls + 100)
+        empty = pa.table({"x": pa.array(empty_values, type=pa.float64())})
+        empty_adapter = _sqlite_adapter(storage, empty, "all_null")
+        empty_adapter.append_partition(0, empty)
+        assert empty_adapter.read()["x"].isna().all()
+    finally:
+        storage.dispose()
+        unregister_storage(storage)
+
+
+def test_sqlite_float_leading_nulls_follow_result_order(sqlite_uri: str) -> None:
+    """Inference follows the query order, not insertion order."""
+    storage = _sqlite_storage(sqlite_uri)
+    try:
+        leading_nulls = 1024
+        value = pa.table(
+            {
+                "ts": pa.array([leading_nulls], type=pa.int64()),
+                "x": pa.array([1.5], type=pa.float64()),
+            }
+        )
+        nulls = pa.table(
+            {
+                "ts": pa.array(range(leading_nulls), type=pa.int64()),
+                "x": pa.array([None] * leading_nulls, type=pa.float64()),
+            }
+        )
+        adapter = _sqlite_adapter(
+            storage,
+            pa.concat_tables([value, nulls]),
+            "ordered_nulls",
+            order_by_args=[{"column": "ts", "direction": "asc"}],
+        )
+        # The real float is inserted first, so rowid alone would see it
+        # inside the default batch. ORDER BY ts sorts the NULLs ahead of it.
+        adapter.append_partition(0, value)
+        adapter.append_partition(0, nulls)
+        frame = adapter.read()
+        assert frame["ts"].tolist() == list(range(leading_nulls + 1))
+        assert np.isnan(frame["x"].iloc[:-1]).all()
+        assert frame["x"].iloc[-1] == 1.5
+    finally:
+        storage.dispose()
+        unregister_storage(storage)
+
+
+def test_sqlite_float_leading_nulls_across_partitions(sqlite_uri: str) -> None:
+    storage = _sqlite_storage(sqlite_uri)
+    try:
+        leading_nulls = 1024
+        nulls = pa.table(
+            {
+                "i": pa.array(range(leading_nulls), type=pa.int64()),
+                "x": pa.array([None] * leading_nulls, type=pa.float64()),
+            }
+        )
+        value = pa.table(
+            {
+                "i": pa.array([leading_nulls], type=pa.int64()),
+                "x": pa.array([2.5], type=pa.float64()),
+            }
+        )
+        adapter = _sqlite_adapter(
+            storage,
+            pa.concat_tables([nulls, value]),
+            "partitioned_nulls",
+            npartitions=2,
+        )
+        adapter.append_partition(0, nulls)
+        adapter.append_partition(1, value)
+
+        frame = adapter.read()
+        assert np.isnan(frame["x"].iloc[:leading_nulls]).all()
+        assert frame["x"].iloc[-1] == 2.5
+        assert adapter.read_partition(0)["x"].isna().all()
+        assert adapter.read_partition(1)["x"].iloc[0] == 2.5
+    finally:
+        storage.dispose()
+        unregister_storage(storage)
