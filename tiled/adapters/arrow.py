@@ -21,7 +21,13 @@ from .utils import init_adapter_from_catalog
 
 
 class ArrowAdapter(Adapter[TableStructure]):
-    """ArrowAdapter Class"""
+    """Read and write Arrow IPC file partitions.
+
+    Existing ``.arrow`` files and Feather v2 files can be opened and
+    registered. Feather v2, the default output of
+    ``pyarrow.feather.write_feather``, is an Arrow IPC file. Feather v1 and
+    the Arrow IPC stream format (``.arrows``) are not supported.
+    """
 
     structure_family: StructureFamily = StructureFamily.table
 
@@ -158,9 +164,9 @@ class ArrowAdapter(Adapter[TableStructure]):
     def from_uris(
         cls,
         *data_uris: str,
-        **kwargs: Optional[Any],
+        **kwargs: Any | None,
     ) -> "ArrowAdapter":
-        """Open Arrow IPC files as partitions of one table."""
+        """Open Arrow IPC files, including Feather v2, as one table."""
         return cls(list(data_uris), **kwargs)
 
     @classmethod

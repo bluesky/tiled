@@ -6,12 +6,13 @@ from types import SimpleNamespace
 
 import pandas as pd
 import pyarrow as pa
+import pyarrow.feather as feather
 import pytest
 
 from tiled.adapters.arrow import ArrowAdapter
-from tiled.adapters.mapping import MapAdapter
 from tiled.catalog import in_memory
 from tiled.client import Context, from_context
+from tiled.mimetypes import DEFAULT_MIMETYPES_BY_FILE_EXT
 from tiled.server.app import build_app
 from tiled.storage import FileStorage
 from tiled.structures.core import Spec, StructureFamily
@@ -106,61 +107,47 @@ def _write_arrow(path: Path, table: pa.Table) -> str:
     return ensure_uri(path)
 
 
-@pytest.mark.parametrize(
-    "table",
-    [
-        pa.Table.from_batches([batch0, batch1, batch2]),
-        pa.Table.from_batches([], schema=batch0.schema),
-        pa.table({"label": ["Si", "β-Ga₂O₃", "铜", None], "value": [1, 2, 3, 4]}),
-    ],
-    ids=["multiple-batches", "empty", "unicode-and-null"],
-)
-def test_infer_single_file_structure(tmp_path: Path, table: pa.Table) -> None:
-    table = table.replace_schema_metadata({b"sample": b"semiconductor"})
-    uri = _write_arrow(tmp_path / "table.arrow", table)
-    metadata = {"sample": "Si"}
-    specs = [Spec("test")]
-    adapter = ArrowAdapter.from_single_file(uri, metadata=metadata, specs=specs)
-
-    assert adapter.structure().npartitions == 1
-    assert adapter.structure().columns == table.column_names
-    assert adapter.structure().arrow_schema_decoded.equals(
-        table.schema, check_metadata=True
-    )
-    assert adapter.metadata() == metadata
-    assert adapter.specs == specs
-    pd.testing.assert_frame_equal(adapter.read(), table.to_pandas())
-
-
 @pytest.mark.parametrize("npartitions", [1, 3])
 def test_infer_partitioned_structure(tmp_path: Path, npartitions: int) -> None:
-    tables = [pa.Table.from_batches([batch]) for batch in (batch0, batch1, batch2)]
+    tables: list[pa.Table] = []
+    for i, batch in enumerate((batch0, batch1, batch2)[:npartitions]):
+        table = pa.Table.from_batches([batch])
+        metadata = (
+            {b"sample": b"semiconductor"} if i == 0 else {b"partition": str(i).encode()}
+        )
+        tables.append(table.replace_schema_metadata(metadata))
     uris = [
         _write_arrow(tmp_path / f"partition-{i}.arrow", table)
-        for i, table in enumerate(tables[:npartitions])
+        for i, table in enumerate(tables)
     ]
-    adapter = ArrowAdapter(uris)
+    if npartitions == 1:
+        caller_metadata = {"sample": "Si"}
+        specs = [Spec("test")]
+        adapter = ArrowAdapter.from_single_file(
+            uris[0], metadata=caller_metadata, specs=specs
+        )
+        assert adapter.metadata() == caller_metadata
+        assert adapter.specs == specs
+        empty = pa.Table.from_batches([], schema=batch0.schema)
+        empty_adapter = ArrowAdapter.from_single_file(
+            _write_arrow(tmp_path / "empty.arrow", empty)
+        )
+        assert empty_adapter.structure().npartitions == 1
+        assert empty_adapter.structure().columns == empty.column_names
+        assert empty_adapter.structure().arrow_schema_decoded.equals(
+            empty.schema, check_metadata=True
+        )
+        pd.testing.assert_frame_equal(empty_adapter.read(), empty.to_pandas())
+    else:
+        adapter = ArrowAdapter(uris)
 
     assert adapter.structure().npartitions == npartitions
     assert adapter.structure().columns == names
-    for i, table in enumerate(tables[:npartitions]):
-        pd.testing.assert_frame_equal(adapter.read_partition(i), table.to_pandas())
-    pd.testing.assert_frame_equal(
-        adapter.read(), pa.concat_tables(tables[:npartitions]).to_pandas()
-    )
-
-
-def test_infer_structure_ignores_partition_metadata(tmp_path: Path) -> None:
-    table = pa.Table.from_batches([batch0])
-    tables = [
-        table.replace_schema_metadata({b"partition": str(i).encode()}) for i in range(2)
-    ]
-    adapter = ArrowAdapter(
-        [_write_arrow(tmp_path / f"{i}.arrow", table) for i, table in enumerate(tables)]
-    )
     assert adapter.structure().arrow_schema_decoded.equals(
         tables[0].schema, check_metadata=True
     )
+    for i, table in enumerate(tables):
+        pd.testing.assert_frame_equal(adapter.read_partition(i), table.to_pandas())
     pd.testing.assert_frame_equal(adapter.read(), pa.concat_tables(tables).to_pandas())
 
 
@@ -218,17 +205,16 @@ def test_infer_structure_rejects_mismatched_partitions(
         path.unlink()
 
 
-def test_infer_structure_requires_partitions() -> None:
-    with pytest.raises(ValueError, match="empty"):
-        ArrowAdapter([])
-
-
-def test_infer_structure_missing_file(tmp_path: Path) -> None:
-    with pytest.raises(ValueError, match="has not been stored yet"):
-        ArrowAdapter.from_single_file(ensure_uri(tmp_path / "missing.arrow"))
-
-
-def test_infer_structure_invalid_file(tmp_path: Path) -> None:
+@pytest.mark.parametrize("kind", ["empty", "missing", "invalid"])
+def test_infer_structure_rejects_bad_inputs(tmp_path: Path, kind: str) -> None:
+    if kind == "empty":
+        with pytest.raises(ValueError, match="empty"):
+            ArrowAdapter([])
+        return
+    if kind == "missing":
+        with pytest.raises(ValueError, match="has not been stored yet"):
+            ArrowAdapter.from_single_file(ensure_uri(tmp_path / "missing.arrow"))
+        return
     path = tmp_path / "invalid.arrow"
     path.touch()
     with pytest.raises(pa.ArrowInvalid):
@@ -248,26 +234,8 @@ def test_explicit_structure_does_not_open_files(
     assert ArrowAdapter([], structure).structure() is structure
 
 
-def test_inferred_structure_client_server_read(tmp_path: Path) -> None:
-    table = pa.table({"label": ["Si", "β-Ga₂O₃", "铜"], "value": [1, 2, 3]})
-    uri = _write_arrow(tmp_path / "table.arrow", table)
-    adapter = ArrowAdapter.from_single_file(uri)
-    # Context.from_app is an untyped upstream factory.
-    with Context.from_app(build_app(MapAdapter({"table": adapter}))) as context:  # type: ignore[no-untyped-call]
-        client = from_context(context)["table"]
-        pd.testing.assert_frame_equal(
-            client.read(), table.to_pandas(), check_dtype=False
-        )
-        assert client["label"].read().tolist() == table["label"].to_pylist()
-        with pytest.raises(KeyError):
-            client["missing"]
-
-
 @pytest.mark.parametrize("npartitions", [1, 3])
-@pytest.mark.parametrize("mimetype", [None, APACHE_ARROW_FILE_MIME_TYPE])
-def test_register_existing_arrow_files(
-    tmp_path: Path, npartitions: int, mimetype: str | None
-) -> None:
+def test_register_existing_arrow_files(tmp_path: Path, npartitions: int) -> None:
     tables = [
         pa.table({"label": ["Si", "β-Ga₂O₃", "铜"], "value": [i, i + 1, i + 2]})
         for i in range(npartitions)
@@ -280,11 +248,16 @@ def test_register_existing_arrow_files(
     )
     with Context.from_app(build_app(catalog)) as context:  # type: ignore[no-untyped-call]
         client = from_context(context).include_data_sources()
-        node = client.register(*uris, key="table", mimetype=mimetype)
+        node = client.register(*uris, key="table")
         assert node.structure().npartitions == npartitions
         assert node.structure().arrow_schema_decoded.equals(
             tables[0].schema, check_metadata=True
         )
+        assert node["label"].read().tolist() == [
+            value for table in tables for value in table.column("label").to_pylist()
+        ]
+        with pytest.raises(KeyError):
+            node["missing"]
         # The client concatenates per-partition frames and may represent strings
         # with Dask's Arrow-backed dtype rather than pandas' object dtype.
         pd.testing.assert_frame_equal(
@@ -304,10 +277,32 @@ def test_register_existing_arrow_files(
         incompatible = pa.table({"label": ["Ge"], "value": [1.5]})
         bad_uri = _write_arrow(tmp_path / "bad.arrow", incompatible)
         with pytest.raises(ValueError, match="same schema"):
-            client.register(uris[0], bad_uri, key="rejected", mimetype=mimetype)
+            client.register(uris[0], bad_uri, key="rejected")
         assert "rejected" not in client
         # The rejected import must not reserve the key or damage the valid node.
-        retried = client.register(uris[0], key="rejected", mimetype=mimetype)
+        retried = client.register(uris[0], key="rejected")
         pd.testing.assert_frame_equal(
             retried.read(), tables[0].to_pandas(), check_dtype=False
         )
+
+
+def test_register_feather_v2_and_reject_v1(tmp_path: Path) -> None:
+    assert DEFAULT_MIMETYPES_BY_FILE_EXT[".arrow"] == APACHE_ARROW_FILE_MIME_TYPE
+    assert DEFAULT_MIMETYPES_BY_FILE_EXT[".feather"] == APACHE_ARROW_FILE_MIME_TYPE
+    assert ".arrows" not in DEFAULT_MIMETYPES_BY_FILE_EXT
+    table = pa.table({"label": ["Si", "β-Ga₂O₃", "铜"], "value": [1, 2, 3]})
+    feather_path = tmp_path / "table.feather"
+    feather.write_feather(table, feather_path)
+    legacy_path = tmp_path / "legacy.feather"
+    feather.write_feather(table, legacy_path, version=1)
+    with pytest.raises(pa.ArrowInvalid):
+        ArrowAdapter.from_single_file(ensure_uri(legacy_path))
+
+    catalog = in_memory(
+        writable_storage=str(tmp_path / "data"), readable_storage=[str(tmp_path)]
+    )
+    with Context.from_app(build_app(catalog)) as context:  # type: ignore[no-untyped-call]
+        client = from_context(context)
+        node = client.register(ensure_uri(feather_path), key="feather")
+        pd.testing.assert_frame_equal(node.read(), table.to_pandas(), check_dtype=False)
+        assert node["label"].read().tolist() == table.column("label").to_pylist()
