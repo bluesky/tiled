@@ -24,7 +24,7 @@ jobs:
 
     - uses: actions/checkout@v7
       with:
-        fetch-depth: 1000  # should be enough to reach the most recent tag
+        fetch-depth: 0  # the database revisions page reads every release tag
 
     - name: Install uv and set the python version
       uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e  # v10.3.2
