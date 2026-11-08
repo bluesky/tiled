@@ -21,6 +21,8 @@ from collections.abc import Callable
 from fastapi import APIRouter, Depends, Request
 from strawberry.fastapi import GraphQLRouter
 
+from tiled.utils import sanitize_uri
+
 from ..server.authentication import (
     get_current_access_tags,
     get_current_principal,
@@ -101,7 +103,10 @@ def create_router(get_database_settings: Callable[[], DatabaseSettings]) -> APIR
 
     async def startup() -> None:
         db_settings = get_database_settings()
-        logger.info("Initializing links store with shared DB pool: %s", db_settings.uri)
+        logger.info(
+            "Initializing links store with shared DB pool: %s",
+            sanitize_uri(db_settings.uri)[0],
+        )
         store.append(await GraphSQLAlchemyStore.from_database_settings(db_settings))
 
     async def shutdown() -> None:
