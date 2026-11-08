@@ -103,11 +103,6 @@ def create_router(get_database_settings: Callable[[], DatabaseSettings]) -> APIR
 
     async def startup() -> None:
         db_settings = get_database_settings()
-        sanitized_db_uri = None
-        if db_settings.uri is not None:
-            sanitized_db_uri, *_ = sanitize_uri(db_settings.uri)
-        logger.info(
-            "Initializing links store with shared DB pool: %s", sanitized_db_uri
         logger.info(
             "Initializing links store with shared DB pool: %s",
             sanitize_uri(db_settings.uri)[0],
