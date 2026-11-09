@@ -64,8 +64,13 @@ async def run_async_migrations():
 
     """
 
+    section = config.get_section(config.config_ini_section)
+    if section is None:
+        raise RuntimeError(
+            f"No [{config.config_ini_section}] section in alembic config"
+        )
     connectable = async_engine_from_config(
-        config.get_section(config.config_ini_section, {}),
+        section,
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
     )

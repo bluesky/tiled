@@ -94,7 +94,6 @@ class Timestamped:
     time_created: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
-        nullable=False,
     )
     time_updated: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
@@ -133,10 +132,9 @@ class Principal(Timestamped, Base):
     uuid: Mapped[uuid_module.UUID] = mapped_column(
         UUID,
         index=True,
-        nullable=False,
         default=lambda: uuid_module.uuid4(),
     )
-    type: Mapped[PrincipalType] = mapped_column(Enum(PrincipalType), nullable=False)
+    type: Mapped[PrincipalType] = mapped_column(Enum(PrincipalType))
     # In the future we may add other information.
 
     identities: Mapped[list["Identity"]] = relationship(back_populates="principal")
@@ -155,13 +153,9 @@ class Identity(Timestamped, Base):
     __tablename__ = "identities"
 
     # An (id, provider) pair must be unique.
-    id: Mapped[str] = mapped_column(Unicode(255), primary_key=True, nullable=False)
-    provider: Mapped[str] = mapped_column(
-        Unicode(255), primary_key=True, nullable=False
-    )
-    principal_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("principals.id"), nullable=False
-    )
+    id: Mapped[str] = mapped_column(Unicode(255), primary_key=True)
+    provider: Mapped[str] = mapped_column(Unicode(255), primary_key=True)
+    principal_id: Mapped[int] = mapped_column(Integer, ForeignKey("principals.id"))
     latest_login: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
@@ -176,11 +170,9 @@ class Role(Timestamped, Base):
     id: Mapped[int] = mapped_column(
         Integer, primary_key=True, index=True, autoincrement=True
     )
-    name: Mapped[str] = mapped_column(
-        Unicode(255), index=True, unique=True, nullable=False
-    )
+    name: Mapped[str] = mapped_column(Unicode(255), index=True, unique=True)
     description: Mapped[str | None] = mapped_column(Unicode(1023), nullable=True)
-    scopes: Mapped[list[str]] = mapped_column(JSONList(511), nullable=False)
+    scopes: Mapped[list[str]] = mapped_column(JSONList(511))
     principals: Mapped[list[Principal]] = relationship(
         secondary=principal_role_association_table, back_populates="roles"
     )
@@ -194,11 +186,9 @@ class APIKey(Timestamped, Base):
     # We do not store the full secret, only its sha256-hashed value.
     # A primary key on (first_eight, hashed_secret) enables
     # fast lookups.
-    first_eight: Mapped[str] = mapped_column(
-        Unicode(8), primary_key=True, index=True, nullable=False
-    )
+    first_eight: Mapped[str] = mapped_column(Unicode(8), primary_key=True, index=True)
     hashed_secret: Mapped[bytes] = mapped_column(
-        LargeBinary(32), primary_key=True, index=True, nullable=False
+        LargeBinary(32), primary_key=True, index=True
     )
     expiration_time: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
@@ -207,10 +197,8 @@ class APIKey(Timestamped, Base):
         DateTime(timezone=True), nullable=True
     )
     note: Mapped[str | None] = mapped_column(Unicode(1023), nullable=True)
-    principal_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("principals.id"), nullable=False
-    )
-    scopes: Mapped[list[str]] = mapped_column(JSONList(511), nullable=False)
+    principal_id: Mapped[int] = mapped_column(Integer, ForeignKey("principals.id"))
+    scopes: Mapped[list[str]] = mapped_column(JSONList(511))
     access_tags: Mapped[list[str] | None] = mapped_column(JSONList(511), nullable=True)
     # In the future we could make it possible to disable API keys
     # without deleting them from the database, for forensics and
@@ -238,21 +226,17 @@ class Session(Timestamped, Base):
     )
     # This uuid is exposed to the client.
     uuid: Mapped[uuid_module.UUID] = mapped_column(
-        UUID, index=True, nullable=False, default=uuid_module.uuid4
+        UUID, index=True, default=uuid_module.uuid4
     )
     time_last_refreshed: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    refresh_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    expiration_time: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
-    principal_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("principals.id"), nullable=False
-    )
-    revoked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    refresh_count: Mapped[int] = mapped_column(Integer, default=0)
+    expiration_time: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    principal_id: Mapped[int] = mapped_column(Integer, ForeignKey("principals.id"))
+    revoked: Mapped[bool] = mapped_column(Boolean, default=False)
     # State allows for custom  authenticator information to be stored in the session.
-    state: Mapped[Any] = mapped_column(JSONVariant, nullable=False)
+    state: Mapped[Any] = mapped_column(JSONVariant)
     principal: Mapped[Principal] = relationship(
         back_populates="sessions", lazy="joined"
     )
@@ -266,12 +250,10 @@ class PendingSession(Base):
     __tablename__ = "pending_sessions"
 
     hashed_device_code: Mapped[bytes] = mapped_column(
-        LargeBinary(32), primary_key=True, index=True, nullable=False
+        LargeBinary(32), primary_key=True, index=True
     )
-    user_code: Mapped[str] = mapped_column(Unicode(8), index=True, nullable=False)
-    expiration_time: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
+    user_code: Mapped[str] = mapped_column(Unicode(8), index=True)
+    expiration_time: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     # SET NULL so that deleting a Session (e.g. purging an expired one) is
     # never blocked by a pending session that still references it.
     session_id: Mapped[int | None] = mapped_column(
