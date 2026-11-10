@@ -7,6 +7,9 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Added
 
+- Documentation page listing the Alembic revisions of the catalog and
+  authentication databases required by each Tiled release, generated from the
+  git tags when the documentation is built.
 - OpenTelemetry tracing for the server, exported over OTLP. The example monitoring
   stack (`compose.monitoring.yml`) now includes an OpenTelemetry Collector, Jaeger,
   and Grafana Tempo (traces are sent to both backends), and the Collector also
