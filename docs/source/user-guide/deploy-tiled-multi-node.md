@@ -105,6 +105,16 @@ The hostname or header only selects the pool of nodes. It is not access
 control: Tiled authenticates and authorizes every request in the same way,
 whichever pool handles it. See {ref}`multi-node-pools` for the configuration.
 
+## Rate limiting
+
+The load balancer can limit how many requests each client IP address makes, so
+that one busy or misbehaving client cannot crowd out the others. It answers
+requests over the limit with HTTP 429 and a `Retry-After` header, which the
+Tiled Python client respects: it waits and retries (see {doc}`retries`). It can
+also limit how many server errors (HTTP 500) each client triggers, to stop a
+client that repeats a request that fails. See {ref}`multi-node-rate-limiting`
+for the configuration and the limits NSLS-II uses.
+
 ## Redis high availability for streaming
 
 Live data streaming (WebSocket subscriptions) is backed by a shared Redis
@@ -638,6 +648,99 @@ pool:
 
 ```text
 curl https://tiled.example.org/api/v1/
+```
+
+(multi-node-rate-limiting)=
+### Rate limiting
+
+HAProxy counts requests per client IP address in *stick tables*. This example
+builds on the request-header configuration above and sets the limits NSLS-II
+uses:
+
+| Pool | Requests per client IP | HTTP 500 responses per client IP |
+| --- | --- | --- |
+| Read | 1000 per 10 seconds | 200 per 60 seconds |
+| Write (data acquisition) | 2000 per 10 seconds | counted, not limited |
+
+For scale, in 26 hours of NSLS-II traffic the busiest client of the read pool
+peaked at about 2250 requests per 10 seconds, during one 15-minute burst; the
+next busiest peaked at 168. The busiest client of the write pool peaked at 42.
+
+```text
+# One table for request rates and one for error rates, per pool.
+# Entries are keyed by client IP address and expire after 30 minutes idle.
+backend st_read_requests
+    stick-table type ipv6 size 10m expire 30m store http_req_rate(10s)
+
+backend st_write_requests
+    stick-table type ipv6 size 10m expire 30m store http_req_rate(10s)
+
+backend st_read_errors
+    stick-table type ipv6 size 10m expire 30m store gpc0,gpc0_rate(60s)
+
+backend st_write_errors
+    stick-table type ipv6 size 10m expire 30m store gpc0,gpc0_rate(60s)
+
+frontend tiled_frontend
+    # ... as above ...
+    default_backend tiled_read_backend
+
+    acl is_write hdr(tiled-use) -i MY_WRITE_PASSPHRASE
+    use_backend tiled_write_backend if is_write
+
+    # Do not limit an address shared by many unrelated clients, such as a
+    # NAT gateway, or one client could use up the others' allowance.
+    acl rate_limit_bypass src 192.0.2.250
+
+    # Count requests (sc1) and errors (sc2) per client IP, in the pool's tables.
+    http-request track-sc1 src table st_write_requests if is_write !rate_limit_bypass
+    http-request track-sc1 src table st_read_requests if !is_write !rate_limit_bypass
+    http-request track-sc2 src table st_write_errors if is_write !rate_limit_bypass
+    http-request track-sc2 src table st_read_errors if !is_write !rate_limit_bypass
+    http-after-response sc-inc-gpc0(2) if { status 500 }
+
+    # Over the request limit: answer 429 and ask the client to retry in 10 s.
+    http-request return status 429 content-type text/plain hdr retry-after 10 string "Too Many Requests\n" if is_write { sc_http_req_rate(1) gt 2000 }
+    http-request return status 429 content-type text/plain hdr retry-after 10 string "Too Many Requests\n" if !is_write { sc_http_req_rate(1) gt 1000 }
+
+    # Over the error limit (read pool only): ask the client to retry in 60 s.
+    http-request return status 429 content-type text/plain hdr retry-after 60 string "Too Many Requests\n" if !is_write { sc_gpc0_rate(2) gt 200 }
+```
+
+`sc_http_req_rate(1)` is the client's request count over the last 10 seconds,
+including the current request, and `sc_gpc0_rate(2)` its count of HTTP 500
+responses over the last 60 seconds. The tracking rules must come before the
+rules that use them.
+
+To choose limits, start in a report-only mode: mark requests over the limit
+instead of refusing them, and watch which clients would be refused. NSLS-II
+runs its production service this way; only its staging service refuses
+requests over the read pool's request limit. Replace each `http-request return` rule with a rule that sets a
+variable, and add the variable to the response:
+
+```text
+    http-request set-var(txn.rate_limit_action) str(request) if !is_write { sc_http_req_rate(1) gt 1000 }
+    http-request set-var(txn.rate_limit_action) str(error) if !is_write { sc_gpc0_rate(2) gt 200 }
+    http-after-response set-header rate-limit-would-deny %[var(txn.rate_limit_action)] if { var(txn.rate_limit_action) -m found }
+```
+
+To log each client's rates, store them in variables and add these to your
+`log-format`, for example as `rl_req=%[var(txn.rl_req)] rl_err=%[var(txn.rl_err)]`:
+
+```text
+    http-request set-var(txn.rl_req) sc_http_req_rate(1)
+    http-request set-var(txn.rl_err) sc_gpc0_rate(2)
+```
+
+```{note}
+Each load balancer counts only the requests it receives. With two active load
+balancers (see {ref}`multi-node-ha`), DNS round robin splits a client's requests
+between them, so each one sees about half. NSLS-II uses the Global Profiling
+Engine of HAProxy Enterprise to add up the counts from both load balancers and
+apply the limits to the total. The open source HAProxy can copy stick-table
+entries between load balancers with a `peers` section, but it does not add
+them up; there, you could set each load balancer's limits to half of the
+intended total instead.
 ```
 
 [HAProxy]: https://www.haproxy.org/
