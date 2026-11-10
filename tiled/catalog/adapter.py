@@ -61,6 +61,7 @@ from tiled.queries import (
     Eq,
     FullText,
     In,
+    KeyLike,
     KeyPresent,
     KeysFilter,
     Like,
@@ -2928,6 +2929,31 @@ def keys_filter(query, tree):
     return tree.new_variation(conditions=tree.conditions + [condition])
 
 
+def key_like(query, tree):
+    # Case-sensitive on every backend. SQLAlchemy's startswith/endswith/contains
+    # compile to LIKE, which SQLite evaluates case-insensitively, so SQLite gets
+    # substr/instr instead. Neither form treats any character as a wildcard.
+    dialect_name = tree.context.engine.url.get_dialect().name
+    key = orm.Node.key
+    if dialect_name == "sqlite":
+        if query.before and query.after:
+            condition = func.instr(key, query.key) > 0
+        elif query.after:
+            condition = func.substr(key, 1, len(query.key)) == query.key
+        else:
+            condition = func.substr(key, -len(query.key)) == query.key
+    elif dialect_name == "postgresql":
+        if query.before and query.after:
+            condition = key.contains(query.key, autoescape=True)
+        elif query.after:
+            condition = key.startswith(query.key, autoescape=True)
+        else:
+            condition = key.endswith(query.key, autoescape=True)
+    else:
+        raise UnsupportedQueryType("key_like")
+    return tree.new_variation(conditions=tree.conditions + [condition])
+
+
 def structure_family(query, tree):
     condition = orm.Node.structure_family == query.value
     return tree.new_variation(conditions=tree.conditions + [condition])
@@ -2941,6 +2967,7 @@ CatalogNodeAdapter.register_query(In, partial(in_or_not_in, method="in_"))
 CatalogNodeAdapter.register_query(NotIn, partial(in_or_not_in, method="not_in"))
 CatalogNodeAdapter.register_query(KeyPresent, key_present)
 CatalogNodeAdapter.register_query(KeysFilter, keys_filter)
+CatalogNodeAdapter.register_query(KeyLike, key_like)
 CatalogNodeAdapter.register_query(StructureFamilyQuery, structure_family)
 CatalogNodeAdapter.register_query(SpecsQuery, specs)
 CatalogNodeAdapter.register_query(AccessTagsFilter, access_tags_filter)

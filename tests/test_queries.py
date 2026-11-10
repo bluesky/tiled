@@ -20,11 +20,13 @@ from tiled.queries import (
     FullText,
     In,
     Key,
+    KeyLike,
     KeyPresent,
     KeysFilter,
     Like,
     NotEq,
     NotIn,
+    QueryValueError,
     Regex,
     SpecsQuery,
     StructureFamilyQuery,
@@ -397,3 +399,168 @@ def test_like(client):
     expected = ["full_text_test_case", "full_text_test_case_urple"]
     results = client.search(Like("color", "%urple"))
     assert set(results) == set(expected)
+
+
+# KeyLike gets its own catalogs, so that these keys do not change the results
+# of the other tests, which share the module-scoped `client` fixture.
+KEY_LIKE_KEYS = [
+    "scan1",
+    "Scan2",
+    "prescan",
+    "scanner",
+    "no_scan_here",
+    "a%b",
+    "axb",
+    "a_b",
+    "ab",
+    "a\\b",
+    "a*b",
+]
+
+
+@pytest.fixture
+def key_like_client(catalog_adapter):
+    with Context.from_app(build_app(catalog_adapter)) as context:
+        client = from_context(context)
+        for key in KEY_LIKE_KEYS:
+            client.create_container(key)
+        yield client
+
+
+@pytest.mark.parametrize(
+    "query, expected",
+    [
+        # Contains (the default), starts with, ends with
+        (KeyLike("scan"), {"scan1", "prescan", "scanner", "no_scan_here"}),
+        (KeyLike("scan", before=False), {"scan1", "scanner"}),
+        (KeyLike("scan", after=False), {"prescan"}),
+        # Case-sensitive
+        (KeyLike("Scan"), {"Scan2"}),
+        (KeyLike("SCAN"), set()),
+        # Text longer than the keys it would otherwise match
+        (KeyLike("xprescan", after=False), set()),
+        (KeyLike("scan1x", before=False), set()),
+        # No character is a wildcard.
+        (KeyLike("%"), {"a%b"}),
+        (KeyLike("_"), {"a_b", "no_scan_here"}),
+        (KeyLike("*"), {"a*b"}),
+        (KeyLike("\\"), {"a\\b"}),
+        (KeyLike("a%", before=False), {"a%b"}),
+        (KeyLike("_b", after=False), {"a_b"}),
+        (KeyLike("a_b"), {"a_b"}),
+    ],
+)
+def test_key_like(key_like_client, query, expected):
+    assert set(key_like_client.search(query)) == expected
+
+
+def test_key_like_composes_with_other_queries(key_like_client):
+    results = key_like_client.search(KeyLike("scan")).search(
+        KeyLike("scan", after=False)
+    )
+    assert set(results) == {"prescan"}
+    results = key_like_client.search(KeyLike("scan")).search(KeyLike("_"))
+    assert set(results) == {"no_scan_here"}
+
+
+def test_key_like_lookup_within_results(key_like_client):
+    results = key_like_client.search(KeyLike("scan"))
+    assert "prescan" in results
+    assert "Scan2" not in results
+    results["prescan"]
+    with pytest.raises(KeyError):
+        results["Scan2"]
+
+
+def test_key_like_deep(key_like_client):
+    key_like_client["scan1"].create_container("inner_scan")
+    key_like_client["axb"].create_container("Inner_SCAN")
+    results = key_like_client.search_deep(KeyLike("scan"))
+    assert set(results) == {
+        ("scan1",),
+        ("prescan",),
+        ("scanner",),
+        ("no_scan_here",),
+        ("scan1", "inner_scan"),
+    }
+
+
+@pytest.mark.parametrize(
+    "kwargs, message",
+    [
+        ({"key": "scan", "before": False, "after": False}, "at least one of"),
+        ({"key": ""}, "non-empty"),
+    ],
+)
+def test_key_like_invalid_is_rejected_by_constructor(kwargs, message):
+    "The Python query object rejects invalid parameters before any request."
+    with pytest.raises(QueryValueError, match=message) as info:
+        KeyLike(**kwargs)
+    detail = str(info.value)
+    assert detail.startswith("KeyLike ")
+    if "at least one of" in message:
+        # Python users are pointed at the Python classes.
+        assert "KeyLookup or KeysFilter" in detail
+        assert "keys_filter" not in detail
+
+
+@pytest.mark.parametrize(
+    "params, message",
+    [
+        (
+            {
+                "filter[key_like][condition][key]": "scan",
+                "filter[key_like][condition][before]": "false",
+                "filter[key_like][condition][after]": "false",
+            },
+            "at least one of",
+        ),
+        ({"filter[key_like][condition][key]": ""}, "non-empty"),
+    ],
+)
+def test_key_like_invalid_is_rejected_by_server(key_like_client, params, message):
+    "Clients that do not use the Python query objects get an HTTP 400."
+    response = key_like_client.context.http_client.get(
+        key_like_client.item["links"]["search"], params=params
+    )
+    assert response.status_code == HTTP_400_BAD_REQUEST
+    detail = response.json()["detail"]
+    assert message in detail
+    assert detail.startswith("The key_like query ")
+    if "at least one of" in message:
+        # Other clients are pointed at the HTTP query types, not Python classes.
+        assert "the lookup or keys_filter query" in detail
+        assert "KeysFilter" not in detail
+
+
+def test_key_like_http_defaults(key_like_client):
+    "Over HTTP, 'before' and 'after' default to true and accept boolean strings."
+    link = key_like_client.item["links"]["search"]
+    http_client = key_like_client.context.http_client
+
+    def keys(params):
+        response = http_client.get(link, params=params)
+        response.raise_for_status()
+        return {item["id"] for item in response.json()["data"]}
+
+    assert keys({"filter[key_like][condition][key]": "scan"}) == {
+        "scan1",
+        "prescan",
+        "scanner",
+        "no_scan_here",
+    }
+    assert keys(
+        {
+            "filter[key_like][condition][key]": "scan",
+            "filter[key_like][condition][before]": "false",
+            "filter[key_like][condition][after]": "true",
+        }
+    ) == {"scan1", "scanner"}
+
+
+def test_key_like_unsupported_on_map_adapter():
+    tree = MapAdapter({"scan1": ArrayAdapter.from_array(numpy.ones(3))})
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        with fail_with_status_code(HTTP_400_BAD_REQUEST):
+            list(client.search(KeyLike("scan")))

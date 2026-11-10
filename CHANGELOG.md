@@ -30,6 +30,13 @@ Write the date in place of the "Unreleased" in the case a new version is release
   external-service calls appear in traces. The example monitoring stack also
   generates a service graph viewable in Grafana, with Tiled's separate Postgres
   databases (catalog, storage, authn) and Redis shown as distinct nodes.
+- New `KeyLike` query (`key_like` over HTTP) matching entries whose key
+  contains, starts with, or ends with some text, selected by the `before`
+  and `after` parameters (both true by default). Matching is case-sensitive
+  and literal: no character acts as a wildcard. It is supported on SQLite and
+  PostgreSQL catalogs. An empty key, or `before` and `after` both false, is
+  rejected with HTTP 400 (and with `QueryValueError` when constructing the
+  query in Python).
 
 ### Changed
 
