@@ -36,37 +36,6 @@ or its dask counterpart.
    tiled.adapters.zarr.ZarrGroupAdapter
 ```
 
-## Search Queries
-
-### Built-in Search Query Types
-
-These are simple, JSON-serializable dataclasses that define the *data*
-in a query. They do not defined *how* to execute a query on a given Tree.
-
-```{note}
-The list of built-in queries is short. Most of the power of queries comes from
-registering *custom* queries that fit your use case and can make specific
-assumption about your metadata / data and its meaning.
-```
-
-```{eval-rst}
-.. autosummary::
-   :toctree: generated
-
-   tiled.queries.FullText
-   tiled.queries.KeyLookup
-```
-
-### Custom Search Query Registration
-
-```{eval-rst}
-.. autosummary::
-   :toctree: generated
-
-   tiled.query_registration.QueryRegistry
-   tiled.query_registration.register
-```
-
 (media-type-registry-ref)=
 ## Media Type (Format) Registry
 
