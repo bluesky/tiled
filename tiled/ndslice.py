@@ -1,8 +1,9 @@
+import bisect
 import builtins
 import itertools
 import math
 import re
-from typing import Optional, Union
+from collections.abc import Iterable
 
 from ndindex import ndindex
 
@@ -13,7 +14,7 @@ def is_ellipsis(arg) -> bool:
     return isinstance(arg, EllipsisType) or (arg == Ellipsis)
 
 
-def merge_slices(*args: Union["NDSlice", "NDBlock"]) -> Union["NDSlice", "NDBlock"]:
+def merge_slices(*args: "NDSlice | NDBlock") -> "NDSlice | NDBlock":
     """Merge multiple NDSlices or NDBlocks
 
     Creates a single NDSlice or (NDBlock if all arguemnts are NDBlocks) if they are
@@ -98,7 +99,23 @@ def merge_slices(*args: Union["NDSlice", "NDBlock"]) -> Union["NDSlice", "NDBloc
     return _cls(*result)
 
 
-def split_1d(start, stop, step, max_len: int, pref_splits: Optional[list[int]] = None):
+def _num_steps(slc: builtins.slice) -> int:
+    """Number of elements an expanded 1-D slice selects.
+
+    Tolerates reversed slices that reach the start of the axis, whose expanded
+    `stop` is negative (e.g. `slice(9, -11, -1)`) or `None`. For those the
+    exclusive lower bound is `-1` in Python `range` terms, regardless of the
+    particular negative value produced by `expand_for_shape`.
+    """
+    start = slc.start or 0
+    step = slc.step or 1
+    stop = slc.stop
+    if step < 0 and (stop is None or stop < 0):
+        stop = -1
+    return len(range(start, stop, step))
+
+
+def split_1d(start, stop, step, max_len: int, pref_splits: list[int] | None = None):
     """Split a 1D slice into sub-slices that do not exceed max_len steps.
 
     Splits are chosen close to the ideal equal partition. If preferred
@@ -106,14 +123,21 @@ def split_1d(start, stop, step, max_len: int, pref_splits: Optional[list[int]] =
     as long as it does not violate the min/max constraints.
     """
 
+    # A reversed slice reaching the start of the axis is expanded (by ndindex) to
+    # a negative canonical stop (e.g. slice(9, -11, -1)). Such a slice has no
+    # non-negative integer stop, so partition it as if the exclusive bound were
+    # -1 and emit stop=None for the final sub-slice that reaches index 0.
+    reaches_start = step < 0 and stop is not None and stop < 0
+    eff_stop = -1 if reaches_start else stop
+
     # Total number of steps and max steps per split
-    total_steps = math.ceil(abs(stop - start) / abs(step))
+    total_steps = math.ceil(abs(eff_stop - start) / abs(step))
 
     # Convert preferred points to index space
     pref_indx = sorted(
         (x - start) // step
         for x in (pref_splits or [])
-        if x in range(start, stop, step)
+        if x in range(start, eff_stop, step)
     )
 
     result, crnt_indx, _pi = [], 0, 0
@@ -138,13 +162,13 @@ def split_1d(start, stop, step, max_len: int, pref_splits: Optional[list[int]] =
         result.append((start + crnt_indx * step, start + next_indx * step))
         crnt_indx = next_indx
 
-    result.append((start + crnt_indx * step, stop))
+    result.append((start + crnt_indx * step, None if reaches_start else stop))
 
     return result
 
 
 def split_slice(
-    arr_slice: "NDSlice", max_size: int, pref_splits: Optional[list[list[int]]] = None
+    arr_slice: "NDSlice", max_size: int, pref_splits: list[list[int]] | None = None
 ) -> dict[tuple[int, ...], "NDSlice"]:
     """Split an N-dimensional slice into smaller slices that do not exceed max_size
 
@@ -188,17 +212,13 @@ def split_slice(
     sorting_order = (
         [len(ps) for ps in pref_splits]
         if pref_splits is not None
-        else [len(range(s.start, s.stop, s.step or 1)) for s in arr_slice]
+        else [_num_steps(s) for s in arr_slice]
     )
     result = [[s] for s in arr_slice]
     for d in sorted(range(ndim), key=lambda i: sorting_order[i], reverse=True):
         # Find the size of largest block along all other dimensions, excluding d
         max_other = math.prod(
-            [
-                max(len(range(s.start, s.stop, s.step or 1)) for s in result[_d])
-                for _d in range(ndim)
-                if _d != d
-            ]
+            [max(_num_steps(s) for s in result[_d]) for _d in range(ndim) if _d != d]
         )
         slc = result[d].pop()
 
@@ -213,7 +233,7 @@ def split_slice(
         result[d].extend([builtins.slice(a, b, slc.step) for a, b in splits])
 
         # Check if we need further subslicing along other dimensions
-        max_crnt = max(len(range(s.start, s.stop, s.step or 1)) for s in result[d])
+        max_crnt = max(_num_steps(s) for s in result[d])
         if max_crnt * max_other <= max_size:
             break
 
@@ -229,6 +249,149 @@ def split_slice(
     return {k: NDSlice(v) for k, v in zip(keys, vals)}
 
 
+def _slc_with_int(slc: builtins.slice, idx: int) -> int:
+    "Compose a (1D) slice with an integer index"
+
+    if slc.start is None or slc.stop is None:
+        raise ValueError("Composition with relative indexing is not supported.")
+
+    start, stop, step = slc.start, slc.stop, slc.step or 1
+
+    # Estimate maximum length of the resulting shape after slice
+    if step > 0:
+        length = max(0, (stop - start + step - 1) // step)
+    else:
+        length = max(0, (start - stop - step - 1) // (-step))
+
+    # Normalize negative index
+    if idx < 0:
+        idx += length
+
+    if idx < 0 or idx >= length:
+        raise ValueError("Composition with out-of-bounds index")
+
+    return start + step * idx
+
+
+def _slc_with_slc(slc1: builtins.slice, slc2: builtins.slice) -> builtins.slice:
+    "Compose a (1D) slice with another slice"
+
+    # Normalize first slice
+    if slc1.start is None or slc1.stop is None:
+        raise ValueError("Composition with relative indexing is not supported.")
+    start1, stop1, step1 = slc1.start, slc1.stop, slc1.step or 1
+
+    # Estimate maximum length of the resulting shape after first slice
+    if step1 > 0:
+        length = max(0, (stop1 - start1 + step1 - 1) // step1)
+    else:
+        length = max(0, (start1 - stop1 - step1 - 1) // (-step1))
+
+    # Normalize second slice relative to the length of the first slice
+    start2, stop2, step2 = slc2.indices(length)
+
+    # Compose the two normalized slices
+    new_start = start1 + step1 * start2
+    new_step = step1 * step2
+    new_stop = start1 + step1 * stop2
+
+    return builtins.slice(new_start, new_stop, new_step)
+
+
+def _is_scalar_slice(slc: int | builtins.slice, length: int | None = None) -> bool:
+    "Best effort to check if a slice selects a single element (scalar) along one dimension"
+    if length is not None and isinstance(slc, builtins.slice):
+        start, stop, step = slc.indices(length)
+        return len(range(start, stop, step)) == 1
+
+    return isinstance(slc, int) or (
+        isinstance(slc, slice)
+        and slc.start is not None
+        and slc.stop is not None
+        and slc.stop == slc.start + 1
+    )
+
+
+def compose_slices(slc1: "NDSlice", slc2: "NDSlice") -> "NDSlice":
+    """Compose two NDSlices
+
+    Creates a single NDSlice that is the composition of the input slices, i.e. equivalent
+    to applying them sequentially. For example, if arr is an array, then
+    arr[slc1][slc2] is equivalent to arr[compose_slices(slc1, slc2)].
+
+    Note that Ellipsis in any of the slices may break the composition rule for
+    arrays of certain shapes, so it is recommended to expand the slices for the specific
+    shape before composing them.
+    """
+
+    if (not slc1) or (not slc2):
+        # If either slice is empty, the result is the other slice (which may also be empty)
+        return slc1 or slc2
+
+    if not slc1.is_expanded():
+        # The left slice contains Ellipsis or the resulting shape is ambiguous
+        raise ValueError(
+            "Composition of slices with undetermined shape is not supported."
+        )
+
+    res_rgt, i1l = [], len(slc1)
+    res_lft, i2r = [], 0
+    if any(is_ellipsis(s) for s in slc2) and not is_ellipsis(slc2[-1]):
+        # The right slice contains Ellipsis in other than the last position
+        dim1 = sum(1 for s in slc1 if not isinstance(s, int))
+        if dim1 < len(slc2) - 1:
+            raise ValueError(
+                "Composition with Ellipsis in the right slice is only supported if it is "
+                "the last element, or the left slice has enough dimensions to cover all "
+                "non-Ellipsis elements of the right slice."
+            )
+
+        # Start assembling the result from the right
+        for s2 in reversed(slc2):
+            if is_ellipsis(s2):
+                break
+
+            # Chose the next right-most (non-integer) item from the left slice
+            i1l -= 1
+            s1 = slc1[i1l]
+            while isinstance(s1, int) and i1l > 0:
+                # Repeat: add the item, move the left counter until we find a non-integer item
+                res_rgt.append(s1)
+                i1l -= 1
+                s1 = slc1[i1l]
+
+            # Now compose s1 and s2 and add to the result from the right
+            if isinstance(s2, int):
+                res_rgt.append(_slc_with_int(s1, s2))
+            elif isinstance(s2, builtins.slice):
+                res_rgt.append(_slc_with_slc(s1, s2))
+
+    # All the right slice until Ellipsis is processed; and the remaining items from the left
+    for s1 in slc1[:i1l]:
+        # Left item is an integer, add it to the result and move on
+        if isinstance(s1, int) or i2r >= len(slc2):
+            res_lft.append(s1)
+            continue
+
+        # Left item is a slice, compose it with the next right item if there are any remaining
+        s2 = slc2[i2r]
+        if isinstance(s2, int):
+            res_lft.append(_slc_with_int(s1, s2))
+        elif isinstance(s2, builtins.slice):
+            res_lft.append(_slc_with_slc(s1, s2))
+        elif is_ellipsis(s2) or (len(slc2) == i2r + 1):
+            res_lft.append(s1)
+            continue
+
+        i2r += 1
+
+    _cls = (
+        NDBlock if isinstance(slc1, NDBlock) and isinstance(slc2, NDBlock) else NDSlice
+    )
+
+    return _cls(*res_lft, *reversed(res_rgt))
+
+
 class NDSlice(tuple):
     """A representation of a slice for N-dimensional arrays.
 
@@ -240,7 +403,9 @@ class NDSlice(tuple):
     {"step": 0}, which is not a valid builtin.slice.
     """
 
-    def __new__(cls, *args: Union[int, builtins.slice, EllipsisType]) -> "NDSlice":
+    def __new__(
+        cls, *args: int | builtins.slice | EllipsisType | Iterable | None
+    ) -> "NDSlice":
         if len(args) == 1 and (isinstance(args[0], (tuple, list)) or args[0] is None):
             return cls(*(args[0] or ()))
         if any(not isinstance(s, (int, builtins.slice, EllipsisType)) for s in args):
@@ -268,6 +433,19 @@ class NDSlice(tuple):
             is_ellipsis(s) or s in full_slices for s in self
         )
 
+    def __getitem__(self, key):
+        "An element of this NDSlice or the composition with another NDSlice"
+
+        if is_ellipsis(key):
+            return self
+
+        if isinstance(key, NDSlice):
+            # Composition of slices: arr[slc1][slc2] is equivalent to arr[slc1[slc2]]
+            return compose_slices(self, key)
+
+        # Just return the element if it's not a slice composition
+        return super().__getitem__(key)
+
     @classmethod
     def from_json(cls, ser: list[JSON]) -> "NDSlice":
         "Deserialize a json representation of an NDSlice"
@@ -283,7 +461,7 @@ class NDSlice(tuple):
                 raise ValueError("Can not initialize NDSlice from %s", s)
         return cls(*result)
 
-    def to_json(self, ndim: Optional[int] = None) -> list[JSON]:
+    def to_json(self, ndim: int | None = None) -> list[JSON]:
         "Convert NDSlice into a JSON-serializable representation"
         if not ndim and (Ellipsis in self) and self[-1] != Ellipsis:
             raise ValueError(
@@ -296,7 +474,7 @@ class NDSlice(tuple):
             )
         ndim = ndim or len(self)
 
-        def convert_dimension(slc: Union[int, builtins.slice]) -> JSON:
+        def convert_dimension(slc: int | builtins.slice) -> JSON:
             if isinstance(slc, builtins.slice):
                 return (
                     ({} if slc.start is None else {"start": slc.start})
@@ -311,10 +489,29 @@ class NDSlice(tuple):
             if s == Ellipsis:
                 break
             fwd.append(convert_dimension(s))
-        for s in reversed(self[len(fwd) + 1 :]):  # noqa: E203
+        for s in reversed(self[len(fwd) + 1 :]):
             bwd.append(convert_dimension(s))
 
         return fwd + [{} for _ in range(ndim - len(fwd) - len(bwd))] + [*reversed(bwd)]
+
+    def is_expanded(self) -> bool:
+        """Check the _necessary_ conditions to determine the resulting shape from the slice alone
+
+        If True, the resulting shape can be determined without knowing the shape of the array
+        this slice is applied to, i.e. it does not contain any ':', '...', or relative indexing.
+
+        NOTE: This is a necessary but not sufficient condition; e.g. `slice(0, 5)` applied to an
+        array of shape (3,) will still result in a shape of (3,), not (5,).
+        """
+
+        def _is_absolute(s: builtins.slice) -> bool:
+            return (s.start or 0) >= 0 and (s.stop is not None and s.stop >= 0)
+
+        return all(
+            (not is_ellipsis(s))
+            and (_is_absolute(s) if isinstance(s, builtins.slice) else True)
+            for s in self
+        )
 
     @classmethod
     def from_numpy_str(cls, arg: str) -> "NDSlice":
@@ -374,7 +571,7 @@ class NDSlice(tuple):
         for s in self:
             if isinstance(s, builtins.slice):
                 string_slice = (
-                    f"{(s.start or '')}:"
+                    f"{('' if s.start is None else s.start)}:"
                     + ("" if s.stop is None else f"{s.stop}")
                     + (f":{str(s.step)}" if s.step else "")
                 )
@@ -399,10 +596,41 @@ class NDSlice(tuple):
         "Calculate the shape after applying NDSlice to an array of the given shape"
         return ndindex(self).newshape(shape) if self else shape
 
+    def flat_indices(self, shape: tuple[int, ...]) -> tuple[int, ...]:
+        """Return the flat (C-order) positions selected by this slice.
+
+        Conceptually `numpy.arange(prod(shape)).reshape(shape)[self]` flattened
+        to 1-D: it labels each cell of an array of `shape` with its C-order
+        position and reports the positions this slice keeps. Integer entries drop
+        a dimension; slices (including strided and negative) and Ellipsis are
+        honored exactly as in NumPy indexing.
+
+        This is the inverse-mapping companion to :meth:`shape_after_slice` (which
+        gives the *shape* of a selection); here we get the flat *identities* of
+        the selected cells. It is useful for mapping an N-dimensional selection
+        back onto a flat, C-ordered collection -- e.g. finding which files of a
+        stacked file-sequence a given slice touches, where each file occupies one
+        cell of the stacking grid.
+
+        Returns a `tuple` of Python ints (empty if the slice selects nothing).
+        The selection order matches NumPy's, so the result also serves as the
+        read order for the underlying elements.
+        """
+        import numpy
+
+        grid = numpy.arange(math.prod(shape)).reshape(shape)
+        return tuple(grid[self.expand_for_shape(shape)].ravel().tolist())
+
     def unsqueeze(self) -> "NDSlice":
         "Convert all integer dims to slices of length 1 to preserve the dimensionality"
         return self.__class__(
             *(builtins.slice(s, s + 1, 1) if isinstance(s, int) else s for s in self)
+        )
+
+    def is_scalar(self, shape: tuple[int, ...]) -> bool:
+        "Check if this NDSlice selects a single element (scalar) from an array of the given shape"
+        return (len(self) == len(shape)) and all(
+            _is_scalar_slice(s, length=n) for s, n in zip(self, shape)
         )
 
 
@@ -413,7 +641,7 @@ class NDBlock(NDSlice):
     i.e. the `step` parameter along each dimension, if specified, must be 1.
     """
 
-    def __new__(cls, *args: Union[int, builtins.slice, EllipsisType]) -> "NDBlock":
+    def __new__(cls, *args: int | builtins.slice | EllipsisType) -> "NDBlock":
         inst = super().__new__(cls, *args)
 
         for s in inst:
@@ -444,3 +672,194 @@ class NDBlock(NDSlice):
                 slice_.append(slice(start, stop))
 
         return NDSlice(*slice_)
+
+    def chunk_indices(self, chunks: Chunks) -> list[tuple[int, ...]]:
+        """Return a list of all n-dimensional chunk indices in this block.
+
+        Expands any slice dimensions into individual indices while keeping
+        integer dimensions as-is. The result is a list of tuples where each
+        tuple represents the chunk index for one block.
+
+        Parameters
+        ----------
+        chunks : Chunks
+            The chunking scheme to determine the valid range of chunk indices.
+
+        Returns
+        -------
+        list[tuple[int, ...]]
+            List of n-dimensional chunk index tuples.
+        """
+        # Expand to get actual indices for each dimension
+        expanded = self.expand_for_shape(tuple(len(ch) for ch in chunks))
+
+        # Convert each dimension to a list of indices
+        dim_indices = []
+        for item in expanded:
+            if isinstance(item, int):
+                dim_indices.append([item])
+            elif isinstance(item, builtins.slice):
+                # Extract start, stop from the slice (step is guaranteed to be 1 or None)
+                start = item.start if item.start is not None else 0
+                stop = item.stop
+                dim_indices.append(list(range(start, stop)))
+
+        # Generate all combinations (Cartesian product)
+        return sorted(itertools.product(*dim_indices))
+
+
+def block_for_slice(
+    chunks: Chunks, slice: tuple | NDSlice | None = None
+) -> tuple["NDBlock", "NDSlice"]:
+    """Convert a slice on a chunked array into block indices and a slice within the block
+
+    Given an array's chunking scheme and a slice to apply, this function determines:
+    1. Which blocks (chunks) are touched by the slice (returned as NDBlock)
+    2. What slice to apply within the concatenated blocks to get the final result
+
+    This is useful for reading data using block-based access (e.g., read_block()) instead
+    of full array slicing, which can be more efficient for large datasets by avoiding
+    expensive path resolution operations.
+
+    Parameters
+    ----------
+    chunks : Chunks
+        The chunking scheme as a tuple of tuples, where chunks[i] gives the sizes
+        of chunks along dimension i.
+    slice : tuple or NDSlice, optional
+        The slice to apply to the full array.
+
+    Returns
+    -------
+    block : NDBlock
+        The contiguous block indices touched by the slice.
+    slice_within_blocks : NDSlice
+        The slice to apply to the array formed by concatenating the selected blocks
+        to produce the final result.
+    """
+
+    # If empty slice, return all blocks and identity slice
+    slice = NDSlice(slice or ())
+    if not slice:
+        return (
+            NDBlock(*[builtins.slice(0, len(dim_chunks)) for dim_chunks in chunks]),
+            NDSlice(),
+        )
+
+    # Expand the slice for the specific shape (handles Ellipsis, etc.)
+    shape = tuple(sum(dim_chunks) for dim_chunks in chunks)
+    slice = slice.expand_for_shape(shape)
+
+    # For each dimension, determine which chunks are touched and how to slice concatenated blocks
+    block_slices, adjusted_slices = [], []
+    for dim_idx, (slc, dim_chunks) in enumerate(zip(slice, chunks)):
+        # Compute chunk boundaries: [0, chunks[0], chunks[0]+chunks[1], ...]
+        chunk_bounds = [0, *itertools.accumulate(dim_chunks)]
+
+        if isinstance(slc, int):
+            # Single index - find which chunk it falls in using binary search
+            chunk_idx = bisect.bisect_right(chunk_bounds, slc) - 1
+            if chunk_idx < 0 or chunk_idx >= len(dim_chunks):
+                raise IndexError(
+                    f"Index {slc} out of bounds for dimension {dim_idx} with shape {shape[dim_idx]}"
+                )
+            block_slices.append(chunk_idx)
+            adjusted_slices.append(slc - chunk_bounds[chunk_idx])
+
+        elif isinstance(slc, builtins.slice):
+            # Normalize slice indices for this dimension
+            start, stop, step = slc.indices(shape[dim_idx])
+
+            if step == 0:
+                raise ValueError("slice step cannot be zero")
+
+            # Find first and last chunks touched by this slice
+            if step > 0:
+                if start >= stop:
+                    block_slices.append(builtins.slice(0, 0))
+                    adjusted_slices.append(builtins.slice(0, 0))
+                    continue  # Empty slice
+                first_chunk = bisect.bisect_right(chunk_bounds, start) - 1
+                last_chunk = bisect.bisect_right(chunk_bounds, stop - 1) - 1
+            else:  # step < 0
+                if start <= stop:
+                    block_slices.append(builtins.slice(0, 0))
+                    adjusted_slices.append(builtins.slice(0, 0))
+                    continue  # Empty slice
+                # Negative steps traverse from start down to stop (exclusive)
+                # so elements go from start to stop+1
+                first_chunk = bisect.bisect_right(chunk_bounds, start) - 1
+                last_chunk = bisect.bisect_right(chunk_bounds, stop + 1) - 1
+                # Ensure first_chunk <= last_chunk for contiguous block range
+                first_chunk, last_chunk = (
+                    min(first_chunk, last_chunk),
+                    max(first_chunk, last_chunk),
+                )
+
+            # Block is the contiguous range of chunks
+            if first_chunk == last_chunk:
+                block_slices.append(first_chunk)
+            else:
+                block_slices.append(builtins.slice(first_chunk, last_chunk + 1))
+
+            # Compute adjusted slice within concatenated blocks
+            first_chunk_start = chunk_bounds[first_chunk]
+            adjusted_start = start - first_chunk_start
+            adjusted_stop = stop - first_chunk_start
+
+            # Special case: for negative steps, if stop would go before the start of
+            # the first chunk, set it to None to indicate "go to the beginning"
+            if step < 0 and stop < first_chunk_start:
+                adjusted_stop = None
+
+            # Normalize step=1 to step=None for consistency
+            normalized_step = None if step == 1 else step
+            adjusted_slices.append(
+                builtins.slice(adjusted_start, adjusted_stop, normalized_step)
+            )
+
+    return NDBlock(*block_slices), NDSlice(*adjusted_slices)
+
+
+def build_nested_grid(indices, callable=None, dim=0):
+    """Build a nested list structure from flat N-dimensional indices.
+
+    This function organizes a flat list of N-dimensional indices into a nested
+    list structure suitable for np.block(). The nesting depth matches the
+    dimensionality of the indices, with each level corresponding to one dimension.
+
+    This is particularly useful when you have a collection of array chunks indexed
+    by multi-dimensional coordinates and want to concatenate them efficiently using
+    np.block().
+
+    Parameters
+    ----------
+    indices : list[tuple[int, ...]]
+        A list of N-dimensional index tuples. The indices should be sorted in
+        lexicographic order (though groupby will work with any order that groups
+        consecutive identical prefixes together).
+    callable : callable, optional
+        Optional function to apply to each index tuple at the leaf level.
+        If None, the index tuple itself is returned. This is useful for
+        retrieving actual data arrays corresponding to each index.
+        For example: lambda idx: array_dict[idx]
+    dim : int, optional
+        Internal parameter used during recursion to track current dimension.
+        Should not be set by users (defaults to 0).
+
+    Returns
+    -------
+    nested_list : list or object
+        A nested list structure where the nesting depth equals len(indices[0]).
+        At the leaf level, either the index tuples themselves or the result of
+        callable(index) is stored.
+    """
+    if dim == len(indices[0]):
+        return callable(indices[0]) if callable else indices[0]
+
+    groups = [
+        build_nested_grid(list(g), callable, dim + 1)
+        for _, g in itertools.groupby(indices, key=lambda p: p[dim])
+    ]
+
+    return groups

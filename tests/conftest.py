@@ -4,7 +4,6 @@ import sys
 import tempfile
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
 
 import asyncpg
 import pytest
@@ -13,8 +12,9 @@ import stamina
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from tiled import profiles
+from tiled.authn_database.core import initialize_authn_database
 from tiled.catalog import from_uri, in_memory
-from tiled.client import Context
+from tiled.client import Context, from_context
 from tiled.client.base import BaseClient
 from tiled.config import Authentication
 from tiled.server.app import build_app
@@ -22,13 +22,65 @@ from tiled.server.settings import get_settings
 from tiled.utils import ensure_specified_sql_driver
 
 from .utils import enter_username_password as utils_enter_uname_passwd
-from .utils import temp_postgres
+from .utils import temp_postgres, temp_postgres_sync
 
 
 @pytest.fixture(autouse=True, scope="session")
 def deactivate_retries():
     "Deactivate HTTP retries."
     stamina.set_active(False)
+
+
+@pytest.fixture(autouse=True, scope="session")
+def s3_bucket_uri():
+    """Provide an S3 endpoint for object-storage tests via TILED_TEST_BUCKET.
+
+    If TILED_TEST_BUCKET is already set (e.g. pointing at a real MinIO/S3),
+    respect it. Otherwise, start an in-process ``moto`` S3 server for the
+    duration of the test session and point TILED_TEST_BUCKET at it, so the
+    object-storage tests run without any external service. If ``moto`` is not
+    installed, leave TILED_TEST_BUCKET unset and those tests will skip.
+
+    An ephemeral port (``port=0``) is used so each pytest-xdist worker gets its
+    own server without collisions.
+    """
+    if os.getenv("TILED_TEST_BUCKET"):
+        yield
+        return
+    try:
+        from moto.server import ThreadedMotoServer
+    except ImportError:
+        yield
+        return
+
+    server = ThreadedMotoServer(ip_address="127.0.0.1", port=0)
+    server.start()
+    host, port = server.get_host_and_port()
+    # moto accepts any credentials; use placeholder values.
+    os.environ["TILED_TEST_BUCKET"] = (
+        f"http://bucketadmin:bucketadmin@{host}:{port}/buck"
+    )
+    try:
+        yield
+    finally:
+        del os.environ["TILED_TEST_BUCKET"]
+        server.stop()
+
+
+@pytest.fixture(autouse=True, scope="module")
+def reset_settings_module():
+    """
+    Clear the cached Settings before module-scoped fixtures run.
+
+    Without this, a previous module's build_app() can mutate the cached
+    Settings singleton (e.g. setting database_settings.uri to a postgres URI),
+    and module-scoped fixtures in the next module will see stale values
+    because function-scoped cleanup hasn't run yet.  This is critical under
+    pytest-xdist where multiple modules share a worker process.
+    """
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
 
 
 @pytest.fixture(autouse=True)
@@ -54,11 +106,9 @@ def set_tiled_cache_dir():
     # is still open. It is closed by transport shutdown, but not all tests
     # correctly shut down the transport. This is probably related to the
     # thread-leaking issue.
-    # This option was added to TemporaryDirectory in Python 3.10
-    kwargs = {}
-    if sys.platform.startswith("win") and sys.version_info >= (3, 10):
-        kwargs["ignore_cleanup_errors"] = True
-    with tempfile.TemporaryDirectory(**kwargs) as tmpdir:
+    with tempfile.TemporaryDirectory(
+        ignore_cleanup_errors=sys.platform.startswith("win")
+    ) as tmpdir:
         os.environ["TILED_CACHE_DIR"] = str(tmpdir)
         yield
         del os.environ["TILED_CACHE_DIR"]
@@ -163,6 +213,21 @@ async def postgres_uri():
         yield uri_with_database
 
 
+@pytest.fixture(scope="module")
+def duckdb_uri_module(tmpdir_module):
+    "URI of a DuckDB database file shared by all tests in the module."
+    return f"duckdb:///{tmpdir_module / 'tiled.duckdb'}"
+
+
+@pytest.fixture(scope="module")
+def postgres_uri_module():
+    "URI of a fresh PostgreSQL database shared by all tests in the module."
+    if not TILED_TEST_POSTGRESQL_URI:
+        raise pytest.skip("No TILED_TEST_POSTGRESQL_URI configured")
+    with temp_postgres_sync(TILED_TEST_POSTGRESQL_URI) as uri_with_database:
+        yield uri_with_database
+
+
 @pytest.fixture(params=["sqlite_uri", "postgres_uri"])
 def sqlite_or_postgres_uri(request):
     yield request.getfixturevalue(request.param)
@@ -174,9 +239,9 @@ def sql_storage_uri(request):
 
 
 @pytest_asyncio.fixture
-async def postgresql_adapter(request, tmpdir):
+async def postgresql_catalog_adapter(request, tmpdir):
     """
-    Adapter instance
+    Catalog adapter instance backed by PostgreSQL
 
     Note that startup() and shutdown() are not called, and must be run
     either manually (as in the fixture 'a') or via the app (as in the fixture 'client').
@@ -185,13 +250,12 @@ async def postgresql_adapter(request, tmpdir):
         raise pytest.skip("No TILED_TEST_POSTGRESQL_URI configured")
     # Create temporary database.
     async with temp_postgres(TILED_TEST_POSTGRESQL_URI) as uri_with_database_name:
-        # Build an adapter on it, and initialize the database.
-        adapter = from_uri(
+        # Build a catalog adapter on it, and initialize the database.
+        yield from_uri(
             uri_with_database_name,
             writable_storage=str(tmpdir),
             init_if_not_exists=True,
         )
-        yield adapter
 
 
 @pytest_asyncio.fixture
@@ -225,9 +289,9 @@ async def postgresql_with_example_data_adapter(request, tmpdir):
 
 
 @pytest_asyncio.fixture
-async def sqlite_adapter(request, tmpdir):
+async def sqlite_catalog_adapter(request, tmpdir):
     """
-    Adapter instance
+    Catalog adapter instance backed by SQLite (in memory)
 
     Note that startup() and shutdown() are not called, and must be run
     either manually (as in the fixture 'a') or via the app (as in the fixture 'client').
@@ -253,15 +317,39 @@ async def sqlite_with_example_data_adapter(request, tmpdir):
     yield adapter
 
 
-@pytest.fixture(params=["sqlite_adapter", "postgresql_adapter"])
-def adapter(request):
+@pytest.fixture(params=["sqlite_catalog_adapter", "postgresql_catalog_adapter"])
+def catalog_adapter(request):
     """
-    Adapter instance
+    Catalog adapter instance
 
     Note that startup() and shutdown() are not called, and must be run
     either manually (as in the fixture 'a') or via the app (as in the fixture 'client').
     """
     yield request.getfixturevalue(request.param)
+
+
+@pytest.fixture(scope="module", params=["sqlite", "postgresql"])
+def catalog_adapter_module(request, tmpdir_module):
+    """
+    Catalog adapter on a fresh database, shared by all tests in the module.
+
+    Building a server (and, for PostgreSQL, a database) is expensive, so
+    prefer this over the function-scoped `catalog_adapter` when the tests do
+    not need a pristine catalog. The tests in a module then share one
+    catalog: each must write under keys of its own and must not assume that
+    the catalog contains only what it created itself.
+
+    Note that startup() and shutdown() are not called, and must be run
+    either manually or via the app (as in `Context.from_app(build_app(...))`).
+    """
+    if request.param == "sqlite":
+        return in_memory(writable_storage=str(tmpdir_module / "sqlite"))
+    else:
+        return from_uri(
+            request.getfixturevalue("postgres_uri_module"),
+            writable_storage=str(tmpdir_module / "postgresql"),
+            init_if_not_exists=True,
+        )
 
 
 @pytest.fixture(
@@ -315,40 +403,27 @@ def redis_uri():
         raise pytest.skip("No TILED_TEST_REDIS configured")
 
 
-@pytest.fixture
-def minio_uri():
-    if uri := os.getenv("TILED_TEST_BUCKET"):
-        from minio import Minio
-        from minio.deleteobjects import DeleteObject
+# Shared authentication config for tests that need multi-user JWT auth.
+# Uses the toy DictionaryAuthenticator with alice/bob users.
+TOY_AUTHENTICATION = {
+    "secret_keys": ["SECRET"],
+    "providers": [
+        {
+            "provider": "toy",
+            "authenticator": "tiled.authenticators:DictionaryAuthenticator",
+            "args": {
+                "users_to_passwords": {"alice": "secret1", "bob": "secret2"},
+            },
+        }
+    ],
+}
 
-        # For convenience, we split the bucket from a string
-        url = urlparse(uri)
-        bucket_name = url.path.lstrip("/")
-        uri = url._replace(netloc="{}:{}".format(url.hostname, url.port), path="")
 
-        client = Minio(
-            endpoint=uri.geturl(),
-            access_key=url.username,
-            secret_key=url.password,
-            secure=False,
-        )
-
-        # Reset the state of the bucket after each test.
-        if client.bucket_exists(bucket_name=bucket_name):
-            delete_object_list = map(
-                lambda x: DeleteObject(object_name=x.object_name),
-                client.list_objects(bucket_name=bucket_name, recursive=True),
-            )
-            errors = client.remove_objects(
-                bucket_name=bucket_name, delete_object_list=delete_object_list
-            )
-            for error in errors:
-                print("error occurred when deleting object", error)
-        else:
-            client.make_bucket(bucket_name=bucket_name)
-
-    else:
-        raise pytest.skip("No TILED_TEST_BUCKET configured")
+def init_auth_database(tmpdir):
+    """Initialize an auth database and return its URI."""
+    database_uri = f"sqlite:///{tmpdir / 'auth.db'}"
+    initialize_authn_database(database_uri)
+    return database_uri
 
 
 def build_test_app(tmpdir, redis_uri, public=False):
@@ -391,6 +466,45 @@ def tiled_websocket_context(tmpdir, redis_uri):
 def tiled_websocket_context_public(tmpdir, redis_uri):
     """Fixture that provides a Tiled context with websocket support."""
     with Context.from_app(build_test_app(tmpdir, redis_uri, public=True)) as context:
+        yield context
+
+
+@pytest.fixture(scope="function")
+def tiled_websocket_context_multiuser(tmpdir, redis_uri, enter_username_password):
+    """Fixture that provides a multi-user Tiled context with JWT auth and websocket support.
+
+    Logs in as 'alice' during setup so that context.tokens and from_context()
+    work without additional login steps in the test.
+    """
+    from tiled.server.app import build_app_from_config
+
+    database_uri = init_auth_database(tmpdir)
+    config = {
+        "authentication": TOY_AUTHENTICATION,
+        "database": {"uri": database_uri},
+        "trees": [
+            {
+                "tree": "catalog",
+                "path": "/",
+                "args": {
+                    "uri": "sqlite:///:memory:",
+                    "writable_storage": [str(tmpdir / "data")],
+                    "init_if_not_exists": True,
+                },
+            },
+        ],
+        "streaming_cache": {
+            "uri": redis_uri,
+            "data_ttl": 600,
+            "seq_ttl": 600,
+            "socket_timeout": 600,
+            "socket_connect_timeout": 10,
+        },
+    }
+    app = build_app_from_config(config)
+    with Context.from_app(app) as context:
+        with enter_username_password("alice", "secret1"):
+            from_context(context)  # triggers login, caches tokens
         yield context
 
 

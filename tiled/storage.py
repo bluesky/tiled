@@ -2,9 +2,15 @@ import dataclasses
 import functools
 import os
 from abc import abstractmethod
+from collections import defaultdict
+from collections.abc import Iterator, Mapping
 from pathlib import Path
-from typing import TYPE_CHECKING, Dict, Literal, Optional, Union
-from urllib.parse import urlparse, urlunparse
+from typing import (
+    TYPE_CHECKING,
+    Literal,
+    NamedTuple,
+)
+from urllib.parse import quote, unquote, urlparse, urlunparse
 
 import sqlalchemy.pool
 
@@ -15,18 +21,110 @@ if TYPE_CHECKING:
     from obstore.store import AzureStore, GCSStore, LocalStore, S3Store
 
 __all__ = [
+    "DirectoryContainer",
     "EmbeddedSQLStorage",
     "RemoteSQLStorage",
     "FileStorage",
     "SQLStorage",
     "ObjectStorage",
     "Storage",
+    "acquire_storage",
     "get_storage",
     "parse_storage",
+    "release_storage",
+    "storage_registry_key",
+    "strip_connection_parameters",
+    "unregister_storage",
 ]
 
 
 SUPPORTED_OBJECT_URI_SCHEMES = {"http", "https"}  # TODO: Add "s3", "gs", "azure", "az"
+
+POSTGRESQL_SCHEMES = frozenset({"postgresql", "postgres"})
+
+# URI schemes of tabular storage databases. The Asset of a data source stored
+# in one is the database itself, shared by every such data source.
+SQL_STORAGE_SCHEMES = frozenset({"postgresql", "sqlite", "duckdb"})
+
+# libpq connection parameters that determine *which* server and database a
+# connection reaches. Any other query parameter (connect_timeout, sslmode,
+# target_session_attrs, application_name, ...) only tunes *how* we connect.
+# https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-PARAMKEYWORDS
+POSTGRESQL_LOCATION_QUERY_PARAMETERS = frozenset(
+    {"host", "hostaddr", "port", "dbname", "service"}
+)
+
+
+def strip_storage_uri_query_on_write() -> bool:
+    """Feature flag: write Asset URIs without connection-tuning parameters.
+
+    See `strip_connection_parameters`. Read at call time, not import time,
+    so it can be flipped by restarting with a new environment and so tests
+    can toggle it.
+
+    Rollout: first deploy code that matches on read by `storage_registry_key`
+    (always on), then set TILED_STRIP_STORAGE_URI_QUERY_ON_WRITE=1 so new
+    Assets are written in stripped form.
+    """
+    return bool(int(os.getenv("TILED_STRIP_STORAGE_URI_QUERY_ON_WRITE", "0") or "0"))
+
+
+def _query_pairs(query: str) -> list[tuple[str, str]]:
+    "Split a query string into (decoded key, raw pair) without re-encoding."
+    return [(unquote(pair.split("=", 1)[0]), pair) for pair in query.split("&") if pair]
+
+
+def strip_connection_parameters(uri: str) -> str:
+    """Drop query parameters that only tune how we connect.
+
+    For PostgreSQL URIs, remove parameters such as `?connect_timeout=5` or
+    `?target_session_attrs=read-write`, keeping those that locate the server
+    and database (see POSTGRESQL_LOCATION_QUERY_PARAMETERS). Kept parameters
+    are preserved verbatim and in order, so a URI with nothing to strip is
+    returned unchanged. Other schemes are returned unchanged.
+
+    This is the form written to `Asset.data_uri` when the
+    TILED_STRIP_STORAGE_URI_QUERY_ON_WRITE feature flag is on. It retains
+    the hosts, which is informative for humans, but matching Assets to
+    Storage does not depend on them; see `storage_registry_key`.
+    """
+    parsed = urlparse(uri)
+    if parsed.scheme not in POSTGRESQL_SCHEMES or not parsed.query:
+        return uri
+    kept = [
+        pair
+        for key, pair in _query_pairs(parsed.query)
+        if key in POSTGRESQL_LOCATION_QUERY_PARAMETERS
+    ]
+    return urlunparse(parsed._replace(query="&".join(kept)))
+
+
+def storage_registry_key(uri: str) -> str:
+    """Return the key used to match an Asset's `data_uri` to a Storage.
+
+    For PostgreSQL, this is the database name alone, so matching is
+    insensitive to everything about *how* the database is reached: host
+    order, cluster membership, a switch to a proxy or pooler endpoint
+    (HAProxy, pgbouncer), ports, credentials, and connection-tuning query
+    parameters. This keeps Assets written under one configuration
+    resolvable after that configuration changes. The database name is taken
+    from a `dbname` query parameter if present (as libpq does), else from
+    the path.
+
+    The trade-off is that two configured storages with the same database
+    name on different servers would be indistinguishable;
+    `register_storage` refuses that configuration.
+
+    Other schemes are returned unchanged.
+    """
+    parsed = urlparse(uri)
+    if parsed.scheme not in POSTGRESQL_SCHEMES:
+        return uri
+    dbname = unquote(parsed.path.lstrip("/"))
+    for key, pair in _query_pairs(parsed.query):
+        if key == "dbname":
+            dbname = unquote(pair.split("=", 1)[1]) if "=" in pair else ""
+    return f"postgresql:///{quote(dbname, safe='')}"
 
 
 @dataclasses.dataclass(frozen=True)
@@ -107,9 +205,9 @@ class ObjectStorage(Storage):
 
     uri: str
     provider: Literal["s3", "azure", "google"]
-    bucket: Optional[str] = None
-    username: Optional[str] = None
-    password: Optional[str] = None
+    bucket: str | None = None
+    username: str | None = None
+    password: str | None = None
     config: dict = dataclasses.field(default_factory=dict)
 
     def __post_init__(self):
@@ -133,7 +231,7 @@ class ObjectStorage(Storage):
         object.__setattr__(self, "bucket", bucket_name)
 
     @classmethod
-    def parse_blob_uri(cls, uri: str) -> tuple[str, str]:
+    def parse_blob_uri(cls, uri: str) -> tuple[str, str, str]:
         """Split a blob URI into base URI, bucket name (optionally), and the prefix.
 
         For example, given 'http://example.com/bucket_name/path/to/blob',
@@ -150,9 +248,7 @@ class ObjectStorage(Storage):
 
         return base_uri, bucket_name or None, "/".join(blob_path)
 
-    def get_obstore_location(
-        self, uri=None
-    ) -> Union["S3Store", "AzureStore", "GCSStore"]:
+    def get_obstore_location(self, uri=None) -> "S3Store | AzureStore | GCSStore":
         """Get an obstore.store instance rooted at specified URI.
 
         Parameters
@@ -198,7 +294,7 @@ class ObjectStorage(Storage):
                 kwargs["service_account_key"] = self.password
 
         _class = {"s3": S3Store, "azure": AzureStore, "google": GCSStore}[self.provider]
-        prefix = uri[len(self.uri) :].lstrip("/") if uri else None  # noqa: E203
+        prefix = uri[len(self.uri) :].lstrip("/") if uri else None
 
         return _class(**kwargs, **self.config, prefix=prefix)
 
@@ -244,7 +340,7 @@ class SQLStorage(Storage):
     def _connection_pool(self) -> "sqlalchemy.pool.QueuePool":
         from .server.metrics import monitor_db_pool
 
-        creator = self._adbc_connection.adbc_clone
+        creator = self._instrument_adbc_creator(self._adbc_connection.adbc_clone)
         if (self.dialect == "duckdb") or (":memory:" in self.uri):
             pool = sqlalchemy.pool.StaticPool(creator)
         else:
@@ -255,14 +351,63 @@ class SQLStorage(Storage):
 
         return pool
 
+    def _instrument_adbc_creator(self, creator):
+        """Wrap the ADBC connection factory to emit OpenTelemetry spans for its queries.
+
+        The storage database is accessed via ADBC, which the asyncpg instrumentation does
+        not cover, so its queries would otherwise be invisible in traces. A no-op if tracing
+        is off or the optional dbapi instrumentation is not installed.
+        """
+        if not os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT"):
+            return creator
+        try:
+            from opentelemetry.instrumentation.dbapi import instrument_connection
+        except ImportError:
+            return creator
+
+        dialect = self.dialect
+        # Report the database name as `db.name`, so the storage database appears as
+        # its own node in the service graph. ADBC follows the SQL standard naming,
+        # where a "catalog" is a database (and a "schema" is a namespace inside it),
+        # so on Postgres `adbc_current_catalog` is e.g. "tiled_storage". This has
+        # nothing to do with Tiled's catalog. Not every driver implements it (DuckDB
+        # raises), and the instrumentation only tolerates a missing attribute, not
+        # an error, so check once and leave `db.name` unset if it fails.
+        try:
+            self._adbc_connection.adbc_current_catalog
+        except Exception:
+            connection_attributes = {}
+        else:
+            connection_attributes = {"database": "adbc_current_catalog"}
+
+        def instrumented_creator():
+            return instrument_connection(
+                "tiled.storage",
+                creator(),
+                dialect,
+                connection_attributes=connection_attributes,
+            )
+
+        return instrumented_creator
+
     def connect(self) -> "adbc_driver_manager.dbapi.Connection":
         "Get a connection from the pool."
         return self._connection_pool.connect()
 
     def dispose(self) -> None:
-        "Close all connections and dispose of the connection pool."
-        self._connection_pool.dispose()
-        self._adbc_connection.close()
+        """Close all connections and dispose of the connection pool.
+
+        Safe to call more than once, and does not open a connection that
+        was never opened. Afterward the Storage remains usable: the next
+        `connect()` opens a fresh pool.
+        """
+        # Pop the cached_property values so they are rebuilt on next use.
+        pool = self.__dict__.pop("_connection_pool", None)
+        connection = self.__dict__.pop("_adbc_connection", None)
+        if pool is not None:
+            pool.dispose()
+        if connection is not None:
+            connection.close()
 
 
 @dataclasses.dataclass(frozen=True)
@@ -292,8 +437,8 @@ class EmbeddedSQLStorage(SQLStorage):
 class RemoteSQLStorage(SQLStorage):
     "Authenticated server-based SQL database storage location"
 
-    username: Optional[str] = None
-    password: Optional[str] = None
+    username: str | None = None
+    password: str | None = None
 
     def __post_init__(self):
         # Ensure the URI is sanitized and credentials are stored separately
@@ -338,13 +483,37 @@ class RemoteSQLStorage(SQLStorage):
         return adbc_driver_postgresql.dbapi.connect(self.authenticated_uri)
 
 
+# One SQLStorage instance per distinct configuration per process. Each
+# instance owns a connection pool (and a template connection), so sharing
+# instances shares pools: many catalog mounts configured with the same
+# storage use one pool rather than one each.
+_SQL_STORAGE_INSTANCES: dict["SQLStorage", "SQLStorage"] = {}
+
+
 def parse_storage(
-    item: Union[Path, str, dict],
+    item: Path | str | dict,
     *,
     pool_size: int = 5,
     max_overflow: int = 10,
 ) -> Storage:
-    "Create a Storage object from a URI or Path."
+    """Create a Storage object from a URI or Path.
+
+    SQL storage is shared: if an equal SQLStorage (same URI, credentials,
+    and pool settings) has already been created in this process, that
+    instance---and so its connection pool---is returned.
+    """
+    result = _parse_storage(item, pool_size=pool_size, max_overflow=max_overflow)
+    if isinstance(result, SQLStorage):
+        result = _SQL_STORAGE_INSTANCES.setdefault(result, result)
+    return result
+
+
+def _parse_storage(
+    item: Path | str | dict,
+    *,
+    pool_size: int,
+    max_overflow: int,
+) -> Storage:
     if isinstance(item, dict):
         result = ObjectStorage(
             uri=item["uri"],
@@ -360,7 +529,7 @@ def parse_storage(
             result = RemoteSQLStorage(
                 item, pool_size=pool_size, max_overflow=max_overflow
             )
-        elif scheme in {"sqlite", "duckdb"}:
+        elif scheme in SQL_STORAGE_SCHEMES:
             result = EmbeddedSQLStorage(
                 item, pool_size=pool_size, max_overflow=max_overflow
             )
@@ -371,19 +540,215 @@ def parse_storage(
 
 # This global registry enables looking up Storage via URI, primarily for the
 # purpose of obtaining credentials, which are not stored in the catalog
-# database.
-_STORAGE: Dict[str, Storage] = {}
+# database. It is keyed by `storage_registry_key`, so for PostgreSQL lookups
+# depend only on the database name, not on how it is reached.
+_STORAGE: dict[str, Storage] = {}
+
+
+class AmbiguousStorage(ValueError):
+    "Two configured storages are indistinguishable by `storage_registry_key`."
+
+
+def _differing_fields(a: Storage, b: Storage) -> list[str]:
+    "Names (never values: they may be credentials) of fields that differ."
+    if type(a) is not type(b):
+        return ["type"]
+    return [
+        field.name
+        for field in dataclasses.fields(a)
+        if getattr(a, field.name) != getattr(b, field.name)
+    ]
 
 
 def register_storage(storage: Storage) -> None:
-    "Stash Storage for later lookup by URI."
-    _STORAGE[storage.uri] = storage
+    """Stash Storage for later lookup by URI.
+
+    Each storage location (for PostgreSQL, each database name; see
+    `storage_registry_key`) may have only one configuration per process.
+    Re-registering an equal Storage (e.g. one per catalog mount) is allowed.
+    Registering a different one for the same location raises
+    `AmbiguousStorage`: Assets are matched to Storage by location alone, so
+    there would be no way to choose between them, and a mismatch would
+    silently use the other configuration's credentials and pool.
+    """
+    key = storage_registry_key(storage.uri)
+    existing = _STORAGE.get(key)
+    if (existing is not None) and (existing != storage):
+        raise AmbiguousStorage(
+            f"Storage {storage!r} conflicts with already-configured storage "
+            f"{existing!r}: they refer to the same storage location (for "
+            "PostgreSQL, the same database name) but are configured "
+            f"differently (differing: {', '.join(_differing_fields(storage, existing))})."
+            " Configure every reference to a given storage location identically "
+            "(same URI, hosts, query parameters, credentials, and pool settings)."
+        )
+    _STORAGE[key] = storage
+
+
+def unregister_storage(storage: Storage) -> None:
+    "Remove Storage from the registry (call after dispose to release all references)."
+    _STORAGE.pop(storage_registry_key(storage.uri), None)
+
+
+# Number of active users (e.g. started catalog Contexts) per storage location,
+# keyed by `storage_registry_key`. Since the registry admits one
+# configuration per location, this counts users of one Storage.
+_STORAGE_REFCOUNTS: defaultdict[str, int] = defaultdict(int)
+
+
+def acquire_storage(storage: Storage) -> Storage:
+    """Register Storage and take a reference to it; pair with `release_storage`.
+
+    Returns the canonical instance, which callers should use in place of
+    the one passed in: for SQL storage, an equal instance may already be
+    shared (see `parse_storage`), including one that a previous release
+    disposed and that is being acquired again.
+    """
+    if isinstance(storage, SQLStorage):
+        storage = _SQL_STORAGE_INSTANCES.setdefault(storage, storage)
+    register_storage(storage)
+    key = storage_registry_key(storage.uri)
+    _STORAGE_REFCOUNTS[key] += 1
+    return storage
+
+
+def release_storage(storage: Storage) -> None:
+    """Release a reference taken by `acquire_storage`.
+
+    When the last reference to a storage location is released, its
+    connections are closed and it is unregistered and (for SQL storage)
+    dropped from the shared-instance cache.
+    """
+    key = storage_registry_key(storage.uri)
+    _STORAGE_REFCOUNTS[key] -= 1
+    if _STORAGE_REFCOUNTS[key] > 0:
+        return
+    # Last reference (or a release without a matching acquire): drop the
+    # entry rather than leave a zero or negative count behind.
+    del _STORAGE_REFCOUNTS[key]
+    registered = _STORAGE.pop(key, storage)
+    if isinstance(registered, SQLStorage):
+        registered.dispose()
+        if _SQL_STORAGE_INSTANCES.get(registered) is registered:
+            del _SQL_STORAGE_INSTANCES[registered]
 
 
 def get_storage(uri: str) -> Storage:
-    "Look up Storage by URI."
+    """Look up Storage by URI.
+
+    The URI is normalized with `storage_registry_key`, so an Asset written
+    under an earlier configuration (different hosts, host order, ports, or
+    connection-tuning query parameters) still matches the configured
+    Storage for the same database.
+    """
 
     if urlparse(uri).scheme in SUPPORTED_OBJECT_URI_SCHEMES:
         uri, _, _ = ObjectStorage.parse_blob_uri(uri)
 
-    return _STORAGE[uri]
+    return _STORAGE[storage_registry_key(uri)]
+
+
+def size_from_uri(data_uri: str) -> int:
+    """Return the byte length of the asset at `data_uri`.
+
+    Dispatches on URI scheme: `file://` URIs are stat'd on the local
+    filesystem; object-store URIs (those in `SUPPORTED_OBJECT_URI_SCHEMES`)
+    issue a HEAD via obstore. Raises `ValueError` for any other scheme.
+    Underlying I/O errors (`FileNotFoundError`, network errors, etc.)
+    propagate; callers that want best-effort behavior should catch them at
+    the call site.
+    """
+    scheme = urlparse(data_uri).scheme
+    if scheme == "file":
+        return path_from_uri(data_uri).stat().st_size
+    if scheme in SUPPORTED_OBJECT_URI_SCHEMES:
+        storage = get_storage(data_uri)
+        _, _, path = ObjectStorage.parse_blob_uri(data_uri)
+        store = storage.get_obstore_location()
+        return int(store.head(path)["size"])
+    raise ValueError(
+        f"Cannot stat URI with unsupported scheme {scheme!r}: {data_uri!r}"
+    )
+
+
+def mtime_from_uri(data_uri: str) -> float:
+    """Return the last-modified time of the asset at `data_uri`.
+
+    The time is a POSIX timestamp (seconds since the epoch).
+
+    Dispatches on URI scheme: `file://` URIs are stat'd on the local
+    filesystem; object-store URIs (those in `SUPPORTED_OBJECT_URI_SCHEMES`)
+    issue a HEAD via obstore. Raises `ValueError` for any other scheme.
+    Underlying I/O errors (`FileNotFoundError`, network errors, etc.)
+    propagate; callers that want best-effort behavior should catch them at
+    the call site.
+    """
+    scheme = urlparse(data_uri).scheme
+    if scheme == "file":
+        return path_from_uri(data_uri).stat().st_mtime
+    if scheme in SUPPORTED_OBJECT_URI_SCHEMES:
+        storage = get_storage(data_uri)
+        _, _, path = ObjectStorage.parse_blob_uri(data_uri)
+        store = storage.get_obstore_location()
+        return store.head(path)["last_modified"].timestamp()
+    raise ValueError(
+        f"Cannot stat URI with unsupported scheme {scheme!r}: {data_uri!r}"
+    )
+
+
+class UriStat(NamedTuple):
+    """Result of :func:`stat_uri`.
+
+    A `NamedTuple` so callers can unpack it (`is_directory, size = stat_uri(...)`)
+    or access fields by name, while leaving room to add more fields later without
+    breaking existing unpacking.
+    """
+
+    is_directory: bool
+    size: int | None
+
+
+def stat_uri(data_uri: str) -> UriStat:
+    """Best-effort :class:`UriStat` (`is_directory`, `size`) for `data_uri`.
+
+    Populates the advisory `is_directory` and `size` fields of an
+    :class:`~tiled.structures.data_source.Asset`. A `file://` directory reports
+    `(True, None)`; anything else reports `(False, <size>)` using
+    :func:`size_from_uri`. Because these fields are advisory -- and the caller
+    may not even have local access to the asset -- any failure to inspect the
+    asset yields `(False, None)` rather than raising.
+    """
+    try:
+        if urlparse(data_uri).scheme == "file" and path_from_uri(data_uri).is_dir():
+            return UriStat(is_directory=True, size=None)
+        return UriStat(is_directory=False, size=size_from_uri(data_uri))
+    except Exception:
+        return UriStat(is_directory=False, size=None)
+
+
+class DirectoryContainer(Mapping[str, bytes]):
+    """A storage container for byte-arrays representing Awkward Array buffers
+
+    Each buffer is stored as a separate file in a given directory, with the
+    filename corresponding to the form key.
+    """
+
+    def __init__(self, directory: Path):
+        self.directory = directory
+
+    def __getitem__(self, key: str) -> bytes:
+        with open(self.directory / key, "rb") as file:
+            return file.read()
+
+    def __setitem__(self, key: str, value: bytes) -> None:
+        with open(self.directory / key, "wb") as file:
+            file.write(value)
+
+    def __delitem__(self, key: str) -> None:
+        (self.directory / key).unlink(missing_ok=True)
+
+    def __iter__(self) -> Iterator[str]:
+        yield from (p.name for p in self.directory.iterdir())
+
+    def __len__(self) -> int:
+        return sum(1 for _ in self.__iter__())

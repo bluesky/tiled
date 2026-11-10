@@ -6,8 +6,13 @@ import numpy as np
 import orjson
 import pytest
 
-from tiled.client import from_context
+from tiled.catalog import in_memory
+from tiled.client import Context, from_context
 from tiled.server import streaming
+from tiled.server.app import build_app
+from tiled.structures.bytes import BytesStructure
+from tiled.structures.core import StructureFamily
+from tiled.structures.data_source import Asset, DataSource, Management
 
 
 def test_register_datastore_lowercases_name():
@@ -15,8 +20,7 @@ def test_register_datastore_lowercases_name():
     try:
 
         @streaming.register_datastore("MiXeDCaSe")
-        class DummyStreamingDatastore:
-            ...
+        class DummyStreamingDatastore: ...
 
         assert streaming._DATASTORES["mixedcase"] is DummyStreamingDatastore
     finally:
@@ -41,6 +45,41 @@ def test_streaming_cache_unknown_backend():
         assert "Unknown backend" in str(exc)
     else:
         raise AssertionError("StreamingCache should reject unknown backends.")
+
+
+def test_streaming_cache_config_source_validation():
+    from pydantic import ValidationError
+
+    from tiled.config import StreamingCacheConfig
+
+    # Exactly one source is required: neither is an error...
+    with pytest.raises(ValidationError, match="either 'uri' or 'sentinels'"):
+        StreamingCacheConfig()
+    # ...and setting both is ambiguous.
+    with pytest.raises(ValidationError, match="only one of 'uri' or 'sentinels'"):
+        StreamingCacheConfig(
+            uri="redis://h:6379", sentinels=["h1:26379"], service_name="c"
+        )
+    # The Sentinel path requires a service_name...
+    with pytest.raises(ValidationError, match="'service_name' is required"):
+        StreamingCacheConfig(sentinels=["h1:26379"])
+    # ...and each sentinel must be host:port.
+    with pytest.raises(ValidationError, match="must be 'host:port'"):
+        StreamingCacheConfig(sentinels=["h1"], service_name="c")
+    # Sentinel-only fields with a 'uri' are rejected (ssl would otherwise leave
+    # a connection the operator thinks is encrypted running in plaintext).
+    with pytest.raises(ValidationError, match="'ssl' applies to the 'sentinels'"):
+        StreamingCacheConfig(uri="redis://h:6379", ssl=True)
+    with pytest.raises(ValidationError, match="'service_name' is only used"):
+        StreamingCacheConfig(uri="redis://h:6379", service_name="c")
+    with pytest.raises(ValidationError, match="'password' is only used"):
+        StreamingCacheConfig(uri="redis://h:6379", password="secret")
+
+    # Valid standalone (uri) and Sentinel configs.
+    assert StreamingCacheConfig(uri="redis://h:6379").sentinels is None
+    ha = StreamingCacheConfig(sentinels=["h1:26379", "h2:26379"], service_name="c")
+    assert ha.uri is None
+    assert ha.service_name == "c"
 
 
 def test_websocket_replay_and_live_events(tiled_websocket_context):
@@ -133,3 +172,58 @@ async def test_pubsub_fanout_and_cleanup():
             break
         await asyncio.sleep(0)
     assert "topic" not in pubsub._topics
+
+
+def test_put_data_source_on_non_array_with_streaming_cache(tmpdir):
+    """PUT /data_source on a non-array node (e.g. `bytes`) must not
+    crash when the server has a `streaming_cache` configured.
+
+    """
+    payload = b"opaque-bytes-payload"
+    blob = tmpdir / "blob.bin"
+    blob.write_binary(payload)
+
+    catalog = in_memory(
+        writable_storage=str(tmpdir),
+        cache_config={
+            "uri": "memory://",
+            "data_ttl": 60,
+            "seq_ttl": 60,
+        },
+    )
+    with Context.from_app(build_app(catalog)) as ctx:
+        client = from_context(ctx)
+        data_source = DataSource(
+            mimetype="application/octet-stream",
+            assets=[
+                Asset(
+                    data_uri=f"file://{blob}",
+                    is_directory=False,
+                    size=len(payload),
+                    parameter="data_uris",
+                    num=0,
+                )
+            ],
+            structure_family=StructureFamily.bytes,
+            structure=BytesStructure(),
+            management=Management.external,
+        )
+        node = client.new(
+            structure_family=StructureFamily.bytes,
+            data_sources=[data_source],
+            key="blob",
+        )
+
+        # Fetch the freshly-created data_source (with server-assigned id)
+        # and echo it back through PUT /data_source. This is the exact
+        # shape of call `bluesky-tiled-plugins`' validator router makes.
+        response = ctx.http_client.get(
+            f"/api/v1/metadata/{node.item['id']}?include_data_sources=true"
+        )
+        response.raise_for_status()
+        [ds] = response.json()["data"]["attributes"]["data_sources"]
+        put_response = ctx.http_client.put(
+            f"/api/v1/data_source/{node.item['id']}",
+            json={"data_source": ds},
+        )
+        assert put_response.status_code == 200, put_response.text

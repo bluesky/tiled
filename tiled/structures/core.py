@@ -6,19 +6,21 @@ the server and the client.
 
 import enum
 import importlib
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass
-from typing import Dict, Optional
+from typing import Annotated, Any
 
 from pydantic import StringConstraints
-from typing_extensions import Annotated
 
-from ..utils import OneShotCachedMap
+from ..utils import OneShotCachedMap, filter_known_kwargs
 
 
-class StructureFamily(str, enum.Enum):
+class StructureFamily(enum.StrEnum):
     array = "array"
     awkward = "awkward"
+    bytes = "bytes"
     container = "container"
+    ragged = "ragged"
     sparse = "sparse"
     table = "table"
 
@@ -26,7 +28,7 @@ class StructureFamily(str, enum.Enum):
 @dataclass(frozen=True)
 class Spec:
     name: Annotated[str, StringConstraints(max_length=255)]
-    version: Optional[Annotated[str, StringConstraints(max_length=255)]] = None
+    version: Annotated[str, StringConstraints(max_length=255)] | None = None
 
     def __init__(self, name, version=None) -> None:
         # Enable the name to be passed as a position argument.
@@ -42,30 +44,54 @@ class Spec:
             output = f"{type(self).__name__}({self.name!r}, version={self.version!r})"
         return output
 
-    def dict(self) -> Dict[str, Optional[str]]:
+    def dict(self) -> dict[str, str | None]:
         # For easy interoperability with pydantic 1.x models
         return asdict(self)
 
     model_dump = dict  # For easy interoperability with pydantic 2.x models
 
+    @classmethod
+    def from_json(cls, data: Mapping[str, Any]) -> "Spec":
+        return cls(**filter_known_kwargs(cls, data))
+
 
 # TODO: make type[Structure] after #1036
 STRUCTURE_TYPES = OneShotCachedMap[StructureFamily, type](
     {
-        StructureFamily.array: lambda: importlib.import_module(
-            "...structures.array", StructureFamily.__module__
-        ).ArrayStructure,
-        StructureFamily.awkward: lambda: importlib.import_module(
-            "...structures.awkward", StructureFamily.__module__
-        ).AwkwardStructure,
-        StructureFamily.table: lambda: importlib.import_module(
-            "...structures.table", StructureFamily.__module__
-        ).TableStructure,
-        StructureFamily.sparse: lambda: importlib.import_module(
-            "...structures.sparse", StructureFamily.__module__
-        ).SparseStructure,
-        StructureFamily.container: lambda: importlib.import_module(
-            "...structures.container", StructureFamily.__module__
-        ).ContainerStructure,
+        StructureFamily.array: lambda: (
+            importlib.import_module(
+                "...structures.array", StructureFamily.__module__
+            ).ArrayStructure
+        ),
+        StructureFamily.awkward: lambda: (
+            importlib.import_module(
+                "...structures.awkward", StructureFamily.__module__
+            ).AwkwardStructure
+        ),
+        StructureFamily.table: lambda: (
+            importlib.import_module(
+                "...structures.table", StructureFamily.__module__
+            ).TableStructure
+        ),
+        StructureFamily.sparse: lambda: (
+            importlib.import_module(
+                "...structures.sparse", StructureFamily.__module__
+            ).SparseStructure
+        ),
+        StructureFamily.ragged: lambda: (
+            importlib.import_module(
+                "...structures.ragged", StructureFamily.__module__
+            ).RaggedStructure
+        ),
+        StructureFamily.container: lambda: (
+            importlib.import_module(
+                "...structures.container", StructureFamily.__module__
+            ).ContainerStructure
+        ),
+        StructureFamily.bytes: lambda: (
+            importlib.import_module(
+                "...structures.bytes", StructureFamily.__module__
+            ).BytesStructure
+        ),
     }
 )

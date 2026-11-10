@@ -1,6 +1,7 @@
 """
 importing tiled.client should not import any heavy optional dependencies.
 """
+
 import subprocess
 import sys
 

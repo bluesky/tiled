@@ -2,15 +2,14 @@ import collections.abc
 import dataclasses
 import inspect
 import itertools
-import math
 import operator
 import re
 import sys
 import uuid
 from collections import defaultdict
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from hashlib import md5
-from typing import Any, Optional
+from typing import Any, Literal
 
 import anyio
 import dateutil.tz
@@ -61,9 +60,6 @@ INLINED_CONTENTS_LIMIT = 500
 # being crashed by badly designed or buggy Adapters. It is up to Adapters to
 # opt in to this behavior and decide on a reasonable depth.
 DEPTH_LIMIT = 5
-
-DEFAULT_PAGE_SIZE = 100
-MAX_PAGE_SIZE = 300
 
 
 async def len_or_approx(tree, exact=False, threshold=5000):
@@ -119,36 +115,35 @@ async def len_or_approx(tree, exact=False, threshold=5000):
             return await anyio.to_thread.run_sync(operator.length_hint, tree)
     except TypeError:
         pass
-    finally:
-        return await anyio.to_thread.run_sync(len, tree)
+
+    return await anyio.to_thread.run_sync(len, tree)
 
 
-def pagination_links(base_url, route, path_parts, offset, limit, length_hint):
+def pagination_links(base_url, route, path_parts, page, next_cursor, length_hint):
     path_str = "/".join(path_parts)
+    if page.cursor is not None:
+        offset_or_cursor = f"page[cursor]={page.cursor}&"
+    elif page.offset:  # Neither None nor 0
+        offset_or_cursor = f"page[offset]={page.offset}&"
+    else:
+        offset_or_cursor = ""  # No offset or cursor for the first page
     links = {
-        "self": f"{base_url}{route}/{path_str}?page[offset]={offset}&page[limit]={limit}",
-        # These are conditionally overwritten below.
-        "first": None,
-        "last": None,
+        "self": f"{base_url}{route}/{path_str}?{offset_or_cursor}page[limit]={page.limit}",
+        "first": f"{base_url}{route}/{path_str}?page[limit]={page.limit}",
         "next": None,
-        "prev": None,
     }
-    if limit:
-        last_page = math.floor(length_hint / limit) * limit
-        links.update(
-            {
-                "first": f"{base_url}{route}/{path_str}?page[offset]={0}&page[limit]={limit}",
-                "last": f"{base_url}{route}/{path_str}?page[offset]={last_page}&page[limit]={limit}",
-            }
+    if next_cursor is not None:
+        links["next"] = (
+            f"{base_url}{route}/{path_str}?page[cursor]={next_cursor}&page[limit]={page.limit}"
         )
-    if offset + limit < length_hint:
-        links[
-            "next"
-        ] = f"{base_url}{route}/{path_str}?page[offset]={offset + limit}&page[limit]={limit}"
-    if offset > 0:
-        links[
-            "prev"
-        ] = f"{base_url}{route}/{path_str}?page[offset]={max(0, offset - limit)}&page[limit]={limit}"
+    elif (
+        (page.cursor is None)
+        and (page.offset is not None)
+        and (page.offset + page.limit < length_hint)
+    ):
+        links["next"] = (
+            f"{base_url}{route}/{path_str}?page[offset]={page.offset + page.limit}&page[limit]={page.limit}"
+        )
     return links
 
 
@@ -215,15 +210,35 @@ async def apply_search(tree, filters, query_registry):
     return tree
 
 
-def apply_sort(tree, sort):
-    sorting = []
-    if sort is not None:
-        for item in sort.split(","):
-            if item:
-                if item.startswith("-"):
-                    sorting.append((item[1:], -1))
-                else:
-                    sorting.append((item, 1))
+async def construct_entries_response(
+    query_registry,
+    tree,
+    route,
+    path,
+    page,
+    fields,
+    select_metadata,
+    omit_links,
+    include_data_sources,
+    filters,
+    sorting: list[tuple[str, Literal[1, -1]]] | None,
+    base_url,
+    media_type,
+    max_depth,
+    exact_count_limit,
+    deep: bool = False,
+):
+    """Construct a response for the `/search` (or `/search-deep`) endpoint.
+
+    When `deep` is True, `tree` is expected to be in "deep mode"
+    (see `CatalogNodeAdapter.search_deep` / `MapAdapter.search_deep`):
+    keys yielded by `tree` are "/"-joined paths relative to `tree`, not bare
+    child keys, since matches at different depths may share a local key.
+    """
+
+    path_parts = [segment for segment in path.split("/") if segment]
+    tree = await apply_search(tree, filters, query_registry)
+
     if sorting:
         if not hasattr(tree, "sort"):
             raise HTTPException(
@@ -232,63 +247,63 @@ def apply_sort(tree, sort):
             )
         tree = tree.sort(sorting)
 
-    return tree
-
-
-async def construct_entries_response(
-    query_registry,
-    tree,
-    route,
-    path,
-    offset,
-    limit,
-    fields,
-    select_metadata,
-    omit_links,
-    include_data_sources,
-    filters,
-    sort,
-    base_url,
-    media_type,
-    max_depth,
-    exact_count_limit,
-):
-    "Construct a response for the `/search` endpoint"
-
-    path_parts = [segment for segment in path.split("/") if segment]
-    tree = await apply_search(tree, filters, query_registry)
-    tree = apply_sort(tree, sort)
-
     count = await len_or_approx(
         tree, exact=(schemas.EntryFields.count in fields), threshold=exact_count_limit
     )
-    links = pagination_links(base_url, route, path_parts, offset, limit, count)
-    data = []
 
+    next_cursor = None
     if fields == [schemas.EntryFields.none]:
         # Pull a page of just the keys, which is cheaper.
-        if hasattr(tree, "keys_range"):
-            keys = await tree.keys_range(offset, limit)
+        if hasattr(tree, "keys_page"):
+            if page.cursor is not None:
+                keys, next_cursor = await tree.keys_page(page.cursor, page.limit)
+            else:
+                page.cursor = await tree.cursor_for_offset(page.offset)
+                if page.cursor is not None or page.offset == 0:
+                    # Cursor available (or first page): use cursor pagination
+                    keys, next_cursor = await tree.keys_page(page.cursor, page.limit)
+                else:
+                    # Non-default sort: use offset pagination
+                    keys = await tree.keys_range(page.offset, page.limit)
         else:
-            keys = tree.keys()[offset : offset + limit]  # noqa: E203
+            keys = tree.keys()[page.offset : page.offset + page.limit]
         items = [(key, None) for key in keys]
     elif fields == [schemas.EntryFields.count]:
         # Only count is requested, so we do not need to pull any items.
         items = []
     else:
         # Pull the entire page of full items into memory.
-        if hasattr(tree, "items_range"):
-            items = await tree.items_range(offset, limit)
+        if hasattr(tree, "items_page"):
+            if page.cursor is not None:
+                items, next_cursor = await tree.items_page(page.cursor, page.limit)
+            else:
+                page.cursor = await tree.cursor_for_offset(page.offset)
+                if page.cursor is not None or page.offset == 0:
+                    # Cursor available (or first page): use cursor pagination
+                    items, next_cursor = await tree.items_page(page.cursor, page.limit)
+                else:
+                    # Non-default sort: use offset pagination
+                    items = await tree.items_range(page.offset, page.limit)
         else:
-            items = tree.items()[offset : offset + limit]  # noqa: E203
+            items = tree.items()[page.offset : page.offset + page.limit]
+
+    # Construct pagination links
+    links = pagination_links(base_url, route, path_parts, page, next_cursor, count)
 
     # This value will not leak out. It just used to seed comparisons.
-    metadata_stale_at = datetime.now(timezone.utc) + timedelta(days=1_000_000)
+    metadata_stale_at = datetime.now(UTC) + timedelta(days=1_000_000)
     must_revalidate = getattr(tree, "must_revalidate", True)
+    data = []
     for key, entry in items:
+        # In deep mode, `key` is a "/"-joined path relative to `tree`
+        # (e.g. "nested/images/sample_042"), not a single child key, since
+        # matches at different depths may share a local key. Split it so
+        # that links are built from the correct (server-absolute) path.
+        relative_segments = key.split("/") if deep else [key]
+        entry_path_parts = path_parts + relative_segments
         resource = await construct_resource(
             base_url,
-            path_parts + [key],
+            entry_path_parts,
             entry,
             fields,
             select_metadata,
@@ -307,6 +322,7 @@ async def construct_entries_response(
                 metadata_stale_at = None
             else:
                 metadata_stale_at = min(metadata_stale_at, entry.metadata_stale_at)
+
     return (
         schemas.Response(data=data, links=links, meta={"count": count}),
         metadata_stale_at,
@@ -317,6 +333,8 @@ async def construct_entries_response(
 DEFAULT_MEDIA_TYPES = {
     StructureFamily.array: {"*/*": "application/octet-stream", "image/*": "image/png"},
     StructureFamily.awkward: {"*/*": "application/zip"},
+    StructureFamily.bytes: {"*/*": "application/octet-stream"},
+    StructureFamily.ragged: {"*/*": "application/json"},
     StructureFamily.table: {"*/*": APACHE_ARROW_FILE_MIME_TYPE},
     StructureFamily.container: {"*/*": "application/x-hdf5"},
     StructureFamily.sparse: {"*/*": APACHE_ARROW_FILE_MIME_TYPE},
@@ -328,12 +346,17 @@ async def construct_revisions_response(
     base_url,
     route,
     path,
-    offset,
-    limit,
+    page,
     media_type,
 ):
     path_parts = [segment for segment in path.split("/") if segment]
-    revisions = await entry.revisions(offset, limit)
+    combined = getattr(entry, "revisions_with_count", None)
+    if combined is not None:
+        revisions, count = await combined(page.offset, page.limit)
+    else:
+        # Backward compatibility for third-party adapters that only implement `revisions()` API.
+        revisions = await entry.revisions(page.offset, page.limit)
+        count = len(revisions)
     data = []
     for revision in revisions:
         item = {
@@ -345,10 +368,7 @@ async def construct_revisions_response(
             },
         }
         data.append(item)
-    count = len(data)
-    links = pagination_links(
-        base_url, route, path_parts, offset, limit, count
-    )  # maybe reuse or maybe make a new pagination_revision_links
+    links = pagination_links(base_url, route, path_parts, page, None, count)
     return schemas.Response(data=data, links=links, meta={"count": count})
 
 
@@ -474,7 +494,13 @@ async def construct_resource(
     id_ = path_parts[-1] if path_parts else ""
     attributes = {"ancestors": path_parts[:-1]}
     if include_data_sources and hasattr(entry, "data_sources"):
-        attributes["data_sources"] = entry.data_sources
+        if callable(getattr(entry, "data_sources")):
+            # Catalog adapters expose `data_sources(include_assets=...)`; the
+            # assets are loaded only when the client asked to include data
+            # sources (they are otherwise omitted for large file sequences).
+            attributes["data_sources"] = await entry.data_sources(include_assets=True)
+        else:
+            attributes["data_sources"] = entry.data_sources
     if schemas.EntryFields.metadata in fields:
         if select_metadata is not None:
             attributes["metadata"] = {
@@ -482,8 +508,13 @@ async def construct_resource(
             }
         else:
             attributes["metadata"] = entry.metadata()
-    if schemas.EntryFields.access_blob in fields and hasattr(entry, "access_blob"):
-        attributes["access_blob"] = entry.access_blob
+    if schemas.EntryFields.access_tags in fields and hasattr(entry, "access_tags"):
+        access_tags = entry.access_tags
+        # Serialize the AccessTags frozenset in a deterministic order so that
+        # clients see a stable list (e.g. for building JSON patches).
+        attributes["access_tags"] = (
+            sorted(access_tags) if access_tags is not None else None
+        )
     if schemas.EntryFields.specs in fields:
         attributes["specs"] = []
         for spec in getattr(entry, "specs", []):
@@ -752,7 +783,7 @@ def get_websocket_envelope_formatter(
         async def stream_msgpack(
             websocket: WebSocket,
             metadata: dict,
-            payload_bytes: Optional[bytes],
+            payload_bytes: bytes | None,
         ):
             if payload_bytes is not None:
                 metadata["payload"] = payload_bytes
@@ -766,22 +797,36 @@ def get_websocket_envelope_formatter(
         async def stream_json(
             websocket: WebSocket,
             metadata: dict,
-            payload_bytes: Optional[bytes],
+            payload_bytes: bytes | None,
         ):
             if payload_bytes is not None:
-                media_type = metadata.get("content-type", "application/octet-stream")
+                media_type = metadata.get("mimetype") or metadata.get(
+                    "content-type", "application/octet-stream"
+                )
                 if media_type == "application/json":
-                    # nothing to do, the payload is already JSON
+                    # Nothing to do, the payload is already JSON
                     payload_decoded = payload_bytes
                 else:
-                    # Transcode to payload to JSON.
+                    # Transcode the payload to JSON.
                     metadata["content-type"] = "application/json"
-                    structure_family = (
-                        StructureFamily.array
-                    )  # TODO: generalize beyond array
+                msg_type = metadata.get("type", "")
+                if msg_type == "table-data":
+                    deserializer = deserialization_registry.dispatch(
+                        StructureFamily.table, media_type
+                    )
+                    df = deserializer(payload_bytes)
+                    payload_decoded = {col: df[col].tolist() for col in df}
+                elif msg_type == "ragged-data":
                     structure = entry.structure()
                     deserializer = deserialization_registry.dispatch(
-                        structure_family, media_type
+                        StructureFamily.ragged, media_type
+                    )
+                    ragged_array = deserializer(payload_bytes, structure)
+                    payload_decoded = ragged_array.tolist()
+                else:
+                    structure = entry.structure()
+                    deserializer = deserialization_registry.dispatch(
+                        StructureFamily.array, media_type
                     )
                     payload_decoded = deserializer(
                         payload_bytes,
@@ -789,8 +834,12 @@ def get_websocket_envelope_formatter(
                         metadata.get("shape"),
                     )
                 metadata["payload"] = payload_decoded
+            # Convert non-serializable schema objects (e.g. pyarrow.Schema)
+            # to their string representation for JSON transport.
+            if "arrow_schema" in metadata:
+                metadata["arrow_schema"] = str(metadata["arrow_schema"])
             data = safe_json_dump(metadata)
-            await websocket.send_text(data)
+            await websocket.send_text(data.decode())
 
         return stream_json
 

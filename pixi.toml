@@ -2,13 +2,20 @@
 authors = ["Dan Allan <dallan@bnl.gov>"]
 channels = ["conda-forge"]
 name = "tiled"
-platforms = ["linux-64", "osx-arm64", "osx-64", "win-64"]
+platforms = ["linux-64", "linux-aarch64", "osx-arm64", "osx-64", "win-64"]
 version = "0.2.2"
+# Match the pixi version that .github/workflows/update-pixi-lock.yml uses, so
+# that pixi.lock is written the same way locally and in CI.
+requires-pixi = ">=0.83.0"
+# Ignore packages published in the last 3 days, matching Dependabot's default
+# cooldown for uv.lock, to reduce the risk of picking up a broken or
+# compromised release. To let a reviewed release through sooner, exempt it:
+#   pixi workspace exclude-newer exempt <package>==<version>
+exclude-newer = "3d"
 
 [tasks]
 
 [dependencies]
-httpx = ">=0.20.0,!=0.23.1"
 json-merge-patch = "*"
 jsonpatch = "*"
 jsonschema = "*"
@@ -21,6 +28,8 @@ pyyaml = "*"
 typer = "*"
 
 [pypi-dependencies]
+# Not yet available on conda-forge; installed from PyPI.
+httpx2 = ">=2.0.0"
 tiled = { path = ".", editable = true }
 
 [feature.array.dependencies]
@@ -29,6 +38,7 @@ numpy = "*"
 
 [feature.awkward.dependencies]
 awkward = ">=2.4.3"
+ragged = "*"
 
 [feature.client.dependencies]
 entrypoints = "*"
@@ -38,7 +48,7 @@ watchfiles = "*"
 websockets = "*"
 
 [feature.compression.dependencies]
-# python-blosc2 = "*"  # not available on Python < 3.11
+python-blosc2 = "*"
 lz4 = "*"
 zstandard = "*"
 
@@ -50,7 +60,7 @@ pyarrow-all = ">=14.0.1"  # includes fix to CVE 2023-47248
 [feature.dev.dependencies]
 aiohttp = "*"
 coverage = "*"
-flake8 = "*"
+ruff = "==0.17.3"
 hypothesis = "*"
 ipython = "*"
 ldap3 = "*"
@@ -64,6 +74,7 @@ pytest = "*"
 pytest-asyncio = "*"
 pytest-mock = "*"
 pytest-rerunfailures = "*"
+pytest-xdist = "*"
 respx = "*"
 sphinx = "!=4.1.0,!=4.1.1,!=4.1.2,!=4.2.0"
 sphinx-click = "*"
@@ -71,6 +82,9 @@ sphinx-copybutton = "*"
 sphinx_rtd_theme = "*"
 sphinxcontrib-mermaid = "*"
 types-cachetools = "*"
+
+[feature.dev.tasks]
+lint = "pre-commit run --show-diff-on-failure --color=always --all-files"
 
 [feature.formats.dependencies]
 h5netcdf = "*"
@@ -92,8 +106,9 @@ asgi-correlation-id = "*"
 asyncpg = "*"
 cachetools = "*"
 canonicaljson = "*"
+cryptography = "*"
 dask = "*"
-duckdb = "<1.4.0"  # https://github.com/bluesky/tiled/issues/1144
+duckdb = "!=1.4.0"  # https://github.com/bluesky/tiled/issues/1144
 fastapi = ">=0.132.0"
 jinja2 = "*"
 jmespath = "*"
@@ -101,12 +116,13 @@ numcodecs = "*"
 obstore = "*"
 packaging = "*"
 prometheus_client = "*"
+pyjwt = "*"
 python-dateutil = "*"
-python-jose = "*"
 python-multipart = "*"
 redis-py = "*"
 sqlalchemy = ">=2"
 starlette = ">=0.48.0"
+strawberry-graphql = ">=0.315.3"
 uvicorn = "*"
 zarr = "*"
 
@@ -121,21 +137,17 @@ pandas = "*"
 pyarrow-all = ">=14.0.1"  # includes fix to CVE 2023-47248
 xarray = "*"
 
-[feature.py310.dependencies]
-python = "3.10.*"
-# python-blosc2 is not available for Python 3.10
-
 [feature.py311.dependencies]
 python = "3.11.*"
-python-blosc2 = "*"
 
 [feature.py312.dependencies]
 python = "3.12.*"
-python-blosc2 = "*"
 
 [feature.py313.dependencies]
 python = "3.13.*"
-python-blosc2 = "*"
+
+[feature.py314.dependencies]
+python = "3.14.*"
 
 [environments]
 default = { solve-group = "default" }
@@ -144,7 +156,7 @@ client = { features = ["array", "awkward", "client", "compression", "dataframe",
 dev = { features = ["array", "awkward", "client", "compression", "dataframe", "formats", "dev", "server", "sparse", "xarray"], solve-group = "default" }
 server = { features = ["array", "awkward", "compression", "dataframe", "formats", "server", "sparse", "xarray"], solve-group = "default" }
 
-py310 = { features = ["array", "awkward", "client", "compression", "dataframe", "formats", "dev", "server", "sparse", "xarray", "py310"] }
 py311 = { features = ["array", "awkward", "client", "compression", "dataframe", "formats", "dev", "server", "sparse", "xarray", "py311"] }
 py312 = { features = ["array", "awkward", "client", "compression", "dataframe", "formats", "dev", "server", "sparse", "xarray", "py312"] }
 py313 = { features = ["array", "awkward", "client", "compression", "dataframe", "formats", "dev", "server", "sparse", "xarray", "py313"] }
+py314 = { features = ["array", "awkward", "client", "compression", "dataframe", "formats", "dev", "server", "sparse", "xarray", "py314"] }

@@ -1,8 +1,7 @@
 import os
 from pathlib import Path
-from typing import Dict, Optional
 
-import httpx
+import httpx2 as httpx
 
 from .utils import SerializableLock, handle_error
 
@@ -13,7 +12,12 @@ class CannotRefreshAuthentication(Exception):
 
 class TiledAuth(httpx.Auth):
     def __init__(
-        self, refresh_url, csrf_token, token_directory, client_id: Optional[str] = None
+        self,
+        refresh_url,
+        csrf_token,
+        token_directory,
+        client_id: str | None = None,
+        scopes: str | None = None,
     ):
         self.refresh_url = refresh_url
         self.csrf_token = csrf_token
@@ -26,6 +30,7 @@ class TiledAuth(httpx.Auth):
         # self._async_lock = asyncio.Lock()
         self.tokens = {}
         self.client_id = client_id
+        self.scopes = scopes
 
     @staticmethod
     def _check_writable_token_directory(token_directory):
@@ -56,16 +61,19 @@ class TiledAuth(httpx.Auth):
 
     def sync_get_token(self, key, reload_from_disk=False):
         if not reload_from_disk:
-            # Use in-memory cached copy.
+            # Try in-memory cached copy first.
             try:
                 return self.tokens[key]
-            except Exception:
-                if self.token_directory is None:
-                    return None
+            except KeyError:
+                # Continue on to try to read token form disk.
+                pass
+        if self.token_directory is None:
+            # No token directory was configured. Give up.
+            return None
         with self._sync_lock:
             filepath = self.token_directory / key
             try:
-                with open(filepath, "r") as file:
+                with open(filepath) as file:
                     token = file.read()
                     self.tokens[key] = token
                     return token
@@ -75,7 +83,7 @@ class TiledAuth(httpx.Auth):
     def sync_set_token(self, key, value):
         with self._sync_lock:
             if not isinstance(value, str):
-                raise ValueError("Expected string value, got {value!r}")
+                raise ValueError(f"Expected string value, got {value!r}")
             if self.token_directory is not None:
                 filepath = self.token_directory / key
                 filepath.touch(mode=0o600)  # Set permissions.
@@ -114,10 +122,17 @@ class TiledAuth(httpx.Auth):
                     "For a given client c, use c.context.authenticate()."
                 )
             token_request = build_refresh_request(
-                self.refresh_url, refresh_token, self.csrf_token, self.client_id
+                self.refresh_url,
+                refresh_token,
+                self.csrf_token,
+                self.client_id,
+                self.scopes,
             )
             token_response = yield token_request
-            if token_response.status_code == httpx.codes.UNAUTHORIZED:
+            if token_response.status_code in {
+                httpx.codes.UNAUTHORIZED,
+                httpx.codes.BAD_REQUEST,
+            }:
                 # Refreshing the token failed.
                 # Discard the expired (or otherwise invalid) refresh_token.
                 self.sync_clear_token("refresh_token")
@@ -135,7 +150,7 @@ class TiledAuth(httpx.Auth):
             request.headers["Authorization"] = f"Bearer {tokens['access_token']}"
             yield request
 
-    def sync_tokens(self, tokens: Dict[str, str]):
+    def sync_tokens(self, tokens: dict[str, str]):
         self.sync_set_token("refresh_token", tokens["refresh_token"])
         self.sync_set_token("access_token", tokens["access_token"])
         if id_token := tokens.get("id_token"):
@@ -155,7 +170,11 @@ class TiledAuth(httpx.Auth):
 
 
 def build_refresh_request(
-    refresh_url, refresh_token, csrf_token, client_id: Optional[str] = None
+    refresh_url,
+    refresh_token,
+    csrf_token,
+    client_id: str | None = None,
+    scopes: str | None = None,
 ):
     if client_id:
         return httpx.Request(
@@ -165,6 +184,7 @@ def build_refresh_request(
                 "client_id": client_id,
                 "grant_type": "refresh_token",
                 "refresh_token": refresh_token,
+                **({"scope": scopes} if scopes else {}),
             },
             headers={"Content-Type": "application/x-www-form-urlencoded"},
         )

@@ -1,6 +1,5 @@
-from typing import Optional
-
 try:
+    import click
     import typer
 except Exception as err:
     raise Exception(
@@ -56,7 +55,7 @@ cli_app.add_typer(
 
 @cli_app.command("login")
 def login(
-    profile: Optional[str] = typer.Option(
+    profile: str | None = typer.Option(
         None, help="If you use more than one Tiled server, use this to specify which."
     ),
     show_secret_tokens: bool = typer.Option(
@@ -80,7 +79,7 @@ def login(
 
 @cli_app.command("whoami")
 def whoami(
-    profile: Optional[str] = typer.Option(
+    profile: str | None = typer.Option(
         None, help="If you use more than one Tiled server, use this to specify which."
     ),
 ):
@@ -102,7 +101,7 @@ def whoami(
 
 @cli_app.command("logout")
 def logout(
-    profile: Optional[str] = typer.Option(
+    profile: str | None = typer.Option(
         None, help="If you use more than one Tiled server, use this to specify which."
     ),
 ):
@@ -121,7 +120,7 @@ def logout(
 
 @cli_app.command("tree")
 def tree(
-    profile: Optional[str] = typer.Option(
+    profile: str | None = typer.Option(
         None, help="If you use more than one Tiled server, use this to specify which."
     ),
     max_lines: int = typer.Argument(20, help="Max lines to show."),
@@ -169,4 +168,12 @@ if __name__ == "__main__":
     main()
 
 # This object is used by the auto-generated documentation.
-typer_click_object = typer.main.get_command(cli_app)
+_app_click = typer.main.get_command(cli_app)
+typer_click_object = click.Group(
+    name=_app_click.name,
+    commands={
+        k: _app_click.get_command(None, k) for k in _app_click.list_commands(None)
+    },
+    callback=_app_click.callback,
+    params=_app_click.params,
+)

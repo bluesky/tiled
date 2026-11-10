@@ -2,6 +2,7 @@ import collections
 import contextlib
 import logging
 import os
+import urllib.parse
 
 from ..utils import bytesize_repr
 
@@ -18,8 +19,13 @@ class ClientLogRecord(logging.LogRecord):
                 size = f"({bytesize_repr(int(request.headers['content-length']))})"
             else:
                 size = ""
-            message = f"-> {size} {request.method} '{request.url}' " + " ".join(
-                f"'{k}:{v}'" for k, v in request.headers.items() if k != "authorization"
+            message = (
+                f"-> {size} {request.method} '{urllib.parse.unquote(str(request.url))}' "
+                + " ".join(
+                    f"'{k}:{v}'"
+                    for k, v in request.headers.items()
+                    if k != "authorization"
+                )
             )
             # Handle the authorization header specially.
             # For debugging, it can be useful to show it so that the log message
@@ -63,7 +69,7 @@ def patched_make_record(
     if extra is not None:
         for key in extra:
             if (key in ["message", "asctime"]) or (key in rv.__dict__):
-                raise KeyError("Attempt to overwrite %r in LogRecord" % key)
+                raise KeyError(f"Attempt to overwrite {key!r} in LogRecord")
             rv.__dict__[key] = extra[key]
     return rv
 

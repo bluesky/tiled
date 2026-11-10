@@ -1,14 +1,15 @@
+import collections.abc
 import time
+from collections.abc import MutableMapping
 from copy import copy, deepcopy
 from dataclasses import asdict
 from pathlib import Path
-from typing import Dict, List, Union
 from urllib.parse import parse_qs, urlparse
 
 import json_merge_patch
 import jsonpatch
 import orjson
-from httpx import URL
+from httpx2 import URL
 
 from tiled.client.context import Context
 
@@ -20,7 +21,7 @@ from .utils import MSGPACK_MIME_TYPE, handle_error, normalize_specs, retry_conte
 
 # TODO: Duplicated from  tiled.type_aliases to prevent importing numpy
 # After #1407 replace AnyAdapter with the BaseClass and remove this redefinition
-JSON_ITEM = Union[str, int, float, bool, Dict[str, "JSON_ITEM"], List["JSON_ITEM"]]
+JSON_ITEM = str | int | float | bool | dict[str, "JSON_ITEM"] | list["JSON_ITEM"]
 
 
 class MetadataRevisions:
@@ -76,6 +77,8 @@ class MetadataRevisions:
                             },
                         )
                     ).json()
+            if not content["data"]:
+                raise IndexError(f"revision index {offset} out of range")
             (result,) = content["data"]
             return result
 
@@ -102,10 +105,15 @@ class MetadataRevisions:
                 if len(result) == 0:
                     result = content.copy()
                 else:
-                    result["data"].append(content["data"])
+                    result["data"].extend(content["data"])
                 next_page_url = content["links"]["next"]
 
             return result["data"]
+
+    def __iter__(self):
+        # Fetch all the revisions, one page at a time, rather than one request
+        # per revision as iteration over `__getitem__` would.
+        return iter(self[:])
 
     def delete_revision(self, n):
         for attempt in retry_context():
@@ -168,7 +176,7 @@ class BaseClient:
             )
         return self._structure
 
-    def login(self):
+    def login(self, *, overwrite_auth=False):
         """
         Depending on the server's authentication method, this will prompt for username/password:
 
@@ -184,7 +192,16 @@ class BaseClient:
         https://...
 
         and enter the code: XXXX-XXXX
+
+        Parameters
+        ----------
+        overwrite_auth: bool, optional
+            If True, any existing authentication will be overwritten.
+            If False, an error will be raised if authentication is already configured.
         """
+        # Fail fast, before any interactive prompt, if the client is already
+        # authenticated with another method (e.g. an external proxy Auth).
+        self.context._raise_if_auth_configured(overwrite_auth)
         self.context.authenticate()
 
     def logout(self):
@@ -257,8 +274,8 @@ class BaseClient:
         validating metadata (useful with update_metadata())
         """
         metadata = deepcopy(self._item["attributes"]["metadata"])
-        specs = [Spec(**spec) for spec in self._item["attributes"]["specs"]]
-        access_tags = deepcopy(self._item["attributes"]["access_blob"].get("tags", []))
+        specs = [Spec.from_json(spec) for spec in self._item["attributes"]["specs"]]
+        access_tags = list(self._item["attributes"]["access_tags"])
         return [
             md for md in [metadata, specs, access_tags] if md is not None
         ]  # returning as list of mutable items
@@ -266,18 +283,20 @@ class BaseClient:
     @property
     def specs(self) -> ListView[Spec]:
         "List of specifications describing the structure of the metadata and/or data."
-        return ListView([Spec(**spec) for spec in self._item["attributes"]["specs"]])
+        return ListView(
+            [Spec.from_json(spec) for spec in self._item["attributes"]["specs"]]
+        )
 
     @property
-    def access_blob(self) -> DictView[str, JSON_ITEM]:
-        "Authorization information about this node, in blob form"
-        access_blob = self._item["attributes"]["access_blob"]
-        if access_blob is None:
-            raise AttributeError("Node has no attribute 'access_blob'")
+    def access_tags(self) -> ListView[str]:
+        "Authorization information about this node, encoded as access tags."
+        access_tags = self._item["attributes"]["access_tags"]
+        if access_tags is None:
+            raise AttributeError("Node has no attribute 'access_tags'")
         # Ensure this is immutable (at the top level) to help the user avoid
         # getting the wrong impression that editing this would update anything
         # persistent.
-        return DictView(access_blob)
+        return ListView(access_tags)
 
     @property
     def uri(self):
@@ -375,34 +394,71 @@ class BaseClient:
                 manifests[asset.id] = manifest
         return manifests
 
-    def raw_export(self, destination_directory=None, max_workers=4):
-        """
-        Download the raw assets backing this node.
+    def raw_export(self, destination=None, max_workers=4, compression=True, **kwargs):
+        """Download the raw assets backing this node.
 
         This may produce a single file or a directory.
 
         Parameters
         ----------
-        destination_directory : Path, optional
-            Destination for downloaded assets. Default is current working directory
+        destination : Path or MutableMapping, optional
+            Destination for downloaded assets. If a `MutableMapping` (e.g. a
+            `dict`) is provided, each asset is stored in-memory as an
+            `io.BytesIO` under a key mirroring the on-disk layout
+            (`<filename>` for a single asset; `<asset_id>/<filename>` or
+            `<asset_id>/<relative_path>` when multiple assets back the node).
+            Otherwise the value is treated as a filesystem path; defaults to
+            the current working directory.
         max_workers : int, optional
             Number of parallel workers downloading data. Default is 4.
+        compression : bool, optional
+            Whether to let the server compress the response on the fly. Default
+            is `True`, which streams via zstd/gzip (blosc2 is excluded because
+            its client decoder cannot stream). Set to `False` to download
+            uncompressed (`Accept-Encoding: identity`), which avoids wasting CPU
+            on already-incompressible assets and yields a `Content-Length` (and
+            thus a determinate progress bar).
 
         Returns
         -------
-        paths : List[Path]
-            Filepaths of exported files
+        paths_or_keys : List[Path] or List[str]
+            Filepaths of exported files, or keys written to the mapping.
         """
-        if destination_directory is None:
-            destination_directory = Path.cwd()
-        else:
-            destination_directory = Path(destination_directory)
+        # Back-compat: accept the old keyword name with a deprecation warning.
+        if "destination_directory" in kwargs:
+            import warnings
+
+            if destination is not None:
+                raise TypeError(
+                    "raw_export() got both 'destination' and the deprecated "
+                    "'destination_directory'; pass only 'destination'."
+                )
+            warnings.warn(
+                "The 'destination_directory' keyword to raw_export() is "
+                "deprecated; use 'destination' instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            destination = kwargs.pop("destination_directory")
+        if kwargs:
+            raise TypeError(
+                f"raw_export() got unexpected keyword arguments: {sorted(kwargs)!r}"
+            )
+
+        in_memory = isinstance(destination, MutableMapping)
+        if not in_memory:
+            destination = Path(destination or Path.cwd())
 
         # Import here to defer the import of rich (for progress bar).
-        from .download import ATTACHMENT_FILENAME_PLACEHOLDER, download
+        from .download import (
+            ATTACHMENT_FILENAME_PLACEHOLDER,
+            STREAMING_ACCEPT_ENCODING,
+            download,
+        )
 
         urls = []
-        paths = []
+        targets = []  # Paths or posix-style string keys.
+        sizes = []  # Known content lengths (parallel to urls); None if unknown.
         data_sources = self.include_data_sources().data_sources()
         asset_manifest = self.asset_manifest(data_sources)
         if len(data_sources) != 1:
@@ -416,11 +472,12 @@ class BaseClient:
             for asset in data_source.assets:
                 if len(data_source.assets) == 1:
                     # Only one asset: keep the name simple.
-                    base_path = destination_directory
+                    base = "" if in_memory else destination
                 else:
-                    # Multiple assets: Add a subdirectory named for the asset
-                    # id to namespace each asset.
-                    base_path = Path(destination_directory, str(asset.id))
+                    # Multiple assets: namespace each asset by id.
+                    base = (
+                        f"{asset.id}" if in_memory else Path(destination, str(asset.id))
+                    )
                 if asset.is_directory:
                     relative_paths = asset_manifest[asset.id]
                     urls.extend(
@@ -436,12 +493,14 @@ class BaseClient:
                             for relative_path in relative_paths
                         ]
                     )
-                    paths.extend(
-                        [
-                            Path(base_path, relative_path)
-                            for relative_path in relative_paths
-                        ]
-                    )
+                    # Per-file sizes within a directory asset are not known.
+                    sizes.extend([None] * len(relative_paths))
+                    if in_memory:
+                        targets.extend(
+                            [f"{base}/{rp}" if base else rp for rp in relative_paths]
+                        )
+                    else:
+                        targets.extend([Path(base, rp) for rp in relative_paths])
                 else:
                     urls.append(
                         URL(
@@ -452,8 +511,34 @@ class BaseClient:
                             },
                         )
                     )
-                    paths.append(Path(base_path, ATTACHMENT_FILENAME_PLACEHOLDER))
-        return download(self.context.http_client, urls, paths, max_workers=max_workers)
+                    sizes.append(asset.size)
+                    if in_memory:
+                        targets.append(
+                            f"{base}/{ATTACHMENT_FILENAME_PLACEHOLDER}"
+                            if base
+                            else ATTACHMENT_FILENAME_PLACEHOLDER
+                        )
+                    else:
+                        targets.append(Path(base, ATTACHMENT_FILENAME_PLACEHOLDER))
+        accept_encoding = STREAMING_ACCEPT_ENCODING if compression else "identity"
+        if in_memory:
+            return download(
+                self.context.http_client,
+                urls,
+                targets,
+                mapping=destination,
+                max_workers=max_workers,
+                totals=sizes,
+                accept_encoding=accept_encoding,
+            )
+        return download(
+            self.context.http_client,
+            urls,
+            targets,
+            max_workers=max_workers,
+            totals=sizes,
+            accept_encoding=accept_encoding,
+        )
 
     @property
     def formats(self):
@@ -525,7 +610,7 @@ class BaseClient:
         >>> md['unwanted_key'] = DELETE_KEY
         >>> node.update_metadata(metadata=md)  # Update the copy on the server
         """
-        metadata_patch, specs_patch, access_blob_patch = self.build_metadata_patches(
+        metadata_patch, specs_patch, access_tags_patch = self.build_metadata_patches(
             metadata=metadata,
             specs=specs,
             access_tags=access_tags,
@@ -533,7 +618,7 @@ class BaseClient:
         self.patch_metadata(
             metadata_patch=metadata_patch,
             specs_patch=specs_patch,
-            access_blob_patch=access_blob_patch,
+            access_tags_patch=access_tags_patch,
             drop_revision=drop_revision,
         )
 
@@ -562,9 +647,9 @@ class BaseClient:
         specs_patch : list[dict]
             A JSON serializable object representing a valid JSON patch (RFC6902)
             for metadata validation specifications.
-        access_blob_patch : list[dict]
+        access_tags_patch : list[dict]
             A JSON serializable object representing a valid JSON patch (RFC6902)
-            for access control fields that are stored in the access_blob.
+            for access tags
 
         See Also
         --------
@@ -608,6 +693,10 @@ class BaseClient:
         if metadata is None:
             metadata_patch = []
         else:
+            if not isinstance(metadata, collections.abc.Mapping):
+                raise ValueError(
+                    f"Metadata must serialize as a JSON object, cannot be {type(metadata)}."
+                )
             md_copy = deepcopy(self._item["attributes"]["metadata"])
             metadata_patch = jsonpatch.JsonPatch.from_diff(
                 self._item["attributes"]["metadata"],
@@ -629,17 +718,14 @@ class BaseClient:
 
         if not access_tags:
             # empty list of access_tags should be a no-op
-            access_blob_patch = None
+            access_tags_patch = None
         else:
-            ab_copy = deepcopy(self._item["attributes"]["access_blob"])
-            access_blob = {"tags": access_tags}
-            access_blob_patch = jsonpatch.JsonPatch.from_diff(
-                self._item["attributes"]["access_blob"],
-                apply_update_patch(ab_copy, access_blob),
-                dumps=orjson.dumps,
+            access_tags_copy = list(self._item["attributes"]["access_tags"])
+            access_tags_patch = jsonpatch.JsonPatch.from_diff(
+                access_tags_copy, access_tags, dumps=orjson.dumps
             ).patch
 
-        return metadata_patch, specs_patch, access_blob_patch
+        return metadata_patch, specs_patch, access_tags_patch
 
     def _build_json_patch(self, origin, update_patch):
         """
@@ -665,7 +751,7 @@ class BaseClient:
         self,
         metadata_patch=None,
         specs_patch=None,
-        access_blob_patch=None,
+        access_tags_patch=None,
         content_type=patch_mimetypes.JSON_PATCH,
         drop_revision=False,
     ):
@@ -681,8 +767,8 @@ class BaseClient:
         specs_patch : List[dict], optional
             JSON-serializable patch to be applied to metadata validation
             specifications list
-        access_blob_patch : List[dict], optional
-            JSON-serializable patch to be applied to the access_blob
+        access_tags_patch : List[dict], optional
+            JSON-serializable patch to be applied to the access_tags
         content_type : str
             Mimetype of the patches. Acceptable values are:
 
@@ -742,7 +828,7 @@ class BaseClient:
             "content-type": content_type,
             "metadata": metadata_patch,
             "specs": normalized_specs_patch,
-            "access_blob": access_blob_patch,
+            "access_tags": access_tags_patch,
         }
         params = {}
         if drop_revision:
@@ -776,12 +862,12 @@ class BaseClient:
             patched_specs = patcher(current_specs, normalized_specs_patch, content_type)
             self._item["attributes"]["specs"] = patched_specs
 
-        if access_blob_patch is not None:
-            if "access_blob" in content:
-                self._item["attributes"]["access_blob"] = content["access_blob"]
+        if access_tags_patch is not None:
+            if "access_tags" in content:
+                self._item["attributes"]["access_tags"] = content["access_tags"]
             else:
-                self._item["attributes"]["access_blob"] = patcher(
-                    dict(self.access_blob), access_blob_patch, content_type
+                self._item["attributes"]["access_tags"] = patcher(
+                    list(self.access_tags), access_tags_patch, content_type
                 )
 
     def replace_metadata(
@@ -814,15 +900,10 @@ class BaseClient:
 
         self._cached_len = None
 
-        if access_tags is None:
-            access_blob = None
-        else:
-            access_blob = {"tags": access_tags}
-
         data = {
             "metadata": metadata,
             "specs": normalize_specs(specs),
-            "access_blob": access_blob,
+            "access_tags": access_tags,
         }
         params = {}
         if drop_revision:
@@ -852,11 +933,11 @@ class BaseClient:
         if specs is not None:
             self._item["attributes"]["specs"] = normalize_specs(specs)
 
-        if access_blob is not None:
-            if "access_blob" in content:
-                self._item["attributes"]["access_blob"] = content["access_blob"]
+        if access_tags is not None:
+            if "access_tags" in content:
+                self._item["attributes"]["access_tags"] = content["access_tags"]
             else:
-                self._item["attributes"]["access_blob"] = access_blob
+                self._item["attributes"]["access_tags"] = access_tags
 
     @property
     def metadata_revisions(self):

@@ -1,7 +1,31 @@
-import numpy
+import asyncio
 
+import numpy
+import pytest
+from sqlalchemy import insert
+from sqlalchemy.ext.asyncio import create_async_engine
+
+from tiled.catalog import orm
 from tiled.client import Context, from_context
 from tiled.server.app import build_app_from_config
+from tiled.structures.core import Spec
+from tiled.utils import ensure_specified_sql_driver
+
+
+def define_access_tags(uri, names):
+    """Insert tag definitions into a catalog database (the access tags
+    compiler's job in a real deployment). Nodes may only be associated
+    with tags that are defined."""
+
+    async def _run():
+        engine = create_async_engine(ensure_specified_sql_driver(uri))
+        async with engine.begin() as conn:
+            await conn.execute(
+                insert(orm.AccessTag.__table__), [{"name": name} for name in names]
+            )
+        await engine.dispose()
+
+    asyncio.run(_run())
 
 
 def test_mount_node(sqlite_or_postgres_uri, tmpdir):
@@ -107,3 +131,179 @@ def test_mount_node(sqlite_or_postgres_uri, tmpdir):
     with Context.from_app(build_app_from_config(multi_tree_config)) as context:
         client = from_context(context)
         assert list(client["some"]["nested"]["path"]) == ["i"]
+
+
+def test_mount_node_nonexistent(sqlite_or_postgres_uri, tmpdir):
+    "A tree whose mount_node does not exist should raise an error at startup."
+    # Initialize the catalog database with a single container "A".
+    init_config = {
+        "trees": [
+            {
+                "path": "/",
+                "tree": "catalog",
+                "args": {
+                    "uri": sqlite_or_postgres_uri,
+                    "init_if_not_exists": True,
+                    "writable_storage": [tmpdir / "data"],
+                },
+            },
+        ]
+    }
+    with Context.from_app(build_app_from_config(init_config)) as context:
+        client = from_context(context)
+        client.create_container("A")
+
+    # Mount a tree pointing at a nonexistent node.
+    bad_config = {
+        "trees": [
+            {
+                "path": "/b",
+                "tree": "catalog",
+                "args": {
+                    "uri": sqlite_or_postgres_uri,
+                    "writable_storage": [tmpdir / "data"],
+                    "mount_node": "/does_not_exist",
+                },
+            },
+        ]
+    }
+    with pytest.raises(ValueError, match="was not found in the database"):
+        with Context.from_app(build_app_from_config(bad_config)) as context:
+            from_context(context)
+
+
+def test_create_mount_nodes_if_not_exist(sqlite_or_postgres_uri, tmpdir):
+    "Test that create_mount_nodes_if_not_exist auto-creates missing mount node paths."
+    # Initialize the catalog database (empty, no containers).
+    init_config = {
+        "trees": [
+            {
+                "path": "/",
+                "tree": "catalog",
+                "args": {
+                    "uri": sqlite_or_postgres_uri,
+                    "init_if_not_exists": True,
+                    "writable_storage": [tmpdir / "data"],
+                },
+            },
+        ]
+    }
+    with Context.from_app(build_app_from_config(init_config)) as context:
+        client = from_context(context)
+        # Database is empty, no containers exist.
+        assert list(client) == []
+
+    # Mount a tree at a nonexistent path with create_mount_nodes_if_not_exist=True.
+    # This should auto-create intermediate container nodes /X/Y/Z.
+    # The leaf node should receive the configured specs and access_tags.
+    define_access_tags(sqlite_or_postgres_uri, ["_ROOT_NODE"])
+    mount_config = {
+        "create_mount_nodes_if_not_exist": True,
+        "trees": [
+            {
+                "path": "/",
+                "tree": "catalog",
+                "args": {
+                    "uri": sqlite_or_postgres_uri,
+                    "writable_storage": [tmpdir / "data"],
+                    "mount_node": "/X/Y/Z",
+                    "specs": [{"name": "MyCustomSpec", "version": "3.0"}],
+                    "top_level_access_tags": ["_ROOT_NODE"],
+                },
+            },
+        ],
+    }
+    with Context.from_app(build_app_from_config(mount_config)) as context:
+        client = from_context(context)
+        # The tree should be served (mount node was auto-created).
+        # We can write into it.
+        client.create_container("child")
+        assert list(client) == ["child"]
+
+    # Verify the nodes were actually created by mounting the root.
+    root_config = {
+        "trees": [
+            {
+                "path": "/",
+                "tree": "catalog",
+                "args": {
+                    "uri": sqlite_or_postgres_uri,
+                    "writable_storage": [tmpdir / "data"],
+                },
+            },
+        ]
+    }
+    with Context.from_app(build_app_from_config(root_config)) as context:
+        client = from_context(context)
+        # The auto-created path should be visible from root.
+        assert "X" in list(client)
+        assert "Y" in list(client["X"])
+        assert "Z" in list(client["X"]["Y"])
+        assert "child" in list(client["X"]["Y"]["Z"])
+        # Intermediate nodes should have empty specs and access_tags.
+        assert client["X"].specs == []
+        assert client["X"]["Y"].specs == []
+        assert list(client["X"].access_tags) == []
+        assert list(client["X"]["Y"].access_tags) == []
+        # The leaf (mount node) should carry the configured specs.
+        assert client["X"]["Y"]["Z"].specs == [Spec(name="MyCustomSpec", version="3.0")]
+        assert list(client["X"]["Y"]["Z"].access_tags) == ["_ROOT_NODE"]
+
+
+def test_create_mount_nodes_partial(sqlite_or_postgres_uri, tmpdir):
+    "Test auto-creation when some path segments already exist."
+    # Initialize catalog and create /A.
+    init_config = {
+        "trees": [
+            {
+                "path": "/",
+                "tree": "catalog",
+                "args": {
+                    "uri": sqlite_or_postgres_uri,
+                    "init_if_not_exists": True,
+                    "writable_storage": [tmpdir / "data"],
+                },
+            },
+        ]
+    }
+    with Context.from_app(build_app_from_config(init_config)) as context:
+        client = from_context(context)
+        client.create_container("A")
+
+    # Mount at /A/B/C with auto-create. /A exists, /A/B and /A/B/C do not.
+    define_access_tags(sqlite_or_postgres_uri, ["_LEAF"])
+    mount_config = {
+        "create_mount_nodes_if_not_exist": True,
+        "trees": [
+            {
+                "path": "/",
+                "tree": "catalog",
+                "args": {
+                    "uri": sqlite_or_postgres_uri,
+                    "writable_storage": [tmpdir / "data"],
+                    "mount_node": "/A/B/C",
+                    "specs": [{"name": "PartialSpec", "version": "1.0"}],
+                    "top_level_access_tags": ["_LEAF"],
+                },
+            },
+        ],
+    }
+    with Context.from_app(build_app_from_config(mount_config)) as context:
+        client = from_context(context)
+        client.create_container("item")
+        assert list(client) == ["item"]
+
+    # Verify from root: /A should exist (pre-existing), /A/B and /A/B/C created.
+    with Context.from_app(build_app_from_config(init_config)) as context:
+        client = from_context(context)
+        assert "A" in list(client)
+        assert "B" in list(client["A"])
+        assert "C" in list(client["A"]["B"])
+        assert "item" in list(client["A"]["B"]["C"])
+        # Pre-existing /A should not have been modified (no specs).
+        assert client["A"].specs == []
+        # Intermediate /A/B should have empty specs.
+        assert client["A"]["B"].specs == []
+        # Leaf /A/B/C should carry the configured specs.
+        assert client["A"]["B"]["C"].specs == [Spec(name="PartialSpec", version="1.0")]
+        assert list(client["A"]["B"]["C"].access_tags) == ["_LEAF"]

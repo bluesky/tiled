@@ -1,9 +1,33 @@
 from abc import ABC, abstractmethod
-from typing import Optional, Tuple
+from collections.abc import Iterable
 
 from ..adapters.protocols import BaseAdapter
 from ..server.schemas import Principal
-from ..type_aliases import AccessBlob, AccessTags, Filters, Scopes
+from ..type_aliases import AccessTags, Filters, Scopes
+
+# Prefixes of principal tags ('user:<id>', 'service:<uuid>'), which mark
+# nodes as owned by a single principal.
+PRINCIPAL_TAG_PREFIXES = ("user:", "service:")
+
+
+class ApprovedAccessTags(frozenset[str]):
+    "Access tags an access policy approved; only these get new rows on write."
+
+
+def normalize_access_tags(tags: Iterable[str] = ()) -> AccessTags:
+    """
+    Validate tag names and normalize them to a frozenset.
+
+    A bare string is rejected rather than accepted: frozenset("abc") would
+    silently produce {'a', 'b', 'c'} instead of {'abc'}.
+    """
+    if isinstance(tags, str):
+        raise TypeError(
+            "access tags must be an iterable of strings, not a single string."
+        )
+    if isinstance(tags, frozenset):
+        return tags  # keeps ApprovedAccessTags
+    return frozenset(tags)
 
 
 class AccessPolicy(ABC):
@@ -11,28 +35,28 @@ class AccessPolicy(ABC):
     async def init_node(
         self,
         principal: Principal,
-        authn_access_tags: Optional[AccessTags],
+        authn_access_tags: AccessTags | None,
         authn_scopes: Scopes,
-        access_blob: Optional[AccessBlob] = None,
-    ) -> Tuple[bool, Optional[AccessBlob]]:
+        access_tags: AccessTags | None = None,
+    ) -> tuple[bool, AccessTags]:
         pass
 
     async def modify_node(
         self,
         node: BaseAdapter,
         principal: Principal,
-        authn_access_tags: Optional[AccessTags],
+        authn_access_tags: AccessTags | None,
         authn_scopes: Scopes,
-        access_blob: Optional[AccessBlob],
-    ) -> Tuple[bool, Optional[AccessBlob]]:
-        return (False, access_blob)
+        access_tags: AccessTags | None,
+    ) -> tuple[bool, AccessTags]:
+        return (False, access_tags or normalize_access_tags())
 
     @abstractmethod
     async def allowed_scopes(
         self,
         node: BaseAdapter,
         principal: Principal,
-        authn_access_tags: Optional[AccessTags],
+        authn_access_tags: AccessTags | None,
         authn_scopes: Scopes,
     ) -> Scopes:
         pass
@@ -42,7 +66,7 @@ class AccessPolicy(ABC):
         self,
         node: BaseAdapter,
         principal: Principal,
-        authn_access_tags: Optional[AccessTags],
+        authn_access_tags: AccessTags | None,
         authn_scopes: Scopes,
         scopes: Scopes,
     ) -> Filters:

@@ -2,10 +2,12 @@ import base64
 import builtins
 import collections.abc
 import contextlib
+import dataclasses
 import functools
 import importlib
 import importlib.util
 import inspect
+import logging
 import operator
 import os
 import platform
@@ -14,12 +16,46 @@ import sys
 import threading
 import warnings
 from collections import namedtuple
+from collections.abc import Callable, Iterator
 from pathlib import Path
-from typing import Any, Callable, Generic, Iterator, Optional, Tuple, TypeVar, Union
+from typing import Any, Generic, TypeVar
 from urllib.parse import urlparse, urlunparse
 
 import anyio
 import yaml
+
+logger = logging.getLogger(__name__)
+
+
+def filter_known_kwargs(target: Any, data: collections.abc.Mapping) -> dict:
+    """Return `data` restricted to keys that `target` accepts as kwargs.
+
+    `target` may be a dataclass (fields are consulted directly) or any other
+    callable (its signature is introspected). Keys dropped from `data` are
+    logged at DEBUG so a client talking to a newer server can be diagnosed
+    without failing.
+    """
+    if dataclasses.is_dataclass(target):
+        known = {f.name for f in dataclasses.fields(target)}
+    else:
+        params = inspect.signature(target).parameters
+        if any(p.kind is inspect.Parameter.VAR_KEYWORD for p in params.values()):
+            return dict(data)
+        known = {
+            name
+            for name, p in params.items()
+            if p.kind
+            in (
+                inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                inspect.Parameter.KEYWORD_ONLY,
+            )
+        }
+    filtered = {k: v for k, v in data.items() if k in known}
+    if dropped := set(data) - set(filtered):
+        name = getattr(target, "__name__", repr(target))
+        logger.debug("Ignoring unknown key(s) %s for %s", sorted(dropped), name)
+    return filtered
+
 
 # helper for avoiding re-typing patch mimetypes
 # namedtuple for the lack of StrEnum in py<3.11
@@ -57,7 +93,7 @@ class ListView(collections.abc.Sequence[V], Generic[V]):
         list_ = self._internal_list
         # pformat only works on literal list, so convert if we have
         # some other list-like
-        if not type(list_) is list:
+        if type(list_) is not list:
             list_ = list(self._internal_list)
         p.text(pformat(list_))
 
@@ -103,7 +139,7 @@ class DictView(collections.abc.Mapping[K, V], Generic[K, V]):
         d = self._internal_dict
         # pformat only works on literal dict, so convert if we have
         # some other dict-like
-        if not type(d) is dict:
+        if type(d) is not dict:
             d = dict(self._internal_dict)
         p.text(pformat(d))
 
@@ -137,7 +173,7 @@ class OneShotCachedMap(collections.abc.Mapping[K, V], Generic[K, V]):
     __slots__ = ("__mapping", "__lock")
 
     def __init__(self, *args, **kwargs: Callable[[], V]):
-        dictionary: dict[K, Union[Callable[[], V], V]] = dict(*args, **kwargs)
+        dictionary: dict[K, Callable[[], V] | V] = dict(*args, **kwargs)
         wrap = _OneShotCachedMapWrapper
         # TODO should be recursive lock?
         self.__lock = threading.Lock()
@@ -187,12 +223,10 @@ class OneShotCachedMap(collections.abc.Mapping[K, V], Generic[K, V]):
         # make sure checking 'in' does not trigger evaluation
         return k in self.__mapping
 
-    def __getstate__(self) -> collections.abc.Mapping[K, Union[Callable[[], V], V]]:
+    def __getstate__(self) -> collections.abc.Mapping[K, Callable[[], V] | V]:
         return self.__mapping
 
-    def __setstate__(
-        self, mapping: collections.abc.Mapping[K, Union[Callable[[], V], V]]
-    ):
+    def __setstate__(self, mapping: collections.abc.Mapping[K, Callable[[], V] | V]):
         self.__mapping = mapping
         self.__lock = threading.Lock()
 
@@ -284,11 +318,11 @@ class CachingMap(collections.abc.Mapping[K, V], Generic[K, V]):
 
     def __getstate__(
         self,
-    ) -> Tuple[collections.abc.Mapping[K, Callable[[], V]], dict[K, V]]:
+    ) -> tuple[collections.abc.Mapping[K, Callable[[], V]], dict[K, V]]:
         return self.__mapping, self.__cache
 
     def __setstate__(
-        self, state: Tuple[collections.abc.Mapping[K, Callable[[], V]], dict[K, V]]
+        self, state: tuple[collections.abc.Mapping[K, Callable[[], V]], dict[K, V]]
     ):
         mapping, cache = state
         self.__mapping = mapping
@@ -533,7 +567,7 @@ def expand_environment_variables(config: T) -> T:
 
 
 @contextlib.contextmanager
-def prepend_to_sys_path(*paths: Union[str, Path]) -> Iterator[None]:
+def prepend_to_sys_path(*paths: str | Path) -> Iterator[None]:
     "Temporarily prepend items to sys.path."
 
     for item in reversed(paths):
@@ -602,8 +636,8 @@ class UnsupportedQueryType(TypeError):
     pass
 
 
-class Conflicts(Exception):
-    "Prompts the server to send 409 Conflicts with message"
+class Conflicts(ValueError):
+    """Prompts the server to send 409 Conflicts with message"""
 
     pass
 
@@ -611,6 +645,10 @@ class Conflicts(Exception):
 class BrokenLink(Exception):
     "Prompts the server to send 410 Gone with message"
 
+    pass
+
+
+class UnsafeIdentifier(ValueError):
     pass
 
 
@@ -729,7 +767,7 @@ def is_coroutine_callable(call: Callable[..., Any]) -> bool:
         return inspect.iscoroutinefunction(call)
     if inspect.isclass(call):
         return False
-    dunder_call = getattr(call, "__call__", None)  # noqa: B004
+    dunder_call = getattr(call, "__call__", None)
     return inspect.iscoroutinefunction(dunder_call)
 
 
@@ -793,7 +831,7 @@ def ensure_uri(uri_or_path) -> str:
     return str(uri_str)
 
 
-def sanitize_uri(uri: str) -> tuple[str, Optional[str], Optional[str]]:
+def sanitize_uri(uri: str) -> tuple[str, str | None, str | None]:
     "Remove the username and password from uri if they are present."
     parsed_uri = urlparse(uri)
     netloc = parsed_uri.netloc

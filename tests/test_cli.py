@@ -6,7 +6,7 @@ import sys
 import threading
 from queue import Queue
 
-import httpx
+import httpx2 as httpx
 import pytest
 
 
@@ -66,6 +66,8 @@ def check_server_readiness(process):
         "",
         "--verbose",
         "--api-key secret",
+        "--keep-ext",
+        "--include-ext .tiff",
     ],
 )
 def test_serve_directory(args, tmp_path):
@@ -108,7 +110,7 @@ trees:
     tree: catalog
     args:
       uri: {sqlite_or_postgres_uri}
-      writable_storage: {tmp_path / 'data'}
+      writable_storage: {tmp_path / "data"}
       init_if_not_exists: true
 """
         )

@@ -1,17 +1,17 @@
 import uuid
-from typing import Optional
 from unittest.mock import MagicMock
 
 import pytest
 import respx
-from httpx import Response
+from httpx2 import Response
 from pydantic import HttpUrl, SecretStr
 
 from tiled.access_control.access_policies import ExternalPolicyDecisionPoint
+from tiled.access_control.protocols import normalize_access_tags
 from tiled.access_control.scopes import NO_SCOPES
-from tiled.queries import AccessBlobFilter
+from tiled.queries import AccessTagsFilter
 from tiled.server.schemas import Principal, PrincipalType
-from tiled.type_aliases import AccessBlob, AccessTags, Scopes
+from tiled.type_aliases import AccessTags, Scopes
 
 
 @pytest.fixture
@@ -20,9 +20,9 @@ def external_policy() -> ExternalPolicyDecisionPoint:
         def build_input(
             self,
             principal: Principal,
-            authn_access_tags: Optional[AccessTags],
+            authn_access_tags: AccessTags | None,
             authn_scopes: Scopes,
-            access_blob: Optional[AccessBlob] = None,
+            access_tags: AccessTags | None = None,
         ) -> str:
             return ""
 
@@ -37,8 +37,8 @@ def external_policy() -> ExternalPolicyDecisionPoint:
 @pytest.fixture
 def principal() -> Principal:
     return Principal(
-        type=PrincipalType.external,
-        identities=[],
+        type=PrincipalType.user,
+        identities=[{"id": "alice", "provider": "dummy"}],
         uuid=uuid.uuid4(),
         access_token=SecretStr("token123"),
     )
@@ -54,10 +54,10 @@ async def test_node_access_allowed(
     )
     assert await external_policy.init_node(
         principal=principal,
-        authn_access_tags=set(),
+        authn_access_tags=normalize_access_tags(),
         authn_scopes=set([]),
-        access_blob={"tags": {"beamline_x_user"}},
-    ) == (True, {"tags": {"beamline_x_user"}})
+        access_tags=normalize_access_tags(["beamline_x_user"]),
+    ) == (True, normalize_access_tags(["beamline_x_user"]))
 
 
 @pytest.mark.asyncio
@@ -68,12 +68,13 @@ async def test_node_access_denied(
     respx.post(external_policy._create_node).mock(
         return_value=Response(200, json={"result": False})
     )
-    assert await external_policy.init_node(
-        principal=principal,
-        authn_access_tags=set(),
-        authn_scopes=set([]),
-        access_blob={"tags": {"beamline_x_user"}},
-    ) == (False, {"tags": {"beamline_x_user"}})
+    with pytest.raises(ValueError):
+        await external_policy.init_node(
+            principal=principal,
+            authn_access_tags=normalize_access_tags(),
+            authn_scopes=set([]),
+            access_tags=normalize_access_tags(["beamline_x_user"]),
+        )
 
 
 @pytest.mark.asyncio
@@ -82,17 +83,17 @@ async def test_node_modify_allowed(
     external_policy: ExternalPolicyDecisionPoint, principal: Principal
 ):
     node = MagicMock()
-    node.access_blob = None
+    node.access_tags = None
     respx.post(external_policy._create_node).mock(
         return_value=Response(200, json={"result": True})
     )
     assert await external_policy.modify_node(
         node=node,
         principal=principal,
-        authn_access_tags=set(),
+        authn_access_tags=normalize_access_tags(),
         authn_scopes=set([]),
-        access_blob={"tags": {"beamline_x_user"}},
-    ) == (True, {"tags": {"beamline_x_user"}})
+        access_tags=normalize_access_tags(["beamline_x_user"]),
+    ) == (True, normalize_access_tags(["beamline_x_user"]))
 
 
 @pytest.mark.asyncio
@@ -101,17 +102,18 @@ async def test_node_modify_denied(
     external_policy: ExternalPolicyDecisionPoint, principal: Principal
 ):
     node = MagicMock()
-    node.access_blob = None
+    node.access_tags = None
     respx.post(external_policy._create_node).mock(
         return_value=Response(200, json={"result": False})
     )
-    assert await external_policy.modify_node(
-        node=node,
-        principal=principal,
-        authn_access_tags=set(),
-        authn_scopes=set([]),
-        access_blob={"tags": {"beamline_x_user"}},
-    ) == (False, {"tags": {"beamline_x_user"}})
+    with pytest.raises(ValueError):
+        await external_policy.modify_node(
+            node=node,
+            principal=principal,
+            authn_access_tags=normalize_access_tags(),
+            authn_scopes=set([]),
+            access_tags=normalize_access_tags(["beamline_x_user"]),
+        )
 
 
 @pytest.mark.asyncio
@@ -120,15 +122,15 @@ async def test_node_modify_denied_when_none_returned(
     external_policy: ExternalPolicyDecisionPoint, principal: Principal
 ):
     node = MagicMock()
-    node.access_blob = None
+    node.access_tags = None
     respx.post(external_policy._create_node).mock(return_value=Response(200))
     with pytest.raises(ValueError):
         await external_policy.modify_node(
             node=node,
             principal=principal,
-            authn_access_tags=set(),
+            authn_access_tags=normalize_access_tags(),
             authn_scopes=set([]),
-            access_blob={"tags": {"beamline_x_user"}},
+            access_tags=normalize_access_tags(["beamline_x_user"]),
         )
 
 
@@ -137,14 +139,14 @@ async def test_node_modify_with_same_not_modified(
     external_policy: ExternalPolicyDecisionPoint, principal: Principal
 ):
     node = MagicMock()
-    node.access_blob = {"tags": {"beamline_x_user"}}
+    node.access_tags = normalize_access_tags(["beamline_x_user"])
     assert await external_policy.modify_node(
         node=node,
         principal=principal,
-        authn_access_tags=set(),
+        authn_access_tags=normalize_access_tags(),
         authn_scopes=set([]),
-        access_blob={"tags": {"beamline_x_user"}},
-    ) == (False, {"tags": {"beamline_x_user"}})
+        access_tags=normalize_access_tags(["beamline_x_user"]),
+    ) == (False, normalize_access_tags(["beamline_x_user"]))
 
 
 @pytest.mark.asyncio
@@ -158,11 +160,11 @@ async def test_access_filters(
     filters = await external_policy.filters(
         node=MagicMock(),
         principal=principal,
-        authn_access_tags=set(),
+        authn_access_tags=normalize_access_tags(),
         authn_scopes=set([]),
         scopes=set([]),
     )
-    assert filters == [AccessBlobFilter(tags=["beamline_x"], user_id=None)]
+    assert filters == [AccessTagsFilter(tags=["beamline_x"])]
 
 
 @pytest.mark.asyncio
@@ -177,7 +179,7 @@ async def test_allowed_scopes(
     allowed_scopes = await external_policy.allowed_scopes(
         node=None,
         principal=principal,
-        authn_access_tags=set(),
+        authn_access_tags=normalize_access_tags(),
         authn_scopes=set([]),
     )
     assert allowed_scopes == {"read:data", "write:data"}
@@ -193,7 +195,7 @@ async def test_allowed_scopes_return_no_scopes_if_invalid_response(
     allowed_scopes = await external_policy.allowed_scopes(
         node=None,
         principal=principal,
-        authn_access_tags=set(),
+        authn_access_tags=normalize_access_tags(),
         authn_scopes=set([]),
     )
     assert allowed_scopes == NO_SCOPES
@@ -209,7 +211,7 @@ async def test_allowed_scopes_return_no_scopes_if_validation_error(
     allowed_scopes = await external_policy.allowed_scopes(
         node=None,
         principal=principal,
-        authn_access_tags=set(),
+        authn_access_tags=normalize_access_tags(),
         authn_scopes=set([]),
     )
     assert allowed_scopes == NO_SCOPES
@@ -218,15 +220,15 @@ async def test_allowed_scopes_return_no_scopes_if_validation_error(
 @respx.mock
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "allow,remote_allow", [(True, None), (False, None), (None, True), (None, False)]
+    "allow,remote_allow", [(True, None), (False, None), (None, True)]
 )
-async def test_empty_access_blob_public(
+async def test_empty_access_tags_public(
     external_policy: ExternalPolicyDecisionPoint,
     principal: Principal,
-    allow: Optional[bool],
-    remote_allow: Optional[bool],
+    allow: bool | None,
+    remote_allow: bool | None,
 ):
-    external_policy._empty_access_blob_public = allow
+    external_policy._empty_access_tags_public = allow
     policy = external_policy
     if remote_allow is not None:
         route = respx.post(policy._create_node).mock(
@@ -237,10 +239,27 @@ async def test_empty_access_blob_public(
 
     assert await policy.init_node(
         principal=principal,
-        authn_access_tags=set(),
+        authn_access_tags=normalize_access_tags(),
         authn_scopes=set([]),
-        access_blob=None,
-    ) == (allow if allow is not None else remote_allow, None)
+        access_tags=None,
+    ) == (allow if allow is not None else remote_allow, normalize_access_tags())
 
     if route:
         assert route.call_count == 1
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_empty_access_tags_remote_denied(
+    external_policy: ExternalPolicyDecisionPoint, principal: Principal
+):
+    respx.post(external_policy._create_node).mock(
+        return_value=Response(200, json={"result": False})
+    )
+    with pytest.raises(ValueError):
+        await external_policy.init_node(
+            principal=principal,
+            authn_access_tags=normalize_access_tags(),
+            authn_scopes=set([]),
+            access_tags=None,
+        )

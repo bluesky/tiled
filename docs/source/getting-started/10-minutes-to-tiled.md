@@ -352,6 +352,7 @@ it's a plain old file or something else if it is not.
 ds.assets[0].data_uri
 ```
 
+(download-raw-files)=
 ## Download raw files
 
 Sometimes it is best to just download the files exactly as they were. This may
@@ -366,6 +367,11 @@ this efficiently by launching parallel downloads.
 ```{code-cell} ipython3
 c['examples/xraydb/C/edges'].raw_export('downloads/')
 ```
+
+Finally, `raw_export` is the primary way to retrieve any unstructured data from
+Tiled (e.g. PDF files or binary blobs). For more on `raw_export` --
+including downloading into in-memory buffers and reassembling multi-asset
+payloads -- see [Working with `bytes` nodes](../user-guide/bytes.md).
 
 (run-a-tiled-server)=
 ## Run a Tiled server
@@ -442,6 +448,7 @@ c['x'].write_array([4,5,6], key='b')
 c['x']
 ```
 
+(stream)=
 ## Stream
 
 So far we've been pulling data from Tiled on demand. Streaming flips this
@@ -490,6 +497,16 @@ subscriptions can receive data as it arrives rather than polling the server repe
 
 Uploaded data is streamed via the WebSocket connection before it is even saved
 to disk, which minimizes latency.
+```
+
+```{note}
+**Webhooks** (experimental) offer a complementary, server-side push mechanism.
+Instead of a Python client subscribing over WebSocket, a webhook delivers an
+HTTP `POST` to any external HTTPS endpoint whenever a catalog event fires.
+This is useful for triggering pipelines or sending notifications from systems
+that cannot maintain a persistent connection.
+See [Webhooks](webhooks.md) for a hands-on walkthrough, or the
+[Webhooks user guide](../user-guide/webhooks) for the operator reference.
 ```
 
 ## Register data

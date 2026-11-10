@@ -7,12 +7,12 @@ import {
   GridToolbarContainer,
   GridToolbarDensitySelector,
 } from "@mui/x-data-grid";
-import { useContext, useEffect, useState } from "react";
+import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 
 import Box from "@mui/material/Box";
 import Container from "@mui/material/Container";
 import { components } from "../../openapi_schemas";
-import { search } from "../../client";
+import { search, searchByUrl } from "../../client";
 import { useNavigate } from "react-router-dom";
 import { SettingsContext } from "../../context/settings";
 
@@ -51,23 +51,29 @@ const DEFAULT_PAGE_SIZE = 10;
 const NodeLazyContents: React.FunctionComponent<NodeLazyContentsProps> = (
   props,
 ) => {
-  let navigate = useNavigate();
-  const gridColumns = [
-    {
-      field: "id",
-      headerName: "ID",
-      flex: 1,
-      hide: !props.defaultColumns.includes("id"),
-    },
-  ];
-  props.columns.map((column) =>
-    gridColumns.push({
-      field: column.field,
-      headerName: column.header,
-      flex: 1,
-      hide: !props.defaultColumns.includes(column.field),
-    }),
-  );
+  const navigate = useNavigate();
+
+  // Memoize grid column definitions — rebuilding on every render is wasteful.
+  const gridColumns = useMemo(() => {
+    const cols = [
+      {
+        field: "id",
+        headerName: "ID",
+        flex: 1,
+        hide: !props.defaultColumns.includes("id"),
+      },
+    ];
+    props.columns.forEach((column) =>
+      cols.push({
+        field: column.field,
+        headerName: column.header,
+        flex: 1,
+        hide: !props.defaultColumns.includes(column.field),
+      }),
+    );
+    return cols;
+  }, [props.columns, props.defaultColumns]);
+
   const settings = useContext(SettingsContext);
   const [rowsState, setRowsState] = useState<RowsState>({
     page: 0,
@@ -80,90 +86,113 @@ const NodeLazyContents: React.FunctionComponent<NodeLazyContentsProps> = (
   const [idsToAncestors, setIdsToAncestors] = useState<IdsToAncestors>({});
   const [rowCount, setRowCount] = useState<number>(0);
 
+  // Cache of cursor URLs keyed by page index. Page 0 always uses the
+  // offset-based URL; subsequent pages use the `links.next` cursor URL
+  // returned by the previous page's response.
+  const cursorCache = useRef<Map<number, string>>(new Map());
+
+  const buildFieldParams = useCallback(() => {
+    if (props.columns.length === 0) {
+      return { fields: [] as string[], selectMetadata: null as string | null };
+    }
+    return {
+      fields: ["metadata"],
+      selectMetadata:
+        "{" +
+        props.columns
+          .map((column) => `${column.field}:${column.select_metadata}`)
+          .join(",") +
+        "}",
+    };
+  }, [props.columns]);
+
+  const buildSort = useCallback(() => {
+    if (sortModel.length === 0) return null;
+    return sortModel
+      .map((item) => (item.sort === "desc" ? `-${item.field}` : item.field))
+      .join(",");
+  }, [sortModel]);
+
   useEffect(() => {
     let active = true;
-
-    async function loadItems(): Promise<
-      components["schemas"]["Resource_NodeAttributes__dict__dict_"][]
-    > {
-      let selectMetadata: string | null;
-      let fields: string[];
-      const controller = new AbortController();
-      if (props.columns.length === 0) {
-        // No configuration on which columns to show. Fetch only the ID.
-        fields = [];
-        selectMetadata = null;
-      } else {
-        fields = ["metadata"];
-        selectMetadata =
-          "{" +
-          props.columns
-            .map((column) => {
-              return `${column.field}:${column.select_metadata}`;
-            })
-            .join(",") +
-          "}";
-      }
-      // Build sort string for API
-      let sort: string | null = null;
-      if (sortModel.length > 0) {
-        sort = sortModel
-          .map((item) => (item.sort === "desc" ? `-${item.field}` : item.field))
-          .join(",");
-      }
-      const data = await search(
-        settings.api_url,
-        props.segments,
-        controller.signal,
-        fields,
-        selectMetadata,
-        rowsState.pageSize * rowsState.page,
-        rowsState.pageSize,
-        sort,
-      );
-      setRowCount(data.meta!.count! as number);
-      const items = data.data;
-      return items!;
-    }
+    const controller = new AbortController();
 
     (async () => {
       setRowsState((prev) => ({ ...prev, loading: true }));
-      const newItems = await loadItems();
-      const idsToAncestors: IdsToAncestors = {};
-      newItems.map(
-        (
-          item: components["schemas"]["Resource_NodeAttributes__dict__dict_"],
-        ) => {
-          idsToAncestors[item.id as string] = item.attributes.ancestors;
-          return null;
-        },
-      );
-      const newRows = newItems.map(
-        (
-          item: components["schemas"]["Resource_NodeAttributes__dict__dict_"],
-        ) => {
-          const row: { [key: string]: any } = {};
-          row.id = item.id;
-          props.columns.map((column) => {
-            row[column.field] = item.attributes!.metadata![column.field];
-            return null;
-          });
-          return row;
-        },
-      );
 
-      if (!active) {
-        return;
+      try {
+        const { fields, selectMetadata } = buildFieldParams();
+        const sort = buildSort();
+        const { page, pageSize } = rowsState;
+
+        const cachedUrl = cursorCache.current.get(page);
+        let data;
+
+        if (page === 0 || cachedUrl === undefined) {
+          // Page 0 or no cursor cached: use offset-based request.
+          // The server converts offset→cursor internally when supported.
+          data = await search(
+            settings.api_url,
+            props.segments,
+            controller.signal,
+            fields,
+            selectMetadata,
+            page * pageSize,
+            pageSize,
+            sort,
+          );
+        } else {
+          // Use the cursor URL cached from the previous page's links.next.
+          data = await searchByUrl(
+            cachedUrl,
+            controller.signal,
+            fields,
+            selectMetadata,
+            sort,
+          );
+        }
+
+        // Cache the next-page cursor URL if provided.
+        const nextUrl = (data.links as Record<string, unknown>)?.next as string | undefined;
+        if (nextUrl) {
+          cursorCache.current.set(page + 1, nextUrl);
+        }
+
+        const newItems = data.data!;
+        const newIdsToAncestors: IdsToAncestors = {};
+        newItems.forEach(
+          (item: components["schemas"]["Resource_NodeAttributes__dict__dict_"]) => {
+            newIdsToAncestors[item.id as string] = item.attributes.ancestors;
+          },
+        );
+        const newRows = newItems.map(
+          (item: components["schemas"]["Resource_NodeAttributes__dict__dict_"]) => {
+            const row: { [key: string]: any } = { id: item.id };
+            props.columns.forEach((column) => {
+              row[column.field] = item.attributes!.metadata![column.field];
+            });
+            return row;
+          },
+        );
+
+        if (!active) return;
+
+        setRowCount(data.meta!.count! as number);
+        setIdsToAncestors(newIdsToAncestors);
+        setRowsState((prev) => ({ ...prev, loading: false, rows: newRows }));
+      } catch (err: any) {
+        // Ignore aborts (navigation away, deps change); surface real errors.
+        if (err?.name === "CanceledError" || err?.name === "AbortError") return;
+        if (!active) return;
+        setRowsState((prev) => ({ ...prev, loading: false }));
       }
-
-      setIdsToAncestors(idsToAncestors);
-      setRowsState((prev) => ({ ...prev, loading: false, rows: newRows }));
     })();
 
     return () => {
       active = false;
+      controller.abort();
     };
-  }, [rowsState.page, rowsState.pageSize, props.columns, props.segments, sortModel, settings.api_url]);
+  }, [rowsState.page, rowsState.pageSize, props.columns, props.segments, sortModel, settings.api_url, buildFieldParams, buildSort]);
 
   return (
     <Box sx={{ my: 4 }}>
@@ -184,14 +213,26 @@ const NodeLazyContents: React.FunctionComponent<NodeLazyContentsProps> = (
             page: number;
             pageSize: number;
           }) => {
-            setRowsState((prev) => ({ ...prev, page, pageSize }));
+            setRowsState((prev) => {
+              const pageSizeChanged = pageSize !== prev.pageSize;
+              if (pageSizeChanged) {
+                // Reset cursor cache synchronously so the fetch effect
+                // uses offset=0 rather than a stale cursor for the old page size.
+                cursorCache.current = new Map();
+              }
+              return {
+                ...prev,
+                // Reset to page 0 when page size changes to avoid landing
+                // at an out-of-range offset.
+                page: pageSizeChanged ? 0 : page,
+                pageSize,
+              };
+            });
           }}
           onRowClick={(params: GridRowParams) => {
             navigate(
               `/browse${idsToAncestors[params.id]
-                .map(function (ancestor: string) {
-                  return "/" + ancestor;
-                })
+                .map((ancestor: string) => "/" + ancestor)
                 .join("")}/${params.id}`,
             );
           }}
@@ -203,8 +244,9 @@ const NodeLazyContents: React.FunctionComponent<NodeLazyContentsProps> = (
           sortingMode="server"
           sortModel={sortModel}
           onSortModelChange={(model) => {
+            cursorCache.current = new Map();
             setSortModel(model);
-            // Reset to first page when sort changes to avoid confusing UX
+            // Reset to first page when sort changes.
             setRowsState((prev) => ({ ...prev, page: 0 }));
           }}
         />

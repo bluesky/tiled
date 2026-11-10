@@ -6,6 +6,8 @@ import pytest
 from starlette.status import (
     HTTP_400_BAD_REQUEST,
     HTTP_403_FORBIDDEN,
+    HTTP_404_NOT_FOUND,
+    HTTP_409_CONFLICT,
     HTTP_416_RANGE_NOT_SATISFIABLE,
 )
 
@@ -117,6 +119,61 @@ def test_get_asset_filepaths(client):
     get_asset_filepaths(client.include_data_sources()["x"])
 
 
+def test_delete_internal_asset(client):
+    """Deleting an internally-managed asset requires external_only=false and
+    removes both the SQL record and the underlying data."""
+    x = client.write_array([1, 2, 3], key="x")
+    assets = x.include_data_sources().data_sources()[0].assets
+    assert len(assets) == 1
+    asset_id = assets[0].id
+    filepaths = get_asset_filepaths(client.include_data_sources()["x"])
+    assert all(path.exists() for path in filepaths)
+
+    # By default (external_only=true) the server refuses to delete
+    # internally-managed data.
+    with fail_with_status_code(HTTP_409_CONFLICT):
+        client.context.http_client.delete(
+            f"/api/v1/asset/x?id={asset_id}"
+        ).raise_for_status()
+    # Nothing was deleted.
+    assert all(path.exists() for path in filepaths)
+    client["x"].read()
+
+    # Opting in deletes the record and the underlying data.
+    response = client.context.http_client.delete(
+        f"/api/v1/asset/x?id={asset_id}&external_only=false"
+    )
+    response.raise_for_status()
+    assert response.json() == {"asset_deleted": True, "data_deleted": True}
+    assert not any(path.exists() for path in filepaths)
+
+    # The node still exists, but the asset is gone.
+    assets = x.include_data_sources().data_sources()[0].assets
+    assert len(assets) == 0
+
+
+def test_delete_asset_not_found(client):
+    "Deleting a nonexistent asset id returns 404."
+    client.write_array([1, 2, 3], key="x")
+    with fail_with_status_code(HTTP_404_NOT_FOUND):
+        client.context.http_client.delete(
+            "/api/v1/asset/x?id=123456&external_only=false"
+        ).raise_for_status()
+
+
+def test_delete_asset_gated_by_expose_raw_assets(tmpdir):
+    "With expose_raw_assets=False, deleting an asset returns 403."
+    catalog = in_memory(writable_storage=str(tmpdir / "data"))
+    app = build_app(catalog, server_settings={"expose_raw_assets": False})
+    with Context.from_app(app) as context:
+        client = from_context(context, include_data_sources=True)
+        client.write_array([1, 2, 3], key="x")
+        with fail_with_status_code(HTTP_403_FORBIDDEN):
+            client.context.http_client.delete(
+                "/api/v1/asset/x?id=1&external_only=false"
+            ).raise_for_status()
+
+
 def test_do_not_expose_raw_assets(tmpdir):
     catalog = in_memory(writable_storage=str(tmpdir / "data"))
     app = build_app(catalog, server_settings={"expose_raw_assets": False})
@@ -125,3 +182,39 @@ def test_do_not_expose_raw_assets(tmpdir):
         client.write_array([1, 2, 3], key="x")
         with fail_with_status_code(HTTP_403_FORBIDDEN):
             client["x"].raw_export(tmpdir / "exported")
+
+
+@pytest.mark.parametrize(
+    "user_agent, expect_size_key",
+    [
+        # New client understands ``size``; server includes it.
+        ("python-tiled/0.2.13", True),
+        # Old client (pre-``size`` field) would crash on unknown kwarg; server strips it.
+        ("python-tiled/0.2.12", False),
+    ],
+)
+def test_asset_size_stripped_for_old_python_clients(
+    client, user_agent, expect_size_key
+):
+    """The server strips ``size`` from assets when talking to python-tiled clients
+    older than 0.2.13, because their ``Asset`` dataclass has no ``size`` field
+    and ``DataSource.from_json`` unpacks kwargs directly, which would raise
+    ``Asset.__init__() got an unexpected keyword argument 'size'``.
+    """
+    client.write_array([1, 2, 3], key="x")
+
+    # GET path: /metadata/... with include_data_sources
+    response = client.context.http_client.get(
+        "/api/v1/metadata/x",
+        params={"include_data_sources": "true"},
+        headers={"user-agent": user_agent},
+    )
+    response.raise_for_status()
+    data_sources = response.json()["data"]["attributes"]["data_sources"]
+    assert data_sources, "expected at least one data_source"
+    for ds in data_sources:
+        for asset in ds["assets"]:
+            assert ("size" in asset) is expect_size_key, (
+                f"user-agent={user_agent!r}: expected size key "
+                f"present={expect_size_key}, got asset={asset!r}"
+            )

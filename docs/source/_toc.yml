@@ -18,6 +18,7 @@ subtrees:
                 - entries:
                   - file: getting-started/integrations/plotly
                   - file: getting-started/integrations/zarr
+            - file: getting-started/webhooks
   - entries:
     - file: user-guide/index
       subtrees:
@@ -34,16 +35,22 @@ subtrees:
             - file: user-guide/client-logger
             - file: user-guide/docker
             - file: user-guide/helm
+            - file: user-guide/serve-behind-reverse-proxy
             - file: user-guide/configuration
             - file: user-guide/read-custom-formats
             - file: user-guide/custom-export-formats
+            - file: user-guide/validate-metadata
             - file: user-guide/api-keys
             - file: user-guide/custom-clients
             - file: user-guide/metrics
+            - file: user-guide/tracing
             - file: user-guide/direct-client
             - file: user-guide/tiled-authn-database
             - file: user-guide/register
             - file: user-guide/retries
+            - file: user-guide/webhooks
+            - file: user-guide/bytes
+            - file: user-guide/graph-and-links
   - entries:
       - file: explanations/index
         subtrees:
@@ -54,7 +61,6 @@ subtrees:
             - file: explanations/metadata
             - file: explanations/security
             - file: explanations/compression
-            - file: explanations/specialized-formats
             - file: explanations/caching
             - file: explanations/access-control
             - file: explanations/catalog
@@ -62,6 +68,7 @@ subtrees:
             - file: explanations/roadmap
             - file: explanations/lineage
             - file: explanations/storage-database
+            - file: explanations/graphs
   - entries:
       - file: reference/index
         subtrees:
@@ -76,3 +83,4 @@ subtrees:
             - file: reference/service-configuration
             - file: reference/client-profiles
             - file: reference/min-versions
+            - file: reference/database-revisions

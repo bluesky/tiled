@@ -1,5 +1,6 @@
 import contextlib
-from typing import Any, List, Optional, Tuple
+from collections.abc import Sequence
+from typing import Any, cast
 
 import dask.array
 import numpy
@@ -37,8 +38,8 @@ class ArrayAdapter(Adapter[ArrayStructure]):
         array: NDArray[Any],
         structure: ArrayStructure,
         *,
-        metadata: Optional[JSON] = None,
-        specs: Optional[List[Spec]] = None,
+        metadata: JSON | None = None,
+        specs: list[Spec] | None = None,
     ) -> None:
         self._array = array
         super().__init__(structure, metadata=metadata, specs=specs)
@@ -48,11 +49,11 @@ class ArrayAdapter(Adapter[ArrayStructure]):
         cls,
         array: NDArray[Any],
         *,
-        shape: Optional[Tuple[int, ...]] = None,
-        chunks: Optional[Chunks] = None,
-        dims: Optional[Tuple[str, ...]] = None,
-        metadata: Optional[JSON] = None,
-        specs: Optional[List[Spec]] = None,
+        shape: tuple[int, ...] | None = None,
+        chunks: Chunks | None = None,
+        dims: tuple[str, ...] | None = None,
+        metadata: JSON | None = None,
+        specs: list[Spec] | None = None,
     ) -> "ArrayAdapter":
         # May be a list of something; convert to array
         if not hasattr(array, "__array__"):
@@ -67,7 +68,7 @@ class ArrayAdapter(Adapter[ArrayStructure]):
         if is_array_of_arrays:
             with contextlib.suppress(ValueError):
                 # only uniform arrays (with same dimensions) are stackable
-                array = numpy.vstack(array)
+                array = numpy.vstack(cast("Sequence[numpy.ndarray]", array))
 
         # Convert (experimental) pandas.StringDtype to numpy's unicode string dtype
         is_likely_string_dtype = isinstance(array.dtype, pandas.StringDtype) or (
@@ -90,7 +91,7 @@ class ArrayAdapter(Adapter[ArrayStructure]):
         return f"{type(self).__name__}({self._array!r})"
 
     @property
-    def dims(self) -> Optional[Tuple[str, ...]]:
+    def dims(self) -> tuple[str, ...] | None:
         return self._structure.dims
 
     def read(

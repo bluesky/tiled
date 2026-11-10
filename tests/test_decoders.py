@@ -43,3 +43,39 @@ def test_blosc2(client):
     (request,) = h.requests
     assert "blosc2" in request.headers["Accept-Encoding"]
     assert "blosc2" in response.headers["Content-Encoding"]
+
+
+def test_blosc2_decoder_multi_frame():
+    """`Blosc2Decoder` must reassemble a body made of several concatenated
+    blosc2 frames.
+
+    Streaming responses are compressed one frame per server-side write(), so
+    the wire body is `frame0 ++ frame1 ++ ...`. A decoder that calls
+    `blosc2.decompress` once decodes only the first frame and truncates the
+    payload; the decoder must instead walk every frame.
+    """
+    pytest.importorskip("blosc2")
+    import blosc2
+
+    from tiled.client.decoders import Blosc2Decoder
+
+    parts = [
+        b"the quick brown fox " * 4096,
+        b"jumps over the lazy dog " * 4096,
+        b"pack my box with five dozen liquor jugs " * 4096,
+    ]
+    expected = b"".join(parts)
+
+    # Feed the frames across arbitrary `decode` calls to mimic streaming.
+    # decode()/flush() yield an iterator of byte chunks, per httpx2's decoder
+    # protocol (they no longer return a single concatenated `bytes` blob).
+    decoder = Blosc2Decoder()
+    assert list(decoder.decode(blosc2.compress(parts[0]))) == []
+    assert list(decoder.decode(blosc2.compress(parts[1]))) == []
+    assert list(decoder.decode(blosc2.compress(parts[2]))) == []
+    assert b"".join(decoder.flush()) == expected
+
+    # A single-frame body still round-trips.
+    single = Blosc2Decoder()
+    list(single.decode(blosc2.compress(expected)))
+    assert b"".join(single.flush()) == expected

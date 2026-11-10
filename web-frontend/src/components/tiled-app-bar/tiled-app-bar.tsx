@@ -1,33 +1,106 @@
+import { useContext, useState } from "react";
 import AppBar from "@mui/material/AppBar";
 import Button from "@mui/material/Button";
 import Container from "@mui/material/Container";
-import { Link } from "react-router-dom";
+import Menu from "@mui/material/Menu";
+import MenuItem from "@mui/material/MenuItem";
+import { Link, useNavigate } from "react-router-dom";
 import Toolbar from "@mui/material/Toolbar";
 import Typography from "@mui/material/Typography";
+import Box from "@mui/material/Box";
+import { useAuth } from "../../auth/auth-context";
+import { tokenManager } from "../../auth/token-manager";
+import { axiosInstance } from "../../client";
+import { SettingsContext } from "../../context/settings";
 
 const TiledAppBar = () => {
+  const { isAuthenticated, identity, authRequired, onLogout } = useAuth();
+  const navigate = useNavigate();
+  const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+  const { api_url } = useContext(SettingsContext);
+
+  const handleLogout = async () => {
+    setAnchorEl(null);
+    const refreshToken = tokenManager.getRefreshToken();
+    if (refreshToken) {
+      try {
+        await axiosInstance.post(`${api_url}/auth/session/revoke`, {
+          refresh_token: refreshToken,
+        });
+      } catch {
+        // Best-effort server-side revocation.
+      }
+    }
+    // Clear the HttpOnly API-key cookie (set by the server when a URL with
+    // ?api_key=... is opened). session/revoke only revokes the JWT session and
+    // does not touch this cookie. /auth/logout is deprecated but is the only
+    // endpoint that clears the cookie. TODO: migrate to a non-deprecated
+    // successor once one exists.
+    try {
+      await axiosInstance.post(`${api_url}/auth/logout`);
+    } catch {
+      // Best-effort cookie clearing.
+    }
+    onLogout();
+    if (authRequired) {
+      navigate("/login", { replace: true });
+    }
+  };
+
   return (
     <AppBar position="static">
       <Container maxWidth="xl">
         <Toolbar disableGutters>
-          <Typography
-            variant="h6"
-            noWrap
-            component="div"
-            sx={{ mr: 3, display: "flex" }}
+          <Box
+            component={Link}
+            to="/browse/"
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              textDecoration: "none",
+              color: "inherit",
+              mr: 3,
+            }}
           >
-            TILED
-          </Typography>
-          <Typography
-            variant="h6"
-            noWrap
-            component="div"
-            sx={{ mr: 2, display: "flex" }}
-          >
-            <Button component={Link} color="inherit" to="/browse/">
-              Browse
+            <img
+              src="tiled-logo.svg"
+              alt="Tiled logo"
+              style={{ height: 28, marginRight: 8 }}
+            />
+            <Typography variant="h6" noWrap>
+              TILED
+            </Typography>
+          </Box>
+          <Box sx={{ flexGrow: 1 }} />
+          {isAuthenticated && identity && (
+            <>
+              <Button
+                color="inherit"
+                size="small"
+                onClick={(e) => setAnchorEl(e.currentTarget)}
+                sx={{ textTransform: "none" }}
+              >
+                {identity.id}
+              </Button>
+              <Menu
+                anchorEl={anchorEl}
+                open={Boolean(anchorEl)}
+                onClose={() => setAnchorEl(null)}
+              >
+                <MenuItem onClick={handleLogout}>Log out</MenuItem>
+              </Menu>
+            </>
+          )}
+          {!isAuthenticated && authRequired && (
+            <Button
+              component={Link}
+              color="inherit"
+              to="/login"
+              size="small"
+            >
+              Log in
             </Button>
-          </Typography>
+          )}
         </Toolbar>
       </Container>
     </AppBar>

@@ -1,6 +1,5 @@
 import asyncio
 import re
-from typing import List
 
 import typer
 
@@ -34,7 +33,16 @@ def register(
             "may break user (client-side) code."
         ),
     ),
-    ext: List[str] = typer.Option(
+    include_ext: list[str] | None = typer.Option(
+        None,
+        "--include-ext",
+        help=(
+            "Include only given file extensions, e.g., "
+            "--include-ext .csv --include-ext .tiff "
+            "Include the leading '.' in the file extension."
+        ),
+    ),
+    ext: list[str] = typer.Option(
         None,
         "--ext",
         help=(
@@ -52,7 +60,7 @@ def register(
             "Specify here as 'package.module:function'"
         ),
     ),
-    adapters: List[str] = typer.Option(
+    adapters: list[str] = typer.Option(
         None,
         "--adapter",
         help=(
@@ -60,7 +68,7 @@ def register(
             "Specify here as 'mimetype=package.module:function'"
         ),
     ),
-    walkers: List[str] = typer.Option(
+    walkers: list[str] = typer.Option(
         None,
         "--walker",
         help=(
@@ -75,6 +83,17 @@ def register(
         "--api-key",
     ),
 ):
+    from ..client.register import default_filter
+
+    if include_ext is not None:
+
+        def filter(path):
+            return default_filter(path) and (
+                path.is_dir() or path.suffix in include_ext
+            )
+
+    else:
+        filter = default_filter
     if keep_ext:
         from ..client.register import identity
 
@@ -126,6 +145,7 @@ def register(
                 adapters_by_mimetype=adapters_by_mimetype,
                 walkers=walkers,
                 key_from_filename=key_from_filename,
+                filter=filter,
             )
         )
     else:
@@ -139,5 +159,6 @@ def register(
                 adapters_by_mimetype=adapters_by_mimetype,
                 walkers=walkers,
                 key_from_filename=key_from_filename,
+                filter=filter,
             )
         )

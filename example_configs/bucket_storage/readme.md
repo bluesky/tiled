@@ -12,7 +12,8 @@ In this example there exists:
 5. Create an `ipython` session and run the following commands to write array data as a BLOB in a bucket:
 ```python
 from tiled.client import from_uri
-c = from_uri('http://localhost:8000', api_key='secret')
-c.write_array([1,2,3])
+
+c = from_uri("http://localhost:8000", api_key="secret")
+c.write_array([1, 2, 3])
 ```
 6. You will be able to see the written data in the bucket if you log in to the minio container, exposed on your machine at `http://localhost:9001/login`. </br> Use testing credentials `minioadmin` for both fields.

@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from typing import Optional
 
 import awkward
 
@@ -11,10 +10,14 @@ class AwkwardStructure(Structure):
     length: int
     form: dict
 
+    @property
+    def awkward_form(self) -> awkward.forms.Form:
+        return awkward.forms.from_dict(self.form)
+
 
 def project_form(
     form: awkward.forms.Form, form_keys_touched
-) -> Optional[awkward.forms.Form]:
+) -> awkward.forms.Form | None:
     # See https://github.com/bluesky/tiled/issues/450
     if isinstance(form, awkward.forms.RecordForm):
         if form.fields is None:

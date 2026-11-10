@@ -1,5 +1,6 @@
 import os
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import numpy
 import pytest
@@ -87,9 +88,32 @@ def example_file_with_vlen_str_in_dataset(tmp_path_factory):
         c = b.create_group("c")
         # Need to do this to make a vlen str dataset
         dt = h5py.string_dtype(encoding="utf-8")
+        # "d": sparsely populated vlen str
         dset = c.create_dataset("d", (100,), dtype=dt)
         assert dset.dtype == "object"
         dset[0] = b"test"
+        # "e": size-1 vlen str
+        c.create_dataset("e", data=numpy.array(["hello world"], dtype=object), dtype=dt)
+        # "f": multi-element vlen str with all values populated
+        f_dset = c.create_dataset("f", (3,), dtype=dt)
+        for i, v in enumerate([b"alpha", b"beta", b"gamma"]):
+            f_dset[i] = v
+        # "g": non-string object dtype (vlen array) -- exercises the
+        # branch where h5py.check_string_dtype returns None.
+        g_dset = c.create_dataset("g", (3,), dtype=h5py.vlen_dtype(numpy.int32))
+        g_dset[0] = numpy.arange(2, dtype=numpy.int32)
+        g_dset[1] = numpy.arange(5, dtype=numpy.int32)
+        g_dset[2] = numpy.arange(1, dtype=numpy.int32)
+        # "h": multi-dimensional vlen str -- shape preserved beyond 1-D.
+        h_dset = c.create_dataset("h", (2, 3), dtype=dt)
+        h_dset[...] = [[b"a", b"bb", b"ccc"], [b"d", b"ee", b"fff"]]
+        # "i": non-ASCII UTF-8 strings -- byte-level fidelity through the
+        # bytes coercion. "héllo" is 6 bytes in UTF-8.
+        c.create_dataset(
+            "i",
+            data=numpy.array(["héllo", "wörld"], dtype=object),
+            dtype=dt,
+        )
 
     yield ensure_uri(file_path)
 
@@ -114,6 +138,42 @@ def example_file_with_links(tmp_path_factory):
     yield ensure_uri(file_path)
 
 
+@pytest.fixture(scope="module")
+def example_files_with_chunked_arrays(tmp_path_factory):
+    h5py = pytest.importorskip("h5py")
+    file_paths = []
+    for indx in range(3):
+        file_path = tmp_path_factory.mktemp("data").joinpath(
+            f"example_chunked_{indx}.h5"
+        )
+        with h5py.File(file_path, "w") as file:
+            a = file.create_group("a")
+            a.create_dataset(
+                "b",
+                data=numpy.arange(120 * indx, 120 * (indx + 1), dtype="int64").reshape(
+                    (4, 5, 6)
+                ),
+                chunks=(1, 2, 3),
+            )
+            a.create_dataset(
+                "c",
+                data=numpy.arange(10 * indx, 10 * (indx + 1), dtype="int64").reshape(
+                    (10, 1)
+                ),
+                chunks=(2, 1),
+            )
+            a.create_dataset(
+                "d",
+                data=numpy.arange(10 * indx, 10 * (indx + 1), dtype="int64").reshape(
+                    (10,)
+                ),
+                chunks=(3,),
+            )
+        file_paths.append(file_path)
+
+    yield [ensure_uri(file_path) for file_path in file_paths]
+
+
 def test_from_file(example_file, buffer):
     """Serve a single HDF5 file at top level."""
     h5py = pytest.importorskip("h5py")
@@ -125,6 +185,28 @@ def test_from_file(example_file, buffer):
         client.export(buffer, format="application/x-hdf5")
         file = h5py.File(buffer, "r")
         assert file["a"]["b"]["c"]["d"] is not None
+
+
+def test_from_file_with_empty_and_non_utf8_attrs(tmp_path):
+    """An empty or non-UTF-8 attribute anywhere should not break the file."""
+    h5py = pytest.importorskip("h5py")
+    file_path = tmp_path / "attrs.h5"
+    with h5py.File(file_path, "w") as file:
+        file["x"] = numpy.arange(3)
+        file["x"].attrs["units"] = numpy.bytes_("µm".encode("latin-1"))
+        file["x"].attrs["comment"] = h5py.Empty("S1")
+        file["x"].attrs["cp1252"] = numpy.bytes_("5–10 €".encode("cp1252"))
+        file["x"].attrs["latin1"] = numpy.bytes_(b"\x81")
+        file.attrs["empty"] = h5py.Empty("f")
+    tree = HDF5Adapter.from_uris(ensure_uri(file_path))
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        assert client.metadata["empty"] is None
+        assert client["x"].metadata["units"] == "µm"
+        assert client["x"].metadata["comment"] is None
+        assert client["x"].metadata["cp1252"] == "5–10 €"
+        assert client["x"].metadata["latin1"] == "\x81"
+        numpy.testing.assert_equal(client["x"].read(), numpy.arange(3))
 
 
 @pytest.mark.filterwarnings("ignore: The dataset")
@@ -147,8 +229,6 @@ def test_from_file_with_empty_data(example_file_with_empty_data, buffer, key):
 @pytest.mark.parametrize("num", [1, 5])
 def test_from_file_with_scalars(example_file_with_scalars, buffer, key: str, num: int):
     """Serve HDF5 file(s) containing scalars."""
-    if key in {"str", "bytes"}:
-        pytest.xfail("HDF5Adapter treats object dtypes differently.")
     h5py = pytest.importorskip("h5py")
     tree = HDF5Adapter.from_uris(*[example_file_with_scalars] * num)
     with Context.from_app(build_app(tree)) as context:
@@ -162,19 +242,58 @@ def test_from_file_with_scalars(example_file_with_scalars, buffer, key: str, num
 
 
 @pytest.mark.filterwarnings("ignore: The dataset")
-def test_from_file_with_vlen_str_dataset(example_file_with_vlen_str_in_dataset, buffer):
+@pytest.mark.parametrize(
+    "key, expected_shape, expected_values",
+    [
+        # Sparsely populated vlen str (only [0] set).
+        ("d", (100,), None),
+        # Size-1 vlen str.
+        ("e", (1,), [b"hello world"]),
+        # Fully populated multi-element vlen str.
+        ("f", (3,), [b"alpha", b"beta", b"gamma"]),
+        # Non-string object dtype (vlen array): served as an empty
+        # placeholder of the original shape.
+        ("g", (3,), None),
+        # Multi-dimensional vlen str.
+        (
+            "h",
+            (2, 3),
+            [[b"a", b"bb", b"ccc"], [b"d", b"ee", b"fff"]],
+        ),
+        # Non-ASCII UTF-8 strings preserved as raw bytes.
+        ("i", (2,), [b"h\xc3\xa9llo", b"w\xc3\xb6rld"]),
+    ],
+)
+def test_from_file_with_vlen_str_dataset(
+    example_file_with_vlen_str_in_dataset, buffer, key, expected_shape, expected_values
+):
     """Serve a single HDF5 file at top level."""
     h5py = pytest.importorskip("h5py")
     tree = HDF5Adapter.from_uris(example_file_with_vlen_str_in_dataset)
     with pytest.warns(UserWarning):
         with Context.from_app(build_app(tree)) as context:
             client = from_context(context)
-    arr = client["a"]["b"]["c"]["d"].read()
+    arr = client["a"]["b"]["c"][key].read()
     assert isinstance(arr, numpy.ndarray)
+    assert arr.shape == expected_shape
+    if expected_values is not None:
+        assert numpy.array_equal(arr, numpy.asarray(expected_values, dtype=bytes))
     with pytest.warns(UserWarning):
         client.export(buffer, format="application/x-hdf5")
     file = h5py.File(buffer, "r")
-    assert file["a"]["b"]["c"]["d"] is not None
+    assert file["a"]["b"]["c"][key] is not None
+
+
+@pytest.mark.filterwarnings("ignore: The dataset")
+@pytest.mark.parametrize("num", [2, 3])
+def test_from_multiple_files_with_vlen_str(example_file_with_vlen_str_in_dataset, num):
+    """Vlen string datasets must concatenate along axis 0 across files."""
+    tree = HDF5Adapter.from_uris(*[example_file_with_vlen_str_in_dataset] * num)
+    arr = tree["a"]["b"]["c"]["f"].read()
+    # Per-file shape is (3,) -> num*3 concatenated along axis 0.
+    assert arr.shape == (3 * num,)
+    expected = numpy.asarray([b"alpha", b"beta", b"gamma"] * num, dtype=bytes)
+    assert numpy.array_equal(arr, expected)
 
 
 def test_from_group(example_file, buffer):
@@ -290,7 +409,7 @@ def test_file_with_broken_links(example_file_with_links):
     with pytest.raises(BrokenLink):
         tree = HDF5Adapter.from_uris(example_file_with_links, dataset="a/b/soft_link")
 
-    with pytest.raises(KeyError):
+    with pytest.raises(BrokenLink):
         tree = HDF5Adapter.from_uris(example_file_with_links, dataset="a/b/c/d")
 
     tree = HDF5Adapter.from_uris(example_file_with_links, dataset="a")
@@ -305,7 +424,7 @@ def test_file_with_broken_links(example_file_with_links):
     with h5py.File(child_file_path, "r+") as file:
         file["z/y"].pop("x")
 
-    with pytest.raises(KeyError):
+    with pytest.raises(BrokenLink):
         tree = HDF5Adapter.from_uris(example_file_with_links, dataset="a/b/extr_link/x")
 
     tree = HDF5Adapter.from_uris(example_file_with_links, dataset="a/b/extr_link")
@@ -320,7 +439,7 @@ def test_file_with_broken_links(example_file_with_links):
     with h5py.File(child_file_path, "r+") as file:
         file["z"].pop("y")
 
-    with pytest.raises(KeyError):
+    with pytest.raises(BrokenLink):
         tree = HDF5Adapter.from_uris(example_file_with_links, dataset="a/b/extr_link")
 
     # A client can still be instantiated
@@ -456,6 +575,38 @@ def test_register_broken_hdf5_file(context, example_file_with_links):
         list(client["ds_from_extr"].keys())
 
 
+def test_register_missing_hdf5_dataset(context, example_file):
+    """A registered array whose dataset is absent from the file is 410, not 500."""
+    client = from_context(context)
+    data_source = DataSource(
+        mimetype="application/x-hdf5",
+        assets=[
+            Asset(
+                data_uri=example_file,
+                is_directory=False,
+                parameter="data_uris",
+                num=0,
+            )
+        ],
+        structure_family=StructureFamily.array,
+        structure=ArrayStructure(
+            shape=(3, 3),
+            chunks=((3,), (3,)),
+            data_type=BuiltinDtype.from_numpy_dtype(numpy.dtype("int64")),
+        ),
+        parameters={"dataset": "a/b/c/does_not_exist"},
+        management=Management.external,
+    )
+    client.new(
+        structure_family=StructureFamily.array,
+        data_sources=[data_source],
+        key="missing_dataset",
+    )
+    # The client turns 410 Gone into a KeyError (see test_register_broken_hdf5_file)
+    with pytest.raises(KeyError, match="broken link"):
+        client["missing_dataset"].read()
+
+
 def test_update_datasource_with_properties(context, example_file):
     # Register a forcefully reshaped dataset and keep the true chunks in properties
     client = from_context(context)
@@ -571,3 +722,200 @@ def test_adapter_from_catalog(example_file, shape, error):
             adp.read()
     else:
         assert adp.read().shape == shape
+
+
+@pytest.mark.parametrize("num_files", [1, 3])
+def test_chunked_arrays_from_uris(example_files_with_chunked_arrays, num_files):
+    # Test that chunked arrays can be read and reshaped correctly
+    fpaths = example_files_with_chunked_arrays[:num_files]
+    tree = HDF5Adapter.from_uris(*fpaths)
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+
+    arr_b = client["a"]["b"]
+    assert arr_b.shape == (4 * num_files, 5, 6)
+    assert arr_b.chunks == ((1, 1, 1, 1) * num_files, (2, 2, 1), (3, 3))
+    assert arr_b.dtype == "int64"
+    arr_true_b = numpy.concatenate(
+        [
+            numpy.arange(120 * indx, 120 * (indx + 1), dtype="int64").reshape((4, 5, 6))
+            for indx in range(num_files)
+        ],
+        axis=0,
+    )
+    numpy.testing.assert_array_equal(arr_b.read(), arr_true_b)
+
+    arr_c = client["a"]["c"]
+    assert arr_c.shape == (10 * num_files, 1)
+    assert arr_c.chunks == ((2, 2, 2, 2, 2) * num_files, (1,))
+    assert arr_c.dtype == "int64"
+    arr_true_c = numpy.concatenate(
+        [
+            numpy.arange(10 * indx, 10 * (indx + 1), dtype="int64").reshape((10, 1))
+            for indx in range(num_files)
+        ],
+        axis=0,
+    )
+    numpy.testing.assert_array_equal(arr_c.read(), arr_true_c)
+
+    arr_d = client["a"]["d"]
+    assert arr_d.shape == (10 * num_files,)
+    assert arr_d.chunks == ((3, 3, 3, 1) * num_files,)
+    assert arr_d.dtype == "int64"
+    arr_true_d = numpy.concatenate(
+        [
+            numpy.arange(10 * indx, 10 * (indx + 1), dtype="int64").reshape((10,))
+            for indx in range(num_files)
+        ],
+        axis=0,
+    )
+    numpy.testing.assert_array_equal(arr_d.read(), arr_true_d)
+
+
+@pytest.mark.parametrize("num_files", [1, 3])
+@pytest.mark.parametrize("reshape", [True, False])
+def test_chunked_arrays_from_catalog(
+    example_files_with_chunked_arrays, num_files, reshape
+):
+    # Test that multiple chunked arrays can be read and reshaped correctly when initialized from catalog
+    assets = []
+    for indx, fpath in enumerate(example_files_with_chunked_arrays[:num_files]):
+        assets.append(
+            Asset(
+                data_uri=fpath,
+                is_directory=False,
+                parameter="data_uris",
+                num=indx,
+            )
+        )
+
+    shape = (4 * num_files, 5, 6) if not reshape else (num_files, 4, 5, 6)
+    chunks = (
+        ((1, 1, 1, 1) * num_files, (2, 2, 1), (3, 3))
+        if not reshape
+        else ((1,) * num_files, (1, 1, 1, 1), (2, 2, 1), (3, 3))
+    )
+
+    data_source = DataSource(
+        mimetype="application/x-hdf5",
+        assets=assets,
+        structure_family=StructureFamily.array,
+        structure=ArrayStructure(
+            shape=shape,
+            chunks=chunks,
+            data_type=BuiltinDtype.from_numpy_dtype(numpy.dtype("int64")),
+        ),
+        parameters={"dataset": "a/b"},
+        management=Management.external,
+    )
+
+    empty_node = SimpleNamespace(metadata_={}, specs=[])
+    adp = HDF5Adapter.from_catalog(data_source, empty_node, **data_source.parameters)
+    structure = adp.structure()
+    assert structure.shape == shape
+    assert structure.chunks == chunks
+    assert structure.data_type.to_numpy_dtype() == numpy.dtype("int64")
+
+    arr_true = numpy.concatenate(
+        [
+            numpy.arange(120 * indx, 120 * (indx + 1), dtype="int64").reshape((4, 5, 6))
+            for indx in range(num_files)
+        ],
+        axis=0,
+    )
+    if reshape:
+        arr_true = arr_true.reshape((num_files, 4, 5, 6))
+    numpy.testing.assert_array_equal(adp.read(), arr_true)
+
+
+@pytest.mark.parametrize("swmr", [True, False])
+def test_files_opened_and_closed(example_files_with_chunked_arrays, swmr):
+    "Test that only the necessary files are opened and that they are closed after reading"
+    import tiled
+
+    h5py = pytest.importorskip("h5py")
+
+    # Use the example with two files chunked along a single dimension;
+    # total chunks across the two files: ((3, 3, 3, 1)*2, )
+    file_uris = example_files_with_chunked_arrays[:2]
+    file_paths = [path_from_uri(uri) for uri in file_uris]
+    with patch(
+        "tiled.adapters.hdf5.h5open", wraps=tiled.adapters.hdf5.h5open
+    ) as mock_h5open:
+        mock_h5open.assert_not_called()  # No files should be opened yet
+
+        # Tree initialized from the entire file, no dataset provided
+        tree = HDF5Adapter.from_uris(*file_uris, swmr=swmr)
+        mock_h5open.assert_called()
+        assert mock_h5open.call_count == 1
+
+        # Adapter initialized directly from the dataset:
+        # Each file is read once to get the structure, and the first one
+        # is also read once again to get the metadata
+        mock_h5open.reset_mock()
+        HDF5ArrayAdapter.from_uris(*file_uris, dataset="a/d", swmr=swmr)
+        assert mock_h5open.call_count == 3
+        files_opened = [call.args[0].name for call in mock_h5open.call_args_list]
+        assert files_opened.count(file_paths[0].name) == 2
+        assert files_opened.count(file_paths[1].name) == 1
+        assert set(files_opened) == set([fp.name for fp in file_paths])
+
+        # Build the app fromn the tree (HDF5Adapter): all datasets in the file are parsed
+        mock_h5open.reset_mock()
+        with Context.from_app(build_app(tree)) as context:
+            client = from_context(context)
+        mock_h5open.assert_called()
+
+        # Initialize the array client -- no need to reopen the files
+        mock_h5open.reset_mock()
+        arr = client["a"]["d"]
+        assert arr.structure().shape == (20,)
+        assert arr.structure().chunks == ((3, 3, 3, 1) * 2,)
+        assert arr.metadata is not None
+        mock_h5open.assert_not_called()
+
+        # Read the entire array: files are opened once to get the specs and then again,
+        # four times each, to fetch each chunk separately. Additionally, the first file is opened once
+        # adain when initialized from catalog to get the metadata
+        assert arr.read() is not None
+        # 2 for specs, 4*2 for chunks, 1 for metadata
+        assert mock_h5open.call_count == 2 + 4 * 2 + 1
+        files_opened = [call.args[0].name for call in mock_h5open.call_args_list]
+        # First file: 1 for specs, 4 for chunks, 1 for metadata
+        assert files_opened.count(file_paths[0].name) == 4 + 1 + 1
+        # Second file: 1 for specs, 4 for chunks
+        assert files_opened.count(file_paths[1].name) == 4 + 1
+
+        # Read a slice that only touches one file: only the relevant file should be opened
+        mock_h5open.reset_mock()
+        assert arr[:1] is not None
+        assert mock_h5open.call_count == 4  # 2 for specs, 1 for chunks, 1 for metadata
+        files_opened = [call.args[0].name for call in mock_h5open.call_args_list]
+        assert files_opened.count(file_paths[0].name) == 3
+        assert files_opened.count(file_paths[1].name) == 1  # only to get the specs
+
+        # Read everything from the second file
+        mock_h5open.reset_mock()
+        assert arr[-10:] is not None
+        assert mock_h5open.call_count == 7
+        files_opened = [call.args[0].name for call in mock_h5open.call_args_list]
+        # First file: 1 for specs, 1 for metadata
+        assert files_opened.count(file_paths[0].name) == 1 + 1
+        # Second file: 4 for chunks, 1 for specs
+        assert files_opened.count(file_paths[1].name) == 4 + 1
+
+        # Read a slice that has one value from each of the files
+        mock_h5open.reset_mock()
+        assert arr[9:11] is not None
+        assert mock_h5open.call_count == 2 + 2 + 1
+        files_opened = [call.args[0].name for call in mock_h5open.call_args_list]
+        # First file: # 1 for specs, 1 for chunk, 1 for metadata
+        assert files_opened.count(file_paths[0].name) == 3
+        assert files_opened.count(file_paths[1].name) == 2  # 1 for specs, 1 for chunk
+
+    # Try opening the files directly to check that they are closed after reading
+    h5py.File(file_paths[0], "r", swmr=swmr).close()
+    h5py.File(file_paths[1], "r", swmr=swmr).close()
+
+    h5py.File(file_paths[0], "r", swmr=not swmr).close()
+    h5py.File(file_paths[1], "r", swmr=not swmr).close()

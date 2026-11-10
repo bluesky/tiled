@@ -3,6 +3,7 @@ Generate the 'links' section of the response JSON.
 
 The links vary by structure family.
 """
+
 from .structures.core import StructureFamily
 
 
@@ -30,10 +31,27 @@ def links_for_awkward(structure_family, structure, base_url, path_str):
     return links
 
 
+def links_for_bytes(structure_family, structure, base_url, path_str):
+    # Bytes nodes have no structure-family endpoint of their own. Clients
+    # download the underlying assets via /asset/bytes/{path}?id=N, which they
+    # construct from the node metadata.
+    return {}
+
+
 def links_for_container(structure_family, structure, base_url, path_str):
     links = {}
     links["full"] = f"{base_url}/container/full/{path_str}"
     links["search"] = f"{base_url}/search/{path_str}"
+    links["search_deep"] = f"{base_url}/search-deep/{path_str}"
+    return links
+
+
+def links_for_ragged(structure_family, structure, base_url, path_str):
+    links = {}
+    links["full"] = f"{base_url}/ragged/full/{path_str}"
+    links["block"] = f"{base_url}/ragged/block/{path_str}?block={{0}}"
+    # block_template = ",".join(f"{{{index}}}" for index in range(len(structure.shape)))
+    # links["block"] = f"{base_url}/ragged/block/{path_str}?block={block_template}"
     return links
 
 
@@ -47,7 +65,9 @@ def links_for_table(structure_family, structure, base_url, path_str):
 LINKS_BY_STRUCTURE_FAMILY = {
     StructureFamily.array: links_for_array,
     StructureFamily.awkward: links_for_awkward,
+    StructureFamily.bytes: links_for_bytes,
     StructureFamily.container: links_for_container,
+    StructureFamily.ragged: links_for_ragged,
     StructureFamily.sparse: links_for_array,  # spare and array are the same
     StructureFamily.table: links_for_table,
 }

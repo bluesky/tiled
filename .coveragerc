@@ -1,6 +1,7 @@
 [run]
 source =
     tiled
+parallel = true
 [report]
 omit =
     */python?.?/*

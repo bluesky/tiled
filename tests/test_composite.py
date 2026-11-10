@@ -3,6 +3,7 @@ import numpy
 import pandas
 import pyarrow
 import pytest
+import ragged
 import sparse
 import tifffile as tf
 import xarray
@@ -59,6 +60,12 @@ awk_form, awk_length, awk_container = awkward.to_buffers(awk_packed)
 arr = rng.random(size=(10, 20, 30), dtype="float64")
 sps_arr = sparse.COO(numpy.where(arr > 0.95, arr, 0))
 
+# A ragged (jagged) array — cannot be converted to numpy
+rag_arr = ragged.array([[1.1, 2.2, 3.3], [4.4], [5.5, 6.6]])
+
+# A "regular" ragged array — every row the same length, so numpy-convertible
+rag_regular = ragged.array(rng.random(size=(4, 3), dtype="float64").tolist())
+
 md = {"md_key1": "md_val1", "md_key2": 2}
 
 
@@ -108,6 +115,7 @@ def context(tree):
             key="sps",
             metadata={"md_key": "md_for_sps"},
         )
+        x.write_ragged(rag_arr, key="rag", metadata={"md_key": "md_for_rag"})
 
         yield context
 
@@ -118,6 +126,10 @@ def context_for_reading(context):
 
     # Awkward arrays are not supported when building xarray, in general
     client["x"].delete_contents("awk", external_only=False)
+    # Jagged ragged arrays are not numpy-convertible either; replace with a
+    # regular (rectangular) ragged array so the xarray export works.
+    client["x"].delete_contents("rag", external_only=False)
+    client["x"].write_ragged(rag_regular, key="rag")
     # Add an image array and a table with 5 rows
     client["x"].write_array(img_data, key="img")
     client["x"].write_table(df3, key="df3")
@@ -128,6 +140,8 @@ def context_for_reading(context):
     client["x"].write_awkward(awk_arr, key="awk", metadata={"md_key": "md_for_awk"})
     client["x"].delete_contents("img", external_only=False)
     client["x"].delete_contents("df3", external_only=False)
+    client["x"].delete_contents("rag", external_only=False)
+    client["x"].write_ragged(rag_arr, key="rag", metadata={"md_key": "md_for_rag"})
 
 
 @pytest.fixture(scope="function")
@@ -216,6 +230,7 @@ def csv_data_source(csv_file):
         ("arr2", arr2),
         ("awk", awk_arr),
         ("sps", sps_arr.todense()),
+        ("rag", rag_arr),
     ],
 )
 def test_reading(context, name, expected):
@@ -223,6 +238,10 @@ def test_reading(context, name, expected):
     actual = client["x"][name].read()
     if name == "sps":
         actual = actual.todense()
+    if name == "rag":
+        # ragged.array equality is not array_equal-friendly; compare via awkward
+        assert awkward.almost_equal(actual._impl, expected._impl)
+        return
     assert numpy.array_equal(actual, expected)
 
 
@@ -230,6 +249,21 @@ def test_iterate_parts(context):
     client = from_context(context)
     for part in client["x"].base:
         client["x"].base[part].read()
+
+
+def test_get_contents_maxlen(context):
+    # maxlen is a stop condition on pagination: fetching stops once at least
+    # maxlen items have been received or the pages are exhausted, whichever comes first.
+    client = from_context(context)
+    all_contents = client["x"].get_contents()
+    assert len(all_contents) > 0
+    # maxlen greater than the total: returns everything, without over-fetching.
+    contents = client["x"].get_contents(maxlen=len(all_contents) + 100)
+    assert contents.keys() == all_contents.keys()
+    # maxlen smaller than one page: stops after the first page, which may
+    # return more than maxlen items (maxlen is a stop condition, not a cap).
+    contents = client["x"].get_contents(maxlen=1)
+    assert len(contents) >= 1
 
 
 def test_reading_dask(context):
@@ -249,9 +283,12 @@ def test_iterate_columns(context):
         if col == "sps":
             read_from_client = read_from_client.todense()
             read_from_column = read_from_column.todense()
-        assert numpy.array_equal(read_from_client, read_from_column)
+        if col == "rag":
+            assert awkward.almost_equal(read_from_client._impl, read_from_column._impl)
+        else:
+            assert numpy.array_equal(read_from_client, read_from_column)
 
-        if col in ["arr1", "arr2", "awk", "sps"]:
+        if col in ["arr1", "arr2", "awk", "sps", "rag"]:
             # Arrays can be read from the parent client
             assert client[f"x/{col}"].read() is not None
         else:
@@ -333,6 +370,7 @@ def test_read_full(context_for_reading):
         "img",
         "col1",
         "col2",
+        "rag",
     }
 
 
@@ -357,13 +395,35 @@ def test_read_selective_with_dim0(context_for_reading, dim0):
         assert ds[var_name].dims[0] == dim0
 
 
+def test_read_jagged_ragged_pads(context):
+    """A jagged (non-rectangular) ragged child cannot be converted to numpy
+    directly; ``read()`` falls back to a NaN-padded dense array and warns."""
+    client = from_context(context)
+    with pytest.warns(UserWarning, match="Failed to convert ragged array"):
+        ds = client["x"].read(variables=["rag"])
+    assert "rag" in ds.data_vars
+    # NaN-padded dense rectangular array
+    values = ds["rag"].values
+    assert values.ndim >= 2
+    assert numpy.isnan(values).any()
+
+
+def test_read_regular_ragged(context_for_reading):
+    """A 'regular' (rectangular) ragged child is numpy-convertible and should
+    appear in the xarray.Dataset returned by ``read()``."""
+    client = from_context(context_for_reading)
+    ds = client["x"].read(variables=["rag"])
+    assert "rag" in ds.data_vars
+    assert numpy.array_equal(ds["rag"].values, rag_regular._impl.to_numpy())
+
+
 def test_delete_contents(context, tiff_data_source, csv_data_source):
     client = from_context(context)
 
     parts_before = len(client["x"].base)
     keys_before = len(client["x"].keys())
-    assert parts_before == 6
-    assert keys_before == 9
+    assert parts_before == 7
+    assert keys_before == 10
 
     # Attempt to delete an array that is internally managed
     with pytest.raises(ClientError):
@@ -626,6 +686,7 @@ def test_composite_validator(tree):
             shape=sps_arr.shape,
             key="sps",
         )
+        z.write_ragged(rag_arr, key="rag")
 
         # Composite spec can be assigned to a container with arrays
         z.update_metadata(specs=["composite"])
@@ -663,7 +724,7 @@ def test_composite_validator(tree):
 
         # 7. Composite spec cannot be used for tables or arrays
         err_message = "Composite spec can be assigned only to containers"
-        for key in ["arr1", "awk", "sps", "df1"]:
+        for key in ["arr1", "awk", "sps", "rag", "df1"]:
             with pytest.raises(ClientError, match=err_message):
                 z[key].update_metadata(specs=["composite"])
         with pytest.raises(ClientError, match=err_message):
@@ -679,3 +740,183 @@ def test_composite_validator(tree):
                 shape=sps_arr.shape,
                 specs=["composite"],
             )
+
+
+# ---------------------------------------------------------------------------
+# Progress bar total counting
+# ---------------------------------------------------------------------------
+
+
+def test_array_fetch_count(tmp_path):
+    """ArrayClient.fetch_count() returns the correct number of HTTP requests.
+
+    Small arrays (below RESPONSE_BYTESIZE_LIMIT) always need 1 request.
+    Large arrays are split by split_slice, so fetch_count() > 1.
+    We patch RESPONSE_BYTESIZE_LIMIT to a small value to exercise both paths
+    without allocating large arrays.
+    """
+    from unittest.mock import patch
+
+    from tiled.client.array import ArrayClient
+    from tiled.utils import ensure_uri
+
+    SMALL_LIMIT = 100  # bytes; (3,4)*float64=96B < limit, (10,10)*float64=800B > limit
+
+    tree = in_memory(writable_storage=[ensure_uri(tmp_path / "data")])
+    app = build_app(tree)
+    with Context.from_app(app, show_progress=False) as ctx:
+        client = from_context(ctx)
+        client.write_array(rng.random((3, 4)), key="small")  # 96 B < 100
+        client.write_array(rng.random((10, 10)), key="large")  # 800 B > 100
+
+        with patch.object(ArrayClient, "RESPONSE_BYTESIZE_LIMIT", SMALL_LIMIT):
+            assert client["small"].fetch_count() == 1
+            assert client["large"].fetch_count() > 1
+
+
+def test_composite_progress_total_mixed_small_and_large_arrays(tmp_path):
+    """Progress bar total equals sum of fetch_count() across all arrays in a composite.
+
+    Covers both small arrays (1 request each) and large arrays (multiple requests),
+    ensuring the composite uses fetch_count() rather than dask chunk-boundary counts.
+    We patch RESPONSE_BYTESIZE_LIMIT to 100 bytes so the large/small boundary is
+    reachable with small test arrays.  Also verifies that when a subset of variables
+    is requested, only those variables are counted.
+    """
+    from contextlib import contextmanager
+    from unittest.mock import patch
+
+    from tiled.client.array import ArrayClient
+    from tiled.utils import ensure_uri
+
+    SMALL_LIMIT = 100  # bytes; (3,4)*float64=96B < limit, (10,10)*float64=800B > limit
+
+    tree = in_memory(writable_storage=[ensure_uri(tmp_path / "data")])
+    app = build_app(tree)
+    with Context.from_app(app, show_progress=False) as ctx:
+        client = from_context(ctx)
+        z = client.create_container(key="z", specs=["composite"])
+        z.write_array(rng.random((3, 4)), key="small_a")  # 96 B → 1 request
+        z.write_array(rng.random((3, 4)), key="small_b")  # 96 B → 1 request
+        z.write_array(rng.random((10, 10)), key="large_a")  # 800 B → multiple requests
+        z.write_array(rng.random((10, 10)), key="large_b")  # 800 B → multiple requests
+
+        with patch.object(ArrayClient, "RESPONSE_BYTESIZE_LIMIT", SMALL_LIMIT):
+            composite = from_context(ctx)["z"]
+
+            def capture_outermost_total(variables=None):
+                depth = [0]
+                outermost_totals = []
+                original_tp = ctx.tracking_progress
+
+                @contextmanager
+                def capturing_tp(total):
+                    is_outermost = depth[0] == 0
+                    depth[0] += 1
+                    if is_outermost:
+                        outermost_totals.append(total)
+                    with original_tp(total) as s:
+                        yield s
+                    depth[0] -= 1
+
+                with patch("tiled.client.utils.is_interactive", return_value=True):
+                    with patch.object(ctx, "tracking_progress", capturing_tp):
+                        ctx.show_progress = True
+                        composite.read(variables=variables)
+                        ctx.show_progress = False
+
+                return outermost_totals
+
+            # All four arrays
+            all_keys = ("small_a", "small_b", "large_a", "large_b")
+            expected_all = sum(composite.base[k].fetch_count() for k in all_keys)
+            assert capture_outermost_total() == [expected_all]
+
+            # Subset: one small, one large
+            subset = ["small_a", "large_b"]
+            expected_subset = sum(composite.base[k].fetch_count() for k in subset)
+            assert capture_outermost_total(variables=subset) == [expected_subset]
+
+            # Single variable
+            assert capture_outermost_total(variables=["small_b"]) == [1]
+
+
+# --- Bytes children are allowed in composite containers ---------------------------
+
+
+@pytest.fixture(scope="function")
+def composite_with_bytes(tmp_path):
+    """A fresh composite container with one array and one bytes child."""
+    from tiled.structures.bytes import BytesStructure
+
+    catalog = in_memory(writable_storage=str(tmp_path / "store"))
+    with Context.from_app(build_app(catalog)) as ctx:
+        client = from_context(ctx)
+        comp = client.create_container(key="c", specs=["composite"])
+        comp.write_array(arr1, key="arr")
+        # External bytes child registered manually.
+        blob_path = tmp_path / "blob.bin"
+        payload = b"opaque payload"
+        blob_path.write_bytes(payload)
+        comp.new(
+            structure_family=StructureFamily.bytes,
+            data_sources=[
+                DataSource(
+                    structure_family=StructureFamily.bytes,
+                    structure=BytesStructure(),
+                    mimetype="application/octet-stream",
+                    management=Management.external,
+                    assets=[
+                        Asset(
+                            data_uri=blob_path.as_uri(),
+                            is_directory=False,
+                            size=len(payload),
+                            parameter="data_uris",
+                            num=0,
+                        )
+                    ],
+                )
+            ],
+            key="blob",
+        )
+        yield client, payload
+
+
+def test_composite_lists_bytes_child(composite_with_bytes):
+    """Bytes children appear in keys() and get_contents() like any other child."""
+    client, _ = composite_with_bytes
+    comp = client["c"]
+    assert "arr" in comp.keys()
+    assert "blob" in comp.keys()
+    contents = comp.get_contents()
+    assert contents["blob"]["attributes"]["structure_family"] == "bytes"
+
+
+def test_composite_read_skips_bytes_children(composite_with_bytes):
+    """Composite.read() returns a Dataset of array children only; bytes silently skipped."""
+    client, _ = composite_with_bytes
+    ds = client["c"].read()
+    assert "arr" in ds.data_vars
+    assert "blob" not in ds.data_vars
+    numpy.testing.assert_array_equal(ds["arr"].values, arr1)
+
+
+def test_composite_read_explicit_bytes_variable_raises(composite_with_bytes):
+    """Explicitly asking for a bytes child by name raises a clear error."""
+    client, _ = composite_with_bytes
+    with pytest.raises(ValueError, match="bytes-family child 'blob'"):
+        client["c"].read(variables=["blob"])
+
+
+def test_composite_bytes_child_downloadable(composite_with_bytes):
+    """Bytes child inside a composite is downloadable via /asset/bytes."""
+    client, payload = composite_with_bytes
+    meta = client.context.http_client.get(
+        "/api/v1/metadata/c/blob", params={"include_data_sources": True}
+    )
+    asset_id = meta.json()["data"]["attributes"]["data_sources"][0]["assets"][0]["id"]
+    response = client.context.http_client.get(
+        "/api/v1/asset/bytes/c/blob", params={"id": asset_id}
+    )
+    assert response.status_code == 200
+    assert response.content == payload

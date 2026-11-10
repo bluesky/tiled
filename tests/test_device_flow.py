@@ -1,10 +1,10 @@
 import textwrap
+from collections.abc import Generator
 from pathlib import Path
-from typing import Any, Dict, Generator, List, Union
+from typing import Any
 from unittest.mock import MagicMock, patch
-from uuid import UUID
 
-import httpx
+import httpx2 as httpx
 import pytest
 import respx
 import stamina
@@ -14,9 +14,8 @@ from tiled.adapters.mapping import MapAdapter
 from tiled.client import Context
 from tiled.client.auth import TiledAuth
 from tiled.client.constructors import from_context
-from tiled.client.context import prompt_for_credentials
+from tiled.client.context import device_code_grant, prompt_for_credentials
 from tiled.server.app import build_app_from_config
-from tiled.server.schemas import Principal, PrincipalType
 
 tree = MapAdapter({})
 
@@ -27,7 +26,7 @@ def well_known_url() -> str:
 
 
 @pytest.fixture
-def oidc_config(well_known_url: str) -> Dict[str, Any]:
+def oidc_config(well_known_url: str) -> dict[str, Any]:
     return {
         "authentication": {
             "secret_keys": ["SECRET"],
@@ -38,6 +37,7 @@ def oidc_config(well_known_url: str) -> Dict[str, Any]:
                     "args": {
                         "audience": "tiled_aud",
                         "client_id": "tiled",
+                        "client_secret": "secret",
                         "device_flow_client_id": "tiled-cli",
                         "well_known_uri": well_known_url,
                         "confirmation_message": "You have logged in with Proxied OIDC as {id}.",
@@ -55,7 +55,7 @@ def oidc_config(well_known_url: str) -> Dict[str, Any]:
 
 
 @pytest.fixture
-def tokens_response() -> Dict[str, str]:
+def tokens_response() -> dict[str, str]:
     return {
         "access_token": "jwt",
         "expires_in": "60",
@@ -74,9 +74,9 @@ def mock_oidc_server(
     respx_mock: MockRouter,
     base_url: str,
     well_known_url: str,
-    well_known_response: Dict[str, Any],
-    tokens_response: Dict[str, Union[str, int]],
-    oidc_config: Dict[str, Any],
+    well_known_response: dict[str, Any],
+    tokens_response: dict[str, str | int],
+    oidc_config: dict[str, Any],
 ) -> MockRouter:
     respx_mock.get(well_known_url).mock(
         return_value=httpx.Response(httpx.codes.OK, json=well_known_response)
@@ -92,7 +92,7 @@ def mock_oidc_server(
 
     respx_mock.post(
         well_known_response["device_authorization_endpoint"],
-        data={"client_id": device_flow_client_id, "scope": "openid offline_access"},
+        data={"client_id": device_flow_client_id, "scope": "offline_access openid"},
     ).mock(
         return_value=httpx.Response(
             status_code=httpx.codes.OK,
@@ -127,7 +127,7 @@ def mock_oidc_server(
 @pytest.fixture
 def context(
     mock_oidc_server: MockRouter,
-    oidc_config: Dict[str, Any],
+    oidc_config: dict[str, Any],
 ) -> Generator[Context, Any, Any]:
     with Context.from_app(build_app_from_config(oidc_config)) as context:
         yield context
@@ -135,13 +135,14 @@ def context(
 
 def test_about_endpoint(
     context: Context,
-    well_known_response: Dict[str, Union[str, List[str]]],
-    oidc_config: Dict[str, Any],
+    well_known_response: dict[str, str | list[str]],
+    oidc_config: dict[str, Any],
 ):
     response = context.http_client.get("/api/v1/")
     assert response.status_code == httpx.codes.OK
     assert response.json()["authentication"]["providers"][0]["links"] == {
         "auth_endpoint": well_known_response["device_authorization_endpoint"],
+        "authorize_endpoint": f"{context.http_client.base_url}/api/v1/auth/provider/keycloak_oidc/authorize",
         "client_id": oidc_config["authentication"]["providers"][0]["args"][
             "device_flow_client_id"
         ],
@@ -155,7 +156,7 @@ def test_device_flow_success(
     context: Context,
     capsys,
     base_url: str,
-    tokens_response: Dict[str, Union[str, int]],
+    tokens_response: dict[str, str | int],
 ):
     with patch("webbrowser.open", return_value=False):
         tokens = prompt_for_credentials(
@@ -173,8 +174,8 @@ def test_device_flow_success(
 
         LCWE-ROXW
 
-
         Waiting...
+
         You have logged in with Proxied OIDC as external user.
     """
     )
@@ -183,7 +184,6 @@ def test_device_flow_success(
     assert tokens == tokens_response
 
 
-@pytest.mark.xfail(reason="This should not fail,but needs investigation in stamina")
 @patch("tiled.client.context.time.sleep")
 def test_device_flow_polling(
     _: MagicMock,
@@ -191,8 +191,8 @@ def test_device_flow_polling(
     context: Context,
     capsys,
     base_url: str,
-    tokens_response: Dict[str, Union[str, int]],
-    well_known_response: Dict[str, Any],
+    tokens_response: dict[str, str | int],
+    well_known_response: dict[str, Any],
 ):
     token_polling_route = mock_oidc_server["token_polling"]
     token_polling_route.return_value = None
@@ -224,8 +224,8 @@ def test_device_flow_polling(
 
         LCWE-ROXW
 
+        Waiting....
 
-        Waiting...
         You have logged in with Proxied OIDC as external user.
     """
     )
@@ -235,7 +235,7 @@ def test_device_flow_polling(
 
 
 @pytest.fixture
-def decoded_token(base_url: str) -> Dict[str, Any]:
+def decoded_token(base_url: str) -> dict[str, Any]:
     return {
         "exp": 1760638732,
         "iat": 1760638672,
@@ -256,9 +256,9 @@ def decoded_token(base_url: str) -> Dict[str, Any]:
 def client(
     decode_token: MagicMock,
     context,
-    tokens_response: Dict[str, str],
+    tokens_response: dict[str, str],
     tmp_path: Path,
-    decoded_token: Dict[str, Any],
+    decoded_token: dict[str, Any],
 ):
     decode_token.return_value = decoded_token
     context._token_cache = tmp_path
@@ -281,25 +281,20 @@ def client(
 def test_whoami_endpoint(
     decode_token: MagicMock,
     client,
-    decoded_token: Dict[str, Any],
+    decoded_token: dict[str, Any],
 ):
     decode_token.return_value = decoded_token
     info = client.context.whoami()
-    assert info == Principal(
-        uuid=UUID(decoded_token["sub"]),
-        type=PrincipalType.external,
-        api_keys=[],
-        identities=[],
-    ).model_dump(mode="json")
+    assert info["identities"][0]["id"] == decoded_token["sub"]
 
 
 @patch("tiled.authenticators.OIDCAuthenticator.decode_token")
 def test_client_refresh(
     decode_token: MagicMock,
     context,
-    tokens_response: Dict[str, str],
+    tokens_response: dict[str, str],
     tmp_path: Path,
-    decoded_token: Dict[str, Any],
+    decoded_token: dict[str, Any],
 ):
     decode_token.return_value = decoded_token
     context._token_cache = tmp_path
@@ -347,9 +342,9 @@ def test_client_refresh(
 def test_logout(
     decode_token: MagicMock,
     context,
-    tokens_response: Dict[str, str],
+    tokens_response: dict[str, str],
     tmp_path: Path,
-    decoded_token: Dict[str, Any],
+    decoded_token: dict[str, Any],
 ):
     decode_token.return_value = decoded_token
     context._token_cache = tmp_path
@@ -378,3 +373,142 @@ def test_logout(
         ).mock(return_value=httpx.Response(status_code=httpx.codes.OK))
 
         client.logout()
+
+
+@pytest.fixture
+def tiled_mediated_urls(base_url: str) -> dict[str, str]:
+    return {
+        # Tiled server endpoint the client POSTs to in order to *start* the flow.
+        "auth_endpoint": f"{base_url}api/v1/auth/provider/keycloak_oidc/authorize",
+        # Third-party provider login page the *user* visits in a browser.
+        "authorization_uri": (
+            f"{base_url}protocol/openid-connect/auth"
+            "?client_id=tiled&response_type=code&scope=openid"
+            f"&redirect_uri={base_url}api/v1/auth/provider/keycloak_oidc/device_code"
+        ),
+        # Tiled's own /token endpoint the *client* polls for tokens.
+        "verification_uri": f"{base_url}api/v1/auth/provider/keycloak_oidc/token",
+    }
+
+
+@pytest.fixture
+def mock_tiled_mediated_server(
+    respx_mock: MockRouter,
+    tiled_mediated_urls: dict[str, str],
+    tokens_response: dict[str, str | int],
+) -> MockRouter:
+    """Mock the two Tiled server endpoints used by the "else" branch of
+    device_code_grant used by ExternalAuthenticator providers such as
+    OIDCAuthenticator, SAMLAuthenticator, ORCID, and Globus.
+
+    In this branch, the *server* returns a payload with two URLs:
+       - "authorization_uri": the third-party provider login page that the USER
+         opens in a browser
+       - "verification_uri": Tiled's own /token endpoint that the CLIENT polls
+         (POSTing the device_code) to obtain tokens
+    """
+    device_code = "FsYWEv-Fl4wkFlrtp-EWH7HR1pkCG2NIfBNeUKlZBAY"
+    user_code = "LCWE-ROXW"
+
+    # 1. POST to Tiled's /authorize starts the flow and returns the two URIs.
+    respx_mock.post(tiled_mediated_urls["auth_endpoint"], name="authorize").mock(
+        return_value=httpx.Response(
+            status_code=httpx.codes.OK,
+            json={
+                "authorization_uri": tiled_mediated_urls["authorization_uri"],
+                "verification_uri": tiled_mediated_urls["verification_uri"],
+                "interval": 5,
+                "device_code": device_code,
+                "expires_in": 600,
+                "user_code": user_code,
+            },
+        )
+    )
+
+    # 2. POST to Tiled's /token endpoint (the client polls this) returns tokens.
+    respx_mock.post(tiled_mediated_urls["verification_uri"], name="token_polling").mock(
+        return_value=httpx.Response(
+            status_code=httpx.codes.OK,
+            json=tokens_response,
+        )
+    )
+    return respx_mock
+
+
+@patch("tiled.client.context.time.sleep")
+def test_tiled_mediated_device_flow_browser_and_polling_urls(
+    _sleep: MagicMock,
+    mock_tiled_mediated_server: MockRouter,
+    tiled_mediated_urls: dict[str, str],
+    tokens_response: dict[str, str | int],
+    capsys,
+):
+    """In the Tiled-mediated (non-oauth2_spec) device flow, the
+    browser must be opened with the provider's ``authorization_uri`` and the
+    client must poll Tiled's ``verification_uri`` (the /token endpoint).
+    """
+    with patch("webbrowser.open", return_value=False) as mock_open:
+        tokens = device_code_grant(
+            httpx.Client(),
+            auth_endpoint=tiled_mediated_urls["auth_endpoint"],
+            client_id=None,  # forces the Tiled-mediated "else" branch
+            token_endpoint=None,  # forces the Tiled-mediated "else" branch
+        )
+
+    assert tokens == tokens_response
+
+    # The browser is opened with the third-party provider's authorization_uri,
+    # NOT with Tiled's /token endpoint.
+    mock_open.assert_called_once_with(tiled_mediated_urls["authorization_uri"])
+
+    # The URL printed for the user to visit is the authorization_uri.
+    out, _err = capsys.readouterr()
+    assert tiled_mediated_urls["authorization_uri"] in out
+    assert tiled_mediated_urls["verification_uri"] not in out
+
+    # The client polled Tiled's /token endpoint (verification_uri), and did NOT
+    # POST to the provider's authorization page.
+    token_polling_route = mock_tiled_mediated_server["token_polling"]
+    assert token_polling_route.called
+    assert token_polling_route.call_count == 1
+
+    # Sanity check: the polling request carried the device_code as JSON.
+    polled_request = token_polling_route.calls.last.request
+    assert b"device_code" in polled_request.content
+
+
+@patch("tiled.client.context.time.sleep")
+def test_tiled_mediated_device_flow_polling_pending(
+    _sleep: MagicMock,
+    mock_tiled_mediated_server: MockRouter,
+    tiled_mediated_urls: dict[str, str],
+    tokens_response: dict[str, str | int],
+):
+    """The client should keep polling Tiled's /token endpoint while it returns
+    ``authorization_pending`` and succeed once tokens are returned.
+
+    Tiled's /token endpoint nests the error under ``detail`` (unlike the
+    oauth2-spec branch), so the client reads ``response.json()["detail"]["error"]``.
+    """
+    token_polling_route = mock_tiled_mediated_server["token_polling"]
+    token_polling_route.return_value = None
+    token_polling_route.side_effect = [
+        httpx.Response(
+            status_code=httpx.codes.BAD_REQUEST,
+            json={"detail": {"error": "authorization_pending"}},
+        ),
+        httpx.Response(status_code=httpx.codes.OK, json=tokens_response),
+    ]
+
+    stamina.set_testing(testing=True, attempts=1)
+
+    with patch("webbrowser.open", return_value=False):
+        tokens = device_code_grant(
+            httpx.Client(),
+            auth_endpoint=tiled_mediated_urls["auth_endpoint"],
+            client_id=None,
+            token_endpoint=None,
+        )
+
+    assert tokens == tokens_response
+    assert token_polling_route.call_count == 2

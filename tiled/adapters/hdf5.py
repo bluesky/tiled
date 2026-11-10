@@ -1,16 +1,19 @@
+import builtins
 import copy
+import itertools
 import os
 import sys
 import warnings
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Any, Iterator, List, Optional, Tuple, Union
+from typing import Any
 
 import dask
 import dask.array
-import dask.delayed
 import h5py
 import hdf5plugin  # noqa: F401
 import numpy
+from dask.highlevelgraph import HighLevelGraph
 from numpy._typing import NDArray
 
 from tiled.adapters.container import ContainerAdapter
@@ -27,17 +30,19 @@ from ..structures.data_source import DataSource
 from ..type_aliases import JSON
 from ..utils import BrokenLink, Sentinel, node_repr, path_from_uri
 from .array import ArrayAdapter
+from .utils import split_chunks
 
 SWMR_DEFAULT = bool(int(os.getenv("TILED_HDF5_SWMR_DEFAULT", "0")))
 INLINED_DEPTH = int(os.getenv("TILED_HDF5_INLINED_CONTENTS_MAX_DEPTH", "7"))
 
 HDF5_DATASET = Sentinel("HDF5_DATASET")
 HDF5_BROKEN_LINK = Sentinel("HDF5_BROKEN_LINK")
+MIN_CHUNK_SIZE = 1  # Minimum chunk size along the concatenation axis
 
 
 def parse_hdf5_tree(
-    tree: Union[h5py.File, h5py.Group, h5py.Dataset]
-) -> Union[dict[str, Union[Any, Sentinel]], Sentinel]:
+    tree: h5py.File | h5py.Group | h5py.Dataset,
+) -> dict[str, Any | Sentinel] | Sentinel:
     """Parse an HDF5 file or group into a nested dictionary structure
 
     the resulting tree structure represents any groups as nested dictionaries ans datasets as None.
@@ -52,7 +57,7 @@ def parse_hdf5_tree(
     dict
         A nested dictionary structure representing the HDF5 file or group
     """
-    res: dict[str, Union[Any, None]] = {}
+    res: dict[str, Any | None] = {}
 
     if isinstance(tree, h5py.Dataset):
         return HDF5_DATASET
@@ -65,10 +70,10 @@ def parse_hdf5_tree(
 
 def get_hdf5_attrs(
     file_uri: str,
-    dataset: Optional[str] = None,
+    dataset: str | None = None,
     swmr: bool = SWMR_DEFAULT,
     libver: str = "latest",
-    locking: Optional[Union[bool, str]] = None,
+    locking: bool | str | None = None,
 ) -> JSON:
     """Get attributes of an HDF5 dataset"""
     file_path = path_from_uri(file_uri)
@@ -77,9 +82,20 @@ def get_hdf5_attrs(
     ) as node:
         d = dict(getattr(node, "attrs", {}))
         for k, v in d.items():
-            # Convert any bytes to str.
-            if isinstance(v, bytes):
-                d[k] = v.decode()
+            if isinstance(v, h5py.Empty):
+                # An attribute with a null dataspace has no value.
+                d[k] = None
+            elif isinstance(v, bytes):
+                # Convert any bytes to str. HDF5 strings are only tagged ASCII
+                # or UTF-8, but older instrument software often wrote
+                # Windows-1252 or Latin-1. Latin-1 decodes any bytes, so it
+                # comes last.
+                for encoding in ("utf-8", "cp1252", "latin-1"):
+                    try:
+                        d[k] = v.decode(encoding)
+                        break
+                    except UnicodeDecodeError:
+                        pass
     return d
 
 
@@ -96,17 +112,18 @@ class h5open(h5py.File):  # type: ignore
     KeyError: "Unable to synchronously open object (can't open file)"
     if a soft link or an external link is broken, respectively.
 
-    This message is distinct from the case when a key does not exist in the file, in which case h5py raises:
+    It also raises BrokenLink if the requested dataset does not exist in the file at all (e.g. a registered
+    dataset was never written or has been removed), in which case h5py raises:
     KeyError: "Unable to synchronously open object (object 'y' doesn't exist)"
     """
 
     def __init__(
-        self, filename: Union[str, Path], dataset: Optional[str] = None, **kwargs: Any
+        self, filename: str | Path, dataset: str | None = None, **kwargs: Any
     ) -> None:
         super().__init__(filename, mode="r", **kwargs)
         self.dataset = dataset
 
-    def __enter__(self) -> Union[h5py.File, h5py.Group, h5py.Dataset]:
+    def __enter__(self) -> h5py.File | h5py.Group | h5py.Dataset:
         super().__enter__()
         try:
             return self[self.dataset] if self.dataset else self
@@ -117,13 +134,17 @@ class h5open(h5py.File):  # type: ignore
     def __exit__(self, exc_type, exc_value, exc_tb) -> None:  # type: ignore
         super().__exit__(exc_type, exc_value, exc_tb)
 
-        if exc_type == KeyError:
+        if exc_type is KeyError:
             if "file" in str(exc_value):
                 # External link is broken
                 raise BrokenLink(exc_value.args[0]) from exc_value
 
             elif "component not found" in str(exc_value):
                 # Soft link is broken
+                raise BrokenLink(exc_value.args[0]) from exc_value
+
+            elif "doesn't exist" in str(exc_value):
+                # Registered dataset (or group) is missing from the file
                 raise BrokenLink(exc_value.args[0]) from exc_value
 
 
@@ -136,11 +157,11 @@ class HDF5ArrayAdapter(ArrayAdapter):
 
     @staticmethod
     def lazy_load_hdf5_array(
-        *file_paths: Union[str, Path],
-        dataset: Optional[str] = None,
+        *file_paths: str | Path,
+        dataset: str | None = None,
         swmr: bool = SWMR_DEFAULT,
         libver: str = "latest",
-        locking: Optional[Union[bool, str]] = None,
+        locking: bool | str | None = None,
     ) -> dask.array.Array:
         """Lazily load arrays from possibly multiple HDF5 files and concatenate them along the first axis
 
@@ -160,69 +181,146 @@ class HDF5ArrayAdapter(ArrayAdapter):
             Whether to use file locking when accessing the files
         """
 
-        # Define helper functions for reading and getting specs of HDF5 arrays with dask.delayed
-        def _read_hdf5_array(fpath: Union[str, Path]) -> NDArray[Any]:
-            f = h5py.File(fpath, "r", swmr=swmr, libver=libver, locking=locking)
-            return numpy.array(f[dataset] if dataset else f)
-
-        def _get_hdf5_specs(
-            fpath: Union[str, Path]
-        ) -> Tuple[Tuple[int, ...], Union[Tuple[int, ...], None], numpy.dtype]:
+        # Define helper functions for reading and getting specs of HDF5 arrays
+        def _read_hdf5_array(
+            fpath: str | Path, slice: tuple[builtins.slice, ...]
+        ) -> NDArray:
             with h5open(
                 fpath, dataset, swmr=swmr, libver=libver, locking=locking
             ) as ds:
-                result = ds.shape, ds.chunks, ds.dtype
+                return ds[slice]
+
+        def _get_hdf5_specs(
+            fpath: str | Path,
+        ) -> tuple[tuple[int, ...], tuple[int, ...], numpy.dtype]:
+            with h5open(
+                fpath, dataset, swmr=swmr, libver=libver, locking=locking
+            ) as ds:
+                result = ds.shape, ds.chunks or ds.shape, ds.dtype
             return result
 
         # Need to know shapes/dtypes of constituent arrays to load them lazily
         shapes_chunks_dtypes = [_get_hdf5_specs(fpath) for fpath in file_paths]
         dtype = shapes_chunks_dtypes[0][2]
         if dtype == numpy.dtype("O"):
-            # TODO: It should be possible to put this in dask.delayed too -- needs to be thoroughly tested
+            # h5py uses NumPy's object dtype to represent variable-length
+            # strings, vlen arrays, and HDF5 references. These are a
+            # Python-only h5py feature not supported by HDF5 in general.
+            # See https://docs.h5py.org/en/stable/special.html.
+            #
+            # Variable-length strings are repackaged into a fixed-length
+            # bytes array (which dask can chunk). For any other object
+            # dtype we serve an empty placeholder preserving the original
+            # shape, since we cannot generally read it as a numpy array
+            # (and dask cannot auto-chunk object dtype).
             warnings.warn(
                 f"The dataset {dataset} is of object type, using a "
                 "Python-only feature of h5py that is not supported by "
                 "HDF5 in general. Read more about that feature at "
                 "https://docs.h5py.org/en/stable/special.html. "
                 "Consider using a fixed-length field instead. "
-                "Tiled will serve an empty placeholder, unless the "
-                "object is of size 1, where it will attempt to repackage "
-                "the data into a numpy array."
+                "If the data are variable-length strings, Tiled will "
+                "repackage them as a fixed-length bytes array; "
+                "otherwise an empty placeholder of the same shape "
+                "will be served."
             )
 
-            check_str_dtype = h5py.check_string_dtype(dtype)
-            if check_str_dtype.length is None:
-                # TODO: refactor and test
-                with h5open(
-                    file_paths[0],
-                    dataset=dataset,
-                    swmr=swmr,
-                    libver=libver,
-                    locking=locking,
-                ) as value:
-                    dataset_names = value.file[value.file.name + "/" + dataset][...][()]
-                    if value.size == 1:
-                        arr = dask.array.from_array(numpy.array(dataset_names))
-                    else:
-                        arr = dask.array.empty(shape=())
-                return arr
-            return dask.array.empty(shape=())
+            is_vlen_string = h5py.check_string_dtype(dtype) is not None
 
-        if not any([shape for shape, _, _ in shapes_chunks_dtypes]):
-            # All shapes are empty -> all arrays are zero-dimensional (scalars)
-            array = dask.array.stack([_read_hdf5_array(fp)[()] for fp in file_paths])
+            def _read_as_bytes(fpath: str | Path) -> NDArray:
+                with h5open(
+                    fpath, dataset, swmr=swmr, libver=libver, locking=locking
+                ) as ds:
+                    if is_vlen_string:
+                        # Coerce vlen-string object array to fixed-length bytes
+                        return numpy.asarray(ds[()], dtype=bytes)
+                    # Non-string object dtype: serve an empty placeholder
+                    # of the same shape (zero-length bytes).
+                    return numpy.empty(ds.shape, dtype="S0")
+
+            arrays = [_read_as_bytes(fp) for fp in file_paths]
+            # Mirror the empty/scalar vs. multi-dim behavior of the
+            # non-object branch below: stack (adding a leading axis) only
+            # for true scalars; otherwise concatenate along axis 0.
+            if arrays[0].shape == () or 0 in arrays[0].shape:
+                stacked = numpy.stack(arrays)
+            elif len(arrays) > 1:
+                stacked = numpy.concatenate(arrays, axis=0)
+            else:
+                stacked = arrays[0]
+            return dask.array.from_array(stacked, chunks=stacked.shape)
+
+        if all((not shp) or (0 in shp) for shp, _, _ in shapes_chunks_dtypes):
+            # Treat empty arrays and scalars separately: all shapes are empty or has 0
+            array = dask.array.stack([_read_hdf5_array(fp, ()) for fp in file_paths])
+
         else:
-            # Use delayed loading to read the arrays from the files
-            delayed = [dask.delayed(_read_hdf5_array)(fpath) for fpath in file_paths]
-            arrs = [
-                dask.array.from_delayed(val, shape=shape, dtype=dtype).rechunk(
-                    chunks=chunk_shape or "auto"
+            # Use delayed loading to read and conactenate arrays from multiple files
+            # First, find chunks along the left axis (split per file),
+            # and chunks in the rest of the dimensions (same for each file)
+            file_chunks = tuple(
+                split_chunks(shp[0], max(chk[0], MIN_CHUNK_SIZE))
+                for shp, chk, _ in shapes_chunks_dtypes
+            )
+            # Shape of the rest of dimensions
+            rest_shape = shapes_chunks_dtypes[0][0][1:]
+            rest_chunks = tuple(
+                split_chunks(shp, min(chk[i + 1] for _, chk, _ in shapes_chunks_dtypes))
+                for i, shp in enumerate(rest_shape)
+            )
+            dim0_chunks = tuple(size for fc in file_chunks for size in fc)
+            chunks_final = (dim0_chunks, *[tuple(d) for d in rest_chunks])
+
+            # Prepare slice tuples and indices for the rightmost dimensions (same for each file)
+            key_rest: tuple[tuple[int, ...], ...]
+            slc_rest: tuple[tuple[builtins.slice, ...], ...]
+            if not rest_chunks or (max(len(dim) for dim in rest_chunks) == 1):
+                # All dimensions have only one chunk per each: use full slices
+                key_rest = (tuple(0 for _ in rest_chunks),)
+                slc_rest = (tuple(builtins.slice(None) for _ in rest_chunks),)
+            else:
+                # Multiple chunks in at least one of the dimensions:
+                # build full product of indices and corresponding slices
+                key_rest = tuple(
+                    itertools.product(*(range(len(dim)) for dim in rest_chunks))
                 )
-                for (val, (shape, chunk_shape, dtype)) in zip(
-                    delayed, shapes_chunks_dtypes
+                rest_bounds = tuple(
+                    numpy.cumsum((0,) + dim).tolist() for dim in rest_chunks
                 )
-            ]
-            array = dask.array.concatenate(arrs, axis=0) if len(arrs) > 1 else arrs[0]
+                rest_starts = itertools.product(
+                    *(bounds[:-1] for bounds in rest_bounds)
+                )
+                rest_stops = itertools.product(*(bounds[1:] for bounds in rest_bounds))
+                slc_rest = tuple(
+                    tuple(
+                        builtins.slice(start, stop)
+                        for start, stop in zip(dim_starts, dim_stops)
+                    )
+                    for dim_starts, dim_stops in zip(rest_starts, rest_stops)
+                )
+
+            # Define the Dask tasks for loading each chunk from the files
+            name = "hdf5-stack-" + str(hash(tuple([dataset, *file_paths])))
+            dsk = {}  # mapping of (name: task + args) for delayed read task
+            dim0_chunk_idx = 0  # global chunk index along the leftmost dimension
+            for fpath, dim0_chunks in zip(file_paths, file_chunks):
+                # Main loop over the chunks for the leftmost dimension for each file
+                dim0_start = 0
+                for dim0_chunk_size in dim0_chunks:
+                    dim0_stop = dim0_start + dim0_chunk_size
+                    slc = (builtins.slice(dim0_start, dim0_stop),)
+                    key = (name, dim0_chunk_idx)
+
+                    # Inner loop over the rest of dimensions
+                    for kr, sr in zip(key_rest, slc_rest):
+                        dsk[key + kr] = (_read_hdf5_array, fpath, slc + sr)
+
+                    dim0_start = dim0_stop
+                    dim0_chunk_idx += 1
+
+            # Build the high-level graph and the resulting Dask array
+            hlg = HighLevelGraph.from_collections(name, dsk, dependencies=[])
+            array = dask.array.Array(hlg, name, chunks=chunks_final, dtype=dtype)
 
         return array
 
@@ -232,12 +330,12 @@ class HDF5ArrayAdapter(ArrayAdapter):
         data_source: DataSource[ArrayStructure],
         node: Node,
         /,
-        dataset: Optional[str] = None,
-        slice: Optional[Union[str, NDSlice]] = None,
-        squeeze: Optional[bool] = False,
+        dataset: str | None = None,
+        slice: str | NDSlice | None = None,
+        squeeze: bool | None = False,
         swmr: bool = SWMR_DEFAULT,
         libver: str = "latest",
-        locking: Optional[Union[bool, str]] = None,
+        locking: bool | str | None = None,
     ) -> "HDF5ArrayAdapter":
         structure = data_source.structure
         assets = data_source.assets
@@ -285,12 +383,12 @@ class HDF5ArrayAdapter(ArrayAdapter):
     def from_uris(
         cls,
         *data_uris: str,
-        dataset: Optional[str] = None,
-        slice: Optional[Union[str, NDSlice]] = None,
+        dataset: str | None = None,
+        slice: str | NDSlice | None = None,
         squeeze: bool = False,
         swmr: bool = SWMR_DEFAULT,
         libver: str = "latest",
-        locking: Optional[Union[bool, str]] = None,
+        locking: bool | str | None = None,
     ) -> "HDF5ArrayAdapter":
         file_paths = [path_from_uri(uri) for uri in data_uris]
 
@@ -315,9 +413,7 @@ class HDF5ArrayAdapter(ArrayAdapter):
         return cls(array, structure, metadata=metadata)
 
 
-class HDF5Adapter(
-    ContainerAdapter[Union["HDF5Adapter", HDF5ArrayAdapter]], IndexersMixin
-):
+class HDF5Adapter(ContainerAdapter["HDF5Adapter | HDF5ArrayAdapter"], IndexersMixin):
     """Adapter for HDF5 files
 
     This map the structure of an HDF5 file onto a "Tree" of array structures.
@@ -353,13 +449,13 @@ class HDF5Adapter(
 
     def __init__(
         self,
-        tree: Union[dict[str, Any], Sentinel],
+        tree: dict[str, Any] | Sentinel,
         *data_uris: str,
-        dataset: Optional[str] = None,
-        structure: Optional[ArrayStructure] = None,
-        metadata: Optional[JSON] = None,
-        specs: Optional[List[Spec]] = None,
-        **kwargs: Optional[Any],
+        dataset: str | None = None,
+        structure: ArrayStructure | None = None,
+        metadata: JSON | None = None,
+        specs: list[Spec] | None = None,
+        **kwargs: Any | None,
     ) -> None:
         if tree == HDF5_BROKEN_LINK:
             raise BrokenLink(
@@ -380,15 +476,15 @@ class HDF5Adapter(
     def from_catalog(
         cls,
         # An HDF5 node may reference a dataset (array) or group (container).
-        data_source: DataSource[Union[ArrayStructure, None]],
+        data_source: DataSource[ArrayStructure | None],
         node: Node,
         /,
-        dataset: Union[str, list[str]] = "/",
+        dataset: str | list[str] = "/",
         swmr: bool = SWMR_DEFAULT,
         libver: str = "latest",
-        locking: Optional[Union[bool, str]] = None,
+        locking: bool | str | None = None,
         **kwargs: Any,  # Optional kwargs for HDF5ArrayAdapter
-    ) -> Union["HDF5Adapter", HDF5ArrayAdapter]:
+    ) -> "HDF5Adapter | HDF5ArrayAdapter":
         if not isinstance(dataset, str):
             dataset = "/".join(dataset)
 
@@ -439,12 +535,12 @@ class HDF5Adapter(
     def from_uris(
         cls,
         *data_uris: str,
-        dataset: Optional[str] = None,
+        dataset: str | None = None,
         swmr: bool = SWMR_DEFAULT,
         libver: str = "latest",
-        locking: Optional[Union[bool, str]] = None,
+        locking: bool | str | None = None,
         **kwargs: Any,  # Optional kwargs for HDF5ArrayAdapter
-    ) -> Union["HDF5Adapter", HDF5ArrayAdapter]:
+    ) -> "HDF5Adapter | HDF5ArrayAdapter":
         fpath = path_from_uri(data_uris[0])
         with h5open(fpath, dataset, swmr=swmr, libver=libver, locking=locking) as file:
             tree = parse_hdf5_tree(file)
@@ -474,7 +570,7 @@ class HDF5Adapter(
         """Iterate over the keys of the tree"""
         yield from self._tree
 
-    def __getitem__(self, key: str) -> Union["HDF5Adapter", HDF5ArrayAdapter]:
+    def __getitem__(self, key: str) -> "HDF5Adapter | HDF5ArrayAdapter":
         dataset = f"{self.dataset or ''}/{key.strip('/')}"  # Referenced to the root of the file
         node = copy.deepcopy(self._tree)
         for segment in key.strip("/").split("/"):
@@ -501,7 +597,7 @@ class HDF5Adapter(
                 *self.uris, dataset=dataset, **self._kwargs
             )
 
-    def get(self, key: str, *args: Any) -> Union["HDF5Adapter", HDF5ArrayAdapter]:
+    def get(self, key: str, *args: Any) -> "HDF5Adapter | HDF5ArrayAdapter":
         """Overwrite to always raise KeyErrors for broken links and missing items"""
         return self[key]
 
@@ -520,7 +616,7 @@ class HDF5Adapter(
     def search(self, query: Any) -> None:
         raise NotImplementedError
 
-    def read(self, fields: Optional[str] = None) -> "HDF5Adapter":
+    def read(self, fields: str | None = None) -> "HDF5Adapter":
         if fields is not None:
             raise NotImplementedError
         return self
@@ -528,16 +624,16 @@ class HDF5Adapter(
     # The following two methods are used by keys(), values(), items().
 
     def _keys_slice(
-        self, start: int, stop: int, direction: int, page_size: Optional[int] = None
-    ) -> List[Any]:
+        self, start: int, stop: int, direction: int, page_size: int | None = None
+    ) -> list[Any]:
         keys = list(self._tree.keys())
         if direction < 0:
             keys = list(reversed(keys))
         return keys[start:stop]
 
     def _items_slice(
-        self, start: int, stop: int, direction: int, page_size: Optional[int] = None
-    ) -> List[Tuple[Any, Any]]:
+        self, start: int, stop: int, direction: int, page_size: int | None = None
+    ) -> list[tuple[Any, Any]]:
         """
 
         Parameters

@@ -32,8 +32,9 @@
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
 import importlib.metadata
+import re
 from pathlib import Path
-from subprocess import check_output
+from subprocess import check_output, run
 
 import tiled
 
@@ -314,6 +315,59 @@ generate_schema_documentation(
     "../../tiled/config_schemas/client_profiles.yml",
     "reference/client-profiles.md",
 )
+
+
+def alembic_head(ref, package_dirs):
+    "Return the head revision(s) of the migrations at a git ref, read from git."
+    for package_dir in package_dirs:
+        lines = run(
+            ["git", "grep", "-hE", r"^(down_)?revision\b", ref, "--"]
+            + [f":/{package_dir}/migrations/versions/*.py"],
+            capture_output=True,  # git grep exits 1 when a ref has no migrations yet
+            text=True,
+        ).stdout.splitlines()
+        if lines:
+            revisions, parents = set(), set()
+            for line in lines:
+                found = parents if line.startswith("down_") else revisions
+                found.update(re.findall(r"""["'](\w+)["']""", line))
+            return ", ".join(f"`{head}`" for head in sorted(revisions - parents))
+    return "—"
+
+
+def generate_database_revisions(target):
+    tags = check_output(["git", "tag", "--sort=-creatordate"], text=True).split()
+    if not tags:
+        raise RuntimeError("No git tags found. Run: git fetch --tags --unshallow")
+    # Collapse consecutive releases that ship the same revisions.
+    rows = []  # [newest tag, oldest tag, catalog head, authn head]
+    for tag in tags:
+        catalog = alembic_head(tag, ["tiled/catalog"])
+        # The authentication database moved here from tiled/database.
+        authn = alembic_head(tag, ["tiled/authn_database", "tiled/database"])
+        if rows and rows[-1][2:] == [catalog, authn]:
+            rows[-1][1] = tag
+        else:
+            rows.append([tag, tag, catalog, authn])
+    lines = [
+        "# Database Revisions",
+        "",
+        "This page is generated from the git tags when the documentation is built.",
+        "",
+        "Each row gives the Alembic revision that a range of Tiled releases requires.",
+        "Upgrade with `tiled catalog upgrade-database` for the catalog database",
+        "and `tiled admin upgrade-database` for the authentication database.",
+        "",
+        "| Tiled versions | Catalog database | Authentication database |",
+        "| --- | --- | --- |",
+    ]
+    for newest, oldest, catalog, authn in rows:
+        versions = newest if newest == oldest else f"{oldest} to {newest}"
+        lines.append(f"| {versions} | {catalog} | {authn} |")
+    Path(target).write_text("\n".join(lines) + "\n")
+
+
+generate_database_revisions("reference/database-revisions.md")
 
 from tiled.adapters.mapping import MapAdapter
 from tiled.config import Authentication, AuthenticationProviderSpec

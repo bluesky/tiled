@@ -1,17 +1,18 @@
 import concurrent.futures
 import itertools
 import math
-from typing import TYPE_CHECKING, Optional, Union
+from typing import TYPE_CHECKING
 from urllib.parse import parse_qs, urlparse
 
 import dask
 import dask.array
-import httpx
+import httpx2 as httpx
 import numpy
 from numpy.typing import NDArray
 
 from ..ndslice import NDBlock, NDSlice, split_slice
 from ..structures.core import STRUCTURE_TYPES
+from ..utils import Conflicts
 from .base import BaseClient
 from .utils import (
     chunks_repr,
@@ -85,7 +86,7 @@ class _DaskArrayClient(BaseClient):
     def __array__(self, *args, **kwargs):
         return self.read().__array__(*args, **kwargs)
 
-    def _get_block(self, block: NDBlock, block_slice: Optional[NDSlice] = None):
+    def _get_block(self, block: NDBlock, block_slice: NDSlice | None = None):
         """Fetch the data for one chunk (block) in a chunked array.
 
         This private method is used internally by the client and requires the
@@ -130,16 +131,18 @@ class _DaskArrayClient(BaseClient):
             "expected_shape": ",".join(map(str, exp_shape)) or "scalar",
         }
         params = params | ({"slice": block_slice.to_numpy_str()} if block_slice else {})
-        for attempt in retry_context():
-            with attempt:
-                content = handle_error(
-                    self.context.http_client.get(
-                        url_path,
-                        headers={"Accept": media_type},
-                        params=params,
-                    )
-                ).read()
-
+        with self.context.throttle():
+            for attempt in retry_context(self.context):
+                with attempt:
+                    content = handle_error(
+                        self.context.http_client.get(
+                            url_path,
+                            headers={"Accept": media_type},
+                            params=params,
+                        )
+                    ).read()
+        if (ps := self.context.progress_state) is not None:
+            ps.advance()
         return numpy.frombuffer(content, dtype=self.dtype).reshape(exp_shape)
 
     def _get_slice(self, slice: NDSlice):
@@ -176,16 +179,18 @@ class _DaskArrayClient(BaseClient):
             "expected_shape": ",".join(map(str, exp_shape)) or "scalar",
         }
         params = params | ({"slice": slice.to_numpy_str()} if slice else {})
-        for attempt in retry_context():
-            with attempt:
-                content = handle_error(
-                    self.context.http_client.get(
-                        url_path,
-                        headers={"Accept": media_type},
-                        params=params,
-                    )
-                ).read()
-
+        with self.context.throttle():
+            for attempt in retry_context(self.context):
+                with attempt:
+                    content = handle_error(
+                        self.context.http_client.get(
+                            url_path,
+                            headers={"Accept": media_type},
+                            params=params,
+                        )
+                    ).read()
+        if (ps := self.context.progress_state) is not None:
+            ps.advance()
         return numpy.frombuffer(content, dtype=self.dtype).reshape(exp_shape)
 
     def read_block(self, block, slice=None):
@@ -212,6 +217,30 @@ class _DaskArrayClient(BaseClient):
             shape=exp_shape,
         )
         return dask_array
+
+    def fetch_count(self, slice=None) -> int:
+        """Return the number of HTTP requests that read(slice) will make.
+
+        Mirrors the split logic in read() so that callers (e.g. CompositeClient)
+        can compute an accurate progress-bar total without triggering any fetches.
+        """
+        arr_slice = NDSlice(slice).expand_for_shape(self.shape)
+        exp_shape = arr_slice.shape_after_slice(self.shape)
+        if 0 in exp_shape:
+            return 0
+        total_bytes = math.prod(exp_shape) * self.dtype.itemsize
+        if total_bytes < self.RESPONSE_BYTESIZE_LIMIT:
+            return 1
+        chunk_bounds = tuple(
+            tuple(itertools.accumulate(axis_chunks, initial=0))
+            for axis_chunks in self.chunks
+        )
+        indexed_slices = split_slice(
+            arr_slice,
+            max_size=self.RESPONSE_BYTESIZE_LIMIT // self.dtype.itemsize,
+            pref_splits=chunk_bounds,
+        )
+        return len(indexed_slices)
 
     def read(self, slice=None):
         """Access the entire array or its slice
@@ -254,7 +283,7 @@ class _DaskArrayClient(BaseClient):
         )
 
         # Build a client-side dask array whose chunks correspond to subsplits of the slice
-        name = "remote-dask-array-" f"{self.uri}"
+        name = f"remote-dask-array-{self.uri}"
         dask_tasks = {
             (name,) + indx: (self._get_slice, slc)
             for indx, (slc) in indexed_slices.items()
@@ -269,6 +298,9 @@ class _DaskArrayClient(BaseClient):
         return dask_array
 
     def write(self, array, persist=True):
+        if not (hasattr(array, "shape") and hasattr(array, "dtype")):
+            array = numpy.asarray(array)
+
         params = {}
         if persist is False:
             # Extend the query only for non-default behavior.
@@ -285,6 +317,9 @@ class _DaskArrayClient(BaseClient):
                 )
 
     def write_block(self, array, block, slice=..., persist=True):
+        if not (hasattr(array, "shape") and hasattr(array, "dtype")):
+            array = numpy.asarray(array)
+
         url_path = self.item["links"]["block"].format(*block)
         params = {
             **parse_qs(urlparse(url_path).query),
@@ -307,7 +342,7 @@ class _DaskArrayClient(BaseClient):
     def patch(
         self,
         array: NDArray,
-        offset: Union[int, tuple[int, ...]],
+        offset: int | tuple[int, ...],
         extend=False,
         persist=True,
     ):
@@ -395,7 +430,7 @@ class _DaskArrayClient(BaseClient):
                     httpx.codes.BAD_REQUEST,
                     httpx.codes.CONFLICT,
                 ]:
-                    raise ValueError(
+                    detail = (
                         response.json()
                         .get("detail", "Array parameters conflict.")
                         .replace(
@@ -403,6 +438,9 @@ class _DaskArrayClient(BaseClient):
                             "Pass keyword argument ",  # Python function argument
                         )
                     )
+                    if response.status_code == httpx.codes.CONFLICT:
+                        raise Conflicts(detail)
+                    raise ValueError(detail)
                 handle_error(response)
         # Update cached structure.
         new_structure = response.json()
@@ -469,7 +507,7 @@ class _DaskArrayClient(BaseClient):
 
     def subscribe(
         self,
-        executor: Optional[concurrent.futures.Executor] = None,
+        executor: concurrent.futures.Executor | None = None,
     ) -> "ArraySubscription":
         """
         Subscribe to streaming updates about this array.
@@ -498,7 +536,10 @@ class DaskArrayClient(_DaskArrayClient):
 
     def compute(self):
         "Alias to client.read().compute()"
-        return self.read().compute()
+        dask_arr = self.read()
+        n = math.prod(len(c) for c in dask_arr.chunks)
+        with self.context.tracking_progress(total=n):
+            return dask_arr.compute()
 
 
 class ArrayClient(DaskArrayClient):
@@ -508,7 +549,10 @@ class ArrayClient(DaskArrayClient):
         """
         Access the entire array or a slice.
         """
-        return super().read(slice).compute()
+        dask_arr = super().read(slice)
+        n = self.fetch_count(slice)
+        with self.context.tracking_progress(total=n):
+            return dask_arr.compute()
 
     def read_block(self, block, slice=None):
         """

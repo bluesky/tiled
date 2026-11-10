@@ -3,18 +3,63 @@ import itertools
 import logging
 import weakref
 from collections import defaultdict
+from collections.abc import Callable
 from datetime import datetime
-from typing import Any, Callable, Dict, Optional, Protocol
+from typing import Any, Protocol
 
 import cachetools
 import orjson
 from fastapi import WebSocketDisconnect
 from redis import asyncio as redis
+from redis.asyncio.sentinel import Sentinel
 
 from ..ndslice import NDSlice
 from ..utils import safe_json_dump as _safe_json_dump
 
 logger = logging.getLogger(__name__)
+
+
+def _build_redis_client(settings: dict[str, Any]) -> redis.Redis:
+    """Build the async Redis client for the streaming datastore.
+
+    - ``uri`` (``redis://`` / ``rediss://``) — a single standalone node.
+    - ``sentinels`` (a list of ``"host:port"``) plus ``service_name`` — a
+      Sentinel-managed cluster; the client follows failover to the current
+      primary.
+
+    When ``ssl`` is set (Sentinel path), TLS is applied to both the Sentinel
+    discovery and the data-node connections.
+    """
+    kwargs = dict(
+        socket_timeout=settings["socket_timeout"],
+        socket_connect_timeout=settings["socket_connect_timeout"],
+    )
+    sentinels = settings.get("sentinels")
+    if sentinels:
+        hosts = [
+            (host, int(port))
+            for host, _, port in (s.rpartition(":") for s in sentinels)
+        ]
+        # health_check_interval only matters for Sentinel failover detection, so
+        # it is applied on the HA path only -- the standalone from_url call below
+        # stays identical to the pre-HA behavior. Default mirrors
+        # StreamingCacheConfig; tolerate a partial cache_config (e.g. from a
+        # direct from_uri call) as the memory datastore does.
+        kwargs["health_check_interval"] = settings.get("health_check_interval", 10)
+        sentinel_kwargs = None
+        if settings.get("ssl"):
+            # TLS for both Sentinel discovery and data-node connections.
+            tls_kwargs = {"ssl": True}
+            kwargs.update(tls_kwargs)
+            sentinel_kwargs = tls_kwargs
+        sentinel = Sentinel(
+            hosts,
+            password=settings.get("password"),
+            sentinel_kwargs=sentinel_kwargs,
+            **kwargs,
+        )
+        return sentinel.master_for(settings["service_name"])
+    return redis.from_url(settings["uri"], **kwargs)
 
 
 def safe_json_dump(content):
@@ -23,11 +68,9 @@ def safe_json_dump(content):
 
 
 class StreamingDatastore(Protocol):
-    def __init__(self, settings: Dict[str, Any]) -> None:
-        ...
+    def __init__(self, settings: dict[str, Any]) -> None: ...
 
-    def client(self) -> Any:
-        ...
+    def client(self) -> Any: ...
 
     def make_ws_handler(
         self,
@@ -36,23 +79,18 @@ class StreamingDatastore(Protocol):
         uri,
         node_id,
         schema,
-    ) -> Callable[[int], None]:
-        ...
+    ) -> Callable[[int], None]: ...
 
-    async def incr_seq(self, node_id: str) -> int:
-        ...
+    async def incr_seq(self, node_id: str) -> int: ...
 
-    async def set(self, node_id, sequence, metadata, payload=None) -> None:
-        ...
+    async def set(self, node_id, sequence, metadata, payload=None) -> None: ...
 
-    async def get(self, key, *fields) -> None:
-        ...
+    async def get(self, key, *fields) -> None: ...
 
-    async def close(self, node_id) -> None:
-        ...
+    async def close(self, node_id) -> None: ...
 
 
-_DATASTORES: Dict[str, type[StreamingDatastore]] = {}
+_DATASTORES: dict[str, type[StreamingDatastore]] = {}
 
 
 def register_datastore(name: str):
@@ -150,7 +188,7 @@ class PubSub:
         q = asyncio.Queue()
         self_ref = weakref.ref(self)
 
-        def _cleanup_cb(_ref: Optional[weakref.ref] = None):
+        def _cleanup_cb(_ref: weakref.ref | None = None):
             # The weakref callback must not strongly reference self to avoid a reference cycle.
             self_obj = self_ref()
             if self_obj is None:
@@ -166,6 +204,18 @@ class PubSub:
                 yield await q.get()
 
         return gen()
+
+
+# Sentinel pushed onto the live-event buffer when the live subscription drops
+# (e.g. a Redis failover). It signals the handler to close the socket abnormally
+# so the client reconnects and replays any sequences missed during the outage.
+_LIVE_SUBSCRIPTION_LOST = object()
+
+# Sentinel pushed onto the live-event buffer when the peer goes away (client
+# disconnect or server shutdown, both delivered as a websocket.disconnect
+# receive event). It wakes the handler's send loop, which is otherwise blocked
+# waiting for data, so the handler can return and release the connection.
+_PEER_DISCONNECTED = object()
 
 
 def _make_ws_handler_common(
@@ -224,8 +274,9 @@ def _make_ws_handler_common(
     - Ensures cleanup of resources (e.g., live stream subscriptions) on exit.
     """
 
-    async def handler(sequence: Optional[int] = None):
-        await websocket.accept()
+    async def handler(sequence: int | None = None, already_accepted: bool = False):
+        if not already_accepted:
+            await websocket.accept()
         end_stream = asyncio.Event()
 
         # Send schema to provide client context to interpret what follows.
@@ -247,7 +298,7 @@ def _make_ws_handler_common(
             if metadata.get("type") == "array-ref":
                 if metadata.get("patch"):
                     s = ",".join(
-                        f"{offset}:{offset+shape}"
+                        f"{offset}:{offset + shape}"
                         for offset, shape in zip(
                             metadata["patch"]["offset"], metadata["patch"]["shape"]
                         )
@@ -275,23 +326,68 @@ def _make_ws_handler_common(
                 logger.exception(
                     f"Live subscription error for node {node_id}: {e}",
                 )
+                # Enqueue a sentinel to wake the main loop, which is otherwise
+                # blocked forever on an empty buffer now that this task has died.
+                await stream_buffer.put(_LIVE_SUBSCRIPTION_LOST)
             finally:
                 if live_cleanup is not None:
                     await live_cleanup()
 
         live_task = asyncio.create_task(buffer_live_events())
 
+        # Track the disconnect code so we can surface it to the send loop.
+        disconnect_code = None
+
+        async def watch_for_disconnect():
+            """Wake the send loop on a disconnect event.
+
+            The send loop below blocks on an idle buffer and only sends; it never
+            reads. A client disconnect or a server shutdown arrives as a
+            websocket.disconnect receive event, so without draining ``receive()``
+            here the handler would never notice the socket is gone and would
+            keep the ASGI task (and thus graceful shutdown) alive forever.
+            """
+            nonlocal disconnect_code
+            try:
+                while True:
+                    message = await websocket.receive()
+                    if message["type"] == "websocket.disconnect":
+                        disconnect_code = message.get("code")
+                        break
+            except RuntimeError:
+                # Raised if the socket was already closed by the send path.
+                pass
+            finally:
+                stream_buffer.put_nowait(_PEER_DISCONNECTED)
+
+        disconnect_task = asyncio.create_task(watch_for_disconnect())
+
         last_sent = 0
-        if sequence is not None:
-            # If a sequence number is passed, replay old data
-            current_seq = last_sent = int(await current_sequence_getter())
-            logger.debug("Replaying old data...")
-            for s in range(sequence, current_seq + 1):
-                await stream_data(s)
         # Finally stream all buffered data into the websocket
         try:
+            if sequence is not None:
+                # If a sequence number is passed, replay old data
+                current_seq = last_sent = int(await current_sequence_getter())
+                logger.debug("Replaying old data...")
+                for s in range(sequence, current_seq + 1):
+                    await stream_data(s)
+
             while not end_stream.is_set():
                 live_seq = await stream_buffer.get()
+
+                if live_seq is _PEER_DISCONNECTED:
+                    # Client disconnected or the server is shutting down. Surface
+                    # it through the shared disconnect path so the connection is
+                    # released and graceful shutdown can proceed.
+                    raise WebSocketDisconnect(code=disconnect_code or 1000)
+
+                if live_seq is _LIVE_SUBSCRIPTION_LOST:
+                    # Must be an *abnormal* close: a graceful 1000 reads as
+                    # ConnectionClosedOK on the client and would not reconnect.
+                    # 1012 yields ConnectionClosedError, so the client reconnects
+                    # and resumes from its last received sequence.
+                    await websocket.close(code=1012, reason="Live subscription lost")
+                    return
 
                 # Skip duplicates or already replayed messages
                 if live_seq <= last_sent:
@@ -305,7 +401,15 @@ def _make_ws_handler_common(
             logger.info(f"Client disconnected from node {node_id}")
         finally:
             live_task.cancel()
-            await live_task
+            disconnect_task.cancel()
+            try:
+                await asyncio.gather(live_task, disconnect_task, return_exceptions=True)
+            except asyncio.CancelledError:
+                # In case a second cancel arrives while cleaning up, ignore it.
+                # The tasks are already cancelled and we don't want to raise an exception here.
+                # This was observed in tests using Starlette's TestClient, which cancels
+                # all tasks on exit.
+                pass
 
     return handler
 
@@ -339,7 +443,7 @@ class TTLCacheDatastore(StreamingDatastore):
           StreamingDatastore instead.
     """
 
-    def __init__(self, settings: Dict[str, Any]):
+    def __init__(self, settings: dict[str, Any]):
         self._settings = settings
         self._lock = asyncio.Lock()
         maxsize = self._settings.get("maxsize", 1000)
@@ -428,15 +532,9 @@ class TTLCacheDatastore(StreamingDatastore):
 
 @register_datastore("redis")
 class RedisStreamingDatastore(StreamingDatastore):
-    def __init__(self, settings: Dict[str, Any]):
+    def __init__(self, settings: dict[str, Any]):
         self._settings = settings
-        socket_timeout = self._settings["socket_timeout"]
-        socket_connect_timeout = self._settings["socket_connect_timeout"]
-        self._client = redis.from_url(
-            self._settings["uri"],
-            socket_timeout=socket_timeout,
-            socket_connect_timeout=socket_connect_timeout,
-        )
+        self._client = _build_redis_client(settings)
         self.data_ttl = self._settings["data_ttl"]
         self.seq_ttl = self._settings["seq_ttl"]
 

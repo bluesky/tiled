@@ -1,11 +1,10 @@
 import json
-from typing import Optional
 
 from pydantic import HttpUrl
 
 from tiled.access_control.access_policies import ExternalPolicyDecisionPoint
-from tiled.server.schemas import Principal, PrincipalType
-from tiled.type_aliases import AccessBlob, AccessTags, Scopes
+from tiled.server.schemas import Principal
+from tiled.type_aliases import AccessTags, Scopes
 
 
 class ExampleAuthorizationPolicy(ExternalPolicyDecisionPoint):
@@ -16,9 +15,9 @@ class ExampleAuthorizationPolicy(ExternalPolicyDecisionPoint):
         create_node_endpoint: str,
         allowed_tags_endpoint: str,
         scopes_endpoint: str,
-        modify_node_endpoint: Optional[str] = None,
-        empty_access_blob_public: bool = False,
-        provider: Optional[str] = None,
+        modify_node_endpoint: str | None = None,
+        empty_access_tags_public: bool = False,
+        provider: str | None = None,
     ):
         self._token_audience = token_audience
         self._type_adapter = None
@@ -30,24 +29,21 @@ class ExampleAuthorizationPolicy(ExternalPolicyDecisionPoint):
             scopes_endpoint=scopes_endpoint,
             provider=provider,
             modify_node_endpoint=modify_node_endpoint,
-            empty_access_blob_public=empty_access_blob_public,
+            empty_access_tags_public=empty_access_tags_public,
         )
 
     def build_input(
         self,
         principal: Principal,
-        authn_access_tags: Optional[AccessTags],
+        authn_access_tags: AccessTags | None,
         authn_scopes: Scopes,
-        access_blob: Optional[AccessBlob] = None,
+        access_tags: AccessTags | None = None,
     ) -> str:
         _input = {"audience": self._token_audience}
 
-        if (
-            principal.type is PrincipalType.external
-            and principal.access_token is not None
-        ):
+        if principal.access_token is not None:
             _input["token"] = principal.access_token.get_secret_value()
 
-        if access_blob is not None:
-            _input.update(access_blob)
+        if access_tags is not None:
+            _input["tags"] = sorted(access_tags)
         return json.dumps({"input": _input})

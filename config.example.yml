@@ -82,13 +82,21 @@
 #   # Metadata the root node of the catalog
 #   metadata: {}
 #   specs: []
-#   top_level_access_blob: null
+#   top_level_access_tags: null
 #
 #   # Database connection pool tuning
 #   catalog_pool_size: 5
 #   storage_pool_size: 5
 #   catalog_max_overflow: 10
 #   storage_max_overflow: 10
+#
+#   # Mount a sub-tree of the catalog as if it were the root. Useful for
+#   # exposing different sections of a single catalog database at different
+#   # URL path prefixes (see the 'trees' section below). The value is a
+#   # slash-separated path (e.g. "/experiment/2024") or a list of segments
+#   # (e.g. ["experiment", "2024"]).
+#   #
+#   # mount_node: /experiment/2024
 
 
 # -----------------------------------------------------------------------------
@@ -119,6 +127,50 @@
 
 
 # -----------------------------------------------------------------------------
+# Webhooks  [EXPERIMENTAL]
+# -----------------------------------------------------------------------------
+# Push notifications to external HTTPS endpoints when catalog events occur
+# (e.g. a new entry is created, a stream is closed).  When this section is
+# absent, the webhooks feature is fully disabled.
+#
+# Once enabled, webhooks are registered per-node via the REST API:
+#   POST   /api/v1/webhooks/target/{path}        – register
+#   GET    /api/v1/webhooks/target/{path}        – list
+#   DELETE /api/v1/webhooks/{webhook_id}         – delete
+#   GET    /api/v1/webhooks/history/{webhook_id} – delivery history
+#
+# webhooks:
+#   # Keys used to encrypt webhook HMAC signing secrets at rest.
+#   # Required only if users will register webhooks with a signing secret.
+#   # Generate a key:  openssl rand -hex 32
+#   # Supports key rotation: first key encrypts, all keys are tried to decrypt.
+#   secret_keys:
+#     - ${TILED_WEBHOOK_SECRET_KEY}
+#
+#   # Networks to which webhooks must not be delivered. The entire list already
+#   # includes host ranges that are typically blocked.
+#   # Env: TILED_WEBHOOKS_BLOCKED_NETWORKS
+#   # blocked_networks:
+#   #   - "a.b.c.d/16"
+#
+#   # Webhooks must be delivered to these hosts, whether they are in the
+#   # ranges of the blocked_networks list or not.
+#   # Env: TILED_WEBHOOKS_ALLOW_DELIVERY_HOSTS
+#   # allow_delivery_hosts:
+#   #  - myhost.nsls2.bnl.gov
+#
+#   # Allow webhook URLs to use plain HTTP instead of HTTPS.
+#   # Default: false.  Enable for containerized / local development setups.
+#   # Env: TILED_WEBHOOKS_ALLOW_HTTP
+#   # allow_http: false
+#
+#   # Allow webhook URLs that target private, loopback, or reserved addresses.
+#   # Default: false.  Enable when webhook receivers run on the same network.
+#   # Env: TILED_WEBHOOKS_ALLOW_PRIVATE_ADDRESSES
+#   # allow_private_addresses: false
+
+
+# -----------------------------------------------------------------------------
 # Authentication
 # -----------------------------------------------------------------------------
 authentication:
@@ -143,7 +195,7 @@ authentication:
 
   # OPTION 2 — OpenID Connect (ORCID, Google, Azure, …)
   # Tiled never touches users' passwords; the OIDC provider handles that.
-  # Requires:  pip install httpx
+  # Requires:  pip install httpx2
   #
   # Setup steps:
   #   1. Deploy Tiled behind HTTPS.
@@ -166,6 +218,15 @@ authentication:
   #       client_id: YOUR_CLIENT_ID_HERE
   #       client_secret: ${OIDC_CLIENT_SECRET}
   #       well_known_uri: https://accounts.google.com/.well-known/openid-configuration
+  #
+  #       # REQUIRED for browser-based login (Web UI). After the OIDC provider
+  #       # authenticates the user, Tiled redirects to this URL with tokens in
+  #       # the query string. Point it at your UI's auth-callback route:
+  #       #   https://<BASE_URL>/ui/auth-callback
+  #       # Without this, the browser will see raw JSON tokens instead of being
+  #       # redirected back to the UI.
+  #       # Not needed for CLI-only (device flow) deployments.
+  #       redirect_on_success: https://<BASE_URL>/ui/auth-callback
 
 
   # OPTION 3 — Development / demo only: dictionary of hardcoded passwords
@@ -373,6 +434,22 @@ authentication:
 
 
 # -----------------------------------------------------------------------------
+# Mount Node Auto-Creation
+# -----------------------------------------------------------------------------
+# When using 'mount_node' in a catalog/tree config, the referenced path must
+# exist in the database. By default, if the path does not exist, the server
+# raises an error at startup.
+#
+# Set this to true to automatically create any missing intermediate container
+# nodes at server startup. This is a global setting that applies to all
+# catalogs/trees.
+#
+# Also settable via the TILED_CREATE_MOUNT_NODES_IF_NOT_EXIST environment variable.
+#
+# create_mount_nodes_if_not_exist: false
+
+
+# -----------------------------------------------------------------------------
 # Metrics
 # -----------------------------------------------------------------------------
 # Prometheus metrics are exposed at /metrics by default.
@@ -441,6 +518,21 @@ authentication:
 #     tree: catalog
 #     args:
 #       uri: ${TILED_CATALOG_B_URI}
+#
+# Trees also support 'mount_node' to serve a sub-tree of a catalog.
+# This lets you house multiple logical catalogs in a single database:
+#
+# trees:
+#   - path: /raw
+#     tree: catalog
+#     args:
+#       uri: ${TILED_CATALOG_URI}
+#       mount_node: /experiment/raw
+#   - path: /processed
+#     tree: catalog
+#     args:
+#       uri: ${TILED_CATALOG_URI}
+#       mount_node: /experiment/processed
 #
 # It also supports custom alternatives to Tiled's catalog:
 #

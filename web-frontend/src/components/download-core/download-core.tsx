@@ -1,7 +1,7 @@
 import * as React from "react";
 
 import Select, { SelectChangeEvent } from "@mui/material/Select";
-import { useContext, useEffect, useMemo, useState } from "react";
+import { useContext, useState } from "react";
 
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
@@ -11,12 +11,10 @@ import IconButton from "@mui/material/IconButton";
 import InputLabel from "@mui/material/InputLabel";
 import MenuItem from "@mui/material/MenuItem";
 import Popover from "@mui/material/Popover";
-import Skeleton from "@mui/material/Skeleton";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
 import Tooltip from "@mui/material/Tooltip";
-import { about } from "../../client";
-import { components } from "../../openapi_schemas";
+import { axiosInstance } from "../../client";
 import copy from "clipboard-copy";
 import { SettingsContext } from "../../context/settings";
 
@@ -62,6 +60,37 @@ const Download: React.FunctionComponent<DownloadProps> = (props) => {
 
   const value = props.format !== undefined ? props.format.mimetype : "";
 
+  const handleDownload = async () => {
+    if (!props.link || !props.format) return;
+    const url = `${props.link}&filename=${props.name}${props.format.extension}`;
+    try {
+      const resp = await axiosInstance.get(url, { responseType: "blob" });
+      const blobUrl = URL.createObjectURL(resp.data);
+      const a = document.createElement("a");
+      a.href = blobUrl;
+      a.download = `${props.name}${props.format.extension}`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(blobUrl);
+    } catch (e) {
+      console.error("Download failed", e);
+    }
+  };
+
+  const handleOpen = async () => {
+    if (!props.link) return;
+    try {
+      const resp = await axiosInstance.get(props.link, { responseType: "blob" });
+      const blobUrl = URL.createObjectURL(resp.data);
+      window.open(blobUrl, "_blank");
+      // Revoke after a delay to allow the new tab to load
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
+    } catch (e) {
+      console.error("Open failed", e);
+    }
+  };
+
   return (
     <Stack spacing={2} direction="column">
       <Box sx={{ minWidth: 120 }}>
@@ -91,21 +120,9 @@ const Download: React.FunctionComponent<DownloadProps> = (props) => {
       <Stack spacing={1} direction="row">
         <Tooltip title="Download to a file">
           <span>
-            {
-              // The filename query parameter cues the server to set the
-              // Content-Disposition header which prompts the browser to open
-              // a "Save As" dialog initialized with the specified filename.
-            }
             <Button
-              component="a"
-              href={
-                props.link
-                  ? `${props.link}&filename=${props.name}${
-                      props.format!.extension
-                    }`
-                  : "#"
-              }
               variant="outlined"
+              onClick={handleDownload}
               {...(props.link ? {} : { disabled: true })}
             >
               Download
@@ -167,10 +184,8 @@ const Download: React.FunctionComponent<DownloadProps> = (props) => {
         <Tooltip title="Open in a new tab (if format is supported by web browser)">
           <span>
             <Button
-              component="a"
-              href={props.link ? props.link : "#"}
-              target="_blank"
               variant="outlined"
+              onClick={handleOpen}
               {...(props.link ? {} : { disabled: true })}
             >
               Open

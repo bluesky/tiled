@@ -1,7 +1,6 @@
-from typing import List, Optional
-
 import pydantic_settings
 from fastapi import HTTPException, Query, Request
+from pydantic import constr
 from starlette.status import (
     HTTP_400_BAD_REQUEST,
     HTTP_403_FORBIDDEN,
@@ -19,6 +18,15 @@ from .core import NoEntry
 from .schemas import Principal
 from .utils import filter_for_access, record_timing
 
+# Template for the "sort" query parameters.
+# An empty string is allowed here for back-compatibility with old clients
+# that send sort= when no sort is specified. Non-empty values must be a valid sort field.
+SortField = constr(pattern=r"^(?:[+-][a-zA-Z0-9_.]*|[a-zA-Z0-9_.]+)?$")
+
+# Limits for pagination parameters
+DEFAULT_PAGE_SIZE = 100
+MAX_PAGE_SIZE = 300
+
 # NOTE: The regex below is used by fastapi to parse the string representation of a slice
 # and raise a 422 error if the string is not valid.
 # It does not capture certain erroneous cases, such as ",,", for example.
@@ -33,15 +41,15 @@ def get_root_tree(request: Request):
 
 async def get_entry(
     path: str,
-    security_scopes: List[str],
-    principal: Optional[Principal],
-    authn_access_tags: Optional[AccessTags],
+    security_scopes: list[str],
+    principal: Principal | None,
+    authn_access_tags: AccessTags | None,
     authn_scopes: Scopes,
     root_tree: pydantic_settings.BaseSettings,
     session_state: dict,
     metrics: dict,
-    structure_families: Optional[set[StructureFamily]] = None,
-    access_policy: Optional[AccessPolicy] = None,
+    structure_families: set[StructureFamily] | None = None,
+    access_policy: AccessPolicy | None = None,
 ) -> AnyAdapter:
     """
     Obtain a node in the tree from its path.
@@ -157,7 +165,7 @@ def parse_slice_param(slice: str = Query("", pattern=SLICE_REGEX)):
 
 
 def expected_shape(
-    expected_shape: Optional[str] = Query(
+    expected_shape: str | None = Query(
         None, min_length=1, pattern="^[0-9]+(,[0-9]+)*$|^scalar$"
     ),
 ):
@@ -184,7 +192,7 @@ def offset_param(
 
 
 def patch_shape_param(
-    patch_shape: Optional[str] = Query(
+    patch_shape: str | None = Query(
         None, min_length=1, pattern="^[0-9]+(,[0-9]+)*$|^scalar$"
     ),
 ):
@@ -195,11 +203,72 @@ def patch_shape_param(
 
 
 def patch_offset_param(
-    patch_offset: Optional[str] = Query(
-        None, min_length=1, pattern="^[0-9]+(,[0-9]+)*$"
-    ),
+    patch_offset: str | None = Query(None, min_length=1, pattern="^[0-9]+(,[0-9]+)*$"),
 ):
     "Specify and parse an array patch offset parameter."
     if patch_offset is None:
         return None
     return tuple(map(int, patch_offset.split(",")))
+
+
+def sorting_param(
+    sort: list[SortField] | None = Query(None),
+):
+    "Specify and parse a sorting parameter."
+    if sort is None:
+        return None
+
+    # Backcompatibility: Old clients send sort= (empty string) when no sort is
+    # specified. Filter these out to avoid a spurious error.
+    sort = [s for s in sort if s]
+    if not sort:
+        return None
+
+    result = {}
+    for item in sort:
+        if item.startswith("-"):
+            key, dir = item[1:], -1
+        elif item.startswith("+"):
+            key, dir = item[1:], 1
+        else:
+            key, dir = item, 1
+
+        if key in result:
+            raise HTTPException(
+                status_code=HTTP_400_BAD_REQUEST,
+                detail=f"Duplicate sorting key: {key}",
+            )
+
+        result[key] = dir
+
+    # Check that the default sorting (""), if specified, is the last item in the list
+    if ("" in result) and (list(result.keys())[-1] != ""):
+        raise HTTPException(
+            status_code=HTTP_400_BAD_REQUEST,
+            detail="Default sorting (empty string) must be the last item in the sort list",
+        )
+
+    return list(result.items())
+
+
+class PaginationParams:
+    def __init__(
+        self,
+        offset: int | None = Query(None, alias="page[offset]", ge=0),
+        cursor: int | None = Query(None, alias="page[cursor]", ge=0),
+        limit: int = Query(
+            DEFAULT_PAGE_SIZE, alias="page[limit]", ge=0, le=MAX_PAGE_SIZE
+        ),
+    ):
+        if cursor is not None and offset is not None:
+            raise HTTPException(
+                status_code=400,
+                detail="Cannot specify both page[cursor] and page[offset]",
+            )
+
+        if cursor is None and offset is None:
+            offset = 0
+
+        self.offset = offset
+        self.cursor = cursor
+        self.limit = limit

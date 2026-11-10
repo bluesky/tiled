@@ -1,7 +1,7 @@
 import os
 import re
 from pathlib import Path
-from typing import Any, List, Optional
+from typing import Any
 
 import typer
 
@@ -36,7 +36,7 @@ def serve_directory(
             "this option selected."
         ),
     ),
-    api_key: Optional[str] = typer.Option(
+    api_key: str | None = typer.Option(
         None,
         "--api-key",
         help=(
@@ -55,7 +55,16 @@ def serve_directory(
             "may break user (client-side) code."
         ),
     ),
-    ext: Optional[List[str]] = typer.Option(
+    include_ext: list[str] | None = typer.Option(
+        None,
+        "--include-ext",
+        help=(
+            "Include only given file extensions, e.g., "
+            "--include-ext .csv --include-ext .tiff "
+            "Include the leading '.' in the file extension."
+        ),
+    ),
+    ext: list[str] | None = typer.Option(
         None,
         "--ext",
         help=(
@@ -64,7 +73,7 @@ def serve_directory(
             "extension."
         ),
     ),
-    mimetype_detection_hook: Optional[str] = typer.Option(
+    mimetype_detection_hook: str | None = typer.Option(
         None,
         "--mimetype-hook",
         help=(
@@ -73,7 +82,7 @@ def serve_directory(
             "Specify here as 'package.module:function'"
         ),
     ),
-    adapters: Optional[List[str]] = typer.Option(
+    adapters: list[str] | None = typer.Option(
         None,
         "--adapter",
         help=(
@@ -81,7 +90,7 @@ def serve_directory(
             "Specify here as 'mimetype=package.module:function'"
         ),
     ),
-    walkers: Optional[List[str]] = typer.Option(
+    walkers: list[str] | None = typer.Option(
         None,
         "--walker",
         help=(
@@ -100,7 +109,7 @@ def serve_directory(
         ),
     ),
     port: int = typer.Option(8000, help="Bind to a socket with this port."),
-    log_config: Optional[str] = typer.Option(
+    log_config: str | None = typer.Option(
         None, help="Custom uvicorn logging configuration file"
     ),
     log_timestamps: bool = typer.Option(
@@ -138,11 +147,19 @@ def serve_directory(
     stamp_head(ALEMBIC_INI_TEMPLATE_PATH, ALEMBIC_DIR, database)
 
     from ..catalog import from_uri as catalog_from_uri
+    from ..client.register import default_filter
     from ..config import Authentication
     from ..server.app import build_app, print_server_info
 
+    if include_ext is not None:
+
+        def filter(path):
+            return default_filter(path) and path.suffix in include_ext
+
+    else:
+        filter = default_filter
     if keep_ext:
-        from ..adapters.files import identity
+        from ..client.register import identity
 
         key_from_filename = identity
     else:
@@ -255,6 +272,7 @@ def serve_directory(
                     adapters_by_mimetype=adapters_by_mimetype,
                     walkers=walkers,
                     key_from_filename=key_from_filename,
+                    filter=filter,
                 )
             )
             await event.wait()
@@ -280,6 +298,7 @@ def serve_directory(
                 adapters_by_mimetype=adapters_by_mimetype,
                 walkers=walkers,
                 key_from_filename=key_from_filename,
+                filter=filter,
             )
             typer.echo("Indexing complete.")
             await server_task
@@ -288,16 +307,16 @@ def serve_directory(
 
 
 def serve_catalog(
-    database: Optional[str] = typer.Argument(
+    database: str | None = typer.Argument(
         None, help="A filepath or database URI, e.g. 'catalog.db'"
     ),
-    read: Optional[List[str]] = typer.Option(
+    read: list[str] | None = typer.Option(
         None,
         "--read",
         "-r",
         help="Locations that the server may read from",
     ),
-    write: Optional[List[str]] = typer.Option(
+    write: list[str] | None = typer.Option(
         None,
         "--write",
         "-w",
@@ -322,7 +341,7 @@ def serve_catalog(
             "this option selected."
         ),
     ),
-    api_key: Optional[str] = typer.Option(
+    api_key: str | None = typer.Option(
         None,
         "--api-key",
         help=(
@@ -330,15 +349,13 @@ def serve_catalog(
             "By default, a random key is generated at startup and printed."
         ),
     ),
-    cache_uri: Optional[str] = typer.Option(
-        None, "--cache", help=("Provide cache URI")
-    ),
-    cache_data_ttl: Optional[int] = typer.Option(
+    cache_uri: str | None = typer.Option(None, "--cache", help=("Provide cache URI")),
+    cache_data_ttl: int | None = typer.Option(
         None,
         "--cache-data-ttl",
         help=("Max retention time for streaming data (seconds)"),
     ),
-    cache_seq_ttl: Optional[int] = typer.Option(
+    cache_seq_ttl: int | None = typer.Option(
         None,
         "--cache-seq-ttl",
         help=("Max retention time for streaming sequence counter (seconds)"),
@@ -359,7 +376,7 @@ def serve_catalog(
             "This verifies that the configuration is compatible with scaled (multi-process) deployments."
         ),
     ),
-    log_config: Optional[str] = typer.Option(
+    log_config: str | None = typer.Option(
         None, help="Custom uvicorn logging configuration file"
     ),
     log_timestamps: bool = typer.Option(
@@ -531,7 +548,7 @@ def serve_pyobject(
             "option selected."
         ),
     ),
-    api_key: Optional[str] = typer.Option(
+    api_key: str | None = typer.Option(
         None,
         "--api-key",
         help=(
@@ -555,7 +572,7 @@ def serve_pyobject(
             "This verifies that the configuration is compatible with scaled (multi-process) deployments."
         ),
     ),
-    log_config: Optional[str] = typer.Option(
+    log_config: str | None = typer.Option(
         None, help="Custom uvicorn logging configuration file"
     ),
     log_timestamps: bool = typer.Option(
@@ -613,7 +630,7 @@ def serve_demo(
 
 @serve_app.command("config")
 def serve_config(
-    config_path: Optional[Path] = typer.Argument(
+    config_path: Path | None = typer.Argument(
         None,
         help=(
             "Path to a config file or directory of config files. "
@@ -630,7 +647,7 @@ def serve_config(
             "option selected."
         ),
     ),
-    api_key: Optional[str] = typer.Option(
+    api_key: str | None = typer.Option(
         None,
         "--api-key",
         help=(
@@ -638,7 +655,7 @@ def serve_config(
             "By default, a random key is generated at startup and printed."
         ),
     ),
-    host: Optional[str] = typer.Option(
+    host: str | None = typer.Option(
         None,
         help=(
             "Bind socket to this host. Use `--host 0.0.0.0` to make the application "
@@ -646,7 +663,7 @@ def serve_config(
             "example: --host `'::'`. Uses value in config by default."
         ),
     ),
-    port: Optional[int] = typer.Option(
+    port: int | None = typer.Option(
         None, help="Bind to a socket with this port. Uses value in config by default."
     ),
     scalable: bool = typer.Option(
@@ -656,7 +673,7 @@ def serve_config(
             "This verifies that the configuration is compatible with scaled (multi-process) deployments."
         ),
     ),
-    log_config: Optional[str] = typer.Option(
+    log_config: str | None = typer.Option(
         None, help="Custom uvicorn logging configuration file"
     ),
     log_timestamps: bool = typer.Option(

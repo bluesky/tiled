@@ -1,4 +1,5 @@
 "Adapted from https://github.com/sqlalchemy/sqlalchemy/wiki/Query-Plan-SQL-construct"
+
 import contextlib
 import os
 
@@ -48,8 +49,10 @@ def record_explanations():
         explanations.append(e)
 
     _query_explanation_callbacks.append(capture)
-    yield explanations
-    _query_explanation_callbacks.remove(capture)
+    try:
+        yield explanations
+    finally:
+        _query_explanation_callbacks.remove(capture)
 
 
 class ExplainAsyncSession(AsyncSession):

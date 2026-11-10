@@ -9,6 +9,16 @@ services:
       - TILED_CATALOG_URI=postgresql://tiled:${POSTGRES_PASSWORD}@postgres:5432/tiled_catalog
       - TILED_CATALOG_WRITABLE_STORAGE=["file:///storage", "postgresql://tiled:${POSTGRES_PASSWORD}@postgres:5432/tiled_storage"]
       - TILED_STREAMING_CACHE_URI=redis://:${REDIS_PASSWORD}@redis:6379
+      - TILED_WEBHOOKS_SECRET_KEYS=${TILED_WEBHOOKS_SECRET_KEYS:-}
+      - TILED_WEBHOOKS_BLOCKED_NETWORKS=${TILED_WEBHOOKS_BLOCKED_NETWORKS:-}
+      - TILED_WEBHOOKS_ALLOW_DELIVERY_HOSTS=${TILED_WEBHOOKS_ALLOW_DELIVERY_HOSTS:-}
+      - TILED_WEBHOOKS_ALLOW_HTTP=${TILED_WEBHOOKS_ALLOW_HTTP:-false}
+      - TILED_WEBHOOKS_ALLOW_PRIVATE_ADDRESSES=${TILED_WEBHOOKS_ALLOW_PRIVATE_ADDRESSES:-false}
+      # Export OpenTelemetry traces to the collector (see compose.monitoring.yml).
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
+      - OTEL_SERVICE_NAME=tiled
+      # Don't trace health checks and metrics scrapes (operational chatter).
+      - OTEL_PYTHON_FASTAPI_EXCLUDED_URLS=healthz,api/v1/metrics
     volumes:
       - tiled_data:/storage
     ports:
@@ -22,7 +32,8 @@ services:
     networks:
       - backend
     healthcheck:
-      test: curl --fail http://localhost:8000/healthz || exit 1
+      # Use httpx (a core dependency of tiled) rather than curl.
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8000/healthz', timeout=5).raise_for_status()"]
       interval: 60s
       timeout: 10s
       retries: 3

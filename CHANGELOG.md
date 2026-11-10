@@ -3,14 +3,579 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
-
 ## Unreleased
+
+### Added
+
+- Documentation page listing the Alembic revisions of the catalog and
+  authentication databases required by each Tiled release, generated from the
+  git tags when the documentation is built.
+- OpenTelemetry tracing for the server, exported over OTLP. The example monitoring
+  stack (`compose.monitoring.yml`) now includes an OpenTelemetry Collector, Jaeger,
+  and Grafana Tempo (traces are sent to both backends), and the Collector also
+  scrapes and re-exposes Tiled's Prometheus metrics.
+- Emit OpenTelemetry spans for internal request phases (access control, read,
+  tokenize, pack) so they appear as child spans in a request's trace, giving a
+  per-request breakdown of where time is spent.
+- Return the request's OpenTelemetry trace ID in the `X-Tiled-Trace-ID` response
+  header (also on server errors, and exposed via CORS) when the request is
+  traced, and include it in the Python client's error messages and in the server's
+  log lines, so a failing or slow request can be looked up in the tracing backend.
+  The request's span records the correlation ID (`X-Tiled-Request-ID`) as the
+  `tiled.request_id` attribute, so the trace can also be found from it.
+- Disable FastAPI's built-in OpenTelemetry auto-configuration
+  (`telemetry={"auto_configure": False}`) so that, on FastAPI >=0.142, it does
+  not register a second OTLP exporter alongside Tiled's own tracing pipeline and
+  export every span twice.
+- Emit OpenTelemetry spans for PostgreSQL queries (asyncpg for the catalog and
+  authentication databases, ADBC for the storage database), Redis commands, and
+  outbound HTTP calls (httpx: OIDC, webhooks, external policy servers), so
+  external-service calls appear in traces. The example monitoring stack also
+  generates a service graph viewable in Grafana, with Tiled's separate Postgres
+  databases (catalog, storage, authn) and Redis shown as distinct nodes.
+
+### Changed
+
+- OIDC authenticators now verify id_tokens (and their `at_hash`) at login via
+  `verify_login`, while `decode_token` only decodes access tokens.
+
+- On PostgreSQL, the access-control filter passes the resolved tag ids as a
+  single array parameter (`tag_id = ANY(...)`) instead of one bind parameter
+  per tag. For principals with many tags this avoids huge, per-tag-count
+  prepared statements, whose parameter-blind generic plans defeated the
+  planner statistics.
+
+- Tiled now manages its connection pools to tabular storage more correctly.
+  Also, it is now not allowed to use two storage databases with the same
+  database on different hosts.
+- Database initialization with `init_if_not_exists` (the catalog, via
+  `tiled.catalog.from_uri` and server configuration; and the authentication
+  database, via server configuration) is now done in-process instead of by
+  spawning a `tiled catalog init` or `tiled admin initialize-database`
+  subprocess, which took about 1-2 s per call. For an in-memory SQLite catalog
+  no initialization is done at all at this point, since it is transient and
+  initialized at server startup. This speeds up server startup, `SimpleTiledServer`,
+  and the test suite.
+- `tiled.utils.Conflicts` now subclasses `ValueError`, and
+  `ArrayClient.patch` raises `Conflicts` when the server reports a 409
+  (e.g. the patch would overwrite data without `extend=True`), matching
+  `RaggedClient.patch`. Code catching `ValueError` keeps working.
+- Replace the `httpx` dependency with `httpx2`. Objects passed into Tiled,
+  such as a custom `auth=` or `timeout=`, must now be `httpx2` types, and
+  exceptions raised are `httpx2` exceptions. Python 3.10 is no longer
+  supported, because httpx2 requires Python 3.11 or newer.
+- Python 3.14 is now officially supported.
+- String-valued enums (`StructureFamily`, `Kind`, `Endianness`, `Management`,
+  `SparseLayout`, `Operator`, `ScopeName`, `EntryFields`, `PrincipalType`,
+  `EnvelopeFormat`, `EventType`, `DeliveryOutcome`) now subclass
+  `enum.StrEnum`. Comparison with plain strings, `.value`, and serialization
+  are unchanged, but `str()`, `format()`, and f-strings of a member now give
+  its value (e.g. `"array"`) instead of its qualified name
+  (`"StructureFamily.array"`). Error messages that include these values
+  change accordingly.
+- Type annotations throughout use PEP 604 (`X | Y`) and built-in generics
+  (`list[str]`) instead of `typing.Union`, `Optional`, `List`, etc., enforced
+  by the ruff `UP` (pyupgrade) rules.
+
+### Fixed
+
+- Treat `anyio.ClosedResourceError` as a normal disconnect in the
+  test-client websocket wrapper: starlette >=1.0 raises it when receiving
+  on a closed session, which previously killed streaming subscription
+  worker threads with unhandled exceptions during test teardown.
+- `DELETE /api/v1/asset/{path}?id=N` now refuses (409) the asset of a
+  SQL-backed table. That asset is the storage database, shared by all such
+  tables, so it can not be deleted; delete the node to remove its data.
+- Accept `Authorization: Bearer TOKEN` on WebSocket connections. The handshake
+  rejected any `Authorization` header that was not `Apikey SECRET` with a 400,
+  so a client holding an access token could not send it as a header. The
+  header is now dispatched on its scheme, matching the HTTP routes: `Bearer` is
+  read as an access token, `Apikey` as an API key, and any other scheme is
+  rejected with a 400 that is also logged on the server. The `access_token`
+  query parameter still works, for browsers that cannot set headers, and an
+  `api_key` query parameter is now accepted too, as on the HTTP routes.
+- Fix construction of the `Principal` for WebSocket connections authenticated
+  with an access token from an external (OIDC) provider, which raised
+  `AttributeError` and surfaced as a 500.
+- The Python client's subscriptions now authenticate the WebSocket with the
+  session's own credentials: its API key if it has one, otherwise its access
+  token as `Bearer`. Because a WebSocket handshake cannot prompt a refresh with
+  a 401, an access token within a minute of expiring is refreshed before
+  connecting. Only a session with neither falls back to minting a short-lived
+  API key per connection, and only a key minted this way is revoked afterwards.
+- Fixed `read_partition` on a table with a string column, which failed with
+  a dtype mismatch (`object` in the structure, `string` in the data sent by
+  the server). The eager client now fetches the partition directly, without
+  dask; the dask client no longer checks the partition against the
+  structure's meta, as `read` already did not.
+- Iterating over `node.metadata_revisions` (e.g. `list(...)`) ends after the
+  last revision instead of failing with `ValueError`, and fetches the
+  revisions page by page rather than one request per revision. Indexing past
+  the end raises `IndexError`.
+- Fixed `ArrayClient.patch` on arrays whose shape is not a whole number of
+  chunks. The check for writing past the end, and the new shape after
+  `extend=True`, used the Zarr array's shape, which is rounded up to whole
+  chunks, so a patch could silently grow the array or add fill values.
+- Fixed serving HDF5 files that have an empty (null dataspace) attribute or a
+  byte-string attribute that is not valid UTF-8. Either one made every node
+  in the file fail to load. Empty attributes are now served as `null`, and
+  non-UTF-8 byte strings are decoded as Windows-1252, or as Latin-1 when
+  they are not valid Windows-1252 either.
+- Webhook URL validation performed a reverse DNS lookup (a network round-trip)
+  for every address the URL resolves to. It is now done only when the address
+  is in a blocked network and `allow_delivery_hosts` is configured, the only
+  case where its result is used.
+- Fixed `database.init_if_not_exists: true` in the server configuration for an
+  authentication database whose URI contains a password: the password was
+  masked in the URI handed to the initialization step, which then failed to
+  connect.
+- Improved the deletion of large subtrees with many associated assets (PostgreSQL only).
+- Fixed client-side accumulation of metadata revisions across pages: a slice
+  spanning more than one page (more than 100 revisions) returned subsequent
+  pages as nested lists instead of revision records.
+- Fixed `CompositeClient.get_contents(maxlen=...)`, which kept requesting a
+  `None` URL when the pages were exhausted before reaching `maxlen`.
+- Fixed `from_context` (and therefore `from_uri`) ignoring
+  `include_data_sources=True` in the initial metadata fetch, so a client
+  pointed directly at a node could not see its data sources.
+- Fixed the deprecation warning for the removed `prompt_for_reauthentication`
+  parameter of `from_uri`, which was never emitted.
+- Fixed a double slash (e.g. `/metadata//x`) in the links returned when
+  creating a node, which the client then followed for subsequent requests.
+- Fixed `ExternalPolicyDecisionPoint` allowing writes its policy service
+  denied. A `{"result": false}` reply was not treated as a denial, so nodes,
+  graph entities, and links were written anyway. Such writes now fail with
+  403 (a GraphQL error for graph writes).
+- Metadata queries on SQLite compare the stored JSON value with its own type
+  again under SQLAlchemy 2.1 (e.g. `Eq("number", "0")` no longer matches a
+  stored `0`), and the `sqlalchemy <2.1` pin is removed.
+- `Eq(key, None)` and `NotEq(key, None)` work on SQLite (they raised an error)
+  and, as on PostgreSQL, match an explicit JSON null but not a missing key.
+- On SQLite, a `None` in an `In` or `NotIn` list matches an explicit JSON null
+  but not a missing key, as `Eq`/`NotEq` and the in-memory adapter do.
+- Fixed access tags approved by an external access policy failing with 403
+  "Cannot apply access tags that are not defined" on nodes, graph entities,
+  and links. Since v0.2.19, a tag needs a row in the catalog database, and
+  only `user:` and `service:` tags got one on write. Tags an access policy
+  approved now get a row on first use.
+
+### Maintenance
+
+- Fixed flaky `test_thread_lock`, which started its timer after the worker
+  threads had already started.
+- Commit `uv.lock` and `pixi.lock`. CI on pull requests and pushes installs
+  the locked versions (`uv sync --locked`), so a new release of a dependency
+  cannot break unrelated pull requests; the nightly scheduled run re-resolves
+  to the latest releases (`uv sync --upgrade`) to catch such breakage early.
+  Both lockfiles are refreshed by pull requests on the 1st and 15th of each
+  month (Dependabot for `uv.lock`, a workflow for `pixi.lock`), skipping
+  releases less than 3 days old (Dependabot's cooldown, and
+  `exclude-newer = "3d"` in `pixi.toml`). `pixi.toml` now requires
+  pixi >=0.83.0. Contributors who change dependencies should run `uv lock`
+  (for `pyproject.toml`) or `pixi lock` (for `pixi.toml`) and commit the
+  updated lockfile.
+
+## v0.2.19 (2026-10-13)
+
+### Added
+
+- Expose the Deployment `strategy` in the helm chart, so that a deployment can
+  use `Recreate` instead of the default `RollingUpdate`.
+- Add a `DELETE /api/v1/asset/{path}?id=N` endpoint to dissociate a single
+  asset from a node. If the asset is no longer referenced by any other data
+  source, its catalog record is deleted; and, when it is internally managed,
+  the underlying data (file, directory, object, or storage-database rows) is
+  deleted as well. Mirrors node deletion: gated on `expose_raw_assets` and
+  defaults to `external_only=true`, refusing to delete internally-managed data
+  unless `external_only=false` is passed.
+- Add `Container.register`, a synchronous client method to register external,
+  server-accessible files as a single dataset (array, table, etc.).
+- Add registration support for Parquet files.
+- OpenTelemetry tracing for the server, exported over OTLP. The example monitoring
+  stack (`compose.monitoring.yml`) now includes an OpenTelemetry Collector, Jaeger,
+  and Grafana Tempo (traces are sent to both backends), and the Collector also
+  scrapes and re-exposes Tiled's Prometheus metrics.
+- Emit OpenTelemetry spans for internal request phases (access control, read,
+  tokenize, pack) so they appear as child spans in a request's trace, giving a
+  per-request breakdown of where time is spent.
+- Disable FastAPI's built-in OpenTelemetry auto-configuration
+  (`telemetry={"auto_configure": False}`) so that, on FastAPI >=0.142, it does
+  not register a second OTLP exporter alongside Tiled's own tracing pipeline and
+  export every span twice.
+- Documentation: a user-guide page on validating metadata against custom specs
+  via server configuration.
+- ACL filtering by access tags ids resolved from access tag names on the server.
+  The ids are passed as literals in the querries, which allows Postgres to use
+  extended statstics to plan the query.
+- `Container.search_deep(*queries, max_depth=None)` and the corresponding
+  `GET /api/v1/search-deep/{path}` HTTP endpoint, which search all
+  descendants of a node (at any depth), not just direct children. Multiple
+  queries are combined with logical AND. Results are
+  returned as a `DeepSearchResults` mapping keyed by path tuples relative
+  to the search root. Supported by both the SQL catalog and `MapAdapter`,
+  including `MapAdapter` trees with a catalog (or other container adapter)
+  mounted at a sub-path, e.g. via `trees` configuration. Results are in default
+  (database) order; sorting is not supported. Looking up a single result with
+  `results[key]` scans the results and is linear in their number.
+  Access policy is applied to every container between the search root and a
+  match, as path traversal does for other routes, so a node is not returned
+  (and its container's name not revealed) if a container above it is not
+  visible to the requesting user. See
+  [#1368](https://github.com/bluesky/tiled/issues/1368).
+- Zarr arrays are served with `dims` taken from the store: Zarr v3
+  `dimension_names`, or the `_ARRAY_DIMENSIONS` attribute on Zarr v2 arrays.
+  An array with any unnamed dimension keeps `dims=None`.
+
+### Changed
+
+- Replace catalog `access_blob` column with a normalized `access_tags` table.
+  Tags, grants, tag ownership, and node-tag associations now live in the
+  catalog database; graph entities and links share the same tags table,
+  but have their own association tables. Per-user principal tags replace
+  user-owned blobs and are granted implicitly to their principals.
+- `AccessTagsParser` and `AccessTagsCompiler` now discover and use the catalog
+  database on both SQLite and PostgreSQL. Removed tag definitions retain their
+  node associations but lose their grants, preventing transient configuration
+  failures from erasing access-control information. The server remains
+  compatible with older clients that use `access_blob`.
+- Deployment note: this change includes four sequential catalog migrations
+  (an intermediate blob-association schema, conversion to tags, a
+  parent-scoped node-tag association, and naming adjustment). Apply the full
+  migration chain without stopping at an intermediate revision. This also drops
+  the old metadata index; deploy the improved replacement index from #1521
+  as well.
+- Object-storage (S3) tests now run against an in-process `moto` S3 server
+  started automatically by the test suite, instead of requiring a MinIO
+  container (whose image was removed from Docker Hub). Set `TILED_TEST_BUCKET`
+  to point the tests at a real MinIO/S3 endpoint instead.
+- The server depends on `PyJWT` instead of `python-jose` to sign and verify
+  JSON Web Tokens.
+- Remove `curl` from the container image; it was only used for health checks.
+  The `compose.yml` and `compose.dev.yml` health checks now use `httpx`
+  instead.
+
+### Fixed
+
+- Roll back catalog node creation when SQL identifier validation fails, so a
+  corrected retry is not blocked by a partially-created node.
+- Encode `application/json-seq` table exports with the RFC 7464 record
+  separator and line-feed framing, preventing single-row sequences from being
+  mistaken for a single JSON document by browser clients.
+- Extend to zarr routes the previous fix for reads of array data whose
+  on-disk shape has diverged from the shape recorded in the catalog
+  structure, which can happen while an array is being extended
+  (e.g. streaming appends).
+- Make retrying of non-idempotent requests (create and append) safe against duplication.
+- `distinct` on a catalog node counted nodes across the whole catalog instead of
+  only the node's children. It is now scoped to the requested node.
+- Fix the background task that purges expired Sessions and API keys. It
+  crashed on its first run and was never retried, so expired entries
+  (including the short-lived keys minted for websocket subscriptions)
+  could accumulate until a Principal hit the API-key limit. Expired entries
+  are now removed with a single bulk `DELETE`, so a large backlog is not loaded into
+  memory. The task also purges expired PendingSessions (device-code login attempts).
+- Deleting a Session is no longer blocked by a pending device-code login that
+  still references it: `pending_sessions.session_id` is now `ON DELETE SET
+  NULL`, so the reference is detached instead.
+- On shutdown, the server now stops its background tasks, and waits for them,
+  before closing the database connection pool. Closing the pool first could
+  leave a background task running and hang shutdown.
+- `from_uri` applies its `timeout` and `trust_env` arguments, or the default
+  timeouts when none are given, to the first request it makes to an `http://` URI.
+
+## v0.2.18 (2026-09-02)
+
+### Changed
+
+- Refactor the experimental graph API to tie entities to catalog nodes by
+  `nodePathParts` (a list of key segments) instead of by the internal `nodeId`.
+  Internal catalog node ids are no longer exposed to clients: `createEntity`
+  and `updateEntity` take a `nodePathParts` and the server resolves it to the
+  node's id, the `catalogNodeId` query is removed, and an entity now reports a
+  read-only boolean `isNodeBound` in place of `nodeId`. Passing a
+  `nodePathParts` that names no existing node raises an error.
+
+### Fixed
+
+- Fix `TypeError: Type is not JSON serializable: bytes` when serializing a
+  table with a bytes-dtype (numpy `S`) column to `application/json` or
+  `application/json-seq`. Such values are now decoded to strings.
+- Fix reads of array data whose on-disk shape has diverged from the shape
+  recorded in the catalog structure, which can happen while an array is being
+  extended (e.g. streaming appends).
+- Fix a regression where opening a URL with an `?api_key=...` query parameter
+  in the web UI redirected to the login page instead of authenticating. This
+  now also works in single-user (`--api-key`) mode, where the server exposes no
+  `/auth` routes: the web UI detects the API-key cookie session by probing a
+  protected endpoint rather than `/auth/whoami`.
+- Reading of individual partitions of multi-partitioned tables.
+- Fix the client showing a spurious "Retrying…" indicator (and a misleading
+  "Retry scheduled" debug log) when a request failed with a *non-retryable*
+  error, such as a 4xx response or `CannotRefreshAuthentication` during a normal
+  first-time login. The underlying retry context manager captures every
+  exception before deciding whether to retry, so the indicator was being driven
+  off exception capture rather than an actual retry. The indicator now appears
+  only when a retry genuinely occurs.
+- Render `NaN` as transparent pixels.
+- Fix client-side reading of reversed array slices that reach the start of an
+  axis (e.g. `arr[::-1]`) when the selection is large enough to be fetched in
+  multiple requests.
+- Fixed regression in configuration parser, which had mistyped the catalog
+  configuration `adapter_by_mimetype` resulting in a spurious error.
+- Resolve issue where creating a streaming subscription would cause the server
+  to hang indefinitely on close. Added an additional asyncio task that watches
+  for disconnects and breaks out of the `buffer_live_events` loop when the
+  connection is closed. Also added a test to verify that `server.close()` does
+  not hang with an open streaming subscription.
+
+## v0.2.17 (2026-08-25)
+
+### Fixed
+
+- Fix the client ignoring the `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY`
+  environment variables. Because Tiled supplies a custom `httpx` transport (to
+  enable client-side response caching), httpx's built-in proxy resolution was
+  bypassed, so proxied requests (e.g. to an external OIDC provider) never went
+  through the configured proxy. The transport now honors these environment
+  variables. This can be disabled via the new `trust_env=False` parameter on
+  `from_uri`. As part of this fix, the client's `verify` setting is now applied
+  to the underlying transport (previously it was silently ignored when the
+  custom transport was in use).
+- Fix `check_scopes` incorrectly requiring every request under a
+  `ProxiedOIDCAuthenticator` (e.g. `EntraAuthenticator`) to carry the full set
+  of scopes known to the authenticator (the union of all scopes in
+  `scopes_map`). This broke scope-restricted API keys, which legitimately hold
+  only a subset of scopes. Authorization is now enforced solely against the
+  scopes each endpoint requires.
+
+## v0.2.16 (2026-08-21)
+
+### Changed
+
+- `ProxiedOIDCAuthenticator` now accepts a `scopes_map` parameter (previously
+  available only on `EntraAuthenticator`) and translates identity-provider
+  scopes into Tiled scopes when decoding tokens. Its effective `scopes` are the
+  union of any explicitly-configured `scopes` and the Tiled scopes granted via
+  `scopes_map`. When `scopes_map` is omitted, behavior is unchanged (the token's
+  native scopes are used).
+
+### Fixed
+
+- Fix precedence of scope check for `ProxiedOIDCAuthenticator`.
+- If refreshing access tokens yields `400 Bad Request`, clear the cached tokens
+  and prompt for login.
+
+## v0.2.15 (2026-08-11)
+
+### Added
+
+- Support clustered Redis for high availability.
+- Add client_secret,redirect_on_success,redirect_on_failure to
+  ProxiedOIDCAuthenticator. This is to allow login using Tiled-UI
+- Allow configuration of user_id_claim for OIDCAuthenticator
+- Lazy asset resolution for array datasets backed by many files: reading a
+  slice or block now resolves only the assets (files) the read touches,
+  computed purely from the structure geometry, instead of materializing every
+  asset row to build the adapter. (#1463)
+- Parallel, memory-bounded reads for many-file sequence datasets: files are
+  read concurrently and reduced per file before stacking, so peak memory stays
+  bounded regardless of how many files a slice spans. Tunable via the
+  `TILED_SEQUENCE_IO_WORKERS` and `TILED_SEQUENCE_READ_BATCH_BYTES` environment
+  variables. (#1463)
+- Add a new feature that stores a graph of links into the catalog database. Adds strawberry
+  as a dependency. Import/search/export of graph links is accomplished through graphql.
+
+### Changed
+
+- Server-side `CatalogNodeAdapter.data_sources` is now an async method taking
+  `include_assets` (default `False`) so common metadata and structure paths no
+  longer load asset rows; callers that need assets must
+  `await data_sources(include_assets=True)`. (#1463)
+
+### Fixed
+
+- Improve webhook handling to enable adding additional blocked networks and
+  allow specification of hostnames that are allowed to receive webhooks despite being
+  on a blocked network.
+- Fix the `raw_export` download progress bar, which showed a wrong total (e.g.
+  `1,257,333,024/100 bytes`) and did not advance during the transfer. The bar
+  now seeds each task's total from the known asset size, and raw-asset downloads
+  no longer negotiate `blosc2` (whose client decoder buffers the whole response
+  in memory and emits it only at the end, freezing the bar and spiking memory).
+  Downloads instead stream via `zstd`/`gzip`; pass `compression=False` to
+  `raw_export` to download uncompressed (`Accept-Encoding: identity`).
+- Fix truncation of `blosc2`-encoded downloads at exactly 65536 bytes. Streaming
+  responses (e.g. `raw_export` of a `bytes` node via `/asset/bytes`) are emitted
+  in 64 KiB chunks, and the server compresses each chunk into an independent
+  blosc2 frame. The client `Blosc2Decoder` decoded only the first frame; it now
+  walks every concatenated frame and reassembles the full payload.
+- Fix the webhook `history` and `delete` endpoints when a catalog is mounted under
+  a sub-path (the `trees:` config form).
+- Skip the `array-ref` streaming-cache update in `put_data_source` when the
+  data source is not an array.
+- Tolerate unknown fields on the client side when decoding server JSON into
+  `Asset`, `DataSource`, `Spec`, and structure dataclasses (`AwkwardStructure`,
+  `TableStructure`, `ContainerStructure`). Unknown keys are dropped and logged
+  at DEBUG so a client can talk to a newer server without crashing on
+  fields it does not recognize.
+- Widen `assets.size` from `INTEGER` (int32) to `BIGINT` (int64) so the
+  server can register single files larger than ~2.1 GB without an
+  `int32 out of range` error from PostgreSQL. Includes an alembic
+  migration; SQLite is unaffected (its `INTEGER` affinity already stores
+  64-bit values).
+- Ensure required scopes are present for actions when using ProxiedOIDCAuthenticator.
+- Restore layer-cache reuse when building the container image, which
+  previously rebuilt almost from scratch on every commit.
+- Fixed typo in the loggging from authenticators
+
+## v0.2.14 (2026-07-08)
+
+### Fixed
+
+- Including a check for authentication links when running whoami to allow for a
+  graceful message when authentication links are not present.
+- Strengthen the server-side backcompatibility. Strip the newly added `Asset.size` field
+  from metadata responses when the request comes from a `python-tiled` client older than
+  v0.2.13, whose `Asset` dataclass has no `size` field and would otherwise crash
+  in `DataSource.from_json` with an unexpected keyword argument.
+
+
+## v0.2.13 (2026-07-07)
+
+### Fixed
+
+- Expand the functionality of HDF5Adapter to handle `object`-dtyped data:
+  variable-length strings are coerced to fixed-length bytes, non-string object
+  dtypes (e.g. vlen arrays) fall back to an empty placeholder that preserves
+  the original shape.
+- The metadata revisions endpoint now reports the total revision count, so
+  all revisions can be paged through via the API.
+- Surface `Asset.size` (the byte length of each underlying file) on the
+  `Asset` API model. `tiled register` populates it via `os.stat()` for
+  non-directory `file://` assets walked from the local filesystem. For
+  assets in object storage, callers can compute size via the new
+  `tiled.storage.size_from_uri` helper, which dispatches to `os.stat()` for
+  `file://` URIs and `obstore.head()` for `s3://`/`az://`/`gs://`. The
+  corresponding ORM column has existed since the catalog schema was
+  created but was previously never written or read.
+- New `bytes` structure family for cataloging opaque byte payloads that lack a
+  useful logical structure (PDFs, firmware blobs, proprietary binary formats, etc.).
+- `BaseClient.raw_export()` accepts a `MutableMapping` (e.g. a `dict`) as its
+  destination, streaming each asset into an in-memory `io.BytesIO` keyed by
+  the on-disk-equivalent layout (`<filename>` for a single asset;
+  `<asset_id>/<filename>` for multi-asset nodes). No filesystem I/O is performed in this mode.
+
+
+## v0.2.12 (2026-06-16)
+
+### Added
+
+- Rich progress bar shown during multi-chunk array, dataframe, and dataset
+  fetches. The bar is transient and only appears in interactive sessions
+  (REPL, IPython, Jupyter). It can be disabled per-context or globally.
+  Jupyter notebooks use Rich's HTML display path to avoid duplicate lines.
+- Animated retry spinner shown on stderr whenever a stamina retry is scheduled
+  for any tiled client request (connection failures, 5xx errors, 429 rate limits).
+  The spinner is animated in Jupyter notebooks as well as TTY terminals.
+- Respect the `Retry-After` header on HTTP 429 (Too Many Requests) responses.
+- Support for interacting with irregular-shaped numeric arrays via
+  [`ragged`](https://github.com/scikit-hep/ragged).
+- Fail fast instead of retrying on deterministic client request errors that a
+  retry cannot fix: an unsupported URL scheme and an invalid request such as an
+  illegal header value.
+
+### Fixed
+
+- Fixed authentication check in from_context to prevent the user from being re-prompted to login.
+
+### Fixed
+
+- Ensuring that the metadata parameter value entered when calling update_metadata is of the proper type (will serialize as a JSON object) before altering the metadata.
+
+
+## v0.2.11 (2026-05-27)
+
+### Added
+
+- Utility methods for fetching chunked arrays for a given slice.
+- Added `max_connections` parameter to `Context` (and `Context.from_app`) to
+  cap the number of simultaneous outgoing HTTP connections and concurrent
+  data-fetch requests (array chunks, dataframe partitions) issued by dask
+  workers. The default is 16. This prevents spike loads on the server when
+  computing large dask arrays or dataframes. The limit is enforced by both an
+  `httpx.Limits` connection pool on the HTTP client and a `threading.Semaphore`
+  acquired inside `_get_slice`, `_get_block`, and `_get_partition`.
+- Deterministic row ordering in SQL-based adapters when `order_by_args` is
+  specified in the data source parameters; the `primary_key` parameter allows
+  to enforce the uniqueness of rows in the table.
+
+
+## v0.2.10 (2026-05-22)
+
+### Added
+
+- Cursor-based pagination for catalog containers on the default sort order.
+  The server now uses the node `id` as an opaque cursor, eliminating the
+  duplicate-and-skip problem that offset pagination suffers when items are
+  inserted concurrently. Non-default sort orders continue to use offset
+  pagination. Clients that supply `page[offset]` on the default sort are
+  transparently migrated to cursor pagination from the second page onward.
+  The new `page[cursor]` query parameter is accepted alongside the existing
+  `page[offset]` and `page[limit]` parameters; supplying both at once is
+  rejected with HTTP 400.
+- Support for slicing arrays backed by multipart adapters with modified shapes
+- OIDC Authenticator for Azure Entra
+- Add more administrative CLI commands centered around the creation of service
+  principals and their API keys
+- Including `metadata` field in NodeTabs item fetch for spec views in the web UI
+
+### Fixed
+
+- Display of color images in the web UI array viewer.
+- JSON serialization of tables now correctly handles numpy scalar types
+  (e.g. `float32`, `int64`), pandas nullable types (`pd.NA`), `NaT`, and
+  `Timestamp` when using the `orjson` backend.
+- A `mount_node` referencing a nonexistent path in the database no longer causes
+  silent data corruption. The server now raises a clear error at startup if the
+  mount node does not exist.
+- Writing chunked (dask) arrays with single chunk along all dimensions
+- OIDC authenticator was not quite compliant and was incompatible with
+  at least some providers including Azure and ORCID.
+- Improved performance of reading zarr arrays when slicing by avoiding reading
+  the full arrays into memory, but using slice composition instead.
+- Ensure that JSON payloads in streaming endpoints is properly decoded.
+- A bug in `TiledAuth` when `token_directory` is `None` caused an
+  error during token refresh.
+- Resolve syntax error caused by a return statement in a finally block
+  on Python 3.14+.
 
 ### Changed
 
 - Array client fully supports slicing when communicating with the server
   and only fetches the data needed to satisfy the slice.
 - CSVArrayAdapter supports reading heterogenous tables as structured arrays
+- Stream updates are processed using a single worker thread, by
+  default, in order to guarantee that they are processed in order.
+- Refactored AwkwardAdapter to generalize its array buffer storage.
+- WebUI: fetch grayscale images as `application/octet-stream` instead of
+  `image/png` and apply optional colormap and log-normalization client-side.
+- WebUI: reduce the number of significant digits to 4 when displaying numeric
+  values.
+
+### Added
+
+- Authentication support in the web UI: login page with password and OIDC
+  provider support, token persistence with automatic refresh, authenticated
+  image loading and file downloads, and user menu with logout.
+- Tests for the WebSocket endpoints that stream tabular data.
+- New server config option `create_mount_nodes_if_not_exist` (default `false`)
+  that auto-creates missing intermediate container nodes when a `mount_node`
+  path does not exist in the database. Also settable via the
+  `TILED_CREATE_MOUNT_NODES_IF_NOT_EXIST` environment variable.
+- Tests for the WebSocket endpoints that stream tabukar data.
+- WebSocket "first message" authentication: clients can now authenticate
+  WebSocket connections by sending credentials in the first message instead
+  of exposing tokens in query parameters (#1138).
 
 ## v0.2.7 (2026-02-27)
 
@@ -1059,3 +1624,6 @@ tiled catalog upgrade-database [postgresql://.. | sqlite:///...]
  - Updated the pydantic version in the pyproject.toml. Now the allowed versions are >2.0.0 - <3.0.0 .
  - Changes to prepare for upcoming numpy 2.0 release
  - Changes to address deprecations in FastAPI
+- Require `duckdb !=1.4.0` instead of `duckdb <1.4.0`.
+- `SQLAdapter.read` and `SQLAdapter.read_partition` return rows in the
+  order they were appended on DuckDB and SQLite.

@@ -1,11 +1,31 @@
-from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncEngine
+from collections.abc import Iterable
 
-from ..alembic_utils import DatabaseUpgradeNeeded, UninitializedDatabase, check_database
+from sqlalchemy import literal, select, text
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
+
+from ..alembic_utils import (
+    DatabaseUpgradeNeeded,
+    UninitializedDatabase,
+    check_database,
+    initialize_database_if_needed,
+)
+from ..utils import ensure_specified_sql_driver
+from .alembic_constants import ALEMBIC_DIR, ALEMBIC_INI_TEMPLATE_PATH
 from .base import Base
 
 # This is list of all valid revisions (from current to oldest).
 ALL_REVISIONS = [
+    "917dbbcfc4b1",
+    "3e87cbeb195b",
+    "0d4e1f2a3b4c",
+    "3bc110ce44e9",
+    "de302a096358",
+    "c31f6a1d7e20",
+    "9bc9b57294b9",
+    "b93c79d197f4",
+    "e8956581ecd5",
+    "bf2fe0eb8ee8",
+    "85a47342e78e",
     "4cf6011a8db5",
     "a86a48befff6",
     "dfbb7478c6bd",
@@ -29,7 +49,8 @@ REQUIRED_REVISION = ALL_REVISIONS[0]
 
 async def initialize_database(engine: AsyncEngine):
     # The definitions in .orm alter Base.metadata.
-    from . import orm  # noqa: F401
+    from ..graph import orm as graph_orm  # noqa: F401
+    from . import orm
 
     async with engine.connect() as connection:
         # Install extensions
@@ -37,12 +58,124 @@ async def initialize_database(engine: AsyncEngine):
             await connection.execute(text("create extension btree_gin;"))
         # Create all tables.
         await connection.run_sync(Base.metadata.create_all)
+        # The persisted catalog root node (nodes.id = 0, inserted by the
+        # nodes_closure DDL listener) is always tagged 'public': under
+        # tag-based access control, a node with no tags is inaccessible, and
+        # the root must never block traversal to its children. The
+        # association requires the 'public' tag row to exist (foreign key),
+        # so it is created here if missing. Besides the access tags compiler,
+        # tag rows are inserted only here and by the storage layers'
+        # auto-registration of tags on write (register_tag_rows).
+        # On a server without an access policy, tags are ignored and
+        # these rows are inert.
+        if engine.dialect.name == "postgresql":
+            from sqlalchemy.dialects.postgresql import insert as upsert
+        else:
+            from sqlalchemy.dialects.sqlite import insert as upsert
+
+        await connection.execute(
+            upsert(orm.AccessTag.__table__)
+            .values(name="public", is_public=True)
+            .on_conflict_do_nothing(index_elements=["name"])
+        )
+        # The tag id is resolved in SQL, so no round-trip is needed and the
+        # statement is a no-op when the association already exists.
+        await connection.execute(
+            upsert(orm.NodeAccessTagAssociation.__table__)
+            .from_select(
+                ["node_id", "tag_id"],
+                select(literal(0), orm.AccessTag.id).where(
+                    orm.AccessTag.name == "public"
+                ),
+            )
+            .on_conflict_do_nothing(index_elements=["node_id", "tag_id"])
+        )
         if engine.dialect.name == "sqlite":
             # Use write-ahead log mode. This persists across all future connections
             # until/unless manually switched.
             # https://www.sqlite.org/wal.html
             await connection.execute(text("PRAGMA journal_mode=WAL;"))
         await connection.commit()
+
+
+def initialize_catalog_database(uri: str) -> bool:
+    """
+    Initialize the catalog database at `uri`, unless it already is initialized.
+
+    This creates the tables and stamps the head alembic revision, as
+    `tiled catalog init --if-not-exists` does. Returns True if the database was
+    initialized by this call. It is a blocking call, safe to make from a thread that
+    is running an event loop.
+    """
+    return initialize_database_if_needed(
+        ensure_specified_sql_driver(uri),
+        initialize_database,
+        REQUIRED_REVISION,
+        ALL_REVISIONS,
+        ALEMBIC_INI_TEMPLATE_PATH,
+        ALEMBIC_DIR,
+    )
+
+
+async def register_tag_rows(
+    connection: AsyncConnection, access_tag_names: Iterable[str]
+) -> None:
+    """
+    Auto-register bare access tag rows for access_tag_names: all of them for
+    ApprovedAccessTags, else only principal tags, which can precede the
+    access tags compiler's next run. A bare row grants nothing.
+
+    Call this on the same connection/transaction as the tag assignment, so
+    that the row is never observed unassigned and the compiler's retention
+    rules will never delete it. (An AsyncSession caller can pass
+    `await session.connection()`.)
+    """
+    from ..access_control.protocols import PRINCIPAL_TAG_PREFIXES, ApprovedAccessTags
+    from . import orm
+
+    tags = orm.AccessTag.__table__
+
+    if not isinstance(access_tag_names, ApprovedAccessTags):
+        access_tag_names = [
+            name for name in access_tag_names if name.startswith(PRINCIPAL_TAG_PREFIXES)
+        ]
+
+    # Skip names the column cannot hold; the caller's lookup rejects them.
+    max_length = tags.c.name.type.length
+    names = {name for name in access_tag_names if len(name) <= max_length}
+    if not names:
+        return
+
+    # Insert only missing names: on PostgreSQL, ON CONFLICT DO NOTHING
+    # consumes an id even when the row exists.
+    existing = await connection.execute(
+        select(tags.c.name).where(tags.c.name.in_(names))
+    )
+    names -= set(existing.scalars())
+    if not names:
+        return
+
+    if connection.dialect.name == "postgresql":
+        from sqlalchemy.dialects.postgresql import insert as upsert
+    else:
+        from sqlalchemy.dialects.sqlite import insert as upsert
+    await connection.execute(
+        upsert(orm.AccessTag.__table__)
+        .values([{"name": name, "is_public": False} for name in sorted(names)])
+        .on_conflict_do_nothing(index_elements=["name"])
+    )
+
+
+async def resolve_access_tag_ids(connection, names):
+    """Resolve existing access-tag names to their integer IDs."""
+    if not names:
+        return []
+    from . import orm
+
+    result = await connection.execute(
+        select(orm.AccessTag.id).where(orm.AccessTag.name.in_(list(names)))
+    )
+    return list(result.scalars().all())
 
 
 async def check_catalog_database(engine: AsyncEngine):

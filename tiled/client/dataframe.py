@@ -1,12 +1,12 @@
 import concurrent.futures
 import functools
 import warnings
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 from urllib.parse import parse_qs, urlparse
 
 import dask
 import dask.dataframe
-import httpx
+import httpx2 as httpx
 
 from ..serialization.table import deserialize_arrow, serialize_arrow
 from ..utils import APACHE_ARROW_FILE_MIME_TYPE, UNCHANGED
@@ -18,6 +18,7 @@ from .utils import (
     export_util,
     handle_error,
     retry_context,
+    should_retry_if_unprocessed,
 )
 
 if TYPE_CHECKING:
@@ -119,31 +120,34 @@ class _DaskDataFrameClient(BaseClient):
         url_length_for_get_request = len(URL_PATH) + sum(
             _EXTRA_CHARS_PER_ITEM + len(column) for column in (columns or ())
         )
-        if url_length_for_get_request > self.URL_CHARACTER_LIMIT:
-            for attempt in retry_context():
-                with attempt:
-                    content = handle_error(
-                        self.context.http_client.post(
-                            URL_PATH,
-                            headers={"Accept": APACHE_ARROW_FILE_MIME_TYPE},
-                            json=columns,
-                            params=params,
-                        )
-                    ).read()
-        else:
-            if columns:
-                # Note: The singular/plural inconsistency here is because
-                # ["A", "B"] will be encoded in the URL as column=A&column=B
-                params["column"] = columns
-            for attempt in retry_context():
-                with attempt:
-                    content = handle_error(
-                        self.context.http_client.get(
-                            URL_PATH,
-                            headers={"Accept": APACHE_ARROW_FILE_MIME_TYPE},
-                            params=params,
-                        )
-                    ).read()
+        with self.context.throttle():
+            if url_length_for_get_request > self.URL_CHARACTER_LIMIT:
+                for attempt in retry_context(self.context):
+                    with attempt:
+                        content = handle_error(
+                            self.context.http_client.post(
+                                URL_PATH,
+                                headers={"Accept": APACHE_ARROW_FILE_MIME_TYPE},
+                                json=columns,
+                                params=params,
+                            )
+                        ).read()
+            else:
+                if columns:
+                    # Note: The singular/plural inconsistency here is because
+                    # ["A", "B"] will be encoded in the URL as column=A&column=B
+                    params["column"] = columns
+                for attempt in retry_context(self.context):
+                    with attempt:
+                        content = handle_error(
+                            self.context.http_client.get(
+                                URL_PATH,
+                                headers={"Accept": APACHE_ARROW_FILE_MIME_TYPE},
+                                params=params,
+                            )
+                        ).read()
+        if (ps := self.context.progress_state) is not None:
+            ps.advance()
         return deserialize_arrow(content)
 
     def read_partition(self, partition, columns=None):
@@ -159,10 +163,21 @@ class _DaskDataFrameClient(BaseClient):
         meta = structure.meta
         if columns is not None:
             meta = meta[columns]
+        # This builds a single-partition dask dataframe from one delayed object,
+        # so `divisions` must have length len(dfs) + 1 == 2 regardless of how many
+        # partitions the full dataset has.
+        #
+        # The pandas dtypes in `meta` come from the Arrow schema recorded when
+        # the table was written, and may differ from those of the data the
+        # server sends: in particular, string columns are `object` in the
+        # schema but may arrive as `string` depending on how the server reads
+        # its storage. So the partition is not checked against `meta`, as in
+        # `read`.
         return dask.dataframe.from_delayed(
             [dask.delayed(self._get_partition)(partition, columns)],
             meta=meta,
-            divisions=(None,) * (1 + npartitions),
+            divisions=(None, None),
+            verify_meta=False,
         )
 
     def read(self, columns=None):
@@ -239,7 +254,7 @@ class _DaskDataFrameClient(BaseClient):
         # The order of arguments has changed; check that the user input is correct
         if not isinstance(partition, int):
             warnings.warn(
-                "The order of arguments has changed: please use write_partition(partition, dataframe).",  # noqa: E501
+                "The order of arguments has changed: please use write_partition(partition, dataframe).",
                 DeprecationWarning,
                 stacklevel=2,
             )
@@ -261,7 +276,7 @@ class _DaskDataFrameClient(BaseClient):
         # The order of arguments has changed; check that the user input is correct
         if not isinstance(partition, int):
             warnings.warn(
-                "The order of arguments has changed: please use append_partition(partition, dataframe).",  # noqa: E501
+                "The order of arguments has changed: please use append_partition(partition, dataframe).",
                 DeprecationWarning,
                 stacklevel=2,
             )
@@ -269,7 +284,12 @@ class _DaskDataFrameClient(BaseClient):
 
         if partition > self.structure().npartitions:
             raise ValueError(f"Table has {self.structure().npartitions} partitions")
-        for attempt in retry_context():
+        # Appending rows is not idempotent: if the server processed the request
+        # but the response was lost (e.g. a read timeout or a 5xx from a proxy),
+        # retrying would append the same rows a second time. Only retry errors
+        # that guarantee the request was never processed; raise the rest to the
+        # caller, who can inspect the table before deciding to re-append.
+        for attempt in retry_context(on=should_retry_if_unprocessed):
             with attempt:
                 handle_error(
                     self.context.http_client.patch(
@@ -309,7 +329,7 @@ class _DaskDataFrameClient(BaseClient):
 
     def subscribe(
         self,
-        executor: Optional[concurrent.futures.Executor] = None,
+        executor: concurrent.futures.Executor | None = None,
     ) -> "TableSubscription":
         """
         Subscribe to streaming updates about this table.
@@ -338,7 +358,9 @@ class DaskDataFrameClient(_DaskDataFrameClient):
 
     def compute(self):
         "Alias to client.read().compute()"
-        return self.read().compute()
+        ddf = self.read()
+        with self.context.tracking_progress(total=ddf.npartitions):
+            return ddf.compute()
 
 
 class DataFrameClient(_DaskDataFrameClient):
@@ -348,10 +370,15 @@ class DataFrameClient(_DaskDataFrameClient):
         """
         Access one partition of the DataFrame. Optionally select a subset of the columns.
         """
-        return super().read_partition(partition, columns).compute()
+        npartitions = self.structure().npartitions
+        if not (0 <= partition < npartitions):
+            raise IndexError(f"partition {partition} out of range")
+        return self._get_partition(partition, columns)
 
     def read(self, columns=None):
         """
         Access the entire DataFrame. Optionally select a subset of the columns.
         """
-        return super().read(columns).compute()
+        ddf = super().read(columns)
+        with self.context.tracking_progress(total=ddf.npartitions):
+            return ddf.compute()

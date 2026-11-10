@@ -1,24 +1,24 @@
 import abc
+import base64
 import concurrent.futures
 import inspect
+import json
 import logging
-import sys
 import threading
+import time
 import weakref
-from typing import Any, Callable, Generic, List, Optional, TypeVar
-
-if sys.version_info >= (3, 11):
-    from typing import Self
-else:
-    from typing_extensions import Self
+from collections.abc import Callable
+from typing import Any, Generic, Self, TypeVar
 
 import anyio
-import httpx
+import httpx2 as httpx
 import msgpack
 import stamina
 import websockets.exceptions
 from pydantic import ConfigDict
 from websockets.sync.client import connect
+
+from tiled.client.auth import TiledAuth
 
 from ..client.base import BaseClient
 from ..links import links_for_node
@@ -51,11 +51,53 @@ Callback = Callable[[T], None]
 
 API_KEY_LIFETIME = TILED_RETRY_TIMEOUT + 15  # seconds
 RECEIVE_TIMEOUT = 0.1  # seconds
+# A WebSocket handshake cannot answer 401 to prompt a refresh, so the client
+# refreshes an access token itself when it is this close to expiring.
+ACCESS_TOKEN_EXPIRY_MARGIN = 60  # seconds
 
 
 logger = logging.getLogger(__name__)
 
 __all__ = ["Subscription"]
+
+
+def _expires_soon(token: str, margin: float = ACCESS_TOKEN_EXPIRY_MARGIN) -> bool:
+    """Read a JWT's 'exp' claim without verifying it; the server verifies.
+
+    A token that is not a JWT with an 'exp' claim is treated as fresh: the
+    server is the authority on it, and refreshing before every connection
+    would hammer the refresh endpoint.
+    """
+    try:
+        payload = token.split(".")[1]
+        payload += "=" * (-len(payload) % 4)
+        return (
+            json.loads(base64.urlsafe_b64decode(payload))["exp"] - time.time() < margin
+        )
+    except (IndexError, ValueError, KeyError, TypeError):
+        return False
+
+
+def _auth_header(context: Context) -> tuple[str | None, dict | None]:
+    """Return (Authorization header, key_info of an API key minted for it).
+
+    key_info is None unless a short-lived API key was minted, which the caller
+    must revoke.
+    """
+    if not context.authenticated:
+        return None, None
+    if context.api_key is not None:
+        return f"Apikey {context.api_key}", None
+    if isinstance(context.http_client.auth, TiledAuth):
+        access_token = context.http_client.auth.sync_get_token(
+            "access_token", reload_from_disk=True
+        )
+        if access_token is None or _expires_soon(access_token):
+            access_token = context.force_auth_refresh()["access_token"]
+        return f"Bearer {access_token}", None
+    # Request a short-lived API key to use for authenticating the WS connection.
+    key_info = context.create_api_key(expires_in=API_KEY_LIFETIME, note="websocket")
+    return f"Apikey {key_info['secret']}", key_info
 
 
 class _TestClientWebsocketWrapper:
@@ -69,15 +111,15 @@ class _TestClientWebsocketWrapper:
 
     def connect(
         self,
-        api_key: Optional[str],
-        start: Optional[int] = None,
+        auth_header: str | None,
+        start: int | None = None,
         max_size: int = 1_000_000,
     ):
         """Connect to the websocket."""
         params = self._uri.params
         headers = {}
-        if api_key:
-            headers["Authorization"] = f"Apikey {api_key}"
+        if auth_header:
+            headers["Authorization"] = auth_header
         if start is not None:
             params = params.set("start", start)
         # Note: max_size is ignored for test client websockets
@@ -92,11 +134,16 @@ class _TestClientWebsocketWrapper:
         """Receive data from websocket with consistent interface."""
         # Hide this import because it is only used for ASGI (tests)
         # we do not want a server dependency in the client.
+        import anyio
         import starlette.websockets
 
         try:
             return self._websocket.receive_bytes()
         except starlette.websockets.WebSocketDisconnect:
+            return None
+        except anyio.ClosedResourceError:
+            # starlette >=1.0 raises this when receiving on a session that has been
+            # closed (e.g. the test session was torn down); treat it the same as a disconnect.
             return None
 
     def close(self):
@@ -116,15 +163,15 @@ class _RegularWebsocketWrapper:
 
     def connect(
         self,
-        api_key: Optional[str],
-        start: Optional[int] = None,
+        auth_header: str | None,
+        start: int | None = None,
         max_size: int = 1_000_000,
     ):
         """Connect to the websocket."""
         params = self._uri.params
         headers = {}
-        if api_key:
-            headers["Authorization"] = f"Apikey {api_key}"
+        if auth_header:
+            headers["Authorization"] = auth_header
         if start is not None:
             params = params.set("start", start)
         self._websocket = connect(
@@ -260,20 +307,23 @@ class Subscription(abc.ABC):
         Path to node of interest, given as a list of path segments
     executor : concurrent.futures.Executor, optional
         Launches tasks asynchronously, in response to updates. By default,
-        a concurrent.futures.ThreadPoolExecutor is used.
+        a concurrent.futures.ThreadPoolExecutor is used. It is
+        configured with a single worker thread, which guarantees that
+        updates will be processed sequentially in the order they are
+        received.
     """
 
     def __init__(
         self,
         context: Context,
-        segments: List[str] = None,
-        executor: Optional[concurrent.futures.Executor] = None,
+        segments: list[str] | None = None,
+        executor: concurrent.futures.Executor | None = None,
     ):
         segments = segments or ["/"]
         self._context = context
         self._segments = segments
         self._executor = executor or concurrent.futures.ThreadPoolExecutor(
-            max_workers=5
+            max_workers=1
         )
         params = {"envelope_format": "msgpack"}
         scheme = "wss" if context.api_uri.scheme == "https" else "ws"
@@ -295,10 +345,10 @@ class Subscription(abc.ABC):
             )
         else:
             self._websocket = _RegularWebsocketWrapper(context.http_client, self._uri)
-        self.stream_closed: CallbackRegistry["Subscription"] = CallbackRegistry(
+        self.stream_closed: CallbackRegistry[Subscription] = CallbackRegistry(
             self.executor
         )
-        self.disconnected: CallbackRegistry["Subscription"] = CallbackRegistry(
+        self.disconnected: CallbackRegistry[Subscription] = CallbackRegistry(
             self.executor
         )
 
@@ -314,10 +364,10 @@ class Subscription(abc.ABC):
         return self._context
 
     @property
-    def segments(self) -> List[str]:
+    def segments(self) -> list[str]:
         return self._segments
 
-    def _run(self, start: Optional[int] = None, max_size: int = 1_000_000) -> None:
+    def _run(self, start: int | None = None, max_size: int = 1_000_000) -> None:
         """Outer loop - runs for the lifecycle of the Subscription."""
         if self._disconnect_event.is_set():
             raise RuntimeError("Cannot be restarted once stopped.")
@@ -364,34 +414,24 @@ class Subscription(abc.ABC):
         attempts=TILED_RETRY_ATTEMPTS,
         wait_max=TILED_RETRY_TIMEOUT,
     )
-    def _connect(self, start: Optional[int] = None, max_size: int = 1_000_000) -> None:
+    def _connect(self, start: int | None = None, max_size: int = 1_000_000) -> None:
         """Connect to websocket with retry."""
         if self._disconnect_event.is_set():
             raise RuntimeError("Cannot be restarted once stopped.")
 
         # Reset schema so first message on new connection is parsed as schema
         self._schema = None
-
-        needs_api_key = self.context.server_info.authentication.providers
-        if needs_api_key:
-            # Request a short-lived API key to use for authenticating the WS connection.
-            key_info = self.context.create_api_key(
-                expires_in=API_KEY_LIFETIME, note="websocket"
-            )
-            api_key = key_info["secret"]
-        else:
-            # Use single-user API key or None (if unauthenticated).
-            api_key = self.context.api_key
-
-        # Connect using the websocket wrapper
-        self._websocket.connect(api_key, start, max_size=max_size)
+        auth_header, key_info = _auth_header(self.context)
+        try:
+            self._websocket.connect(auth_header, start, max_size=max_size)
+        finally:
+            if key_info is not None:
+                # Connected or not, this attempt is done with the API key; a
+                # retry mints its own.
+                # TODO: Implement single-use API keys so that revoking is not
+                # necessary.
+                self.context.revoke_api_key(key_info["first_eight"])
         self._connected_event.set()
-
-        if needs_api_key:
-            # The connection is made, so we no longer need the API key.
-            # TODO: Implement single-use API keys so that revoking is not
-            # necessary.
-            self.context.revoke_api_key(key_info["first_eight"])
 
     def _receive(self) -> None:
         """Receive and process websocket messages."""
@@ -426,7 +466,7 @@ class Subscription(abc.ABC):
     def process(self, *args) -> None:
         pass
 
-    def start(self, start: Optional[int] = None, max_size: int = 1_000_000) -> None:
+    def start(self, start: int | None = None, max_size: int = 1_000_000) -> None:
         """
         Connect to the websocket, and block while receiving and processing updates.
 
@@ -460,7 +500,7 @@ class Subscription(abc.ABC):
             self.disconnect()
 
     def start_in_thread(
-        self, start: Optional[int] = None, max_size: int = 1_000_000
+        self, start: int | None = None, max_size: int = 1_000_000
     ) -> Self:
         """
         Start a thread to connect to the websocket and receive updates. Blocks until the
@@ -555,18 +595,18 @@ class ContainerSubscription(Subscription):
     def __init__(
         self,
         context: Context,
-        segments: List[str] = None,
-        executor: Optional[concurrent.futures.Executor] = None,
-        structure_clients: dict = None,
+        segments: list[str] | None = None,
+        executor: concurrent.futures.Executor | None = None,
+        structure_clients: dict | None = None,
     ):
         super().__init__(context, segments, executor)
         self.structure_clients = structure_clients
-        self.child_created: CallbackRegistry["LiveChildCreated"] = CallbackRegistry(
+        self.child_created: CallbackRegistry[LiveChildCreated] = CallbackRegistry(
             self.executor
         )
-        self.child_metadata_updated: CallbackRegistry[
-            "LiveChildMetadataUpdated"
-        ] = CallbackRegistry(self.executor)
+        self.child_metadata_updated: CallbackRegistry[LiveChildMetadataUpdated] = (
+            CallbackRegistry(self.executor)
+        )
 
     def process(self, update: Update):
         if update.type == "container-child-created":
@@ -595,13 +635,13 @@ class ArraySubscription(Subscription):
     def __init__(
         self,
         context: Context,
-        segments: List[str] = None,
-        executor: Optional[concurrent.futures.Executor] = None,
+        segments: list[str] | None = None,
+        executor: concurrent.futures.Executor | None = None,
     ):
         super().__init__(context, segments, executor)
-        self.new_data: CallbackRegistry[
-            "LiveArrayData" | "LiveArrayRef"
-        ] = CallbackRegistry(self.executor)
+        self.new_data: CallbackRegistry[LiveArrayData | LiveArrayRef] = (
+            CallbackRegistry(self.executor)
+        )
 
     def process(self, update: Update):
         self.new_data.process(update)
@@ -625,13 +665,11 @@ class TableSubscription(Subscription):
     def __init__(
         self,
         context: Context,
-        segments: List[str] = None,
-        executor: Optional[concurrent.futures.Executor] = None,
+        segments: list[str] | None = None,
+        executor: concurrent.futures.Executor | None = None,
     ):
         super().__init__(context, segments, executor)
-        self.new_data: CallbackRegistry["LiveTableData"] = CallbackRegistry(
-            self.executor
-        )
+        self.new_data: CallbackRegistry[LiveTableData] = CallbackRegistry(self.executor)
 
     def process(self, update: Update):
         self.new_data.process(update)
@@ -639,6 +677,7 @@ class TableSubscription(Subscription):
 
 class UnparseableMessage(RuntimeError):
     "Message can be decoded but cannot be interpreted by the application"
+
     pass
 
 
@@ -687,7 +726,7 @@ class LiveChildCreated(ChildCreated):
                 "structure_family": self.structure_family,
                 "specs": normalize_specs(self.specs or []),
                 "data_sources": self.data_sources,
-                "access_blob": self.access_blob,
+                "access_tags": self.access_tags,
             },
         }
         if self.structure_family == StructureFamily.container:

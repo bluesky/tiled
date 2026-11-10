@@ -1,7 +1,6 @@
-from typing import List
-
 from sqlalchemy import (
     JSON,
+    BigInteger,
     Boolean,
     Column,
     DateTime,
@@ -21,6 +20,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.schema import PrimaryKeyConstraint, UniqueConstraint
 from sqlalchemy.sql import func
 
+from ..access_control.scopes import ScopeName
 from ..server.schemas import Management
 from ..structures.core import StructureFamily
 from .base import Base
@@ -75,7 +75,6 @@ class Node(Timestamped, Base):
     structure_family = Column(Enum(StructureFamily), nullable=False)
     metadata_ = Column("metadata", JSONVariant, nullable=False)
     specs = Column(JSONVariant, nullable=False)
-    access_blob = Column("access_blob", JSONVariant, nullable=False)
 
     data_sources = relationship(
         "DataSource",
@@ -89,6 +88,16 @@ class Node(Timestamped, Base):
         backref="node",
         passive_deletes=True,
     )
+    # Many-to-many relationship to AccessTag through the node_access_tags_association
+    # association table. Writable: assigning/appending AccessTag objects
+    # inserts/deletes rows in node_access_tags_association (never in access_tags itself).
+    # passive_deletes defers cleanup of association rows to the DB-level
+    # ON DELETE CASCADE when a node is deleted.
+    access_tags: Mapped[list["AccessTag"]] = relationship(
+        secondary="node_access_tags_association",
+        lazy="selectin",
+        passive_deletes=True,
+    )
 
     # This is a self-referencing relationship between parent and children
     prnt_rel = relationship("Node", remote_side=[id], back_populates="chld_rel")
@@ -96,19 +105,22 @@ class Node(Timestamped, Base):
 
     __table_args__ = (
         UniqueConstraint("key", "parent", name="key_parent_unique_constraint"),
-        # This index supports comparison operations (==, <, ...).
-        # For key-existence operations we will need a GIN index additionally.
+        # PostgreSQL-only GIN index for metadata containment queries
+        # (metadata @> {...}), which is what the server emits for metadata
+        # equality filters (see tiled.catalog.adapter.binary_op).
+        # Pagination is served by ix_nodes_parent_id below and parent filtering
+        # by the ix_nodes_parent index on the `parent` column. On SQLite there is
+        # no GIN and metadata search uses json_each/FTS5.
         Index(
-            "top_level_metadata",
-            "parent",
-            # include the keys of the default sorting ('time_created', 'id'),
-            # used to avoid creating a temp sort index
-            "time_created",
-            "id",
+            "ix_nodes_metadata",
             "metadata",
-            "access_blob",
             postgresql_using="gin",
-        ),
+            postgresql_ops={"metadata": "jsonb_path_ops"},
+        ).ddl_if(dialect="postgresql"),
+        # B-tree index supporting cursor-based pagination (WHERE parent = ?
+        # AND id > cursor ORDER BY id) and cursor_for_offset (OFFSET N LIMIT 1
+        # ORDER BY id). Serves both SQLite and PostgreSQL efficiently.
+        Index("ix_nodes_parent_id", "parent", "id"),
     )
 
 
@@ -129,6 +141,341 @@ class NodesClosure(Base):
     __table_args__ = (
         Index("idx_nodes_closure_ancestor", "ancestor"),
         Index("idx_nodes_closure_descendant", "descendant"),
+    )
+
+
+class AccessTag(Timestamped, Base):
+    """
+    A named access tag.
+
+    AccessTags are the unit of access control: nodes carry a set of tags, and
+    principals are granted access by being associated with one or more tags.
+    The allowed operations for a principal on a node are determined by the
+    scopes bound to their AccessGrant rows.
+
+    A tag with is_public=True grants read access to unauthenticated requests.
+
+    Ownership is tracked via AccessTagOwnerAssociation rows; tag owners may apply tags
+    without being a server administrator.
+    """
+
+    __tablename__ = "access_tags"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(Unicode(255), nullable=False, unique=True)
+    is_public = Column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
+
+    grants: Mapped[list["AccessGrant"]] = relationship(
+        back_populates="tag",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    owners: Mapped[list["AccessTagOwnerAssociation"]] = relationship(
+        back_populates="tag",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+    __table_args__ = (
+        # Partial index for public tags only, covering name-only queries
+        Index(
+            "ix_access_tags_is_public",
+            "name",
+            postgresql_where=text("is_public"),
+            sqlite_where=text("is_public"),
+        ),
+    )
+
+
+class NodeAccessTagAssociation(Base):
+    """
+    Association table mapping Nodes to Access Tags (many-to-many).
+    Used to perform lookups in both directions, i.e.:
+        - Which tags are on this node? (served by the primary key)
+        - Which nodes have this tag? (served by the secondary index)
+    """
+
+    __tablename__ = "node_access_tags_association"
+
+    node_id = Column(
+        Integer,
+        ForeignKey(
+            "nodes.id", name="fk_node_access_tags_association_node", ondelete="CASCADE"
+        ),
+        nullable=False,
+    )
+    tag_id = Column(
+        Integer,
+        ForeignKey(
+            "access_tags.id",
+            name="fk_node_access_tags_association_tag",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+    )
+    # Denormalized from Node.parent so access-tag queries can restrict the
+    # association scan to one container. Database triggers maintain this for
+    # relationship-generated inserts and any future node moves. The root
+    # node's association legitimately has a NULL parent_id.
+    parent_id = Column(Integer, nullable=True)
+
+    __table_args__ = (
+        PrimaryKeyConstraint(
+            "node_id", "tag_id", name="node_access_tags_association_pkey"
+        ),
+        # Covering index for the reverse (tag -> nodes) direction.
+        Index("ix_node_access_tags_association_tag_id_node_id", "tag_id", "node_id"),
+        # Parent-scoped reverse lookup for authorization queries.
+        Index(
+            "ix_node_access_tags_association_parent_id_tag_id_node_id",
+            "parent_id",
+            "tag_id",
+            "node_id",
+        ),
+    )
+
+
+@event.listens_for(NodeAccessTagAssociation.__table__, "after_create")
+def create_node_access_tag_parent_triggers(target, connection, **kw):
+    if connection.engine.dialect.name == "sqlite":
+        connection.execute(
+            text(
+                """
+CREATE TRIGGER node_access_tags_set_parent_after_insert
+AFTER INSERT ON node_access_tags_association
+BEGIN
+    UPDATE node_access_tags_association
+    SET parent_id = (SELECT parent FROM nodes WHERE id = NEW.node_id)
+    WHERE node_id = NEW.node_id AND tag_id = NEW.tag_id;
+END"""
+            )
+        )
+        connection.execute(
+            text(
+                """
+CREATE TRIGGER node_access_tags_set_parent_after_update
+AFTER UPDATE OF node_id ON node_access_tags_association
+BEGIN
+    UPDATE node_access_tags_association
+    SET parent_id = (SELECT parent FROM nodes WHERE id = NEW.node_id)
+    WHERE node_id = NEW.node_id AND tag_id = NEW.tag_id;
+END"""
+            )
+        )
+        connection.execute(
+            text(
+                """
+CREATE TRIGGER node_access_tags_sync_parent_after_node_update
+AFTER UPDATE OF parent ON nodes
+WHEN NEW.parent IS NOT OLD.parent
+BEGIN
+    UPDATE node_access_tags_association
+    SET parent_id = NEW.parent
+    WHERE node_id = NEW.id;
+END"""
+            )
+        )
+    elif connection.engine.dialect.name == "postgresql":
+        connection.execute(
+            text(
+                """
+CREATE OR REPLACE FUNCTION node_access_tags_set_parent()
+RETURNS TRIGGER AS $$
+BEGIN
+    SELECT parent INTO NEW.parent_id FROM nodes WHERE id = NEW.node_id;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql"""
+            )
+        )
+        connection.execute(
+            text(
+                """
+CREATE TRIGGER node_access_tags_set_parent
+BEFORE INSERT OR UPDATE OF node_id ON node_access_tags_association
+FOR EACH ROW
+EXECUTE FUNCTION node_access_tags_set_parent()"""
+            )
+        )
+        connection.execute(
+            text(
+                """
+CREATE OR REPLACE FUNCTION node_access_tags_sync_parent_after_node_update()
+RETURNS TRIGGER AS $$
+BEGIN
+    UPDATE node_access_tags_association
+    SET parent_id = NEW.parent
+    WHERE node_id = NEW.id;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql"""
+            )
+        )
+        connection.execute(
+            text(
+                """
+CREATE TRIGGER node_access_tags_sync_parent_after_node_update
+AFTER UPDATE OF parent ON nodes
+FOR EACH ROW
+WHEN (NEW.parent IS DISTINCT FROM OLD.parent)
+EXECUTE FUNCTION node_access_tags_sync_parent_after_node_update()"""
+            )
+        )
+
+
+@event.listens_for(NodeAccessTagAssociation.__table__, "after_create")
+def create_node_access_tag_statistics(target, connection, **kw):
+    if connection.engine.dialect.name == "postgresql":
+        connection.execute(
+            text(
+                """
+CREATE STATISTICS IF NOT EXISTS node_access_tags_association_parent_id_tag_id_node_id_stats
+(dependencies, ndistinct, mcv)
+ON parent_id, tag_id
+FROM node_access_tags_association"""
+            )
+        )
+
+
+class AccessTagsPrincipal(Timestamped, Base):
+    """
+    A principal (human user or service account) that can be granted access
+    via AccessTags.
+
+    The name is the canonical identifier used in authentication tokens and group
+    memberships.  Scopes granted to this principal for a given tag are stored in
+    AccessGrant rows; ownership of a tag is stored in AccessTagOwnerAssociation
+    rows.
+    """
+
+    __tablename__ = "access_tags_principals"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(Unicode(255), nullable=False, unique=True)
+
+    grants: Mapped[list["AccessGrant"]] = relationship(
+        back_populates="principal",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    owned_tags: Mapped[list["AccessTagOwnerAssociation"]] = relationship(
+        back_populates="principal",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+
+class AccessGrant(Base):
+    """
+    Junction (association table) between AccessTag and AccessTagsPrincipal,
+    with one row per granted scope: a Principal is granted a scope on all
+    nodes carrying an AccessTag. Only tag_id and principal_id are foreign
+    keys; the scope is stored inline as the closed ScopeName enum and is part
+    of the primary key.
+
+    Used to check:
+        - What scopes does a principal have on a given node per the node's tags?
+        - What tags does a principal have a given scope on, and thus how should
+          nodes be filtered for that principal?
+    """
+
+    __tablename__ = "access_grants"
+
+    tag_id = Column(
+        Integer,
+        ForeignKey(
+            "access_tags.id",
+            name="fk_access_grants_access_tag",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+    )
+    principal_id = Column(
+        Integer,
+        ForeignKey(
+            "access_tags_principals.id",
+            name="fk_access_grants_principal",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+    )
+    scope = Column(
+        Enum(
+            ScopeName,
+            name="scope_name",
+            # PostgreSQL enforces the closed set with a native enum type. On
+            # SQLite the column is a plain VARCHAR, so without this an invalid
+            # scope would insert silently and then raise LookupError on every
+            # subsequent read. Emits a CHECK on SQLite; no-op on PostgreSQL.
+            create_constraint=True,
+            values_callable=lambda enum: [member.value for member in enum],
+        ),
+        nullable=False,
+    )
+
+    tag: Mapped["AccessTag"] = relationship(back_populates="grants")
+    principal: Mapped["AccessTagsPrincipal"] = relationship(back_populates="grants")
+
+    __table_args__ = (
+        # Serves '(tag, principal) -> scopes' probes, e.g. checking scopes on a
+        # node given its tags.
+        PrimaryKeyConstraint(
+            "tag_id",
+            "principal_id",
+            "scope",
+            name="access_grants_pkey",
+        ),
+        # Covering index serving '(principal, scope) -> tags' lookups, used to
+        # filter nodes visible to a principal.
+        Index(
+            "ix_access_grants_principal_scope",
+            "principal_id",
+            "scope",
+            "tag_id",
+        ),
+    )
+
+
+class AccessTagOwnerAssociation(Base):
+    """
+    Association table which records that a Principal owns an AccessTag and may
+    apply that tag to a node (if scopes permit).
+    """
+
+    __tablename__ = "access_tag_owners_association"
+
+    tag_id = Column(
+        Integer,
+        ForeignKey(
+            "access_tags.id",
+            name="fk_access_tag_owners_association_access_tag",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+    )
+    principal_id = Column(
+        Integer,
+        ForeignKey(
+            "access_tags_principals.id",
+            name="fk_access_tag_owners_association_principal",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+    )
+
+    tag: Mapped["AccessTag"] = relationship(back_populates="owners")
+    principal: Mapped["AccessTagsPrincipal"] = relationship(back_populates="owned_tags")
+
+    __table_args__ = (
+        # Serves 'owners of a tag' and exact (tag, principal) membership probes.
+        PrimaryKeyConstraint(
+            "tag_id", "principal_id", name="access_tag_owners_association_pkey"
+        ),
+        # Serves 'tags owned by a principal' lookups and FK cascade on
+        # principal deletion.
+        Index("ix_access_tag_owners_association_principal_id", "principal_id"),
     )
 
 
@@ -368,8 +715,8 @@ EXECUTE FUNCTION update_closure_table_when_inserting();
     connection.execute(
         text(
             """
-INSERT INTO nodes(id, key, parent, structure_family, metadata, specs, access_blob)
-SELECT 0, '', NULL, 'container', '{}', '[]', '{}';
+INSERT INTO nodes(id, key, parent, structure_family, metadata, specs)
+SELECT 0, '', NULL, 'container', '{}', '[]';
 """
         )
     )
@@ -481,17 +828,17 @@ class DataSource(Timestamped, Base):
     )
 
     # many-to-many relationship to Asset, bypassing the `Association` class
-    assets: Mapped[List["Asset"]] = relationship(
+    assets: Mapped[list["Asset"]] = relationship(
         secondary="data_source_asset_association",
         back_populates="data_sources",
         cascade="all, delete",
-        lazy="selectin",
+        lazy="raise",
         viewonly=True,
     )
     # association between Asset -> Association -> DataSource
-    asset_associations: Mapped[List["DataSourceAssetAssociation"]] = relationship(
+    asset_associations: Mapped[list["DataSourceAssetAssociation"]] = relationship(
         back_populates="data_source",
-        lazy="selectin",
+        lazy="raise",
         order_by=[DataSourceAssetAssociation.parameter, DataSourceAssetAssociation.num],
     )
 
@@ -530,23 +877,23 @@ class Asset(Timestamped, Base):
     is_directory = Column(Boolean, nullable=False)
     hash_type = Column(Unicode(63), nullable=True)
     hash_content = Column(Unicode(1023), nullable=True)
-    size = Column(Integer, nullable=True)
+    size = Column(BigInteger, nullable=True)
 
     # # many-to-many relationship to Asset, bypassing the `Association` class
-    data_sources: Mapped[List["DataSource"]] = relationship(
+    data_sources: Mapped[list["DataSource"]] = relationship(
         secondary="data_source_asset_association",
         back_populates="assets",
         viewonly=True,
     )
     # association between DataSource -> Association -> Asset
-    data_source_associations: Mapped[List["DataSourceAssetAssociation"]] = relationship(
+    data_source_associations: Mapped[list["DataSourceAssetAssociation"]] = relationship(
         back_populates="asset",
     )
 
 
 class Revision(Timestamped, Base):
     """
-    This tracks history of metadata, specs, and access_blob supporting 'undo' functionality.
+    This tracks history of metadata and specs supporting 'undo' functionality.
     """
 
     __tablename__ = "revisions"
@@ -562,7 +909,6 @@ class Revision(Timestamped, Base):
 
     metadata_ = Column("metadata", JSONVariant, nullable=False)
     specs = Column(JSONVariant, nullable=False)
-    access_blob = Column("access_blob", JSONVariant, nullable=False)
 
     __table_args__ = (
         UniqueConstraint(
@@ -571,3 +917,86 @@ class Revision(Timestamped, Base):
             name="node_id_revision_number_unique_constraint",
         ),
     )
+
+
+class Webhook(Timestamped, Base):
+    """
+    A registered webhook: fires an HTTP POST to a URL when an event occurs
+    on the watched node or any of its descendants.
+    """
+
+    __tablename__ = "webhooks"
+    __mapper_args__ = {"eager_defaults": True}
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    node_id = Column(
+        Integer,
+        ForeignKey("nodes.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    url = Column(Unicode(2048), nullable=False)
+    # HMAC-SHA256 secret; NULL means no signature header is sent.
+    secret = Column(Unicode(512), nullable=True)
+    # JSON list of event type strings, e.g. ["container-child-created"].
+    # NULL / empty list means all events.
+    events = Column(JSONVariant, nullable=True)
+    active = Column(Boolean, nullable=False, default=True, server_default=text("true"))
+
+    node: Mapped["Node"] = relationship(
+        backref="webhooks",
+        # Use noload: wh.node is never accessed in dispatch or router code.
+        # selectin would trigger a superfluous SELECT IN query for every Webhook
+        # batch loaded, e.g. during dispatch.
+        lazy="noload",
+    )
+
+    deliveries: Mapped[list["WebhookDelivery"]] = relationship(
+        back_populates="webhook",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+
+class WebhookDelivery(Timestamped, Base):
+    """
+    One delivery attempt for a Webhook.
+
+    A single event may produce multiple rows (retries).  The most recent row
+    for a given webhook_id + event_id pair is the canonical outcome.
+    """
+
+    __tablename__ = "webhook_deliveries"
+    __mapper_args__ = {"eager_defaults": True}
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    webhook_id = Column(
+        Integer,
+        ForeignKey("webhooks.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    # Stable identifier for the logical event sent in the webhook payload.
+    # Included in the POST body so that receiving endpoints can deduplicate
+    # deliveries: if an earlier attempt timed out and was retried, the remote
+    # may receive the same payload twice with the same event_id.  Retries
+    # within a single _deliver() call update this row in-place and share this
+    # event_id rather than creating a new delivery row.
+    event_id = Column(Unicode(128), nullable=False, index=True)
+    # Denormalised event info so history is queryable without joining to a
+    # separate events table.
+    event_type = Column(Unicode(128), nullable=False)
+    # Full JSON payload that was (or would be) POSTed.
+    payload = Column(JSONVariant, nullable=False)
+    # HTTP status code of the last attempt, NULL while pending.
+    status_code = Column(Integer, nullable=True)
+    # Total number of attempts made so far.
+    attempts = Column(Integer, nullable=False, default=0, server_default=text("0"))
+    delivered_at = Column(DateTime(timezone=False), nullable=True)
+    # "pending" | "success" | "failed"
+    outcome = Column(
+        Unicode(16), nullable=False, default="pending", server_default=text("'pending'")
+    )
+    error_detail = Column(Unicode(4096), nullable=True)
+
+    webhook: Mapped["Webhook"] = relationship(back_populates="deliveries")

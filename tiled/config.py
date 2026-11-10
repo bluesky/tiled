@@ -5,10 +5,11 @@ See profiles.py for client configuration.
 """
 
 import copy
+from collections.abc import Iterator
 from datetime import timedelta
 from functools import cached_property
 from pathlib import Path
-from typing import Annotated, Any, Iterator, Optional, Union
+from typing import Annotated, Any
 
 from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
 from pydantic_settings import (
@@ -31,6 +32,7 @@ from .media_type_registration import (
 )
 from .query_registration import default_query_registry
 from .server.settings import get_settings
+from .server.utils import normalize_root_path
 from .structures.core import Spec
 from .type_aliases import EntryPointString
 from .utils import parse, prepend_to_sys_path
@@ -59,14 +61,14 @@ def settings_customise_sources(
 
 class CatalogConfig(BaseSettings):
     uri: str
-    metadata: Optional[dict] = None
-    specs: Optional[list[Spec]] = None
-    writable_storage: Optional[list[str]] = None
-    readable_storage: Optional[list[str]] = None
+    metadata: dict | None = None
+    specs: list[Spec] | None = None
+    writable_storage: list[str] | None = None
+    readable_storage: list[str] | None = None
     init_if_not_exists: bool = False
-    adapters_by_mimetype: Optional[list[EntryPointString]] = None
-    top_level_access_blob: Optional[dict] = None
-    mount_node: Optional[Union[str, list[str]]] = None
+    adapters_by_mimetype: dict[str, EntryPointString] | None = None
+    top_level_access_tags: list[str] | None = None
+    mount_node: str | list[str] | None = None
     catalog_pool_size: int = 5
     storage_pool_size: int = 5
     catalog_max_overflow: int = 10
@@ -79,7 +81,7 @@ class CatalogConfig(BaseSettings):
 class TreeSpec(BaseModel):
     tree_type: Annotated[EntryPointString, Field(alias="tree")]
     path: str
-    args: Optional[dict[str, Any]] = None
+    args: dict[str, Any] | None = None
 
     @model_validator(mode="after")
     def check_callable(self):
@@ -124,11 +126,11 @@ class TreeSpec(BaseModel):
 class AuthenticationProviderSpec(BaseModel):
     provider: str
     authenticator: EntryPointString
-    args: Optional[dict[str, Any]] = None
+    args: dict[str, Any] | None = None
 
     def into_auth_entry(
         self,
-    ) -> tuple[str, Union[InternalAuthenticator, ExternalAuthenticator]]:
+    ) -> tuple[str, InternalAuthenticator | ExternalAuthenticator]:
         auth = self.authenticator(**(self.args or {}))
         if not isinstance(auth, (InternalAuthenticator, ExternalAuthenticator)):
             raise ValueError(f"Type {auth.__class__} is not a known authenticator type")
@@ -142,14 +144,14 @@ class TiledAdmin(BaseModel):
 
 class Authentication(BaseSettings):
     # Defaults are all left as None to differentiate between unset and set to the default
-    providers: Optional[list[AuthenticationProviderSpec]] = None
-    tiled_admins: Optional[list[TiledAdmin]] = None
-    secret_keys: Optional[list[str]] = None
-    allow_anonymous_access: Optional[bool] = None
-    single_user_api_key: Annotated[Optional[str], Field(pattern="[a-zA-Z0-9]+")] = None
-    access_token_max_age: Optional[timedelta] = None
-    refresh_token_max_age: Optional[timedelta] = None
-    session_max_age: Optional[timedelta] = None
+    providers: list[AuthenticationProviderSpec] | None = None
+    tiled_admins: list[TiledAdmin] | None = None
+    secret_keys: list[str] | None = None
+    allow_anonymous_access: bool | None = None
+    single_user_api_key: Annotated[str | None, Field(pattern="[a-zA-Z0-9]+")] = None
+    access_token_max_age: timedelta | None = None
+    refresh_token_max_age: timedelta | None = None
+    session_max_age: timedelta | None = None
 
     @field_validator("providers", mode="after")
     @classmethod
@@ -164,7 +166,7 @@ class Authentication(BaseSettings):
     @cached_property
     def authenticators(
         self,
-    ) -> dict[str, Union[InternalAuthenticator, ExternalAuthenticator]]:
+    ) -> dict[str, InternalAuthenticator | ExternalAuthenticator]:
         return dict(auth.into_auth_entry() for auth in self.providers or ())
 
     @model_validator(mode="after")
@@ -191,11 +193,11 @@ class Authentication(BaseSettings):
 
 
 class Database(BaseSettings):
-    uri: Optional[str] = None
-    init_if_not_exists: Optional[bool] = None
-    pool_pre_ping: Optional[bool] = None
-    pool_size: Annotated[Optional[int], Field(ge=2)] = 5
-    max_overflow: Optional[int] = 10
+    uri: str | None = None
+    init_if_not_exists: bool | None = None
+    pool_pre_ping: bool | None = None
+    pool_size: Annotated[int | None, Field(ge=2)] = 5
+    max_overflow: int | None = 10
 
     model_config = SettingsConfigDict(env_prefix="TILED_AUTHN_DATABASSE")
     settings_customise_sources = classmethod(settings_customise_sources)
@@ -203,7 +205,7 @@ class Database(BaseSettings):
 
 class AccessControl(BaseSettings):
     access_policy: EntryPointString
-    args: Optional[dict[str, Any]]
+    args: dict[str, Any] | None
 
     def build(self):
         return self.access_policy(**(self.args or {}))
@@ -221,42 +223,149 @@ class MetricsConfig(BaseSettings):
 
 class ValidationSpec(BaseSettings):
     spec: str
-    validator: Optional[EntryPointString] = None
+    validator: EntryPointString | None = None
 
     model_config = SettingsConfigDict(env_prefix="TILED_VALIDATORS")
     settings_customise_sources = classmethod(settings_customise_sources)
 
 
 class StreamingCacheConfig(BaseSettings):
-    uri: str
+    # A single standalone node: ``redis://`` / ``rediss://`` / ``memory``.
+    uri: str | None = None
+    # Or a Redis Sentinel cluster: a list of ``"host:port"`` Sentinels plus
+    # the ``service_name`` of the monitored primary. The client follows
+    # failover to the current primary.
+    sentinels: list[str] | None = None
+    service_name: str | None = None
+    password: str | None = None
+    # TLS for the Sentinel path (the standalone ``uri`` path uses ``rediss://``
+    # instead). Applies to both Sentinel discovery and data-node connections;
+    # verification uses redis-py's default, matching ``rediss://``.
+    ssl: bool = False
     data_ttl: int = 3600  # 1 hr
     seq_ttl: int = 2592000  # 30 days
     socket_timeout: int = 86400  # 1 day
     socket_connect_timeout: int = 10
+    # Interval (seconds) between health-check PINGs on idle connections, so
+    # redis-py detects a stalled connection after a Sentinel failover and
+    # reconnects instead of blocking on the dead primary. Kept low because
+    # socket_timeout is long: on a silent primary death (no TCP reset) this
+    # PING is the client's main timely signal, so it bounds failover detection.
+    health_check_interval: int = 10
 
     model_config = SettingsConfigDict(env_prefix="TILED_STREAMING_CACHE_")
     settings_customise_sources = classmethod(settings_customise_sources)
 
+    @model_validator(mode="after")
+    def check_source(self) -> "StreamingCacheConfig":
+        # 'uri' and 'sentinels' are mutually exclusive; setting both is
+        # ambiguous (which one wins?), so reject it rather than silently
+        # ignoring one.
+        if self.uri and self.sentinels:
+            raise ValueError(
+                "streaming_cache: set only one of 'uri' or 'sentinels', not both."
+            )
+        if self.sentinels:
+            if not self.service_name:
+                raise ValueError(
+                    "streaming_cache: 'service_name' is required when "
+                    "'sentinels' is set."
+                )
+            # Each Sentinel entry must be 'host:port' (parsed the same way as
+            # the client, via rpartition), else the client fails cryptically at
+            # connect time on int('') / a missing host.
+            for entry in self.sentinels:
+                host, sep, port = entry.rpartition(":")
+                if not (sep and host and port.isdigit()):
+                    raise ValueError(
+                        f"streaming_cache: sentinel entry {entry!r} must be "
+                        "'host:port'."
+                    )
+        elif self.uri:
+            # 'ssl', 'service_name', and 'password' apply only to the Sentinel
+            # path and are ignored with a 'uri'. Reject them so a misconfiguration
+            # fails loud -- especially 'ssl', where silently ignoring it would
+            # leave a connection the operator believes is encrypted running in
+            # plaintext.
+            if self.ssl:
+                raise ValueError(
+                    "streaming_cache: 'ssl' applies to the 'sentinels' path; for "
+                    "a single-node 'uri' use the rediss:// scheme instead."
+                )
+            if self.service_name:
+                raise ValueError(
+                    "streaming_cache: 'service_name' is only used with 'sentinels'."
+                )
+            if self.password:
+                raise ValueError(
+                    "streaming_cache: 'password' is only used with 'sentinels'; "
+                    "for a single-node 'uri' include the password in the uri."
+                )
+        else:
+            raise ValueError(
+                "streaming_cache: set either 'uri' or 'sentinels' + 'service_name'."
+            )
+        return self
+
+
+class WebhooksConfig(BaseSettings):
+    """Configuration for the optional webhooks feature.
+
+    When this section is present in the server configuration, the
+    ``/api/v1/webhooks`` router is mounted and the WebhookDispatcher is
+    started alongside the catalog.  When absent, webhooks are fully disabled.
+
+    Parameters
+    ----------
+    secret_keys : list of str
+        Keys used to encrypt webhook HMAC signing secrets at rest.
+        Required; generate one with ``openssl rand -hex 32``.
+    blocked_networks: list of str
+        Range of network addresses to which webhooks cannot be delivered, except
+        for the exceptions that follow.
+    allow_delivery_hosts: list of str
+        List of host names to which webhooks must be delivered, regardless of
+        whether in the `blocked_networks list` or not.
+    allow_http : bool
+        When ``True``, webhook URLs are allowed to use plain HTTP instead of
+        HTTPS.  Default ``False`` (HTTPS is required).
+    allow_private_addresses : bool
+        When ``True``, webhook URLs may target private, loopback, or reserved
+        IP addresses.  Default ``False`` (such addresses are blocked to
+        mitigate SSRF).
+    """
+
+    secret_keys: list[str] = []
+    blocked_networks: list[str] = []
+    allow_delivery_hosts: list[str] = []
+    allow_http: bool = False
+    allow_private_addresses: bool = False
+
+    model_config = SettingsConfigDict(env_prefix="TILED_WEBHOOKS_")
+    settings_customise_sources = classmethod(settings_customise_sources)
+
 
 class Config(BaseSettings):
-    catalog: Optional[CatalogConfig] = None  # recommended
-    trees: Optional[list[TreeSpec]] = None  # advanced alternative
+    catalog: CatalogConfig | None = None  # recommended
+    trees: list[TreeSpec] | None = None  # advanced alternative
     media_types: dict[str, dict[str, EntryPointString]] = {}
     file_extensions: dict[str, str] = {}
     authentication: Authentication = Authentication()
-    database: Optional[Database] = None
+    database: Database | None = None
     # TODO: Replace Any with AccessPolicy when #1044 is merged
-    access_policy: Annotated[Optional[Any], Field(alias="access_control")] = None
+    access_policy: Annotated[Any | None, Field(alias="access_control")] = None
     response_bytesize_limit: int = 300_000_000
-    exact_count_limit: Optional[int] = None
-    allow_origins: Optional[list[str]] = None
+    exact_count_limit: int | None = None
+    allow_origins: list[str] | None = None
     uvicorn: dict[str, Any] = {}
     metrics: MetricsConfig = MetricsConfig()
     specs: list[ValidationSpec] = []
     reject_undeclared_specs: bool = False
     expose_raw_assets: bool = True
     routers: list[EntryPointString] = []
-    streaming_cache: Optional[StreamingCacheConfig] = None
+    streaming_cache: StreamingCacheConfig | None = None
+    webhooks: WebhooksConfig | None = None
+    create_mount_nodes_if_not_exist: bool = False
 
     # If recommended 'catalog' config is used, these parameters are
     # not used; they are set inside the CatalogConfig.
@@ -285,6 +394,15 @@ class Config(BaseSettings):
                 self.streaming_cache = StreamingCacheConfig()
             except ValidationError:
                 pass  # uri not set, leave as None
+        return self
+
+    @model_validator(mode="after")
+    def populate_webhooks_from_env(self) -> "Config":
+        if self.webhooks is None:
+            try:
+                self.webhooks = WebhooksConfig()
+            except ValidationError:
+                pass  # secret_keys not set, leave as None
         return self
 
     @model_validator(mode="after")
@@ -357,7 +475,22 @@ class Config(BaseSettings):
                 tree.args["cache_config"] = (
                     self.streaming_cache.model_dump() if self.streaming_cache else None
                 )
+                tree.args["webhook_secret_keys"] = (
+                    list(self.webhooks.secret_keys) if self.webhooks else None
+                )
+            if tree.tree_type is from_uri:
+                tree.args["create_mount_nodes_if_not_exist"] = (
+                    self.create_mount_nodes_if_not_exist
+                )
         return self
+
+    @field_validator("uvicorn")
+    @classmethod
+    def normalize_uvicorn_root_path(cls, uvicorn: dict[str, Any]) -> dict[str, Any]:
+        """Coerce root_path from a value like "tiled" or "/tiled/" to "/tiled"."""
+        if "root_path" in uvicorn:
+            uvicorn["root_path"] = normalize_root_path(uvicorn["root_path"])
+        return uvicorn
 
     @property
     def root_path(self) -> str:
@@ -365,7 +498,10 @@ class Config(BaseSettings):
 
     @cached_property
     def merged_trees(self) -> Any:  # TODO: update when # 1047 is merged
-        trees = dict(tree.tree_entry for tree in self.trees)
+        trees = {
+            segments: tree
+            for segments, tree in (tree_spec.tree_entry for tree_spec in self.trees)
+        }
         if list(trees) == [()]:
             # Simple case: there is one tree, served at the root path /.
             root_tree = trees[()]
@@ -419,7 +555,7 @@ class Config(BaseSettings):
         return base
 
 
-def parse_configs(src_file: Union[str, Path]) -> Config:
+def parse_configs(src_file: str | Path) -> Config:
     src_file = Path(src_file)
     if src_file.is_dir():
         conf = {}
@@ -455,6 +591,7 @@ def construct_build_app_kwargs(config: Config):
         reject_undeclared_specs=config.reject_undeclared_specs,
         expose_raw_assets=config.expose_raw_assets,
         metrics=config.metrics,
+        webhooks=config.webhooks,
     )
     return dict(
         tree=config.merged_trees,

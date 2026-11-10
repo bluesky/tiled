@@ -1,6 +1,8 @@
 import itertools as it
 import time
-from typing import TYPE_CHECKING, Iterable, Optional, Union
+import warnings
+from collections.abc import Iterable
+from typing import TYPE_CHECKING
 from urllib.parse import parse_qs, urlparse
 
 from ..structures.core import StructureFamily
@@ -15,9 +17,7 @@ class CompositeClient(Container):
     def get_contents(self, maxlen=None, include_metadata=False):
         result = {}
         next_page_url = f"{self.item['links']['search']}"
-        while (next_page_url is not None) or (
-            maxlen is not None and len(result) < maxlen
-        ):
+        while (next_page_url is not None) and (maxlen is None or len(result) < maxlen):
             for attempt in retry_context():
                 with attempt:
                     content = handle_error(
@@ -109,7 +109,7 @@ class CompositeClient(Container):
 
     def delete_contents(
         self,
-        keys: Optional[Union[str, Iterable[str]]] = None,
+        keys: str | Iterable[str] | None = None,
         external_only: bool = True,
     ) -> "CompositeClient":
         """Delete the contents of this Composite node.
@@ -158,46 +158,103 @@ class CompositeClient(Container):
         import pandas
         import xarray
 
-        array_dims = {}
-        data_vars = {}
-        for part, item in self.get_contents().items():
-            # Read all or selective arrays/columns.
-            if item["attributes"]["structure_family"] in {
-                StructureFamily.array,
-                StructureFamily.sparse,
-            }:
+        from .array import ArrayClient
+
+        contents = self.get_contents()
+
+        # Count total eagerly-fetched requests for the progress bar.
+        # Array/sparse: eager when the client is ArrayClient (the numpy subclass);
+        # DaskArrayClient (the base) returns a lazy dask array — nothing fetched yet.
+        # Note: ArrayClient inherits DaskArrayClient, so check the eager subclass first.
+        # ArrayClient.fetch_count() mirrors read()'s split_slice logic exactly,
+        # giving the true number of HTTP requests (1 for small arrays, N sub-slices
+        # for large ones), rather than the dask chunk-boundary count.
+        # Table: always eager (npartitions fetches).
+        # Awkward: always eager (1 fetch).
+        total_fetches = 0
+        for part, item in contents.items():
+            sf = item["attributes"]["structure_family"]
+            if sf in {StructureFamily.array, StructureFamily.sparse}:
                 if (variables is None) or (part in variables):
                     array_client = self.base[part]
-                    data_vars[part] = array_client.read()  # [Dask]ArrayClient
-                    array_dims[part] = array_client.dims
-            elif item["attributes"]["structure_family"] == StructureFamily.awkward:
+                    if isinstance(array_client, ArrayClient):
+                        total_fetches += array_client.fetch_count()
+            elif sf in (StructureFamily.awkward, StructureFamily.ragged):
                 if (variables is None) or (part in variables):
-                    try:
-                        data_vars[part] = self.base[part].read().to_numpy()
-                    except ValueError as e:
+                    total_fetches += 1
+            elif sf == StructureFamily.table:
+                structure = item["attributes"]["structure"]
+                columns = structure.get("columns", [])
+                requested = set(variables or columns).intersection(columns)
+                if requested:
+                    total_fetches += structure.get("npartitions", 1)
+
+        with self.context.tracking_progress(total=total_fetches):
+            array_dims = {}
+            data_vars = {}
+            for part, item in contents.items():
+                # Read all or selective arrays/columns.
+                if item["attributes"]["structure_family"] == StructureFamily.bytes:
+                    # Bytes children are opaque payloads with no xarray representation.
+                    # Silently skip them when reading the whole composite; raise if
+                    # the caller named one explicitly so typos surface clearly.
+                    if variables is not None and part in variables:
                         raise ValueError(
-                            f"Failed to convert awkward array to numpy: {e}"
-                        ) from e
-            elif item["attributes"]["structure_family"] == StructureFamily.table:
-                # For now, greedily load tabular data. We cannot know the shape
-                # of the columns without reading them. Future work may enable
-                # this to be lazy.
-                table_client = self.base[part]
-                columns = set(variables or table_client.columns).intersection(
-                    table_client.columns
-                )
-                df = table_client.read(list(columns))
-                if hasattr(df, "compute"):
-                    df = df.compute()
-                for column in columns:
-                    data_vars[column] = df[column].values
-                    # Convert (experimental) pandas.StringDtype to numpy's unicode string dtype
-                    if isinstance(data_vars[column].dtype, pandas.StringDtype):
-                        data_vars[column] = data_vars[column].astype("U")
-            else:
-                raise ValueError(
-                    f"Unsupported structure family: {item['attributes']['structure_family']}"
-                )
+                            f"Cannot read bytes-family child {part!r} as part of "
+                            "a composite xarray.Dataset. Bytes payloads are opaque; "
+                            "download them via /asset/bytes/{path}?id=N using the "
+                            "asset ids discovered from the node's metadata."
+                        )
+                    continue
+                if item["attributes"]["structure_family"] in {
+                    StructureFamily.array,
+                    StructureFamily.sparse,
+                }:
+                    if (variables is None) or (part in variables):
+                        array_client = self.base[part]
+                        data_vars[part] = array_client.read()
+                        array_dims[part] = array_client.dims
+                elif item["attributes"]["structure_family"] == StructureFamily.awkward:
+                    if (variables is None) or (part in variables):
+                        try:
+                            data_vars[part] = self.base[part].read().to_numpy()
+                        except ValueError as e:
+                            raise ValueError(
+                                f"Failed to convert awkward array to numpy: {e}"
+                            ) from e
+                elif item["attributes"]["structure_family"] == StructureFamily.ragged:
+                    if (variables is None) or (part in variables):
+                        array = self.base[part].read()  # RaggedArrayClient
+                        try:
+                            data_vars[part] = array._impl.to_numpy()
+                        except ValueError as e:
+                            from ..structures.ragged import ragged_to_dense
+
+                            data_vars[part] = ragged_to_dense(array)
+                            warnings.warn(
+                                f"Failed to convert ragged array to numpy: {e}. "
+                                "Returning as a dense array padded with NaNs."
+                            )
+                elif item["attributes"]["structure_family"] == StructureFamily.table:
+                    # For now, greedily load tabular data. We cannot know the shape
+                    # of the columns without reading them. Future work may enable
+                    # this to be lazy.
+                    table_client = self.base[part]
+                    columns = set(variables or table_client.columns).intersection(
+                        table_client.columns
+                    )
+                    df = table_client.read(list(columns))
+                    if hasattr(df, "compute"):
+                        df = df.compute()
+                    for column in columns:
+                        data_vars[column] = df[column].values
+                        # Convert (experimental) pandas.StringDtype to numpy's unicode string dtype
+                        if isinstance(data_vars[column].dtype, pandas.StringDtype):
+                            data_vars[column] = data_vars[column].astype("U")
+                else:
+                    raise ValueError(
+                        f"Unsupported structure family: {item['attributes']['structure_family']}"
+                    )
 
         # Create xarray.Dataset from the data_vars dictionary
         is_dim0_consistent = (
@@ -220,7 +277,7 @@ class CompositeClient(Container):
         for var_name, arr in data_vars.items():
             if is_dim0_consistent:
                 dims = (dim0 or "dim0",) + tuple(
-                    f"{var_name}_dim{i+1}" for i in range(len(arr.shape) - 1)
+                    f"{var_name}_dim{i + 1}" for i in range(len(arr.shape) - 1)
                 )
             else:
                 dims = tuple(f"{var_name}_dim{i}" for i in range(len(arr.shape)))
@@ -241,6 +298,14 @@ class CompositeClient(Container):
         if key in self.keys():
             raise ValueError(f"Key '{key}' already exists in the composite node.")
 
+        if structure_family == StructureFamily.table:
+            # Ensure that the table columns do not overlap with existing keys.
+            for data_source in data_sources:
+                if set(data_source.structure.columns).intersection(self.keys()):
+                    raise ValueError(
+                        "Table columns must not overlap with existing keys in the composite node."
+                    )
+
         return super().new(
             structure_family,
             data_sources,
@@ -248,17 +313,6 @@ class CompositeClient(Container):
             metadata=metadata,
             specs=specs,
             access_tags=access_tags,
-        )
-
-    def write_table(
-        self, data, *, key=None, metadata=None, specs=None, access_tags=None
-    ):
-        if set(self.keys()).intersection(data.columns):
-            raise ValueError(
-                "DataFrame columns must not overlap with existing keys in the composite node."
-            )
-        return super().write_table(
-            data, key=key, metadata=metadata, specs=specs, access_tags=access_tags
         )
 
     def create_appendable_table(
@@ -270,7 +324,7 @@ class CompositeClient(Container):
         metadata=None,
         specs=None,
         access_tags=None,
-        table_name: Optional[str] = None,
+        table_name: str | None = None,
     ):
         if set(self.keys()).intersection(schema.names):
             raise ValueError(

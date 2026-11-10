@@ -2,17 +2,15 @@
 
 ## Path to v1.0.0 Release
 
-We aim to release v1.0.0 in December 2025. There may or may
-not be a v0.2.0 release along the way.
+We aim to release v1.0.0 by September 2026.
 
 - Optimize performance and scalability. Build out nascent
   [asv](https://asv.readthedocs.io/en/latest/) benchmarks, and
   [locust](https://locust.io/) load testing.
-- Restructure codebase to separate FastAPI server from
-  service, both to improve maintainability/readability and
-  to enable a distinct GraphQL server to use the same service.
-- Type-hint more of the codebase.
+- Improve the developer experience with additional type hints, and improved
+  modularity.
 - Rationalize and simplify CLI and configuration management.
-- Support deployment with an API gateway.
 - Continue to develop streaming capabilities.
-- Support for reading from and writing to blob storage
+- Add experimental support for WebDAV, so that Tiled can be browsed natively by
+  file browsers on Windows, MacOS, and Linux.
+- Add an experimental framework for _links_ between datasets.

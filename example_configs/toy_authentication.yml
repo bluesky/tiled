@@ -12,6 +12,14 @@ authentication:
   tiled_admins:
     - provider: toy
       id: admin
+database:
+  # The authentication database, where the server records principals
+  # (users and services) as they first log in. The access tags compiler
+  # (example_configs/access_tags/compile_tags.py) reads it to generate a
+  # principal tag ('user:alice', ...) for each principal, which is what
+  # lets a principal create nodes without explicit access tags.
+  uri: "sqlite:///./example_configs/authn.db"
+  init_if_not_exists: true
 access_control:
   access_policy: "tiled.access_control.access_policies:TagBasedAccessPolicy"
   args:
@@ -25,8 +33,7 @@ access_control:
     - "delete:node"
     - "create:node"
     - "register"
-    tags_db:
-      uri: "file:example_configs/access_tags/compiled_tags.sqlite"
+    # Access tag definitions are read from the catalog database (see trees).
     access_tags_parser: "tiled.access_control.access_tags:AccessTagsParser"
 trees:
   - path: /
@@ -35,4 +42,4 @@ trees:
       uri: "sqlite+aiosqlite:///./example_configs/catalog/catalog.db"
       writable_storage: "./example_configs/catalog/data"
       init_if_not_exists: true
-      top_level_access_blob: {"tags": ["public"]}
+      top_level_access_tags: ["public"]

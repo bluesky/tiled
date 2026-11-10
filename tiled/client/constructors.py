@@ -3,14 +3,13 @@ import collections.abc
 import pathlib
 import threading
 import warnings
-from typing import Optional, Union
 from urllib.parse import parse_qs, urlparse
 
-import httpx
+import httpx2 as httpx
 
 from ..utils import import_object, prepend_to_sys_path
 from .container import DEFAULT_STRUCTURE_CLIENT_DISPATCH, Container
-from .context import DEFAULT_TIMEOUT_PARAMS, UNSET, Context
+from .context import DEFAULT_TIMEOUT_PARAMS, MAX_CONCURRENT_CONNECTIONS, UNSET, Context
 from .utils import MSGPACK_MIME_TYPE, client_for_item, handle_error, retry_context
 
 
@@ -28,7 +27,11 @@ def from_uri(
     headers=None,
     timeout=None,
     include_data_sources=False,
-    auth: Optional[httpx.Auth] = None,
+    auth: httpx.Auth | None = None,
+    cookies: httpx.Cookies | dict | None = None,
+    max_connections: int = MAX_CONCURRENT_CONNECTIONS,
+    show_progress=None,
+    trust_env=True,
 ):
     """
     Connect to a Node on a local or remote server.
@@ -65,6 +68,15 @@ def from_uri(
         Default False. If True, fetch information about underlying data sources.
     auth : httpx.Auth, optional
         Custom authentication handler.
+    cookies : httpx.Cookies, optional
+        Cookies to send.
+    max_connections : int, optional
+        If provided, use this value for the maximum number of concurrent
+        connections in the HTTP client.
+    trust_env : bool, optional
+        Whether to honor environment variables such as HTTP_PROXY, HTTPS_PROXY,
+        and NO_PROXY. True by default. Set False to ignore proxy configuration
+        in the environment.
     """
     EXPLAIN_LOGIN = """
 
@@ -79,7 +91,7 @@ For non-interactive authentication, use an API key or add custom auth
         warnings.warn(
             "Tiled no longer accepts 'auth_provider' parameter. " + EXPLAIN_LOGIN
         )
-    if auth_provider is not None:
+    if prompt_for_reauthentication is not None:
         warnings.warn(
             "Tiled no longer accepts 'prompt_for_reauthentication' parameter. "
             + EXPLAIN_LOGIN
@@ -87,19 +99,16 @@ For non-interactive authentication, use an API key or add custom auth
     context, node_path_parts = Context.from_any_uri(
         uri,
         api_key=api_key,
+        auth=auth,
+        cookies=cookies,
         cache=cache,
         headers=headers,
         timeout=timeout,
         verify=verify,
+        max_connections=max_connections,
+        show_progress=show_progress,
+        trust_env=trust_env,
     )
-    if auth is not None:
-        if isinstance(auth, httpx.Auth):
-            context.http_client.auth = auth
-            context.has_external_auth = True
-        else:
-            raise ValueError(
-                f"Tiled client auth parameter has been set with {type(auth)} httpx.Auth or None allowed"
-            )
     return from_context(
         context,
         structure_clients=structure_clients,
@@ -136,10 +145,11 @@ def from_context(
     if isinstance(structure_clients, str):
         structure_clients = DEFAULT_STRUCTURE_CLIENT_DISPATCH[structure_clients]
     # To construct a user-facing client object, we may be required to authenticate.
-    # 1. If any API key set, we are already authenticated and there is nothing to do.
+    # 1. If the context is authenticated, such as if an API key is set, we are already
+    #    authenticated and there is nothing to do.
     # 2. If there are cached valid credentials for this server, use them.
     # 3. If not, and the server requires authentication, prompt for authentication.
-    if context.api_key is None:
+    if not context.authenticated:
         auth_is_required = context.server_info.authentication.required
         has_providers = len(context.server_info.authentication.providers) > 0
         if auth_is_required and not has_providers:
@@ -166,6 +176,7 @@ def from_context(
                 context.http_client.get(
                     item_uri,
                     headers={"Accept": MSGPACK_MIME_TYPE},
+                    params=params,
                 )
             ).json()
     item = content["data"]
@@ -263,17 +274,21 @@ def from_profile(name, structure_clients=None, **kwargs):
         config = merged.pop("direct", None)
         with prepend_to_sys_path(filepath.parent):
             app = build_app_from_config(config)
-        context = Context.from_app(app)
+        max_connections = merged.pop("max_connections", MAX_CONCURRENT_CONNECTIONS)
+        show_progress = merged.pop("show_progress", None)
+        context = Context.from_app(
+            app, max_connections=max_connections, show_progress=show_progress
+        )
         return from_context(context, **merged)
     else:
         return from_uri(**merged)
 
 
 def simple(
-    directory: Optional[Union[str, pathlib.Path]] = None,
-    api_key: Optional[str] = None,
+    directory: str | pathlib.Path | None = None,
+    api_key: str | None = None,
     port: int = 0,
-    readable_storage: Optional[Union[str, pathlib.Path]] = None,
+    readable_storage: str | pathlib.Path | None = None,
     quiet: bool = False,
 ):
     """

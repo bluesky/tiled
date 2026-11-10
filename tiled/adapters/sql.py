@@ -1,10 +1,28 @@
+from __future__ import annotations
+
 import copy
 import hashlib
+import logging
+import os
 import re
-from collections.abc import Set
-from contextlib import closing
-from typing import Any, Callable, Iterator, List, Literal, Optional, Tuple, Union, cast
+from collections.abc import Callable, Iterator, Sequence, Set
+from contextlib import AbstractContextManager, closing, nullcontext
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Literal,
+    TypedDict,
+    cast,
+)
+from urllib.parse import urlparse
 
+from tiled.utils import UnsafeIdentifier
+
+if TYPE_CHECKING:
+    from .awkward import AwkwardAdapter
+    from .ragged import RaggedAdapter
+
+import adbc_driver_manager
 import numpy
 import pandas
 import pyarrow
@@ -19,13 +37,21 @@ from ..storage import (
     SQLStorage,
     Storage,
     get_storage,
+    strip_connection_parameters,
+    strip_storage_uri_query_on_write,
 )
 from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import Asset, DataSource
 from ..structures.table import TableStructure
 from ..type_aliases import JSON
 from .array import ArrayAdapter
-from .utils import init_adapter_from_catalog
+
+try:
+    from opentelemetry import trace as _otel_trace
+
+    _STORAGE_TRACER = _otel_trace.get_tracer("tiled.storage")
+except ImportError:  # OpenTelemetry is an optional dependency.
+    _STORAGE_TRACER = None
 
 DIALECTS = Literal["postgresql", "sqlite", "duckdb"]
 TABLE_NAME_PATTERN = re.compile(r"^[a-z][a-z0-9_]*$")
@@ -56,6 +82,52 @@ FORBIDDEN_CHARACTERS = re.compile(
 # e.g. "A" and "a" will raise an error.
 # Furthermore, user-specified table names can only be in lower case.
 
+logger = logging.getLogger(__name__)
+
+
+class _OrderByArgs(TypedDict):
+    column: str
+    direction: Literal["asc", "desc"]
+
+
+def _is_orderable_type(arrow_type: pyarrow.DataType) -> bool:
+    """Return True if the Arrow type can be used in a SQL ORDER BY clause.
+
+    Nested types (list, struct, map) cannot be sorted in SQL.
+    """
+    return not (
+        pyarrow.types.is_list(arrow_type)
+        or pyarrow.types.is_large_list(arrow_type)
+        or pyarrow.types.is_fixed_size_list(arrow_type)
+        or pyarrow.types.is_struct(arrow_type)
+        or pyarrow.types.is_map(arrow_type)
+    )
+
+
+def _is_primary_key_type(arrow_type: pyarrow.DataType) -> bool:
+    """Return True if the Arrow type is suitable for use as a primary key column.
+
+    In addition to the non-orderable nested types, floating-point columns are
+    rejected: NaN != NaN semantics and precision issues make float primary keys
+    almost always a mistake.
+    """
+    return _is_orderable_type(arrow_type) and not pyarrow.types.is_floating(arrow_type)
+
+
+def is_unique_violation(exc: adbc_driver_manager.Error) -> bool:
+    """Return True if ``exc`` is a SQL unique/PK constraint violation.
+
+    The ADBC postgres driver reports unique-violations as ``ProgrammingError``
+    rather than ``IntegrityError`` (the spec-mandated subclass). Both expose a
+    ``sqlstate`` attribute; per SQL:2008 all integrity-constraint violations
+    use SQLSTATE class ``23``. Fall back to ``isinstance(IntegrityError)`` when
+    SQLSTATE is unavailable (e.g. other drivers).
+    """
+    sqlstate = getattr(exc, "sqlstate", None) or ""
+    if sqlstate.startswith("23"):
+        return True
+    return isinstance(exc, adbc_driver_manager.IntegrityError)
+
 
 class SQLAdapter(Adapter[TableStructure]):
     """SQLAdapter Class
@@ -82,8 +154,10 @@ class SQLAdapter(Adapter[TableStructure]):
         table_name: str,
         dataset_id: int,
         *,
-        metadata: Optional[JSON] = None,
-        specs: Optional[List[Spec]] = None,
+        order_by_args: list[_OrderByArgs] | None = None,
+        primary_key: list[str] | None = None,
+        metadata: JSON | None = None,
+        specs: list[Spec] | None = None,
     ) -> None:
         self.storage: SQLStorage = cast(SQLStorage, get_storage(data_uri))
         self._metadata = metadata or {}
@@ -91,30 +165,73 @@ class SQLAdapter(Adapter[TableStructure]):
         self.specs = list(specs or [])
         self.table_name = table_name
         self.dataset_id = dataset_id
+
+        self.order_by_args: list[_OrderByArgs] = order_by_args or []
+        self.primary_key: list[str] = primary_key or []
+
+        for arg in self.order_by_args:
+            column = arg["column"]
+            direction = arg["direction"]
+            if column not in self.structure().columns:
+                raise ValueError(
+                    f"order_by column '{column}' is not in the structure columns"
+                )
+            if direction not in ("asc", "desc"):
+                raise ValueError(
+                    f"order_by direction must be 'asc' or 'desc', got '{direction}'"
+                )
+            arrow_type = self.structure().arrow_schema_decoded.field(column).type
+            if not _is_orderable_type(arrow_type):
+                raise ValueError(
+                    f"order_by column '{column}' has type {arrow_type} which cannot be sorted in SQL"
+                )
+        for key in self.primary_key:
+            if key not in self.structure().columns:
+                raise ValueError(
+                    f"primary_key column '{key}' is not in the structure columns"
+                )
+            arrow_type = self.structure().arrow_schema_decoded.field(key).type
+            if not _is_primary_key_type(arrow_type):
+                raise ValueError(
+                    f"primary_key column '{key}' has type {arrow_type} which is not suitable "
+                    f"as a primary key (nested types and floating-point types are not allowed)"
+                )
+            if arg["direction"] not in ("asc", "desc"):
+                raise ValueError(
+                    f"order_by direction must be 'asc' or 'desc', got '{arg['direction']}'"
+                )
+        for key in self.primary_key:
+            if key not in self.structure().columns:
+                raise ValueError(
+                    f"primary_key column '{key}' is not in the structure columns"
+                )
+
         super().__init__(structure, metadata=metadata, specs=specs)
-
-    def metadata(self) -> JSON:
-        """The metadata representing the actual data.
-
-        Returns
-        -------
-        The metadata representing the actual data.
-        """
-        return self._metadata
 
     @classmethod
     def supported_storage(cls) -> Set[type[Storage]]:
         return {SQLStorage, EmbeddedSQLStorage, RemoteSQLStorage}
 
     @classmethod
+    def get_table_name(cls, data_source: DataSource[TableStructure]) -> str:
+        "If not defined, generate a default table name based on the Arrow schema and parameters"
+
+        suffix = "".join(data_source.parameters.get("primary_key", ""))
+        encoded = (data_source.structure.arrow_schema + suffix).encode()
+        default = "table_" + hashlib.md5(encoded).hexdigest().lower()
+        table_name: str = data_source.parameters.setdefault("table_name", default)
+        is_safe_identifier(table_name, TABLE_NAME_PATTERN, allow_reserved_words=False)
+
+        return table_name
+
+    @classmethod
     def init_storage(
         cls,
         storage: SQLStorage,
         data_source: DataSource[TableStructure],
-        path_parts: Optional[List[str]] = None,
+        path_parts: list[str] | None = None,
     ) -> DataSource[TableStructure]:
-        """
-        Class to initialize the list of assets for given uri.
+        """Initialize (or update) a data source, including the list of assets, for given uri.
 
         Parameters
         ----------
@@ -129,30 +246,51 @@ class SQLAdapter(Adapter[TableStructure]):
         """
         data_source = copy.deepcopy(data_source)  # Do not mutate caller input.
 
-        # Create a table_name based on the hash of Arrow schema
-        schema = data_source.structure.arrow_schema_decoded
-        encoded = schema.serialize()
-        default_table_name = "table_" + hashlib.md5(encoded).hexdigest().lower()
-        table_name = data_source.parameters.setdefault("table_name", default_table_name)
-        is_safe_identifier(table_name, TABLE_NAME_PATTERN, allow_reserved_words=False)
-
         # Prefix columns with internal _dataset_id, _partition_id, ...
+        schema = data_source.structure.arrow_schema_decoded
         schema = schema.insert(0, pyarrow.field("_partition_id", pyarrow.int16()))
         schema = schema.insert(0, pyarrow.field("_dataset_id", pyarrow.int32()))
+        table_name = cls.get_table_name(data_source)
         create_table_statement = arrow_schema_to_create_table(
             schema, table_name, cast(DIALECTS, storage.dialect)
         )
 
-        create_index_statement = (
-            "CREATE INDEX IF NOT EXISTS dataset_and_partition_index "
-            f'ON "{table_name}"(_dataset_id, _partition_id)'
-        )
+        # If there is a primary_key parameter, first validate it against the table schema
+        if primary_key := data_source.parameters.get("primary_key"):
+            for key in primary_key:
+                if key not in data_source.structure.columns:
+                    raise ValueError(
+                        f"primary_key column '{key}' is not in the structure columns"
+                    )
+                arrow_type = data_source.structure.arrow_schema_decoded.field(key).type
+                if not _is_primary_key_type(arrow_type):
+                    raise ValueError(
+                        f"primary_key column '{key}' has type {arrow_type} which is not suitable "
+                        f"as a primary key (nested types and floating-point types are not allowed)"
+                    )
 
         with closing(storage.connect()) as conn:
             with conn.cursor() as cursor:
                 cursor.execute(create_table_statement)
+
+            # Create an index on the dataset_id and partition_id columns to speed up queries.
+            # If there is a primary_key parameter, include it in the index and ensure uniqueness.
+            create_index_statement = (
+                "CREATE INDEX IF NOT EXISTS dataset_and_partition_index "
+                f'ON "{table_name}"(_dataset_id, _partition_id)'
+            )
             with conn.cursor() as cursor:
                 cursor.execute(create_index_statement)
+
+            if primary_key:
+                pkey_columns = ", ".join([f'"{col.lower()}"' for col in primary_key])
+                create_unique_index_statement = (
+                    "CREATE UNIQUE INDEX IF NOT EXISTS unique_ordering_per_dataset_index "
+                    f'ON "{table_name}"(_dataset_id, {pkey_columns})'
+                )
+                with conn.cursor() as cursor:
+                    cursor.execute(create_unique_index_statement)
+
             # Just once, create a SEQUENCE (or the closest analogue in SQLite) to
             # provide unique dataset_id for each dataset in this database.
             # (If it exists, do nothing.)
@@ -185,10 +323,18 @@ class SQLAdapter(Adapter[TableStructure]):
             data_source.parameters["dataset_id"] = dataset_id
             conn.commit()
 
+        # Store URI *without* credentials. Behind a feature flag, also strip
+        # connection-tuning query parameters. (Reads match on database name
+        # regardless, via get_storage, so Assets written either way remain
+        # resolvable.)
+        data_uri = (
+            strip_connection_parameters(storage.uri)
+            if strip_storage_uri_query_on_write()
+            else storage.uri
+        )
         data_source.assets.append(
             Asset(
-                # Store URI *without* credentials.
-                data_uri=storage.uri,
+                data_uri=data_uri,
                 is_directory=False,
                 parameter="data_uri",
                 num=None,
@@ -202,21 +348,23 @@ class SQLAdapter(Adapter[TableStructure]):
         data_source: DataSource[TableStructure],
         node: Node,
         /,
-        **kwargs: Optional[Any],
-    ) -> "SQLAdapter":
-        return init_adapter_from_catalog(cls, data_source, node, **kwargs)
+        **kwargs: Any | None,
+    ) -> SQLAdapter:
+        return cls(
+            data_source.assets[0].data_uri,
+            structure=data_source.structure,
+            table_name=data_source.parameters["table_name"],
+            dataset_id=data_source.parameters["dataset_id"],
+            order_by_args=data_source.parameters.get("order_by_args"),
+            primary_key=data_source.parameters.get("primary_key"),
+            metadata=node.metadata_,
+            specs=node.specs,
+        )
 
     def structure(self) -> TableStructure:
-        """
-        The structure of the actual data.
-
-        Returns
-        -------
-        The structure of the data.
-        """
         return self._structure
 
-    def get(self, key: str) -> Union[ArrayAdapter, None]:
+    def get(self, key: str) -> ArrayAdapter | AwkwardAdapter | RaggedAdapter | None:
         """Get the data for a specific key
 
         Parameters
@@ -231,7 +379,9 @@ class SQLAdapter(Adapter[TableStructure]):
             return None
         return self[key]
 
-    def __getitem__(self, key: str) -> ArrayAdapter:
+    def __getitem__(
+        self, key: str
+    ) -> ArrayAdapter | AwkwardAdapter | RaggedAdapter | None:
         """Get the data for a specific key.
 
         Parameters
@@ -244,26 +394,84 @@ class SQLAdapter(Adapter[TableStructure]):
         """
 
         # Must compute to determine shape.
-        return ArrayAdapter.from_array(self.read([key])[key].values)
+        array = self.read([key])[key].infer_objects().to_numpy()
+        if array.dtype.name != "object":
+            return ArrayAdapter.from_array(array)
 
-    def items(self) -> Iterator[Tuple[str, ArrayAdapter]]:
+        if (
+            array.dtype.name == "object"
+            and len(array)
+            and isinstance(array[0], numpy.ndarray)
+        ):
+            # accumulate errors until an attempt succeeds
+            errors: list[Exception] = []
+
+            try:
+                array = numpy.vstack(cast("Sequence[numpy.ndarray]", array))
+                return ArrayAdapter.from_array(array)
+            except ValueError as err:
+                errors.append(err)
+
+            try:
+                from .ragged import RaggedAdapter
+
+                return RaggedAdapter.from_array(array)
+            except Exception as err:
+                errors.append(err)
+
+            # Defensive fallback. In practice this branch is unreachable via
+            # real SQL data: arrow list columns are uniformly typed, and
+            # ``ragged.array`` accepts every numeric or string-like jagged
+            # input that survives arrow round-trip (it even reinterprets
+            # bytes/strings as ``uint8`` rather than rejecting them). This
+            # path exists to handle hypothetical awkward forms (records,
+            # unions, etc.) that ragged cannot represent but that some
+            # future storage backend might surface. Not covered by tests
+            # because no real fixture can reach it.
+            try:
+                from .awkward import AwkwardAdapter
+
+                return AwkwardAdapter.from_array(array)
+            except Exception as err:
+                errors.append(err)
+
+            # Also defensive: ``AwkwardAdapter.from_array`` accepts essentially
+            # any ndarray content (including structured dtypes, void, object
+            # cells with dicts/None). For this branch to fire, all three of
+            # vstack / ragged / awkward must reject the input. No real SQL
+            # round-trip can produce such data today; logging here is purely
+            # to aid debugging if a future upstream change makes it reachable.
+            logger.error(
+                "No adapter found that accepts object-array at key %s. (%s)",
+                key,
+                errors,
+            )
+
+        # fallback to string representation conversion in ArrayAdapter
+        return ArrayAdapter.from_array(array)
+
+    def items(
+        self,
+    ) -> Iterator[tuple[str, ArrayAdapter | AwkwardAdapter | RaggedAdapter]]:
         """Iterate over the SQLAdapter data.
 
         Returns
         -------
         An iterator for the data in the associated database.
         """
-        yield from ((key, self[key]) for key in self._structure.columns)
+        yield from (
+            (key, adapter)
+            for key in self._structure.columns
+            if (adapter := self[key]) is not None
+        )
 
     def append_partition(
         self,
         partition: int,
-        data: Union[
-            List[pyarrow.record_batch],
-            pyarrow.record_batch,
-            pandas.DataFrame,
-            pyarrow.Table,
-        ],
+        data: list[pyarrow.RecordBatch]
+        | pyarrow.RecordBatch
+        | pandas.DataFrame
+        | pyarrow.Table,
     ) -> None:
         """Write the data as arrow format
 
@@ -271,7 +479,7 @@ class SQLAdapter(Adapter[TableStructure]):
         ----------
         partition : int
             The partition number to which the data will be appended.
-        data : Union[List[pyarrow.record_batch], pyarrow.record_batch, pandas.DataFrame, pyarrow.Table]
+        data : list[pyarrow.RecordBatch] | pyarrow.RecordBatch | pandas.DataFrame | pyarrow.Table
             data to append to the database.
         """
 
@@ -305,11 +513,38 @@ class SQLAdapter(Adapter[TableStructure]):
 
         with closing(self.storage.connect()) as conn:
             with conn.cursor() as cursor:
-                cursor.adbc_ingest(self.table_name, table, mode="append")
+                with self._adbc_ingest_span():
+                    cursor.adbc_ingest(self.table_name, table, mode="append")
             conn.commit()
 
+    def _adbc_ingest_span(self) -> AbstractContextManager[Any]:
+        """OpenTelemetry tracing span for the bulk `adbc_ingest` write.
+
+        `adbc_ingest` bypasses the DBAPI `execute()` path, so the generic
+        dbapi instrumentation does not trace it; emit a span explicitly with the
+        same db attributes as the other storage spans. A no-op if OpenTelemetry
+        is not installed or tracing is not configured.
+        """
+        if _STORAGE_TRACER is None or not os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT"):
+            return nullcontext()
+        attributes = {
+            "db.system": self.storage.dialect,
+            "db.sql.table": self.table_name,
+        }
+        db_name = urlparse(self.storage.uri).path.lstrip("/")
+        if db_name:
+            attributes["db.name"] = db_name
+        return cast(
+            AbstractContextManager[Any],
+            _STORAGE_TRACER.start_as_current_span(
+                "adbc_ingest",
+                kind=_otel_trace.SpanKind.CLIENT,
+                attributes=attributes,
+            ),
+        )
+
     def _read_full_table_or_partition(
-        self, fields: Optional[List[str]] = None, partition: Optional[int] = None
+        self, fields: list[str] | None = None, partition: int | None = None
     ) -> pyarrow.Table:
         """Read the data from the database
 
@@ -336,11 +571,23 @@ class SQLAdapter(Adapter[TableStructure]):
             f'FROM "{self.table_name}" '
             f"WHERE _dataset_id={self.dataset_id} "
         )
-        query += (
-            f"AND _partition_id={int(partition)}"
-            if partition is not None
-            else "ORDER BY _partition_id"
-        )
+
+        if partition is not None:
+            query += f"AND _partition_id={int(partition)}"
+            order_by_partition = []
+        else:
+            order_by_partition = [{"column": "_partition_id", "direction": "asc"}]
+
+        order_by = [
+            f'"{c["column"].lower()}" {c["direction"].upper()}'
+            for c in self.order_by_args + order_by_partition
+        ]
+        # SQL leaves the order of rows that tie on the keys above undefined.
+        # rowid follows insertion order in DuckDB and SQLite.
+        if self.storage.dialect in ("duckdb", "sqlite"):
+            order_by.append("rowid")
+        if order_by:
+            query += " ORDER BY " + ", ".join(order_by)
 
         with closing(self.storage.connect()) as conn:
             with conn.cursor() as cursor:
@@ -359,7 +606,7 @@ class SQLAdapter(Adapter[TableStructure]):
 
         return data.cast(target_schema)
 
-    def read(self, fields: Optional[List[str]] = None) -> pandas.DataFrame:
+    def read(self, fields: list[str] | None = None) -> pandas.DataFrame:
         """Read the concatenated data from the entire table.
 
         Parameters
@@ -374,7 +621,7 @@ class SQLAdapter(Adapter[TableStructure]):
         return self._read_full_table_or_partition(fields=fields).to_pandas()
 
     def read_partition(
-        self, partition: int, fields: Optional[List[str]] = None
+        self, partition: int, fields: list[str] | None = None
     ) -> pandas.DataFrame:
         """Read a batch of data from a given partition.
 
@@ -436,7 +683,7 @@ ARROW_TO_PG_TYPES: dict[pyarrow.Field, str] = {
 }
 
 
-def arrow_field_to_pg_type(field: Union[pyarrow.Field, pyarrow.DataType]) -> str:
+def arrow_field_to_pg_type(field: pyarrow.Field | pyarrow.DataType) -> str:
     """Get the PostgreSQL type name for a given PyArrow field.
 
     Parameters
@@ -469,8 +716,8 @@ def arrow_field_to_pg_type(field: Union[pyarrow.Field, pyarrow.DataType]) -> str
     """
 
     def _resolve_type(
-        arrow_type: Union[pyarrow.Field, pyarrow.DataType]
-    ) -> Union[pyarrow.Field, pyarrow.DataType, str]:
+        arrow_type: pyarrow.Field | pyarrow.DataType,
+    ) -> pyarrow.Field | pyarrow.DataType | str:
         """Internal helper to resolve type, handling nested cases."""
         # Handle list types
         if pyarrow.types.is_list(arrow_type):
@@ -486,6 +733,12 @@ def arrow_field_to_pg_type(field: Union[pyarrow.Field, pyarrow.DataType]) -> str
         if pyarrow.types.is_large_list(arrow_type):
             value_type = _resolve_type(arrow_type.value_type)
             return f"{value_type} ARRAY"
+
+        # Handle Awkward byte arrays
+        from awkward._connect.pyarrow.extn_types import AwkwardArrowType
+
+        if isinstance(arrow_type, AwkwardArrowType):
+            return "BYTEA"
 
         # TODO Consider adding support for these types, with testing.
 
@@ -568,7 +821,7 @@ ARROW_TO_DUCKDB_TYPES = {
 }
 
 
-def arrow_field_to_duckdb_type(field: Union[pyarrow.Field, pyarrow.DataType]) -> str:
+def arrow_field_to_duckdb_type(field: pyarrow.Field | pyarrow.DataType) -> str:
     """Get the DuckDB type name for a given PyArrow field.
 
     Parameters
@@ -601,8 +854,8 @@ def arrow_field_to_duckdb_type(field: Union[pyarrow.Field, pyarrow.DataType]) ->
     """
 
     def _resolve_type(
-        arrow_type: Union[pyarrow.Field, pyarrow.DataType]
-    ) -> Union[pyarrow.Field, pyarrow.DataType, str]:
+        arrow_type: pyarrow.Field | pyarrow.DataType,
+    ) -> pyarrow.Field | pyarrow.DataType | str:
         """Internal helper to resolve type, handling nested cases."""
         # Handle decimal types with custom precision/scale
         if pyarrow.types.is_decimal(arrow_type):
@@ -702,7 +955,7 @@ ARROW_TO_SQLITE_TYPES: dict[pyarrow.Field, str] = {
 }
 
 
-def arrow_field_to_sqlite_type(field: Union[pyarrow.Field, pyarrow.DataType]) -> str:
+def arrow_field_to_sqlite_type(field: pyarrow.Field | pyarrow.DataType) -> str:
     """Get the SQLite type name for a given PyArrow field.
 
     Parameters
@@ -765,7 +1018,7 @@ def arrow_field_to_sqlite_type(field: Union[pyarrow.Field, pyarrow.DataType]) ->
 
 
 DIALECT_TO_TYPE_CONVERTER: dict[
-    DIALECTS, Callable[[Union[pyarrow.Field, pyarrow.DataType]], str]
+    DIALECTS, Callable[[pyarrow.Field | pyarrow.DataType], str]
 ] = {
     "duckdb": arrow_field_to_duckdb_type,
     "sqlite": arrow_field_to_sqlite_type,
@@ -812,21 +1065,25 @@ def is_safe_identifier(
     pattern: re.Pattern[str],
     allow_reserved_words: bool = True,
 ) -> bool:
-    if len(identifier) > 63:
-        raise ValueError(
-            f'Invalid SQL identifier "{identifier}": max character number is 63'
+    # According to https://www.postgresql.org/docs/current/sql-syntax-lexical.html#SQL-SYNTAX-IDENTIFIERS,
+    # the maximum bytes for an identifier is 63 with PostgreSQL. This is the smallest limit across supported
+    # databases (PostgreSQL, SQLite, DuckDB).
+    bytes_length = len(identifier.encode("utf-8"))
+    if bytes_length > 63:
+        raise UnsafeIdentifier(
+            f'Invalid SQL identifier "{identifier}": max bytes is 63 but identifier has {bytes_length} bytes'
         )
 
     if not allow_reserved_words and identifier.lower() in RESERVED_WORDS:
-        raise ValueError(
+        raise UnsafeIdentifier(
             f'Reserved SQL keywords are not allowed in identifiers, "{identifier}"'
         )
 
     if pattern.match(identifier) is None:
-        raise ValueError(f'Malformed SQL identifier "{identifier}"')
+        raise UnsafeIdentifier(f'Malformed SQL identifier "{identifier}"')
 
     if match := FORBIDDEN_CHARACTERS.search(identifier):
-        raise ValueError(
+        raise UnsafeIdentifier(
             f'Invalid SQL identifier "{identifier}" '
             f"contains forbidden character(s): {', '.join(match.groups())}"
         )

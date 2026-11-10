@@ -1,10 +1,15 @@
+import asyncio
+import os
 import random
 import string
+import time
 from contextlib import closing
 from dataclasses import asdict
+from pathlib import Path
 from typing import cast
 
 import dask.array
+import h5py
 import numpy
 import pandas
 import pandas.testing
@@ -14,24 +19,38 @@ import pytest_asyncio
 import sqlalchemy.exc
 import tifffile
 import xarray
-from sqlalchemy import text
+from hypothesis import given, settings
+from hypothesis import strategies as st
+from sqlalchemy import event, text
+from sqlalchemy.dialects import postgresql as postgresql_dialect
+from sqlalchemy.dialects import sqlite as sqlite_dialect
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.pool import AsyncAdaptedQueuePool, QueuePool, StaticPool
+from starlette.status import HTTP_409_CONFLICT
 
+from tiled.access_control.access_policies import DummyAccessPolicy
+from tiled.access_control.protocols import ApprovedAccessTags
 from tiled.adapters.csv import CSVAdapter
 from tiled.adapters.dataframe import ArrayAdapter
 from tiled.adapters.tiff import TiffAdapter
+from tiled.adapters.utils import DataNotReadyError, IncompatibleShapeError
 from tiled.catalog import in_memory
-from tiled.catalog.adapter import WouldDeleteData
+from tiled.catalog import orm as catalog_orm
+from tiled.catalog.adapter import (
+    CatalogContainerAdapter,
+    WouldDeleteData,
+    _access_tags_predicate,
+)
 from tiled.catalog.explain import record_explanations
 from tiled.client import Context, from_context
 from tiled.client.register import register
 from tiled.client.utils import ClientError
 from tiled.client.xarray import write_xarray_dataset
-from tiled.queries import Eq, Key
+from tiled.queries import AccessTagsFilter, Eq, Key
 from tiled.server.app import build_app, build_app_from_config
 from tiled.server.schemas import Asset, DataSource, Management
 from tiled.storage import SQLStorage, get_storage, parse_storage, sanitize_uri
+from tiled.structures.array import ArrayStructure, BuiltinDtype
 from tiled.structures.core import StructureFamily
 from tiled.utils import Conflicts, ensure_specified_sql_driver, ensure_uri
 
@@ -39,18 +58,107 @@ from .utils import sql_table_exists
 
 
 @pytest_asyncio.fixture
-async def a(adapter):
+async def a(catalog_adapter):
     "Raw adapter, not to be used within an app because it is manually started and stopped."
-    await adapter.startup()
-    yield adapter
-    await adapter.shutdown()
+    await catalog_adapter.startup()
+    yield catalog_adapter
+    await catalog_adapter.shutdown()
 
 
 @pytest_asyncio.fixture
-async def client(adapter):
-    app = build_app(adapter)
+async def client(catalog_adapter):
+    app = build_app(catalog_adapter)
     with Context.from_app(app) as context:
         yield from_context(context)
+
+
+@pytest.mark.asyncio
+async def test_root_node_has_default_access_tags(a):
+    access_tags = (
+        (
+            await a.context.execute(
+                "SELECT access_tags.name "
+                "FROM access_tags "
+                "JOIN node_access_tags_association "
+                "ON node_access_tags_association.tag_id = access_tags.id "
+                "WHERE node_access_tags_association.node_id = 0"
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert list(access_tags) == ["public"]
+
+
+@pytest.mark.asyncio
+async def test_new_access_tags_get_rows(a: CatalogContainerAdapter) -> None:
+    "Tags a policy approved apply without a pre-existing tag row."
+    approved = ApprovedAccessTags(["experiment:1234"])
+    x = await a.create_node(
+        StructureFamily.container, {}, key="x", access_tags=approved
+    )
+    assert x.access_tags == {"experiment:1234"}
+
+    y = await a.create_node(
+        StructureFamily.container, {}, key="y", access_tags=approved
+    )
+    assert y.access_tags == {"experiment:1234"}
+
+    await x.replace_metadata(access_tags=ApprovedAccessTags(["experiment:5678"]))
+    assert (await a.lookup_adapter(["x"])).access_tags == {"experiment:5678"}
+
+    # Longer than the name column (255).
+    with pytest.raises(Exception, match="not defined"):
+        await a.create_node(
+            StructureFamily.container,
+            {},
+            key="z",
+            access_tags=ApprovedAccessTags(["t" * 256]),
+        )
+
+    with pytest.raises(Exception, match="not defined"):
+        await a.create_node(
+            StructureFamily.container, {}, key="w", access_tags=["experiment:9999"]
+        )
+
+
+def test_policy_approved_tags_get_rows(
+    catalog_adapter: CatalogContainerAdapter,
+) -> None:
+    "The server passes the tags its access policy returned on as approved."
+    app = build_app(catalog_adapter, access_policy=DummyAccessPolicy())
+    with Context.from_app(app) as context:
+        client = from_context(context)
+        x = client.create_container("x", access_tags=["experiment:1234"])
+        assert x.access_tags == ["experiment:1234"]
+
+        x.replace_metadata(access_tags=["experiment:5678"])
+        assert client["x"].access_tags == ["experiment:5678"]
+
+
+@pytest.mark.asyncio
+async def test_known_access_tags_no_insert(a: CatalogContainerAdapter) -> None:
+    """
+    Writes with existing tags insert no tag rows.
+
+    On PostgreSQL, every INSERT uses up an id, even one ON CONFLICT DO NOTHING
+    skips, so a needless insert per write would burn through the ids.
+    """
+    approved = ApprovedAccessTags(["experiment:1234"])
+    x = await a.create_node(
+        StructureFamily.container, {}, key="x", access_tags=approved
+    )
+
+    # Record the SQL of every statement sent to the database from here on.
+    statements = []
+    event.listen(
+        a.context.engine.sync_engine,
+        "before_cursor_execute",
+        lambda conn, cursor, statement, *args: statements.append(statement),
+    )
+    await a.create_node(StructureFamily.container, {}, key="y", access_tags=approved)
+    await x.replace_metadata(access_tags=approved)
+    assert not [s for s in statements if s.startswith("INSERT INTO access_tags")]
 
 
 @pytest.mark.asyncio
@@ -71,11 +179,11 @@ async def test_nested_node_creation(a):
     c = await b.lookup_adapter(["c"])
     assert await b.path_segments() == ["b"]
     assert await c.path_segments() == ["b", "c"]
-    assert (await a.keys_range(0, 1)) == ["b"]
-    assert (await b.keys_range(0, 1)) == ["c"]
+    assert (await a.keys_page(limit=1))[0] == ["b"]
+    assert (await b.keys_page(limit=1))[0] == ["c"]
     # smoke test
-    await a.items_range(0, 1)
-    await b.items_range(0, 1)
+    await a.items_page(limit=1)
+    await b.items_page(limit=1)
     await a.shutdown()
 
 
@@ -100,32 +208,36 @@ async def test_sorting(a):
         )
 
     # Default sorting is _not_ ordered.
-    default_key_order = await a.keys_range(0, 10)
+    default_key_order = (await a.keys_page(limit=10))[0]
     assert default_key_order != ordered_letters
+    assert set(default_key_order) == set(ordered_letters)
     # Sorting by ("", -1) gives reversed default order.
-    reversed_default_key_order = await a.sort([("", -1)]).keys_range(0, 10)
+    reversed_default_key_order = (await a.sort([("", -1)]).keys_page(limit=10))[0]
     assert reversed_default_key_order == list(reversed(default_key_order))
 
     # Sort by key.
-    assert await a.sort([("id", 1)]).keys_range(0, 10) == ordered_letters
-    # Test again, with items_range.
+    assert (await a.sort([("id", 1)]).keys_page(limit=10))[0] == ordered_letters
+    # Test again, with items_page.
     assert [
-        k for k, v in await a.sort([("id", 1)]).items_range(0, 10)
+        k for k, v in (await a.sort([("id", 1)]).items_page(limit=10))[0]
     ] == ordered_letters
 
     # Sort by letter metadata.
     # Use explicit 'metadata.{key}' namespace.
-    assert (await a.sort([("metadata.letter", 1)]).keys_range(0, 10)) == ordered_letters
+    assert (await a.sort([("metadata.letter", 1)]).keys_page(limit=10))[
+        0
+    ] == ordered_letters
 
     # Sort by letter metadata.
     # Use implicit '{key}' (more convenient, and necessary for back-compat).
-    assert (await a.sort([("letter", 1)]).keys_range(0, 10)) == ordered_letters
+    assert (await a.sort([("letter", 1)]).keys_page(limit=10))[0] == ordered_letters
 
     # Sort by number and then by letter.
     # Use explicit 'metadata.{key}' namespace.
-    items = await a.sort([("metadata.number", 1), ("metadata.letter", 1)]).items_range(
-        0, 10
+    items = await a.sort([("metadata.number", 1), ("metadata.letter", 1)]).items_page(
+        limit=10
     )
+    items = items[0]
     numbers = [v.metadata()["number"] for k, v in items]
     letters = [v.metadata()["letter"] for k, v in items]
     keys = [k for k, v in items]
@@ -145,9 +257,9 @@ async def test_search(a):
             structure_family=StructureFamily.container,
             specs=[],
         )
-    assert "c" in await a.keys_range(0, 5)
-    assert await a.search(Eq("letter", "c")).keys_range(0, 5) == ["c"]
-    assert await a.search(Eq("number", 2)).keys_range(0, 5) == ["c"]
+    assert "c" in (await a.keys_page(limit=5))[0]
+    assert (await a.search(Eq("letter", "c")).keys_page(limit=5))[0] == ["c"]
+    assert (await a.search(Eq("number", 2)).keys_page(limit=5))[0] == ["c"]
 
     # Looking up "d" inside search results should find nothing when
     # "d" is filtered out by a search query first.
@@ -156,8 +268,7 @@ async def test_search(a):
         await a.search(Eq("letter", "c")).lookup_adapter(["d"])
 
     # Search on nested key.
-    assert await a.search(Eq("x.y.z", "c")).keys_range(0, 5) == ["c"]
-
+    assert (await a.search(Eq("x.y.z", "c")).keys_page(limit=5))[0] == ["c"]
     # Created nested nodes and search on them.
     d = await a.lookup_adapter(["d"])
     for letter, number in zip(string.ascii_lowercase[:5], range(10, 15)):
@@ -167,44 +278,53 @@ async def test_search(a):
             structure_family=StructureFamily.container,
             specs=[],
         )
-    assert await d.search(Eq("letter", "c")).keys_range(0, 5) == ["c"]
-    assert await d.search(Eq("number", 12)).keys_range(0, 5) == ["c"]
+    assert (await d.search(Eq("letter", "c")).keys_page(limit=5))[0] == ["c"]
+    assert (await d.search(Eq("number", 12)).keys_page(limit=5))[0] == ["c"]
 
 
 @pytest.mark.asyncio
 async def test_metadata_index_is_used(example_data_adapter):
     a = example_data_adapter  # for succinctness below
-    # Check that an index (specifically the 'top_level_metadata' index) is used
-    # by inspecting the content of an 'EXPLAIN ...' query. The exact content
-    # is intended for humans and is not an API, but we can coarsely check
-    # that the index of interest is mentioned.
+    # Check that an index is used by inspecting the content of an 'EXPLAIN ...'
+    # query. The exact content is intended for humans and is not an API, but we
+    # can coarsely check that the index of interest is mentioned.
+    # On PostgreSQL, metadata equality is compiled to a JSONB containment
+    # (metadata @> {...}) served by the 'ix_nodes_metadata' GIN index. SQLite
+    # has no GIN and uses the B-tree index on 'parent' plus a row filter.
+    dialect = a.context.engine.url.get_dialect().name
+    if dialect == "postgresql":
+        expected_index = "ix_nodes_metadata"
+    else:
+        expected_index = "nodes_parent"  # B-tree index on parent (name varies by Alembic/SQLite version)
     await a.startup()
     with record_explanations() as e:
-        results = await a.search(Key("number_as_string") == "3").keys_range(0, 5)
-        assert len(results) == 1
-        assert "top_level_metadata" in str(e)
+        results = await a.search(Key("number_as_string") == "3").keys_page(limit=5)
+        assert len(results[0]) == 1
+        assert expected_index in str(e)
     with record_explanations() as e:
-        results = await a.search(Key("number") == 3).keys_range(0, 5)
-        assert len(results) == 1
-        assert "top_level_metadata" in str(e)
+        results = await a.search(Key("number") == 3).keys_page(limit=5)
+        assert len(results[0]) == 1
+        assert expected_index in str(e)
     with record_explanations() as e:
-        results = await a.search(Key("bool") == False).keys_range(0, 5)  # noqa: #712
-        assert len(results) == 1
-        assert "top_level_metadata" in str(e)
+        results = await a.search(Key("bool") == False).keys_page(limit=5)  # noqa: E712
+        assert len(results[0]) == 1
+        assert expected_index in str(e)
     with record_explanations() as e:
-        results = await a.search(Key("nested.number_as_string") == "3").keys_range(0, 5)
-        assert len(results) == 1
-        assert "top_level_metadata" in str(e)
-    with record_explanations() as e:
-        results = await a.search(Key("nested.number") == 3).keys_range(0, 5)
-        assert len(results) == 1
-        assert "top_level_metadata" in str(e)
-    with record_explanations() as e:
-        results = await a.search(Key("nested.bool") == False).keys_range(  # noqa: #712
-            0, 5
+        results = await a.search(Key("nested.number_as_string") == "3").keys_page(
+            limit=5
         )
-        assert len(results) == 1
-        assert "top_level_metadata" in str(e)
+        assert len(results[0]) == 1
+        assert expected_index in str(e)
+    with record_explanations() as e:
+        results = await a.search(Key("nested.number") == 3).keys_page(limit=5)
+        assert len(results[0]) == 1
+        assert expected_index in str(e)
+    with record_explanations() as e:
+        results = await a.search(Key("nested.bool") == False).keys_page(  # noqa: E712
+            limit=5
+        )
+        assert len(results[0]) == 1
+        assert expected_index in str(e)
     await a.shutdown()
 
 
@@ -241,7 +361,272 @@ async def test_write_array_external(a, tmpdir):
     )
     x = await a.lookup_adapter(["x"])
     assert numpy.array_equal(await x.read(), arr)
-    assert x.data_sources[0].properties == {"chunks": [[5], [3]]}
+    assert (await x.data_sources())[0].properties == {"chunks": [[5], [3]]}
+
+
+# A reshaped file sequence: K = P*Q*R files, each an M x N image, whose data
+# source structure declares the logical shape (P, Q, R, M, N). The catalog's
+# lazy per-frame path must map an arbitrary (possibly strided, ellipsis-bearing)
+# slice on that 5-D shape back to exactly the file indices it touches.
+_RESHAPE_P, _RESHAPE_Q, _RESHAPE_R, _RESHAPE_M, _RESHAPE_N = 2, 3, 4, 5, 7
+
+
+@pytest.mark.parametrize(
+    "slice_input",
+    [
+        Ellipsis,  # full read -> every file
+        1,  # single leftmost index
+        (slice(0, 2), 1, slice(0, 4, 2)),  # strided along the R (stacking) axis
+        (slice(None), slice(1, 3), slice(0, 4, 2), Ellipsis, slice(0, 4)),
+        (Ellipsis, 0, 0, 0),
+        (0, Ellipsis, slice(0, 3)),
+        (slice(0, 2), slice(0, 3), slice(1, 4, 2)),
+        (slice(0, 1), slice(0, 2), slice(0, 2), slice(0, 2), slice(0, 3)),
+    ],
+)
+@pytest.mark.asyncio
+async def test_lazy_reshaped_sequence_selects_correct_assets(tmpdir, slice_input):
+    """The lazy per-frame path resolves exactly the assets a reshaped-sequence
+    slice needs, and reads back data identical to the eager reference.
+
+    Files are stored MxN but the structure declares (P, Q, R, M, N); this
+    exercises the reshape branch of `file_indices_for_slice`/`read` for
+    complex slices (strides, ellipsis, integer index reduction).
+    """
+    P, Q, R, M, N = _RESHAPE_P, _RESHAPE_Q, _RESHAPE_R, _RESHAPE_M, _RESHAPE_N
+    K = P * Q * R
+
+    # Distinct data per file so any mis-selection surfaces as a value mismatch.
+    rng = numpy.random.default_rng(0)
+    frames = [rng.integers(0, 255, size=(M, N), dtype="uint8") for _ in range(K)]
+    data_uris = []
+    for i, frame in enumerate(frames):
+        filepath = Path(tmpdir) / f"frame{i:05}.tif"
+        tifffile.imwrite(str(filepath), frame)
+        data_uris.append(ensure_uri(str(filepath)))
+
+    # Eager references, computed independently of the adapter's own logic.
+    full = numpy.stack(frames).reshape(P, Q, R, M, N)
+    # A cube whose value at (p, q, r, :, :) is the flat file index; slicing it
+    # the same way tells us exactly which files a given slice depends on.
+    idx_cube = numpy.broadcast_to(
+        numpy.arange(K).reshape(P, Q, R, 1, 1), (P, Q, R, M, N)
+    )
+
+    struct = ArrayStructure(
+        shape=(P, Q, R, M, N),
+        chunks=((1,) * P, (1,) * Q, (1,) * R, (M,), (N,)),
+        data_type=BuiltinDtype.from_numpy_dtype(numpy.dtype("uint8")),
+    )
+    # `properties["chunks"]` carries the *pre-reshape* (stacked) chunk layout:
+    # K single-file chunks along the stacking axis, then the per-file M, N dims.
+    pre_reshape_chunks = [[1] * K, [M], [N]]
+
+    adapter = in_memory(readable_storage=[tmpdir])
+    await adapter.startup()
+    try:
+        await adapter.create_node(
+            key="seq",
+            structure_family="array",
+            metadata={},
+            data_sources=[
+                DataSource(
+                    structure_family="array",
+                    mimetype="multipart/related;type=image/tiff",
+                    structure=asdict(struct),
+                    parameters={},
+                    properties={"chunks": pre_reshape_chunks},
+                    management="external",
+                    assets=[
+                        Asset(
+                            parameter="data_uris",
+                            num=i,
+                            data_uri=data_uri,
+                            is_directory=False,
+                        )
+                        for i, data_uri in enumerate(data_uris)
+                    ],
+                )
+            ],
+        )
+        x = await adapter.lookup_adapter(["seq"])
+
+        reference = full[slice_input]
+        expected_indices = set(numpy.unique(idx_cube[slice_input]).tolist())
+
+        # The lazy adapter must be used (not a fallback) and must resolve
+        # exactly the files this slice touches -- no more, no fewer.
+        lazy = await x._get_lazy_adapter(slice=slice_input)
+        assert lazy is not None
+        resolved_indices = {
+            i for i, uri in enumerate(lazy.filepaths._data_uris) if uri is not None
+        }
+        assert resolved_indices == expected_indices
+
+        # And a full read through the catalog returns the correct data.
+        result = await x.read(slice=slice_input)
+        numpy.testing.assert_array_equal(result, reference)
+    finally:
+        await adapter.shutdown()
+
+
+@pytest.mark.parametrize("num_offset", [1, 5])
+@pytest.mark.asyncio
+async def test_lazy_sequence_tolerates_num_offset(tmpdir, num_offset):
+    """The lazy path maps stacking rank to `num - offset`, so a contiguous run of
+    `num`s starting at any offset (e.g. 1-based numbering) resolves the same
+    files as 0-based numbering. Only the offset shifts; the dense stacking order
+    (and thus the eager reference) is unchanged.
+    """
+    P, Q, R, M, N = _RESHAPE_P, _RESHAPE_Q, _RESHAPE_R, _RESHAPE_M, _RESHAPE_N
+    K = P * Q * R
+
+    rng = numpy.random.default_rng(1)
+    frames = [rng.integers(0, 255, size=(M, N), dtype="uint8") for _ in range(K)]
+    data_uris = []
+    for i, frame in enumerate(frames):
+        filepath = Path(tmpdir) / f"frame{i:05}.tif"
+        tifffile.imwrite(str(filepath), frame)
+        data_uris.append(ensure_uri(str(filepath)))
+
+    full = numpy.stack(frames).reshape(P, Q, R, M, N)
+    idx_cube = numpy.broadcast_to(
+        numpy.arange(K).reshape(P, Q, R, 1, 1), (P, Q, R, M, N)
+    )
+    struct = ArrayStructure(
+        shape=(P, Q, R, M, N),
+        chunks=((1,) * P, (1,) * Q, (1,) * R, (M,), (N,)),
+        data_type=BuiltinDtype.from_numpy_dtype(numpy.dtype("uint8")),
+    )
+    pre_reshape_chunks = [[1] * K, [M], [N]]
+    slice_input = (slice(0, 2), 1, slice(0, 4, 2))
+
+    adapter = in_memory(readable_storage=[tmpdir])
+    await adapter.startup()
+    try:
+        await adapter.create_node(
+            key="seq",
+            structure_family="array",
+            metadata={},
+            data_sources=[
+                DataSource(
+                    structure_family="array",
+                    mimetype="multipart/related;type=image/tiff",
+                    structure=asdict(struct),
+                    parameters={},
+                    properties={"chunks": pre_reshape_chunks},
+                    management="external",
+                    assets=[
+                        # `num` starts at `num_offset` (e.g. 1-based), but the
+                        # assets are still in dense stacking order.
+                        Asset(
+                            parameter="data_uris",
+                            num=i + num_offset,
+                            data_uri=data_uri,
+                            is_directory=False,
+                        )
+                        for i, data_uri in enumerate(data_uris)
+                    ],
+                )
+            ],
+        )
+        x = await adapter.lookup_adapter(["seq"])
+
+        reference = full[slice_input]
+        # Expected 0-based stacking ranks (offset already accounted for).
+        expected_indices = set(numpy.unique(idx_cube[slice_input]).tolist())
+
+        lazy = await x._get_lazy_adapter(slice=slice_input)
+        assert lazy is not None
+        resolved_indices = {
+            i for i, uri in enumerate(lazy.filepaths._data_uris) if uri is not None
+        }
+        assert resolved_indices == expected_indices
+
+        result = await x.read(slice=slice_input)
+        numpy.testing.assert_array_equal(result, reference)
+    finally:
+        await adapter.shutdown()
+
+
+async def _register_ahead_hdf5(adapter, tmpdir, *, file_frames=3, ahead_frames=5):
+    """Register an external HDF5 array whose catalog structure is ahead of the file.
+
+    The backing file holds `file_frames` frames of shape `(rows, cols)`, but the
+    catalog structure advertises `ahead_frames`, mimicking a streaming append
+    where the catalog shape ran ahead of this reader's view of the file. Returns
+    the backing file path.
+    """
+    rows, cols = 2, 4
+    filepath = Path(tmpdir) / "streaming.h5"
+    with h5py.File(filepath, "w", libver="latest") as f:
+        f.create_dataset(
+            "data",
+            data=numpy.ones((file_frames, rows, cols)),
+            maxshape=(None, rows, cols),
+        )
+    ahead_structure = ArrayStructure(
+        shape=(ahead_frames, rows, cols),
+        chunks=((ahead_frames,), (rows,), (cols,)),
+        data_type=BuiltinDtype.from_numpy_dtype(numpy.dtype("float64")),
+    )
+    await adapter.create_node(
+        key="streaming",
+        structure_family=StructureFamily.array,
+        metadata={},
+        data_sources=[
+            DataSource(
+                structure_family="array",
+                mimetype="application/x-hdf5",
+                structure=asdict(ahead_structure),
+                parameters={"dataset": "data"},
+                management="external",
+                assets=[
+                    Asset(
+                        parameter="data_uris",
+                        num=0,
+                        data_uri=ensure_uri(str(filepath)),
+                        is_directory=False,
+                    )
+                ],
+            )
+        ],
+    )
+    return filepath
+
+
+@pytest.mark.asyncio
+async def test_structure_ahead_of_recently_modified_file_is_transient(tmpdir):
+    # The catalog structure is ahead of the data on disk and the backing file
+    # was just written, so a streaming append is plausibly in progress. The
+    # read raises the transient `DataNotReadyError`.
+    adapter = in_memory(readable_storage=[tmpdir])
+    await adapter.startup()
+    try:
+        await _register_ahead_hdf5(adapter, tmpdir)
+        x = await adapter.lookup_adapter(["streaming"])
+        with pytest.raises(DataNotReadyError):
+            await x.read()
+    finally:
+        await adapter.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_structure_ahead_of_stale_file_is_permanent(tmpdir):
+    # The catalog structure is ahead of the data on disk but the backing file
+    # has not been touched for a long time, so the data is at rest and will not
+    # catch up. The read is downgraded to a permanent `IncompatibleShapeError`.
+    adapter = in_memory(readable_storage=[tmpdir])
+    await adapter.startup()
+    try:
+        filepath = await _register_ahead_hdf5(adapter, tmpdir)
+        stale = time.time() - 3600
+        os.utime(filepath, (stale, stale))
+        x = await adapter.lookup_adapter(["streaming"])
+        with pytest.raises(IncompatibleShapeError):
+            await x.read()
+    finally:
+        await adapter.shutdown()
 
 
 @pytest.mark.asyncio
@@ -650,7 +1035,216 @@ async def test_delete_sql_assets(sql_storage_uri):
         assert len(assets_after_delete) == 1
 
         # Close and dispose the SQL storage
-        storage.dispose()
+    storage.dispose()
+
+
+@pytest.mark.asyncio
+async def test_delete_internal_sql_asset(sql_storage_uri):
+    """
+    The Asset of a SQL-backed table is the storage database, shared by all
+    such tables. delete_asset refuses it; the rows of every dataset remain, and
+    deleting the node is what removes them.
+    """
+    tree = in_memory(writable_storage={"sql": sql_storage_uri})
+    storage = cast(SQLStorage, get_storage(parse_storage(sql_storage_uri).uri))
+    table = pyarrow.Table.from_pydict({"a": [1, 2, 3], "b": [4.0, 5.0, 6.0]})
+
+    def rows_per_dataset(table_name):
+        with closing(storage.connect()) as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    f'SELECT _dataset_id, COUNT(*) FROM "{table_name}" '
+                    "GROUP BY _dataset_id ORDER BY _dataset_id"
+                )
+                return [(int(d), int(n)) for d, n in cursor.fetchall()]
+
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context, include_data_sources=True)
+        # Two nodes in the same table (same schema), both with data.
+        keep = client.create_appendable_table(schema=table.schema, key="keep")
+        keep.append_partition(0, table)
+        gone = client.create_appendable_table(schema=table.schema, key="gone")
+        gone.append_partition(0, table)
+        gone.append_partition(0, table)
+        table_name = keep.data_sources()[0].parameters["table_name"]
+        dataset_ids = {
+            key: client[key].data_sources()[0].parameters["dataset_id"]
+            for key in ("keep", "gone")
+        }
+        assert rows_per_dataset(table_name) == [
+            (dataset_ids["keep"], 3),
+            (dataset_ids["gone"], 6),
+        ]
+        asset_id = gone.data_sources()[0].assets[0].id
+
+        node = await tree.lookup_adapter(["gone"])
+        for external_only in (True, False):
+            with pytest.raises(Conflicts):
+                await node.delete_asset(asset_id, external_only=external_only)
+        # Over HTTP: 409, and nothing changed.
+        response = context.http_client.delete(
+            "/api/v1/asset/gone", params={"id": asset_id, "external_only": "false"}
+        )
+        assert response.status_code == HTTP_409_CONFLICT
+        assert rows_per_dataset(table_name) == [
+            (dataset_ids["keep"], 3),
+            (dataset_ids["gone"], 6),
+        ]
+        assets_after = (await tree.context.execute("SELECT * from assets")).all()
+        assert len(assets_after) == 1
+
+        # Deleting the node removes exactly its rows; the table stays for 'keep'.
+        client.delete_contents("gone", external_only=False)
+        assert rows_per_dataset(table_name) == [(dataset_ids["keep"], 3)]
+        # Deleting the last node drops the table.
+        client.delete_contents("keep", external_only=False)
+        with closing(storage.connect()) as conn:
+            assert not sql_table_exists(conn, storage.dialect, table_name)
+    storage.dispose()
+
+
+# ---------------------------------------------------------------------------
+# Hypothesis: pagination completeness
+# ---------------------------------------------------------------------------
+# The adapter is started once per module (per dialect) and reused across all
+# hypothesis examples. Each example creates a fresh child container, runs its
+# traversal inside it, then deletes it, keeping the shared DB clean.
+#
+# asyncio: hypothesis does not support async test functions, so we keep a
+# single event loop alive for the lifetime of the fixture and drive all
+# coroutines with loop.run_until_complete().
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def sqlite_adapter_for_hypothesis(tmp_path_factory):
+    loop = asyncio.new_event_loop()
+    tmpdir = tmp_path_factory.mktemp("hyp_sqlite")
+    adapter = in_memory(writable_storage=str(tmpdir))
+    loop.run_until_complete(adapter.startup())
+    yield adapter, loop
+    loop.run_until_complete(adapter.shutdown())
+    loop.close()
+
+
+def test_failed_init_does_not_leak_password():
+    # Init fails (nothing listens on port 1); the error must not echo the URI.
+    import traceback
+
+    from tiled.catalog import from_uri
+
+    password = "leaky-secret"
+    uri = f"postgresql+asyncpg://user:{password}@127.0.0.1:1/db"
+
+    with pytest.raises(Exception) as excinfo:
+        from_uri(uri, init_if_not_exists=True)
+
+    assert password not in "".join(traceback.format_exception(excinfo.value))
+
+
+@pytest.fixture(scope="module")
+def postgresql_adapter_for_hypothesis(tmp_path_factory):
+    from tiled.catalog import from_uri
+
+    from .conftest import TILED_TEST_POSTGRESQL_URI, temp_postgres
+
+    if not TILED_TEST_POSTGRESQL_URI:
+        pytest.skip("No TILED_TEST_POSTGRESQL_URI configured")
+    loop = asyncio.new_event_loop()
+    tmpdir = tmp_path_factory.mktemp("hyp_pg")
+
+    async def _setup():
+        ctx = temp_postgres(TILED_TEST_POSTGRESQL_URI)
+        uri = await ctx.__aenter__()
+        adapter = from_uri(uri, writable_storage=str(tmpdir), init_if_not_exists=True)
+        await adapter.startup()
+        return adapter, ctx
+
+    adapter, ctx = loop.run_until_complete(_setup())
+    yield adapter, loop
+
+    async def _teardown():
+        await adapter.shutdown()
+        await ctx.__aexit__(None, None, None)
+
+    loop.run_until_complete(_teardown())
+    loop.close()
+
+
+@pytest.fixture(
+    scope="module",
+    params=["sqlite_adapter_for_hypothesis", "postgresql_adapter_for_hypothesis"],
+)
+def catalog_adapter_for_hypothesis(request):
+    yield request.getfixturevalue(request.param)
+
+
+@given(
+    n_items=st.integers(min_value=0, max_value=50),
+    page_size=st.integers(min_value=1, max_value=20),
+    direction=st.sampled_from([1, -1]),
+)
+@settings(deadline=None, max_examples=50)
+def test_cursor_pagination_completeness(
+    catalog_adapter_for_hypothesis, n_items, page_size, direction
+):
+    """Traversing all cursor pages yields every item exactly once, in order.
+
+    Properties checked:
+    - total count matches n_items
+    - no duplicates across pages
+    - order matches insertion order (ASC) or reverse insertion order (DESC),
+      since id is strictly monotonic
+    """
+    adapter, loop = catalog_adapter_for_hypothesis
+
+    async def run():
+        # Use a unique container key so parallel/sequential examples don't collide.
+        import uuid
+
+        container_key = uuid.uuid4().hex
+        await adapter.create_node(
+            key=container_key,
+            metadata={},
+            structure_family=StructureFamily.container,
+            specs=[],
+        )
+        child = await adapter.lookup_adapter([container_key])
+        try:
+            keys_inserted = [str(i) for i in range(n_items)]
+            for key in keys_inserted:
+                await child.create_node(
+                    key=key,
+                    metadata={},
+                    structure_family=StructureFamily.container,
+                    specs=[],
+                )
+            sorted_child = child.sort([("", direction)])
+            collected = []
+            cursor = None
+            while True:
+                page, next_cursor = await sorted_child.keys_page(
+                    cursor=cursor, limit=page_size
+                )
+                collected.extend(page)
+                if next_cursor is None:
+                    break
+                cursor = next_cursor
+            return keys_inserted, collected
+        finally:
+            child_adapter = await adapter.lookup_adapter([container_key])
+            await child_adapter.delete(recursive=True, external_only=False)
+
+    keys_inserted, collected = loop.run_until_complete(run())
+
+    assert len(collected) == n_items, "total item count must match"
+    assert len(set(collected)) == len(collected), "no duplicates across pages"
+    if direction == 1:
+        assert collected == keys_inserted, "ASC traversal must match insertion order"
+    else:
+        assert collected == list(reversed(keys_inserted)), (
+            "DESC traversal must match reverse insertion order"
+        )
 
 
 @pytest.mark.asyncio
@@ -711,6 +1305,55 @@ async def test_delete_external_asset_registered_twice(tmpdir):
             await tree.context.execute("SELECT * from assets")
         ).all()
         assert len(assets_after_second_delete) == 0
+
+
+@pytest.mark.asyncio
+async def test_delete_shared_external_asset(tmpdir):
+    """Deleting a shared external asset from one node dissociates it there but
+    retains the Asset record (and file) while other nodes still reference it."""
+    tree = in_memory(readable_storage=[str(tmpdir)])
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+
+        with open(tmpdir / "shared.csv", "w") as file:
+            file.write("a,b,c\n1,2,3\n4,5,6\n")
+
+        a = client.create_container("a")
+        b1 = a.create_container("b1")
+        b2 = a.create_container("b2")
+        await register(b1, tmpdir / "shared.csv")
+        await register(b2, tmpdir / "shared.csv")
+
+        assets_before = (await tree.context.execute("SELECT * from assets")).all()
+        assert len(assets_before) == 1  # single shared asset
+
+        # Find the asset id as seen from b1's leaf node.
+        b1_node = await tree.lookup_adapter(["a", "b1", "shared"])
+        (b1_ds,) = await b1_node.data_sources(include_assets=True)
+        asset_id = b1_ds.assets[0].id
+
+        # External assets are not internally managed, so external_only=True is
+        # permitted. Because the asset is still referenced by b2, only the
+        # association is removed.
+        result = await b1_node.delete_asset(asset_id, external_only=True)
+        assert result == {"asset_deleted": False, "data_deleted": False}
+
+        # The Asset record and the file remain; b2 can still read it.
+        assets_after_first = (await tree.context.execute("SELECT * from assets")).all()
+        assert len(assets_after_first) == 1
+        assert (tmpdir / "shared.csv").exists()
+        client["a"]["b2"]["shared"].read()
+        # b1 no longer has the asset.
+        assert await b1_node.asset_by_id(asset_id) is None
+
+        # Deleting from the last referencing node removes the Asset record, but
+        # (being external) leaves the file on disk.
+        b2_node = await tree.lookup_adapter(["a", "b2", "shared"])
+        result = await b2_node.delete_asset(asset_id, external_only=True)
+        assert result == {"asset_deleted": True, "data_deleted": False}
+        assets_after_second = (await tree.context.execute("SELECT * from assets")).all()
+        assert len(assets_after_second) == 0
+        assert (tmpdir / "shared.csv").exists()
 
 
 @pytest.mark.parametrize(
@@ -960,3 +1603,34 @@ def test_pooling_config(sqlite_or_postgres_uri, sql_storage_uri, desired, expect
         assert storage._connection_pool._max_overflow == expected[3]
 
     storage.dispose()
+
+
+# ---- ACL predicate SQL shape (tag ids as a single array parameter) ----
+
+
+def test_access_predicate_uses_array_parameter_on_postgresql():
+    query = AccessTagsFilter(["a"])
+    query.tag_ids = [30, 10, 20, 10]
+    condition = _access_tags_predicate(query, catalog_orm.Node, 7, "postgresql")
+    sql = str(
+        condition.compile(
+            dialect=postgresql_dialect.dialect(),
+            compile_kwargs={"literal_binds": True},
+        )
+    )
+    assert "= ANY (ARRAY[10, 20, 30])" in sql  # deduplicated, sorted, one array
+    assert "IN (" not in sql
+    parameterized = str(condition.compile(dialect=postgresql_dialect.dialect()))
+    assert parameterized.count("%(") == 2  # parent id + the one array parameter
+
+
+def test_access_predicate_uses_in_list_on_sqlite():
+    query = AccessTagsFilter(["a"])
+    query.tag_ids = [2, 1]
+    condition = _access_tags_predicate(query, catalog_orm.Node, 7, "sqlite")
+    sql = str(
+        condition.compile(
+            dialect=sqlite_dialect.dialect(), compile_kwargs={"literal_binds": True}
+        )
+    )
+    assert "IN (1, 2)" in sql

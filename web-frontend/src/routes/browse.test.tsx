@@ -71,7 +71,7 @@ const MockItem = (
         metadata: {} as { [key: string]: any },
         structure: {} as any,
         sorting: [] as { key: string; direction: 1 | -1 }[],
-        access_blob: null as any,
+        access_tags: [] as string[],
         data_sources: null as any,
         count: undefined as number | undefined,
       },
@@ -155,9 +155,9 @@ const MockItem = (
   }
 };
 
-const MockContainer = (id = "test-container") => MockItem("container", id);
-const MockArray = (id = "test-array") => MockItem("array", id);
-const MockTable = (id = "test-table") => MockItem("table", id);
+const MockContainer = (id = "test") => MockItem("container", id);
+const MockArray = (id = "test") => MockItem("array", id);
+const MockTable = (id = "test") => MockItem("table", id);
 
 describe("NodeTabs Component", () => {
   beforeEach(() => {
@@ -258,7 +258,7 @@ describe("NodeTabs Component", () => {
         expect.any(String),
         ["test"],
         expect.any(AbortSignal),
-        ["structure_family", "structure", "specs"],
+        ["structure_family", "structure", "specs", "metadata"],
       );
 
       expect(metadata).toHaveBeenCalledWith(

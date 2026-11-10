@@ -1,17 +1,23 @@
 # syntax=docker/dockerfile:1.9
-ARG PYTHON_VERSION=3.12
-FROM docker.io/node:22-alpine AS web_frontend_build
+ARG PYTHON_VERSION=3.14
+ARG UV_VERSION=0.13.6
+
+# `COPY --from` cannot expand a variable in an image ref
+FROM ghcr.io/astral-sh/uv:${UV_VERSION} AS uv_bin
+
+FROM --platform=linux/amd64 docker.io/node:22.23.4-alpine AS web_frontend_build
 WORKDIR /src
+# Install deps from the lockfile alone so editing UI source does not re-run npm.
+COPY web-frontend/package.json web-frontend/package-lock.json ./
+RUN set -ex && npm ci
 COPY web-frontend .
-RUN set -ex && npm install && npm run build
+RUN set -ex && npm run build
 
 ##########################################################################
 
 # This stage doubles as setting up for the build and as the devcontainer
 FROM docker.io/python:${PYTHON_VERSION} AS developer
-ARG PYTHON_VERSION=3.12
-ARG TILED_VERSION=0.0.0
-ENV SETUPTOOLS_SCM_PRETEND_VERSION=${TILED_VERSION}
+ARG PYTHON_VERSION=3.14
 
 # Ensure apt-get doesn't open a menu on you.
 ENV DEBIAN_FRONTEND=noninteractive
@@ -28,12 +34,12 @@ apt-get install -qyy \
     ca-certificates \
     gcc
 
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+COPY --from=uv_bin /uv /usr/local/bin/uv
 
 # - Silence uv complaining about not being able to use hard links,
 # - tell uv to byte-compile packages for faster application startups,
 # - prevent uv from accidentally downloading isolated Python builds,
-# - pick a Python (use `/usr/bin/python3.12` on uv 0.5.0 and later),
+# - pick a Python (use `/usr/bin/python3.14` on uv 0.5.0 and later),
 # - and finally declare `/app` as the target for `uv sync`.
 # - Skip building the UI here because we already did it in the stage
 #   above using a node container.
@@ -61,6 +67,10 @@ RUN set -ex && \
         --no-dev \
         --no-install-project
 
+# Tiled version changes on every commit, put it here where it is needed
+ARG TILED_VERSION=0.0.0
+ENV SETUPTOOLS_SCM_PRETEND_VERSION=${TILED_VERSION}
+
 # Now install the rest from `./src`: The APPLICATION w/o dependencies.
 # `./src` will NOT be copied into the runtime container.
 COPY tiled src/tiled
@@ -80,7 +90,7 @@ RUN set -ex && \
 ##########################################################################
 
 FROM docker.io/python:${PYTHON_VERSION}-slim AS app_runtime
-ARG PYTHON_VERSION=3.12
+ARG PYTHON_VERSION=3.14
 ARG APP_UID=999
 
 # Add the application virtualenv to search path.
@@ -93,17 +103,6 @@ useradd -r -u ${APP_UID} -d /app -g app -N app
 
 # See <https://hynek.me/articles/docker-signals/>.
 STOPSIGNAL SIGINT
-
-# Note how the runtime dependencies differ from build-time ones.
-# Notably, there is no uv either!
-RUN set -ex && \
-apt-get update -qy && \
-apt-get install -qyy \
-    -o APT::Install-Recommends=false \
-    -o APT::Install-Suggests=false \
-    curl && \
-apt-get clean && \
-rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 RUN mkdir -p /deploy/config
 RUN mkdir -p /storage && chown -R app:app /storage

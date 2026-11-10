@@ -3,11 +3,11 @@ import dataclasses
 import inspect
 import os
 import warnings
-from copy import deepcopy
-from datetime import datetime, timedelta, timezone
+from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
 from functools import cache, partial
 from pathlib import Path
-from typing import Callable, List, Optional, TypeVar, Union
+from typing import Literal, TypeVar
 
 import anyio
 import packaging
@@ -37,9 +37,11 @@ from starlette.status import (
     HTTP_410_GONE,
     HTTP_422_UNPROCESSABLE_CONTENT,
     HTTP_500_INTERNAL_SERVER_ERROR,
+    HTTP_503_SERVICE_UNAVAILABLE,
 )
 
 from tiled.adapters.protocols import AnyAdapter
+from tiled.adapters.utils import DataNotReadyError, ShapeMismatchError
 from tiled.authenticators import ProxiedOIDCAuthenticator
 from tiled.media_type_registration import SerializationRegistry
 from tiled.query_registration import QueryRegistry
@@ -48,6 +50,7 @@ from tiled.server.protocols import ExternalAuthenticator, InternalAuthenticator
 from tiled.server.schemas import Principal
 
 from .. import __version__
+from ..access_control.protocols import ApprovedAccessTags, normalize_access_tags
 from ..links import links_for_node
 from ..ndslice import NDBlock, NDSlice
 from ..stream_messages import ArrayPatch
@@ -56,20 +59,32 @@ from ..type_aliases import AccessTags, Scopes
 from ..utils import BrokenLink, ensure_awaitable, patch_mimetypes, path_from_uri
 from ..validation_registration import ValidationError, ValidationRegistry
 from . import schemas
+from ._backcompat import (
+    access_blob_from_access_tags,
+    access_tags_from_patch_request,
+    access_tags_from_request,
+    client_expects_access_blob,
+    legacy_access_blob,
+    legacy_access_blob_error,
+    parse_python_tiled_client_version,
+    strip_asset_fields_for_client,
+)
 from .authentication import (
+    authenticate_websocket_first_message,
     check_scopes,
+    get_api_key_websocket,
     get_current_access_tags,
     get_current_access_tags_websocket,
     get_current_principal,
     get_current_principal_websocket,
     get_current_scopes,
     get_current_scopes_websocket,
+    get_decoded_access_token_websocket,
     get_session_state,
 )
+from .connection_pool import get_database_session_factory
 from .core import (
-    DEFAULT_PAGE_SIZE,
     DEPTH_LIMIT,
-    MAX_PAGE_SIZE,
     NoEntry,
     UnsupportedMediaTypes,
     WrongTypeForRoute,
@@ -83,6 +98,7 @@ from .core import (
     resolve_media_type,
 )
 from .dependencies import (
+    PaginationParams,
     expected_shape,
     get_entry,
     get_root_tree,
@@ -92,16 +108,23 @@ from .dependencies import (
     patch_offset_param,
     patch_shape_param,
     shape_param,
+    sorting_param,
 )
 from .settings import Settings, get_settings
 from .utils import (
     filter_for_access,
     get_base_url,
     get_base_url_websocket,
+    normalize_root_path,
     record_timing,
 )
 
 T = TypeVar("T")
+
+# When an array read fails because the catalog structure is ahead of the data
+# actually present on disk (a streaming append in progress), the client is told
+# to retry after this many seconds.
+ARRAY_RETRY_AFTER_SECONDS = int(os.getenv("TILED_ARRAY_RETRY_AFTER", "1"))
 
 
 def _patch_route_signature(
@@ -149,6 +172,11 @@ def _patch_route_signature(
         # Add a parameter for each field in each type of query.
         for name, query in query_registry.name_to_query_type.items():
             for field in dataclasses.fields(query):
+                # Skip server-internal fields: they are populated on the
+                # server side (not by clients) and must not become URL query
+                # parameters. See e.g. AccessTagsFilter.tag_ids.
+                if field.metadata.get("internal"):
+                    continue
                 # The structured "alias" here is based on
                 # https://mglaman.dev/blog/using-json-router-query-your-search-router-indexes
                 if getattr(field.type, "__origin__", None) is list:
@@ -161,7 +189,7 @@ def _patch_route_signature(
                     default=Query(
                         None, alias=f"filter[{name}][condition][{field.name}]"
                     ),
-                    annotation=Optional[List[field_type]],
+                    annotation=list[field_type] | None,
                 )
                 parameters.append(injected_parameter)
         route_with_sig.__signature__ = signature.replace(parameters=parameters)
@@ -177,7 +205,7 @@ def get_router(
     serialization_registry: SerializationRegistry,
     deserialization_registry: SerializationRegistry,
     validation_registry: ValidationRegistry,
-    authenticators: dict[str, Union[ExternalAuthenticator, InternalAuthenticator]],
+    authenticators: dict[str, ExternalAuthenticator | InternalAuthenticator],
 ) -> APIRouter:
     router = APIRouter()
 
@@ -197,20 +225,16 @@ def get_router(
             "required": not settings.allow_anonymous_access,
         }
         provider_specs = []
-        user_agent = request.headers.get("user-agent", "")
         # The name of the "internal" mode used to be "password".
         # This ensures back-compat with older Python clients.
         internal_mode_name = "internal"
         MINIMUM_INTERNAL_PYTHON_CLIENT_VERSION = packaging.version.parse("0.1.0b17")
-        if user_agent.startswith("python-tiled/"):
-            agent, _, raw_version = user_agent.partition("/")
-            try:
-                parsed_version = packaging.version.parse(raw_version)
-            except Exception:
-                pass
-            else:
-                if parsed_version < MINIMUM_INTERNAL_PYTHON_CLIENT_VERSION:
-                    internal_mode_name = "password"
+        client_version = parse_python_tiled_client_version(request)
+        if (
+            client_version is not None
+            and client_version < MINIMUM_INTERNAL_PYTHON_CLIENT_VERSION
+        ):
+            internal_mode_name = "password"
         for provider, authenticator in authenticators.items():
             if isinstance(authenticator, InternalAuthenticator):
                 spec = {
@@ -229,9 +253,11 @@ def get_router(
                     "mode": "external",
                     "links": {
                         "auth_endpoint": authenticator.device_authorization_endpoint,
+                        "authorize_endpoint": f"{base_url}/auth/provider/{provider}/authorize",
                         "client_id": authenticator.device_flow_client_id,
                         "token_endpoint": authenticator.token_endpoint,
                     },
+                    "extra_scopes": getattr(authenticator, "extra_scopes", []),
                     "confirmation_message": getattr(
                         authenticator, "confirmation_message", None
                     ),
@@ -292,15 +318,18 @@ def get_router(
                     "self": base_url,
                     "documentation": f"{base_url}/docs",
                 },
-                meta={"root_path": request.scope.get("root_path") or "" + "/api"},
+                meta={
+                    "root_path": normalize_root_path(request.scope.get("root_path"))
+                    + "/api"
+                },
             ).model_dump(),
-            expires=datetime.now(timezone.utc) + timedelta(seconds=600),
+            expires=datetime.now(UTC) + timedelta(seconds=600),
         )
 
     @router.get(
         "/search/{path:path}",
         response_model=schemas.Response[
-            List[schemas.Resource[schemas.NodeAttributes, dict, dict]],
+            list[schemas.Resource[schemas.NodeAttributes, dict, dict]],
             schemas.PaginationLinks,
             dict,
         ],
@@ -309,20 +338,17 @@ def get_router(
     async def search(
         request: Request,
         path: str,
-        fields: Optional[List[schemas.EntryFields]] = Query(list(schemas.EntryFields)),
-        select_metadata: Optional[str] = Query(None),
-        offset: Optional[int] = Query(0, alias="page[offset]", ge=0),
-        limit: Optional[int] = Query(
-            DEFAULT_PAGE_SIZE, alias="page[limit]", ge=0, le=MAX_PAGE_SIZE
-        ),
-        sort: Optional[str] = Query(None),
-        max_depth: Optional[int] = Query(None, ge=0, le=DEPTH_LIMIT),
+        fields: list[schemas.EntryFields] | None = Query(list(schemas.EntryFields)),
+        select_metadata: str | None = Query(None),
+        page: PaginationParams = Depends(),
+        sort: list[tuple[str, Literal[1, -1]]] | None = Depends(sorting_param),
+        max_depth: int | None = Query(None, ge=0, le=DEPTH_LIMIT),
         omit_links: bool = Query(False),
         include_data_sources: bool = Query(False),
-        principal: Optional[Principal] = Depends(get_current_principal),
+        principal: Principal | None = Depends(get_current_principal),
         root_tree=Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
-        authn_access_tags: Optional[AccessTags] = Depends(get_current_access_tags),
+        authn_access_tags: AccessTags | None = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         settings: Settings = Depends(get_settings),
         _=Security(check_scopes, scopes=["read:metadata"]),
@@ -351,8 +377,7 @@ def get_router(
                 entry,
                 "/search",
                 path,
-                offset,
-                limit,
+                page,
                 fields,
                 select_metadata,
                 omit_links,
@@ -397,6 +422,136 @@ def get_router(
             )
 
     @router.get(
+        "/search-deep/{path:path}",
+        response_model=schemas.Response[
+            list[schemas.Resource[schemas.NodeAttributes, dict, dict]],
+            schemas.PaginationLinks,
+            dict,
+        ],
+    )
+    @_patch_route_signature(query_registry)
+    async def search_deep(
+        request: Request,
+        path: str,
+        fields: list[schemas.EntryFields] | None = Query(list(schemas.EntryFields)),
+        select_metadata: str | None = Query(None),
+        page: PaginationParams = Depends(),
+        sort: list[tuple[str, Literal[1, -1]]] | None = Depends(sorting_param),
+        max_depth: int | None = Query(
+            None,
+            ge=1,
+            le=64,
+            description="Maximum number of levels below `path` to search.",
+        ),
+        omit_links: bool = Query(False),
+        include_data_sources: bool = Query(False),
+        principal: Principal | None = Depends(get_current_principal),
+        root_tree=Depends(get_root_tree),
+        session_state: dict = Depends(get_session_state),
+        authn_access_tags: AccessTags | None = Depends(get_current_access_tags),
+        authn_scopes: Scopes = Depends(get_current_scopes),
+        settings: Settings = Depends(get_settings),
+        _=Security(check_scopes, scopes=["read:metadata"]),
+        **filters,
+    ):
+        """
+        Search all descendants of this node (at any depth), not just direct children.
+
+        See https://github.com/bluesky/tiled/issues/1368
+        """
+        entry = await get_entry(
+            path,
+            ["read:metadata"],
+            principal,
+            authn_access_tags,
+            authn_scopes,
+            root_tree,
+            session_state,
+            request.state.metrics,
+            {StructureFamily.container},
+            getattr(request.app.state, "access_policy", None),
+        )
+        if sort:
+            raise HTTPException(
+                status_code=HTTP_400_BAD_REQUEST,
+                detail="Sorting is not supported for deep search.",
+            )
+        if not hasattr(entry, "search_deep"):
+            raise HTTPException(
+                status_code=HTTP_400_BAD_REQUEST,
+                detail="This Tree does not support deep search.",
+            )
+        try:
+            entry = entry.search_deep(max_depth=max_depth)
+        except (NotImplementedError, ValueError) as err:
+            raise HTTPException(status_code=HTTP_400_BAD_REQUEST, detail=str(err))
+        if hasattr(entry, "map_mounts"):
+            # Mounted catalogs are reached by walking, not by `get_entry`, so
+            # the access policy has not been applied to them yet.
+            entry = await entry.map_mounts(
+                partial(
+                    filter_for_access,
+                    access_policy=getattr(request.app.state, "access_policy", None),
+                    principal=principal,
+                    authn_access_tags=authn_access_tags,
+                    authn_scopes=authn_scopes,
+                    scopes=["read:metadata"],
+                    metrics=request.state.metrics,
+                )
+            )
+        request.state.endpoint = "search"
+        try:
+            (
+                response,
+                metadata_stale_at,
+                must_revalidate,
+            ) = await construct_entries_response(
+                query_registry,
+                entry,
+                "/search-deep",
+                path,
+                page,
+                fields,
+                select_metadata,
+                omit_links,
+                include_data_sources,
+                filters,
+                None,  # Sorting is not yet supported for deep search.
+                get_base_url(request),
+                resolve_media_type(request),
+                max_depth=None,
+                exact_count_limit=settings.exact_count_limit,
+                deep=True,
+            )
+            response_model_dump = _model_dump_backcompat(request, response)
+
+            entries_stale_at = getattr(entry, "entries_stale_at", None)
+            headers = {}
+            if (metadata_stale_at is None) or (entries_stale_at is None):
+                expires = None
+            else:
+                expires = min(metadata_stale_at, entries_stale_at)
+            if must_revalidate:
+                headers["Cache-Control"] = "must-revalidate"
+            return json_or_msgpack(
+                request,
+                response_model_dump,
+                expires=expires,
+                headers=headers,
+            )
+        except BrokenLink as err:
+            raise HTTPException(status_code=HTTP_410_GONE, detail=err.args[0])
+        except NoEntry:
+            raise HTTPException(status_code=HTTP_404_NOT_FOUND, detail="No such entry.")
+        except WrongTypeForRoute as err:
+            raise HTTPException(status_code=HTTP_404_NOT_FOUND, detail=err.args[0])
+        except JMESPathError as err:
+            raise HTTPException(
+                status_code=HTTP_400_BAD_REQUEST,
+                detail=f"Malformed 'select_metadata' parameter raised JMESPathError: {err}",
+            )
+
+    @router.get(
         "/distinct/{path:path}",
         response_model=schemas.GetDistinctResponse,
     )
@@ -406,12 +561,12 @@ def get_router(
         request: Request,
         structure_families: bool = False,
         specs: bool = False,
-        metadata: Optional[List[str]] = Query(default=[]),
+        metadata: list[str] | None = Query(default=[]),
         counts: bool = False,
-        principal: Optional[Principal] = Depends(get_current_principal),
+        principal: Principal | None = Depends(get_current_principal),
         root_tree=Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
-        authn_access_tags: Optional[AccessTags] = Depends(get_current_access_tags),
+        authn_access_tags: AccessTags | None = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         _=Security(check_scopes, scopes=["read:metadata"]),
         **filters,
@@ -453,16 +608,16 @@ def get_router(
     async def metadata(
         request: Request,
         path: str,
-        fields: Optional[List[schemas.EntryFields]] = Query(list(schemas.EntryFields)),
-        select_metadata: Optional[str] = Query(None),
-        max_depth: Optional[int] = Query(None, ge=0, le=DEPTH_LIMIT),
+        fields: list[schemas.EntryFields] | None = Query(list(schemas.EntryFields)),
+        select_metadata: str | None = Query(None),
+        max_depth: int | None = Query(None, ge=0, le=DEPTH_LIMIT),
         omit_links: bool = Query(False),
         include_data_sources: bool = Query(False),
         root_path: bool = Query(False),
-        principal: Optional[Principal] = Depends(get_current_principal),
+        principal: Principal | None = Depends(get_current_principal),
         root_tree=Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
-        authn_access_tags: Optional[AccessTags] = Depends(get_current_access_tags),
+        authn_access_tags: AccessTags | None = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         settings: Settings = Depends(get_settings),
         _=Security(check_scopes, scopes=["read:metadata"]),
@@ -523,13 +678,13 @@ def get_router(
         block: NDBlock = Depends(parse_block_param),
         slice: NDSlice = Depends(parse_slice_param),
         expected_shape=Depends(expected_shape),
-        format: Optional[str] = None,
-        filename: Optional[str] = None,
+        format: str | None = None,
+        filename: str | None = None,
         settings: Settings = Depends(get_settings),
-        principal: Optional[Principal] = Depends(get_current_principal),
+        principal: Principal | None = Depends(get_current_principal),
         root_tree=Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
-        authn_access_tags: Optional[AccessTags] = Depends(get_current_access_tags),
+        authn_access_tags: AccessTags | None = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         _=Security(check_scopes, scopes=["read:data"]),
     ):
@@ -609,6 +764,16 @@ def get_router(
                     status_code=HTTP_500_INTERNAL_SERVER_ERROR,
                     detail="Block index out of range",
                 )
+            except DataNotReadyError as err:
+                raise HTTPException(
+                    status_code=HTTP_503_SERVICE_UNAVAILABLE,
+                    detail=str(err),
+                    headers={"Retry-After": str(ARRAY_RETRY_AFTER_SECONDS)},
+                )
+            except ShapeMismatchError as err:
+                raise HTTPException(
+                    status_code=HTTP_422_UNPROCESSABLE_CONTENT, detail=str(err)
+                )
             # Something is wrong with the shape of the data vs the value in the structure
             if (expected_shape is not None) and (expected_shape != array.shape):
                 raise HTTPException(
@@ -648,13 +813,13 @@ def get_router(
         request: Request,
         slice: NDSlice = Depends(parse_slice_param),
         expected_shape=Depends(expected_shape),
-        format: Optional[str] = None,
-        filename: Optional[str] = None,
+        format: str | None = None,
+        filename: str | None = None,
         settings: Settings = Depends(get_settings),
-        principal: Optional[Principal] = Depends(get_current_principal),
+        principal: Principal | None = Depends(get_current_principal),
         root_tree=Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
-        authn_access_tags: Optional[AccessTags] = Depends(get_current_access_tags),
+        authn_access_tags: AccessTags | None = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         _=Security(check_scopes, scopes=["read:data"]),
     ):
@@ -690,6 +855,16 @@ def get_router(
             raise HTTPException(
                 status_code=HTTP_400_BAD_REQUEST, detail="Block index out of range"
             )
+        except DataNotReadyError as err:
+            raise HTTPException(
+                status_code=HTTP_503_SERVICE_UNAVAILABLE,
+                detail=str(err),
+                headers={"Retry-After": str(ARRAY_RETRY_AFTER_SECONDS)},
+            )
+        except ShapeMismatchError as err:
+            raise HTTPException(
+                status_code=HTTP_422_UNPROCESSABLE_CONTENT, detail=str(err)
+            )
         if (expected_shape is not None) and (expected_shape != array.shape):
             raise HTTPException(
                 status_code=HTTP_500_INTERNAL_SERVER_ERROR,
@@ -724,10 +899,10 @@ def get_router(
     async def close_stream(
         request: Request,
         path: str,
-        principal: Optional[schemas.Principal] = Depends(get_current_principal),
+        principal: schemas.Principal | None = Depends(get_current_principal),
         root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
-        authn_access_tags: Optional[AccessTags] = Depends(get_current_access_tags),
+        authn_access_tags: AccessTags | None = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         _=Security(check_scopes, scopes=["write:data"]),
     ):
@@ -750,19 +925,55 @@ def get_router(
         websocket: WebSocket,
         path: str,
         envelope_format: schemas.EnvelopeFormat = schemas.EnvelopeFormat.json,
-        start: Optional[int] = None,
-        principal: Optional[schemas.Principal] = Depends(
-            get_current_principal_websocket
-        ),
-        authn_access_tags: Optional[AccessTags] = Depends(
+        start: int | None = None,
+        principal: schemas.Principal | None = Depends(get_current_principal_websocket),
+        authn_access_tags: AccessTags | None = Depends(
             get_current_access_tags_websocket
         ),
         authn_scopes: Scopes = Depends(get_current_scopes_websocket),
+        settings: Settings = Depends(get_settings),
+        db_factory: Callable = Depends(get_database_session_factory),
+        api_key: str | None = Depends(get_api_key_websocket),
+        decoded_access_token: dict | None = Depends(get_decoded_access_token_websocket),
     ):
         root_tree = websocket.app.state.root_tree
         websocket.state.metrics = collections.defaultdict(
             lambda: collections.defaultdict(lambda: 0)
         )
+
+        # If no auth was provided via headers or query params on a server that
+        # requires authentication, accept the connection and wait for a "first
+        # message" carrying credentials. See Issue #1138.
+        # In single-user (API-key-only) mode, principal is legitimately None
+        # for valid keys, so we check whether any credentials were provided.
+        has_credentials = api_key is not None or decoded_access_token is not None
+        needs_first_message_auth = (
+            not has_credentials and not settings.allow_anonymous_access
+        )
+        if needs_first_message_auth:
+            await websocket.accept()
+            try:
+                message = await websocket.receive_json()
+            except Exception:
+                await websocket.close(code=4001, reason="Expected JSON auth message")
+                return
+            if not isinstance(message, dict) or message.get("type") != "auth":
+                await websocket.close(
+                    code=4001, reason='Expected {"type": "auth", ...}'
+                )
+                return
+            (
+                success,
+                principal,
+                authn_access_tags,
+                authn_scopes,
+            ) = await authenticate_websocket_first_message(
+                websocket, message, settings, db_factory
+            )
+            if not success:
+                await websocket.close(code=4003, reason="Authentication failed")
+                return
+
         entry = await get_entry(
             path,
             ["read:data", "read:metadata"],
@@ -775,6 +986,7 @@ def get_router(
             {
                 StructureFamily.array,
                 StructureFamily.container,
+                StructureFamily.ragged,
                 StructureFamily.sparse,
                 StructureFamily.table,
             },
@@ -789,7 +1001,219 @@ def get_router(
         path_str = "/".join(path_parts)
         uri = f"{base_websocket_url.replace(scheme=scheme)}/array/full/{path_str}"
         handler = entry.make_ws_handler(websocket, formatter, uri)
-        await handler(start)
+        await handler(start, already_accepted=needs_first_message_auth)
+
+    @router.get(
+        "/ragged/full/{path:path}", response_model=schemas.Response, name="ragged full"
+    )
+    async def get_ragged_full(
+        request: Request,
+        path: str,
+        slice: NDSlice = Depends(parse_slice_param),
+        format: str | None = None,
+        filename: str | None = None,
+        settings: Settings = Depends(get_settings),
+        principal: Principal | None = Depends(get_current_principal),
+        root_tree=Depends(get_root_tree),
+        session_state: dict = Depends(get_session_state),
+        authn_access_tags: AccessTags | None = Depends(get_current_access_tags),
+        authn_scopes: Scopes = Depends(get_current_scopes),
+        _=Security(check_scopes, scopes=["read:data"]),
+    ):
+        entry = await get_entry(
+            path=path,
+            security_scopes=["read:data"],
+            principal=principal,
+            authn_access_tags=authn_access_tags,
+            authn_scopes=authn_scopes,
+            root_tree=root_tree,
+            session_state=session_state,
+            metrics=request.state.metrics,
+            structure_families={StructureFamily.ragged},
+            access_policy=getattr(request.app.state, "access_policy", None),
+        )
+        structure_family = entry.structure_family
+
+        from ..structures.ragged import CanonicalRaggedArray, RaggedSlicingError
+
+        try:
+            with record_timing(request.state.metrics, "read"):
+                array: CanonicalRaggedArray = await ensure_awaitable(entry.read, slice)
+        except RaggedSlicingError as err:
+            raise HTTPException(
+                status_code=HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=(
+                    "Cannot apply the requested slice to the given ragged array. "
+                    "Try reading the entire array and slice it on the client side instead."
+                ),
+            ) from err
+
+        if array._impl.nbytes > settings.response_bytesize_limit:
+            raise HTTPException(
+                status_code=HTTP_400_BAD_REQUEST,
+                detail=(
+                    f"Response would exceed {settings.response_bytesize_limit}. "
+                    "Use slicing ('?slice=...') to request smaller chunks."
+                ),
+            )
+        try:
+            with record_timing(request.state.metrics, "pack"):
+                return await construct_data_response(
+                    structure_family,
+                    serialization_registry,
+                    array,
+                    entry.metadata(),
+                    request,
+                    format,
+                    specs=getattr(entry, "specs", []),
+                    expires=getattr(entry, "content_stale_at", None),
+                    filename=filename,
+                )
+        except UnsupportedMediaTypes as err:
+            raise HTTPException(
+                status_code=HTTP_406_NOT_ACCEPTABLE, detail=err.args[0]
+            ) from err
+
+    @router.put("/ragged/full/{path:path}")
+    async def put_ragged_full(
+        request: Request,
+        path: str,
+        persist: bool = Query(True, description="Persist data to storage"),
+        principal: Principal | None = Depends(get_current_principal),
+        root_tree=Depends(get_root_tree),
+        session_state: dict = Depends(get_session_state),
+        authn_access_tags: AccessTags | None = Depends(get_current_access_tags),
+        authn_scopes: Scopes = Depends(get_current_scopes),
+        _=Security(check_scopes, scopes=["write:data"]),
+    ):
+        entry = await get_entry(
+            path,
+            ["write:data"],
+            principal,
+            authn_access_tags,
+            authn_scopes,
+            root_tree,
+            session_state,
+            request.state.metrics,
+            {StructureFamily.ragged},
+            getattr(request.app.state, "access_policy", None),
+        )
+        if not hasattr(entry, "write"):
+            raise HTTPException(
+                status_code=HTTP_405_METHOD_NOT_ALLOWED,
+                detail="This node cannot accept array data.",
+            )
+
+        media_type = request.headers["content-type"]
+        deserializer = deserialization_registry.dispatch("ragged", media_type)
+
+        body = await request.body()
+        await ensure_awaitable(
+            entry.write, media_type, deserializer, entry, body, persist
+        )
+
+        return json_or_msgpack(request, None)
+
+    @router.put("/ragged/block/{path:path}")
+    async def put_ragged_block(
+        request: Request,
+        path: str,
+        block: NDBlock = Depends(parse_block_param),
+        persist: bool = Query(True, description="Persist data to storage"),
+        principal: Principal | None = Depends(get_current_principal),
+        root_tree=Depends(get_root_tree),
+        session_state: dict = Depends(get_session_state),
+        authn_access_tags: AccessTags | None = Depends(get_current_access_tags),
+        authn_scopes: Scopes = Depends(get_current_scopes),
+        _=Security(check_scopes, scopes=["write:data"]),
+    ):
+        entry = await get_entry(
+            path,
+            ["write:data"],
+            principal,
+            authn_access_tags,
+            authn_scopes,
+            root_tree,
+            session_state,
+            request.state.metrics,
+            {StructureFamily.ragged},
+            getattr(request.app.state, "access_policy", None),
+        )
+        if not hasattr(entry, "write_block"):
+            raise HTTPException(
+                status_code=HTTP_405_METHOD_NOT_ALLOWED,
+                detail="This node cannot accept blocks of ragged array data.",
+            )
+
+        media_type = request.headers["content-type"]
+        deserializer = deserialization_registry.dispatch("ragged", media_type)
+
+        body = await request.body()
+        await ensure_awaitable(
+            entry.write_block, block, media_type, deserializer, entry, body, persist
+        )
+
+        return json_or_msgpack(request, None)
+
+    @router.patch("/ragged/full/{path:path}")
+    async def patch_ragged_full(
+        request: Request,
+        path: str,
+        shape=Depends(shape_param),
+        offset=Depends(offset_param),
+        extend: bool = Query(
+            False, description="Extend the array shape to fit the new data"
+        ),
+        persist: bool = Query(True, description="Persist data to storage"),
+        principal: Principal | None = Depends(get_current_principal),
+        root_tree=Depends(get_root_tree),
+        session_state: dict = Depends(get_session_state),
+        authn_access_tags: AccessTags | None = Depends(get_current_access_tags),
+        authn_scopes: Scopes = Depends(get_current_scopes),
+        _=Security(check_scopes, scopes=["write:data"]),
+    ):
+        if extend and not persist:
+            msg = (
+                "Cannot PATCH a ragged array with both parameters"
+                " extend=True and persist=False."
+                " To extend the array, you must persist the changes."
+                " To skip persisting the changes, you must not extend the array."
+            )
+            raise HTTPException(status_code=HTTP_400_BAD_REQUEST, detail=msg)
+
+        entry = await get_entry(
+            path,
+            ["write:data"],
+            principal,
+            authn_access_tags,
+            authn_scopes,
+            root_tree,
+            session_state,
+            request.state.metrics,
+            {StructureFamily.ragged},
+            getattr(request.app.state, "access_policy", None),
+        )
+        if not hasattr(entry, "patch"):
+            raise HTTPException(
+                status_code=HTTP_405_METHOD_NOT_ALLOWED,
+                detail="This node does not support patching ragged array data.",
+            )
+
+        body = await request.body()
+        media_type = request.headers["content-type"]
+        deserializer = deserialization_registry.dispatch("ragged", media_type)
+        structure = await ensure_awaitable(
+            entry.patch,
+            shape,
+            offset,
+            extend,
+            media_type,
+            deserializer,
+            entry,
+            body,
+            persist,
+        )
+        return json_or_msgpack(request, structure)
 
     @router.get(
         "/table/partition/{path:path}",
@@ -800,15 +1224,15 @@ def get_router(
         path: str,
         request: Request,
         partition: int,
-        column: Optional[List[str]] = Query(None, min_length=1),
-        field: Optional[List[str]] = Query(None, min_length=1, deprecated=True),
-        format: Optional[str] = None,
-        filename: Optional[str] = None,
+        column: list[str] | None = Query(None, min_length=1),
+        field: list[str] | None = Query(None, min_length=1, deprecated=True),
+        format: str | None = None,
+        filename: str | None = None,
         settings: Settings = Depends(get_settings),
-        principal: Optional[Principal] = Depends(get_current_principal),
+        principal: Principal | None = Depends(get_current_principal),
         root_tree=Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
-        authn_access_tags: Optional[AccessTags] = Depends(get_current_access_tags),
+        authn_access_tags: AccessTags | None = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         _=Security(check_scopes, scopes=["read:data"]),
     ):
@@ -865,14 +1289,14 @@ def get_router(
         path: str,
         request: Request,
         partition: int,
-        column: Optional[List[str]] = Body(None, min_length=1),
-        format: Optional[str] = None,
-        filename: Optional[str] = None,
+        column: list[str] | None = Body(None, min_length=1),
+        format: str | None = None,
+        filename: str | None = None,
         settings: Settings = Depends(get_settings),
-        principal: Optional[Principal] = Depends(get_current_principal),
+        principal: Principal | None = Depends(get_current_principal),
         root_tree=Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
-        authn_access_tags: Optional[AccessTags] = Depends(get_current_access_tags),
+        authn_access_tags: AccessTags | None = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         _=Security(check_scopes, scopes=["read:data"]),
     ):
@@ -905,9 +1329,9 @@ def get_router(
         request: Request,
         partition: int,
         entry: AnyAdapter,
-        column: Optional[List[str]],
-        format: Optional[str],
-        filename: Optional[str],
+        column: list[str] | None,
+        format: str | None,
+        filename: str | None,
         settings: Settings,
     ):
         """
@@ -960,14 +1384,14 @@ def get_router(
     async def get_table_full(
         request: Request,
         path: str,
-        column: Optional[List[str]] = Query(None, min_length=1),
-        format: Optional[str] = None,
-        filename: Optional[str] = None,
+        column: list[str] | None = Query(None, min_length=1),
+        format: str | None = None,
+        filename: str | None = None,
         settings: Settings = Depends(get_settings),
-        principal: Optional[Principal] = Depends(get_current_principal),
+        principal: Principal | None = Depends(get_current_principal),
         root_tree=Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
-        authn_access_tags: Optional[AccessTags] = Depends(get_current_access_tags),
+        authn_access_tags: AccessTags | None = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         _=Security(check_scopes, scopes=["read:data"]),
     ):
@@ -1003,14 +1427,14 @@ def get_router(
     async def post_table_full(
         request: Request,
         path: str,
-        column: Optional[List[str]] = Body(None, min_length=1),
-        format: Optional[str] = None,
-        filename: Optional[str] = None,
+        column: list[str] | None = Body(None, min_length=1),
+        format: str | None = None,
+        filename: str | None = None,
         settings: Settings = Depends(get_settings),
-        principal: Optional[Principal] = Depends(get_current_principal),
+        principal: Principal | None = Depends(get_current_principal),
         root_tree=Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
-        authn_access_tags: Optional[AccessTags] = Depends(get_current_access_tags),
+        authn_access_tags: AccessTags | None = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         _=Security(check_scopes, scopes=["read:data"]),
     ):
@@ -1041,9 +1465,9 @@ def get_router(
     async def table_full(
         request: Request,
         entry: AnyAdapter,
-        column: Optional[List[str]],
-        format: Optional[str],
-        filename: Optional[str],
+        column: list[str] | None,
+        format: str | None,
+        filename: str | None,
         settings: Settings,
     ):
         """
@@ -1091,12 +1515,12 @@ def get_router(
     async def get_container_full(
         request: Request,
         path: str,
-        principal: Optional[Principal] = Depends(get_current_principal),
-        authn_access_tags: Optional[AccessTags] = Depends(get_current_access_tags),
+        principal: Principal | None = Depends(get_current_principal),
+        authn_access_tags: AccessTags | None = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
-        field: Optional[List[str]] = Query(None, min_length=1),
-        format: Optional[str] = None,
-        filename: Optional[str] = None,
+        field: list[str] | None = Query(None, min_length=1),
+        format: str | None = None,
+        filename: str | None = None,
         root_tree=Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
         _=Security(check_scopes, scopes=["read:data"]),
@@ -1135,12 +1559,12 @@ def get_router(
     async def post_container_full(
         request: Request,
         path: str,
-        principal: Optional[Principal] = Depends(get_current_principal),
-        authn_access_tags: Optional[AccessTags] = Depends(get_current_access_tags),
+        principal: Principal | None = Depends(get_current_principal),
+        authn_access_tags: AccessTags | None = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
-        field: Optional[List[str]] = Body(None, min_length=1),
-        format: Optional[str] = None,
-        filename: Optional[str] = None,
+        field: list[str] | None = Body(None, min_length=1),
+        format: str | None = None,
+        filename: str | None = None,
         root_tree=Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
         _=Security(check_scopes, scopes=["read:data"]),
@@ -1174,12 +1598,12 @@ def get_router(
     async def container_full(
         request: Request,
         entry,
-        principal: Optional[Principal],
-        authn_access_tags: Optional[AccessTags],
+        principal: Principal | None,
+        authn_access_tags: AccessTags | None,
         authn_scopes: Scopes,
-        field: Optional[List[str]],
-        format: Optional[str],
-        filename: Optional[str],
+        field: list[str] | None,
+        format: str | None,
+        filename: str | None,
     ):
         """
         Fetch the data for the given container.
@@ -1228,12 +1652,12 @@ def get_router(
     async def node_full(
         request: Request,
         path: str,
-        principal: Optional[Principal] = Depends(get_current_principal),
-        authn_access_tags: Optional[AccessTags] = Depends(get_current_access_tags),
+        principal: Principal | None = Depends(get_current_principal),
+        authn_access_tags: AccessTags | None = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
-        field: Optional[List[str]] = Query(None, min_length=1),
-        format: Optional[str] = None,
-        filename: Optional[str] = None,
+        field: list[str] | None = Query(None, min_length=1),
+        format: str | None = None,
+        filename: str | None = None,
         settings: Settings = Depends(get_settings),
         root_tree=Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
@@ -1311,14 +1735,14 @@ def get_router(
     async def get_awkward_buffers(
         request: Request,
         path: str,
-        form_key: Optional[List[str]] = Query(None, min_length=1),
-        format: Optional[str] = None,
-        filename: Optional[str] = None,
+        form_key: list[str] | None = Query(None, min_length=1),
+        format: str | None = None,
+        filename: str | None = None,
         settings: Settings = Depends(get_settings),
-        principal: Optional[Principal] = Depends(get_current_principal),
+        principal: Principal | None = Depends(get_current_principal),
         root_tree=Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
-        authn_access_tags: Optional[AccessTags] = Depends(get_current_access_tags),
+        authn_access_tags: AccessTags | None = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         _=Security(check_scopes, scopes=["read:data"]),
     ):
@@ -1361,14 +1785,14 @@ def get_router(
     async def post_awkward_buffers(
         request: Request,
         path: str,
-        body: List[str],
-        format: Optional[str] = None,
-        filename: Optional[str] = None,
+        body: list[str],
+        format: str | None = None,
+        filename: str | None = None,
         settings: Settings = Depends(get_settings),
-        principal: Optional[Principal] = Depends(get_current_principal),
+        principal: Principal | None = Depends(get_current_principal),
         root_tree=Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
-        authn_access_tags: Optional[AccessTags] = Depends(get_current_access_tags),
+        authn_access_tags: AccessTags | None = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         _=Security(check_scopes, scopes=["read:data"]),
     ):
@@ -1406,9 +1830,9 @@ def get_router(
     async def _awkward_buffers(
         request: Request,
         entry,
-        form_key: Optional[List[str]],
-        format: Optional[str],
-        filename: Optional[str],
+        form_key: list[str] | None,
+        format: str | None,
+        filename: str | None,
         settings: Settings,
     ):
         structure_family = entry.structure_family
@@ -1453,13 +1877,13 @@ def get_router(
     async def awkward_full(
         request: Request,
         path: str,
-        format: Optional[str] = None,
-        filename: Optional[str] = None,
+        format: str | None = None,
+        filename: str | None = None,
         settings: Settings = Depends(get_settings),
-        principal: Optional[Principal] = Depends(get_current_principal),
+        principal: Principal | None = Depends(get_current_principal),
         root_tree=Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
-        authn_access_tags: Optional[AccessTags] = Depends(get_current_access_tags),
+        authn_access_tags: AccessTags | None = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         _=Security(check_scopes, scopes=["read:data"]),
     ):
@@ -1484,10 +1908,8 @@ def get_router(
         import awkward
 
         with record_timing(request.state.metrics, "read"):
-            container = await ensure_awaitable(entry.read)
-        structure = entry.structure()
-        components = (structure.form, structure.length, container)
-        array = awkward.from_buffers(*components)
+            array = await ensure_awaitable(entry.read)
+
         if array.nbytes > settings.response_bytesize_limit:
             raise HTTPException(
                 status_code=HTTP_400_BAD_REQUEST,
@@ -1497,6 +1919,7 @@ def get_router(
                 ),
             )
         try:
+            components = awkward.to_buffers(array)
             with record_timing(request.state.metrics, "pack"):
                 return await construct_data_response(
                     structure_family,
@@ -1518,8 +1941,8 @@ def get_router(
         path: str,
         body: schemas.PostMetadataRequest,
         settings: Settings = Depends(get_settings),
-        principal: Optional[Principal] = Depends(get_current_principal),
-        authn_access_tags: Optional[AccessTags] = Depends(get_current_access_tags),
+        principal: Principal | None = Depends(get_current_principal),
+        authn_access_tags: AccessTags | None = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         root_tree=Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
@@ -1565,8 +1988,8 @@ def get_router(
         path: str,
         body: schemas.PostMetadataRequest,
         settings: Settings = Depends(get_settings),
-        principal: Optional[Principal] = Depends(get_current_principal),
-        authn_access_tags: Optional[AccessTags] = Depends(get_current_access_tags),
+        principal: Principal | None = Depends(get_current_principal),
+        authn_access_tags: AccessTags | None = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         root_tree=Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
@@ -1601,16 +2024,25 @@ def get_router(
         body: schemas.PostMetadataRequest,
         settings: Settings,
         entry,
-        principal: Optional[Principal],
-        authn_access_tags: Optional[AccessTags],
+        principal: Principal | None,
+        authn_access_tags: AccessTags | None,
         authn_scopes: Scopes,
     ):
-        metadata, structure_family, specs, access_blob = (
+        metadata, structure_family, specs, access_tags = (
             body.metadata,
             body.structure_family,
             body.specs,
-            body.access_blob,
+            normalize_access_tags(body.access_tags)
+            if body.access_tags is not None
+            else None,
         )
+        # BACK-COMPAT: a client older than v0.2.19 spells this `access_blob`.
+        # Remove with the helpers in _backcompat.py.
+        if legacy_access_blob(body) is not None:
+            try:
+                access_tags = access_tags_from_request(body)
+            except ValueError as e:
+                raise legacy_access_blob_error(e)
         if structure_family == StructureFamily.container:
             structure = None
         else:
@@ -1633,19 +2065,20 @@ def get_router(
         ):
             try:
                 (
-                    access_blob_modified,
-                    access_blob,
+                    access_tags_modified,
+                    access_tags,
                 ) = await request.app.state.access_policy.init_node(
-                    principal, authn_access_tags, authn_scopes, access_blob=access_blob
+                    principal, authn_access_tags, authn_scopes, access_tags=access_tags
                 )
+                access_tags = ApprovedAccessTags(access_tags)
             except ValueError as e:
                 raise HTTPException(
                     status_code=HTTP_403_FORBIDDEN,
-                    detail=f"Access policy rejects the provided access blob.\n{e}",
+                    detail=f"Access policy rejects the provided access tags.\n{e}",
                 )
         else:
-            access_blob_modified = access_blob != {}
-            access_blob = {}
+            access_tags_modified = access_tags != normalize_access_tags()
+            access_tags = normalize_access_tags()
 
         node = await entry.create_node(
             metadata=body.metadata,
@@ -1653,22 +2086,36 @@ def get_router(
             key=key,
             specs=body.specs,
             data_sources=body.data_sources,
-            access_blob=access_blob,
+            access_tags=access_tags,
         )
         links = links_for_node(
-            structure_family, structure, get_base_url(request), path + f"/{node.key}"
+            structure_family,
+            structure,
+            get_base_url(request),
+            "/".join(filter(None, [path.strip("/"), node.key])),
+        )
+        data_sources_dump = [
+            ds.model_dump() for ds in await node.data_sources(include_assets=True)
+        ]
+        strip_asset_fields_for_client(
+            data_sources_dump, parse_python_tiled_client_version(request)
         )
         response_data = {
             "id": node.key,
             "links": links,
-            "data_sources": [ds.model_dump() for ds in node.data_sources],
+            "data_sources": data_sources_dump,
         }
         if metadata_modified:
             response_data["metadata"] = metadata
-        if access_blob_modified:
-            response_data["access_blob"] = access_blob
+        if access_tags_modified:
+            response_data["access_tags"] = (
+                sorted(access_tags) if access_tags is not None else None
+            )
 
-        return json_or_msgpack(request, response_data)
+        # NOTE: Back-compatibility for clients older than v0.2.19
+        return json_or_msgpack(
+            request, _write_response_backcompat(request, response_data)
+        )
 
     @router.put("/data_source/{path:path}")
     async def put_data_source(
@@ -1676,13 +2123,13 @@ def get_router(
         path: str,
         body: schemas.PutDataSourceRequest,
         settings: Settings = Depends(get_settings),
-        principal: Optional[Principal] = Depends(get_current_principal),
+        principal: Principal | None = Depends(get_current_principal),
         root_tree=Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
-        authn_access_tags: Optional[AccessTags] = Depends(get_current_access_tags),
+        authn_access_tags: AccessTags | None = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
-        patch_shape: Optional[tuple[int, ...]] = Depends(patch_shape_param),
-        patch_offset: Optional[tuple[int, ...]] = Depends(patch_offset_param),
+        patch_shape: tuple[int, ...] | None = Depends(patch_shape_param),
+        patch_offset: tuple[int, ...] | None = Depends(patch_offset_param),
         _=Security(check_scopes, scopes=["write:metadata", "register"]),
     ):
         entry = await get_entry(
@@ -1719,20 +2166,20 @@ def get_router(
     async def delete(
         request: Request,
         path: str,
-        recursive: Optional[bool] = Query(
+        recursive: bool | None = Query(
             False, description="Delete children recursively"
         ),
-        external_only: Optional[bool] = Query(
+        external_only: bool | None = Query(
             True,
             description=(
                 "Delete the node, but only if this would not "
                 "affect any internally-managed data sources"
             ),
         ),
-        principal: Optional[Principal] = Depends(get_current_principal),
+        principal: Principal | None = Depends(get_current_principal),
         root_tree=Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
-        authn_access_tags: Optional[AccessTags] = Depends(get_current_access_tags),
+        authn_access_tags: AccessTags | None = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         _=Security(check_scopes, scopes=["delete:node", "delete:revision"]),
     ):
@@ -1762,10 +2209,10 @@ def get_router(
         request: Request,
         path: str,
         persist: bool = Query(True, description="Persist data to storage"),
-        principal: Optional[Principal] = Depends(get_current_principal),
+        principal: Principal | None = Depends(get_current_principal),
         root_tree=Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
-        authn_access_tags: Optional[AccessTags] = Depends(get_current_access_tags),
+        authn_access_tags: AccessTags | None = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         _=Security(check_scopes, scopes=["write:data"]),
     ):
@@ -1805,10 +2252,10 @@ def get_router(
         path: str,
         block: NDBlock = Depends(parse_block_param),
         persist: bool = Query(True, description="Persist data to storage"),
-        principal: Optional[Principal] = Depends(get_current_principal),
+        principal: Principal | None = Depends(get_current_principal),
         root_tree=Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
-        authn_access_tags: Optional[AccessTags] = Depends(get_current_access_tags),
+        authn_access_tags: AccessTags | None = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         _=Security(check_scopes, scopes=["write:data"]),
     ):
@@ -1848,10 +2295,10 @@ def get_router(
         shape=Depends(shape_param),
         extend: bool = False,
         persist: bool = Query(True, description="Persist data to storage"),
-        principal: Optional[Principal] = Depends(get_current_principal),
+        principal: Principal | None = Depends(get_current_principal),
         root_tree=Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
-        authn_access_tags: Optional[AccessTags] = Depends(get_current_access_tags),
+        authn_access_tags: AccessTags | None = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         _=Security(check_scopes, scopes=["write:data"]),
     ):
@@ -1905,10 +2352,10 @@ def get_router(
     async def put_node_full(
         request: Request,
         path: str,
-        principal: Optional[Principal] = Depends(get_current_principal),
+        principal: Principal | None = Depends(get_current_principal),
         root_tree=Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
-        authn_access_tags: Optional[AccessTags] = Depends(get_current_access_tags),
+        authn_access_tags: AccessTags | None = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         _=Security(check_scopes, scopes=["write:data"]),
     ):
@@ -1942,10 +2389,10 @@ def get_router(
         partition: int,
         path: str,
         request: Request,
-        principal: Optional[Principal] = Depends(get_current_principal),
+        principal: Principal | None = Depends(get_current_principal),
         root_tree=Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
-        authn_access_tags: Optional[AccessTags] = Depends(get_current_access_tags),
+        authn_access_tags: AccessTags | None = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         _=Security(check_scopes, scopes=["write:data"]),
     ):
@@ -1981,10 +2428,10 @@ def get_router(
         partition: int,
         path: str,
         request: Request,
-        principal: Optional[Principal] = Depends(get_current_principal),
+        principal: Principal | None = Depends(get_current_principal),
         root_tree=Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
-        authn_access_tags: Optional[AccessTags] = Depends(get_current_access_tags),
+        authn_access_tags: AccessTags | None = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         _=Security(check_scopes, scopes=["write:data"]),
     ):
@@ -2019,10 +2466,10 @@ def get_router(
     async def put_awkward_full(
         request: Request,
         path: str,
-        principal: Optional[Principal] = Depends(get_current_principal),
+        principal: Principal | None = Depends(get_current_principal),
         root_tree=Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
-        authn_access_tags: Optional[AccessTags] = Depends(get_current_access_tags),
+        authn_access_tags: AccessTags | None = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         _=Security(check_scopes, scopes=["write:data"]),
     ):
@@ -2061,8 +2508,8 @@ def get_router(
         path: str,
         body: schemas.PatchMetadataRequest,
         settings: Settings = Depends(get_settings),
-        principal: Optional[Principal] = Depends(get_current_principal),
-        authn_access_tags: Optional[AccessTags] = Depends(get_current_access_tags),
+        principal: Principal | None = Depends(get_current_principal),
+        authn_access_tags: AccessTags | None = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         drop_revision: bool = False,
         root_tree=Depends(get_root_tree),
@@ -2090,7 +2537,11 @@ def get_router(
         if body.content_type == patch_mimetypes.JSON_PATCH:
             metadata = apply_json_patch(entry.metadata(), (body.metadata or []))
             specs = apply_json_patch((entry.specs or []), (body.specs or []))
-            access_blob = apply_json_patch(entry.access_blob, (body.access_blob or []))
+            # Patch against the same deterministic (sorted) list that the
+            # server serves, so that index-based patch operations are stable.
+            access_tags = apply_json_patch(
+                sorted(entry.access_tags), (body.access_tags or [])
+            )
         elif body.content_type == patch_mimetypes.MERGE_PATCH:
             metadata = apply_merge_patch(entry.metadata(), (body.metadata or {}))
             # body.specs = [] clears specs, as per json merge patch specification
@@ -2098,20 +2549,43 @@ def get_router(
             current_specs = entry.specs or []
             target_specs = current_specs if body.specs is None else body.specs
             specs = apply_merge_patch(current_specs, target_specs)
-            # json_merge_patch applies merge in-place, which would
-            # otherwise modify the in-memory node and prevent the
-            # access policy from sanity checking the access blob.
-            # make a copy so we can compare the node against the
-            # proposed new access blob.
-            entry_access_blob_copy = deepcopy(entry.access_blob)
-            access_blob = apply_merge_patch(
-                entry_access_blob_copy, (body.access_blob or [])
+            # sorted() makes a mutable copy, protecting the in-memory node
+            # from in-place modification by json_merge_patch so that the
+            # access policy can compare the node against the proposed tags.
+            access_tags = apply_merge_patch(
+                sorted(entry.access_tags), (body.access_tags or [])
             )
         else:
             raise HTTPException(
                 status_code=HTTP_406_NOT_ACCEPTABLE,
                 detail=f"valid content types: {', '.join(patch_mimetypes)}",
             )
+        # A patch is unconstrained by the request schema, so validate that it
+        # produced a flat list of tag names, and normalize to AccessTags.
+        if isinstance(access_tags, list) and all(
+            isinstance(tag, str) for tag in access_tags
+        ):
+            access_tags = normalize_access_tags(access_tags)
+        else:
+            raise HTTPException(
+                status_code=HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="access_tags patch must produce a list of strings",
+            )
+
+        # BACK-COMPAT: a client older than v0.2.19 patches an `access_blob`
+        # dict rather than a tag list, so its patch has to be applied in that
+        # shape. Remove with the helpers in _backcompat.py.
+        if legacy_access_blob(body) is not None:
+            try:
+                access_tags = access_tags_from_patch_request(
+                    body,
+                    entry.access_tags,
+                    apply_json_patch
+                    if body.content_type == patch_mimetypes.JSON_PATCH
+                    else apply_merge_patch,
+                )
+            except ValueError as e:
+                raise legacy_access_blob_error(e)
 
         # Manually validate limits that bypass pydantic validation via patch
         if len(specs) > schemas.MAX_ALLOWED_SPECS:
@@ -2136,32 +2610,38 @@ def get_router(
             policy, "modify_node"
         ):
             try:
-                (access_blob_modified, access_blob) = await policy.modify_node(
-                    entry, principal, authn_access_tags, authn_scopes, access_blob
+                (access_tags_modified, access_tags) = await policy.modify_node(
+                    entry, principal, authn_access_tags, authn_scopes, access_tags
                 )
+                access_tags = ApprovedAccessTags(access_tags)
             except ValueError as e:
                 raise HTTPException(
                     status_code=HTTP_403_FORBIDDEN,
-                    detail=f"Access policy rejects the provided access blob.\n{e}",
+                    detail=f"Access policy rejects the provided access tags.\n{e}",
                 )
         else:
-            # Cannot modify the access blob if there is no access policy
-            access_blob_modified = access_blob != entry.access_blob
-            access_blob = entry.access_blob
+            # Cannot modify the access tags if there is no access policy
+            access_tags_modified = access_tags != entry.access_tags
+            access_tags = entry.access_tags
 
         await entry.replace_metadata(
             metadata=metadata,
             specs=specs,
-            access_blob=access_blob,
+            access_tags=access_tags,
             drop_revision=drop_revision,
         )
 
         response_data = {"id": entry.node.key}
         if metadata_modified:
             response_data["metadata"] = metadata
-        if access_blob_modified:
-            response_data["access_blob"] = access_blob
-        return json_or_msgpack(request, response_data)
+        if access_tags_modified:
+            response_data["access_tags"] = (
+                sorted(access_tags) if access_tags is not None else None
+            )
+        # NOTE: Back-compatibility for clients older than v0.2.19
+        return json_or_msgpack(
+            request, _write_response_backcompat(request, response_data)
+        )
 
     @router.put("/metadata/{path:path}", response_model=schemas.PutMetadataResponse)
     async def put_metadata(
@@ -2169,8 +2649,8 @@ def get_router(
         path: str,
         body: schemas.PutMetadataRequest,
         settings: Settings = Depends(get_settings),
-        principal: Optional[Principal] = Depends(get_current_principal),
-        authn_access_tags: Optional[AccessTags] = Depends(get_current_access_tags),
+        principal: Principal | None = Depends(get_current_principal),
+        authn_access_tags: AccessTags | None = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         drop_revision: bool = False,
         root_tree=Depends(get_root_tree),
@@ -2195,11 +2675,22 @@ def get_router(
                 detail="This node does not support update of metadata.",
             )
 
-        metadata, specs, access_blob = (
+        metadata, specs, access_tags = (
             body.metadata if body.metadata is not None else entry.metadata(),
             body.specs if body.specs is not None else entry.specs,
-            body.access_blob if body.access_blob is not None else entry.access_blob,
+            normalize_access_tags(body.access_tags)
+            if body.access_tags is not None
+            else entry.access_tags,
         )
+        # BACK-COMPAT: a client older than v0.2.19 spells this `access_blob`.
+        # Remove with the helpers in _backcompat.py.
+        if legacy_access_blob(body) is not None:
+            try:
+                access_tags = access_tags_from_request(body)
+            except ValueError as e:
+                raise legacy_access_blob_error(e)
+            if access_tags is None:
+                access_tags = entry.access_tags
 
         metadata_modified, metadata = await validate_specs(
             specs=specs,
@@ -2212,45 +2703,48 @@ def get_router(
             policy, "modify_node"
         ):
             try:
-                (access_blob_modified, access_blob) = await policy.modify_node(
-                    entry, principal, authn_access_tags, authn_scopes, access_blob
+                (access_tags_modified, access_tags) = await policy.modify_node(
+                    entry, principal, authn_access_tags, authn_scopes, access_tags
                 )
+                access_tags = ApprovedAccessTags(access_tags)
             except ValueError as e:
                 raise HTTPException(
                     status_code=HTTP_403_FORBIDDEN,
-                    detail=f"Access policy rejects the provided access blob.\n{e}",
+                    detail=f"Access policy rejects the provided access tags.\n{e}",
                 )
         else:
-            # Cannot modify the access blob if there is no access policy
-            access_blob_modified = access_blob != entry.access_blob
-            access_blob = entry.access_blob
+            # Cannot modify the access tags if there is no access policy
+            access_tags_modified = access_tags != entry.access_tags
+            access_tags = entry.access_tags
 
         await entry.replace_metadata(
             metadata=metadata,
             specs=specs,
-            access_blob=access_blob,
+            access_tags=access_tags,
             drop_revision=drop_revision,
         )
 
         response_data = {"id": entry.node.key}
         if metadata_modified:
             response_data["metadata"] = metadata
-        if access_blob_modified:
-            response_data["access_blob"] = access_blob
-        return json_or_msgpack(request, response_data)
+        if access_tags_modified:
+            response_data["access_tags"] = (
+                sorted(access_tags) if access_tags is not None else None
+            )
+        # NOTE: Back-compatibility for clients older than v0.2.19
+        return json_or_msgpack(
+            request, _write_response_backcompat(request, response_data)
+        )
 
     @router.get("/revisions/{path:path}")
     async def get_revisions(
         request: Request,
         path: str,
-        offset: Optional[int] = Query(0, alias="page[offset]", ge=0),
-        limit: Optional[int] = Query(
-            DEFAULT_PAGE_SIZE, alias="page[limit]", ge=0, le=MAX_PAGE_SIZE
-        ),
-        principal: Optional[Principal] = Depends(get_current_principal),
+        page: PaginationParams = Depends(),
+        principal: Principal | None = Depends(get_current_principal),
         root_tree=Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
-        authn_access_tags: Optional[AccessTags] = Depends(get_current_access_tags),
+        authn_access_tags: AccessTags | None = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         _=Security(check_scopes, scopes=["read:metadata"]),
     ):
@@ -2278,8 +2772,7 @@ def get_router(
             base_url,
             "/revisions",
             path,
-            offset,
-            limit,
+            page,
             resolve_media_type(request),
         )
         return json_or_msgpack(request, resource.model_dump())
@@ -2289,10 +2782,10 @@ def get_router(
         request: Request,
         path: str,
         number: int,
-        principal: Optional[Principal] = Depends(get_current_principal),
+        principal: Principal | None = Depends(get_current_principal),
         root_tree=Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
-        authn_access_tags: Optional[AccessTags] = Depends(get_current_access_tags),
+        authn_access_tags: AccessTags | None = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         _=Security(check_scopes, scopes=["delete:revision"]),
     ):
@@ -2322,12 +2815,12 @@ def get_router(
         request: Request,
         path: str,
         id: int,
-        relative_path: Optional[Path] = None,
+        relative_path: Path | None = None,
         settings: Settings = Depends(get_settings),
-        principal: Optional[Principal] = Depends(get_current_principal),
+        principal: Principal | None = Depends(get_current_principal),
         root_tree=Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
-        authn_access_tags: Optional[AccessTags] = Depends(get_current_access_tags),
+        authn_access_tags: AccessTags | None = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         _=Security(check_scopes, scopes=["read:data"]),
     ):
@@ -2415,13 +2908,18 @@ def get_router(
         path: str,
         id: int,
         settings: Settings = Depends(get_settings),
-        principal: Optional[Principal] = Depends(get_current_principal),
+        principal: Principal | None = Depends(get_current_principal),
         root_tree=Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
-        authn_access_tags: Optional[AccessTags] = Depends(get_current_access_tags),
+        authn_access_tags: AccessTags | None = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         _=Security(check_scopes, scopes=["read:data"]),
     ):
+        if not settings.expose_raw_assets:
+            raise HTTPException(
+                status_code=HTTP_403_FORBIDDEN,
+                detail="This Tiled server does not allow downloading raw assets.",
+            )
         entry = await get_entry(
             path,
             ["read:data"],
@@ -2434,14 +2932,6 @@ def get_router(
             None,
             getattr(request.app.state, "access_policy", None),
         )  # TODO: Separate scope for assets?
-        if not settings.expose_raw_assets:
-            raise HTTPException(
-                status_code=HTTP_403_FORBIDDEN,
-                detail=(
-                    "This Tiled server is configured not to allow "
-                    "downloading raw assets."
-                ),
-            )
         if not hasattr(entry, "asset_by_id"):
             raise HTTPException(
                 status_code=HTTP_405_METHOD_NOT_ALLOWED,
@@ -2472,12 +2962,65 @@ def get_router(
             manifest.extend(Path(root, file) for file in files)
         return json_or_msgpack(request, {"manifest": manifest})
 
+    @router.delete(
+        "/asset/{path:path}",
+        summary="Dissociate an asset from a node and, if unreferenced, delete it",
+    )
+    async def delete_asset(
+        request: Request,
+        path: str,
+        id: int,
+        external_only: bool = Query(
+            True,
+            description=(
+                "Dissociate the asset, but refuse to delete the underlying data "
+                "if it is internally managed. Externally-managed assets are never deleted."
+            ),
+        ),
+        settings: Settings = Depends(get_settings),
+        principal: Principal | None = Depends(get_current_principal),
+        root_tree=Depends(get_root_tree),
+        session_state: dict = Depends(get_session_state),
+        authn_access_tags: AccessTags | None = Depends(get_current_access_tags),
+        authn_scopes: Scopes = Depends(get_current_scopes),
+        _=Security(check_scopes, scopes=["delete:node"]),
+    ):
+        if not settings.expose_raw_assets:
+            raise HTTPException(
+                status_code=HTTP_403_FORBIDDEN,
+                detail="This Tiled server does not allow deleting raw assets.",
+            )
+        entry = await get_entry(
+            path,
+            ["delete:node"],
+            principal,
+            authn_access_tags,
+            authn_scopes,
+            root_tree,
+            session_state,
+            request.state.metrics,
+            None,
+            getattr(request.app.state, "access_policy", None),
+        )
+        if not hasattr(entry, "delete_asset"):
+            raise HTTPException(
+                status_code=HTTP_405_METHOD_NOT_ALLOWED,
+                detail="This node does not support deleting assets.",
+            )
+        result = await entry.delete_asset(id, external_only=external_only)
+        if result is None:
+            raise HTTPException(
+                status_code=HTTP_404_NOT_FOUND,
+                detail=f"This node exists but it does not have an Asset with id {id}",
+            )
+        return json_or_msgpack(request, result)
+
     async def validate_specs(
-        specs: List[Spec],
+        specs: list[Spec],
         metadata: dict,
-        entry: Optional[AnyAdapter] = None,
-        structure_family: Optional[StructureFamily] = None,
-        structure: Optional[dict] = None,
+        entry: AnyAdapter | None = None,
+        structure_family: StructureFamily | None = None,
+        structure: dict | None = None,
         settings: Settings = Depends(get_settings),
     ):
         metadata_modified = False
@@ -2558,25 +3101,57 @@ def get_metrics_router() -> APIRouter:
 
 
 def _model_dump_backcompat(request: Request, response: schemas.Response) -> dict:
-    """Backwards compatibility for clients older than v0.2.4
+    """Adjust the outgoing response payload to match older client expectations.
 
-    Older clients expect "data_sources" in the response to not include "properties".
-    To be removed in a future major release.
-    Issue: https://github.com/bluesky/tiled/issues/1300
+    - Clients older than v0.2.4 crash on `properties` in data sources.
+      Issue: https://github.com/bluesky/tiled/issues/1300
+    - Clients older than v0.2.13 crash on `size` in assets, because their
+      `tiled.structures.data_source.Asset` dataclass has no `size` field and
+      `DataSource.from_json` unpacks kwargs directly.
+    - Clients older than v0.2.19 expect `access_blob` rather than `access_tags`,
+      and read it unconditionally (`tiled.client.base.BaseClient.metadata_copy`),
+      so they raise KeyError without it.
+
+    To be removed in a future release.
     """
     response_dict = response.model_dump()
-    user_agent = request.headers.get("user-agent", "")
-    if user_agent.startswith("python-tiled/"):
-        agent, _, raw_version = user_agent.partition("/")
-        try:
-            parsed_version = packaging.version.parse(raw_version)
-            if parsed_version < packaging.version.parse("0.2.4"):
-                for ds in response_dict["data"]["attributes"]["data_sources"]:
-                    ds.pop("properties", None)
-
-                return response_dict
-
-        except Exception:
-            pass
-
+    client_version = parse_python_tiled_client_version(request)
+    if client_version is None:
+        return response_dict
+    data = response_dict.get("data") or []
+    resources = data if isinstance(data, list) else [data]
+    all_data_sources = [
+        ds
+        for resource in resources
+        for ds in (resource.get("attributes", {}) or {}).get("data_sources") or []
+    ]
+    if client_version < packaging.version.parse("0.2.4"):
+        for ds in all_data_sources:
+            ds.pop("properties", None)
+    strip_asset_fields_for_client(all_data_sources, client_version)
+    if client_expects_access_blob(client_version):
+        for resource in resources:
+            attributes = resource.get("attributes") or {}
+            if "access_tags" in attributes:
+                attributes["access_blob"] = access_blob_from_access_tags(
+                    attributes.pop("access_tags")
+                )
     return response_dict
+
+
+def _write_response_backcompat(request: Request, response_data: dict) -> dict:
+    """Adjust a write endpoint's response payload to match older clients.
+
+    The POST/PUT/PATCH metadata endpoints return a bare dict rather than a
+    `schemas.Response`, so they cannot go through `_model_dump_backcompat`.
+
+    To be removed in a future release.
+    """
+    if (
+        client_expects_access_blob(parse_python_tiled_client_version(request))
+        and "access_tags" in response_data
+    ):
+        response_data["access_blob"] = access_blob_from_access_tags(
+            response_data.pop("access_tags")
+        )
+    return response_data
