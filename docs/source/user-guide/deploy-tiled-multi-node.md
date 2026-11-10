@@ -97,7 +97,7 @@ HAProxy can choose the pool in one of two ways:
 
   c = from_uri(
       "https://tiled.example.org",
-      headers={"tiled-use": "MY_WRITE_PASSPHRASE"},
+      headers={"tiled-qos": "acquisition"},
   )
   ```
 
@@ -625,7 +625,7 @@ read.tiled.example.org is an alias for tiled.example.org.
 **By request header.** NSLS-II uses this method, to send data written by
 beamline data acquisition to the write pool and requests from users to the read
 pool. All clients use one hostname, `tiled.example.org`, and clients that write
-add a `tiled-use` header with an agreed value. A client can then choose the
+add the header `tiled-qos: acquisition`. A client can then choose the
 pool for each request, using a single pool of HTTP connections.
 
 ```text
@@ -633,14 +633,14 @@ frontend tiled_frontend
     # ... as above ...
     default_backend tiled_read_backend
 
-    acl is_write hdr(tiled-use) -i MY_WRITE_PASSPHRASE
+    acl is_write req.hdr(tiled-qos) -m str acquisition
     use_backend tiled_write_backend if is_write
 ```
 
 For example, with `curl`, this request goes to the write pool:
 
 ```text
-curl -H "tiled-use: MY_WRITE_PASSPHRASE" https://tiled.example.org/api/v1/
+curl -H "tiled-qos: acquisition" https://tiled.example.org/api/v1/
 ```
 
 and a request without the header, or with a different value, goes to the read
@@ -685,7 +685,7 @@ frontend tiled_frontend
     # ... as above ...
     default_backend tiled_read_backend
 
-    acl is_write hdr(tiled-use) -i MY_WRITE_PASSPHRASE
+    acl is_write req.hdr(tiled-qos) -m str acquisition
     use_backend tiled_write_backend if is_write
 
     # Do not limit an address shared by many unrelated clients, such as a
