@@ -83,6 +83,12 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Fixed
 
+- Search requests (`/search`, `/search-deep`, `/distinct`) whose filter
+  parameters for one query type were given different numbers of times, for
+  example a query given twice with one of its parameters given only once, now
+  get HTTP 400 with an explanation. Previously the server paired up values by
+  position and silently dropped or misapplied queries. A query missing a
+  required parameter now gets HTTP 400 instead of HTTP 500.
 - Treat `anyio.ClosedResourceError` as a normal disconnect in the
   test-client websocket wrapper: starlette >=1.0 raises it when receiving
   on a closed session, which previously killed streaming subscription

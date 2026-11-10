@@ -270,6 +270,67 @@ def test_regex(client):
         assert list(client.search(Regex("letters", "anything"))) == []
 
 
+def _search_http(client, params):
+    return client.context.http_client.get(client.item["links"]["search"], params=params)
+
+
+def test_same_query_type_given_twice(client):
+    "Repeated filter parameters of one query type are paired up by position."
+    assert list(client.search(Eq("letter", "a")).search(Eq("number", 0))) == ["a"]
+    assert list(client.search(Eq("letter", "a")).search(Eq("number", 1))) == []
+    response = _search_http(
+        client,
+        {
+            "filter[eq][condition][key]": ["letter", "number"],
+            "filter[eq][condition][value]": ['"a"', "1"],
+        },
+    )
+    response.raise_for_status()
+    assert response.json()["data"] == []
+
+
+def test_filter_parameters_given_different_numbers_of_times(client):
+    "Values that cannot be paired up are rejected, not dropped or misapplied."
+    response = _search_http(
+        client,
+        {
+            "filter[eq][condition][key]": ["letter", "number"],
+            "filter[eq][condition][value]": ['"a"'],
+        },
+    )
+    assert response.status_code == HTTP_400_BAD_REQUEST
+    detail = response.json()["detail"]
+    assert "'eq'" in detail
+    assert "different numbers of times" in detail
+
+
+def test_filter_parameters_missing_required(client):
+    response = _search_http(client, {"filter[eq][condition][key]": "letter"})
+    assert response.status_code == HTTP_400_BAD_REQUEST
+    assert (
+        "missing the required filter parameter(s) 'value'"
+        in (response.json()["detail"])
+    )
+
+
+def test_filter_parameters_optional_may_be_omitted(client):
+    "Parameters with a default may be left out, as long as consistently."
+    response = _search_http(
+        client,
+        {
+            "filter[regex][condition][key]": "letter",
+            "filter[regex][condition][pattern]": "^z$",
+        },
+    )
+    if client.metadata["backend"] == "map":
+        response.raise_for_status()
+        assert [item["id"] for item in response.json()["data"]] == ["z"]
+    else:
+        # Regex is not supported on SQL catalogs; the request is still parsed.
+        assert response.status_code == HTTP_400_BAD_REQUEST
+        assert "not supported" in response.json()["detail"]
+
+
 def test_not_and_and_or(client):
     with pytest.raises(TypeError):
         not (Key("color") == "red")  # type: ignore
