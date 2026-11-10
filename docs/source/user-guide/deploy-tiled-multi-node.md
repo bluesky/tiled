@@ -2,13 +2,16 @@
 
 A Tiled server keeps its state in shared services (databases, Redis, and
 storage), so a deployment can be scaled horizontally by running many Tiled
-processes behind a load balancer. This gives
-more capacity, keeps the service up when a node fails, and allows nodes to be
-rebooted or upgraded one at a time without downtime.
+processes behind a load balancer. This gives more capacity, keeps the service
+up when a node fails, and allows nodes to be rebooted or upgraded one at a time
+without downtime.
 
 This page shows one way to do this, using [HAProxy][] as the load balancer and
 [Keepalived][] for a highly available pair of load balancers. Other load
 balancers work on the same principles. For Kubernetes, see {doc}`helm`.
+
+The first sections summarize the design. Complete, annotated configurations
+follow in {ref}`multi-node-detailed-examples`.
 
 ## What the nodes share
 
@@ -25,7 +28,7 @@ same:
   on every node (for example, on a shared filesystem).
 
 The databases and Redis can themselves be made highly available, as described
-at the end of this page.
+below.
 
 ## Run several processes per node
 
@@ -38,6 +41,7 @@ tiled serve config config.yml --host 0.0.0.0 --port 5001
 # ...
 ```
 
+(multi-node-load-balancer)=
 ## Load balancer
 
 ```mermaid
@@ -46,192 +50,60 @@ flowchart LR
     LB --> N1[node1.example.org]
     LB --> N2[node2.example.org]
     LB --> N3[node3.example.org]
+    LB --> N4[node4.example.org]
 ```
 
 The load balancer terminates TLS and spreads requests across all the Tiled
 processes. It polls each process's `/healthz` endpoint and stops sending
-requests to any process that does not answer.
+requests to any process that does not answer. HAProxy can look up the nodes in
+DNS at run time, so nodes can be added without restarting it.
 
-```text
-global
-    log /dev/log local0
-    maxconn 4096
+Tiled uses the `X-Forwarded-Proto` header, set by the load balancer, to build
+`https` links in its responses. Tiled only trusts this header from the
+addresses in `uvicorn.forwarded_allow_ips` (by default only `127.0.0.1`), so
+set this to your load balancers' addresses:
 
-defaults
-    mode http
-    log global
-    option httplog
-    timeout connect 5s
-    timeout client 60s
-    timeout server 300s  # allow time for large reads and writes
-    timeout tunnel 1h    # websockets (streaming)
-
-resolvers dns
-    parse-resolv-conf
-
-frontend tiled
-    bind *:80
-    bind *:443 ssl crt /etc/haproxy/certs/tiled.example.org.pem alpn h2,http/1.1
-    http-request redirect scheme https code 301 unless { ssl_fc }
-    http-request set-header X-Forwarded-Proto https
-    http-response set-header Strict-Transport-Security max-age=63072000
-    default_backend tiled
-
-backend tiled
-    balance roundrobin
-    option httpchk
-    http-check send meth GET uri /healthz
-    http-check expect status 200
-    default-server check resolvers dns init-addr none resolve-opts allow-dup-ip
-    server node1-5000 node1.example.org:5000
-    server node1-5001 node1.example.org:5001
-    server node2-5000 node2.example.org:5000
-    server node2-5001 node2.example.org:5001
-    # ... one line per Tiled process
+```yaml
+uvicorn:
+  forwarded_allow_ips: "192.0.2.11,192.0.2.12"
 ```
 
-Notes on this configuration:
-
-- Each server line needs a unique name, so include the port in it.
-- The `default-server` options make HAProxy look up the node hostnames at run
-  time instead of at startup: `init-addr none` lets HAProxy start even when a
-  hostname does not resolve yet, and `allow-dup-ip` permits several server lines
-  with the same address (one per process). You can list more nodes than you
-  have now; HAProxy starts sending them requests once they are in DNS and
-  healthy, without a restart.
-- Tiled uses `X-Forwarded-Proto` to build `https` links in its responses. Tiled
-  only trusts this header from the addresses in `uvicorn.forwarded_allow_ips`
-  (by default only `127.0.0.1`), so set this to your load balancers' addresses:
-
-  ```yaml
-  uvicorn:
-    forwarded_allow_ips: "192.0.2.11,192.0.2.12"
-  ```
-
-  See {doc}`serve-behind-reverse-proxy` for details.
+See {doc}`serve-behind-reverse-proxy` for details, and
+{ref}`multi-node-simple` and {ref}`multi-node-processes` for HAProxy
+configurations.
 
 ## Highly available load balancers
 
 With a single load balancer, the whole service is down when the load balancer
 is. To avoid this, run two load balancers, each with a virtual IP address (VIP)
-managed by Keepalived. Each load balancer normally holds one VIP; if one of them
-fails, the other takes over its VIP.
-
-```mermaid
-flowchart LR
-    Client([Client]) -->|192.0.2.101| LB1["lb1.example.org<br>(HAProxy + Keepalived)"]
-    Client -->|192.0.2.102| LB2["lb2.example.org<br>(HAProxy + Keepalived)"]
-    LB1 --> N1[node1.example.org]
-    LB1 --> N2[node2.example.org]
-    LB2 --> N1
-    LB2 --> N2
-```
-
-Publish both VIPs in DNS under the service name, so that clients spread their
-requests across both load balancers:
-
-```text
-$ host tiled.example.org
-tiled.example.org has address 192.0.2.101
-tiled.example.org has address 192.0.2.102
-```
-
-Run the same HAProxy configuration on both load balancers. Keepalived on `lb1`
-(address `192.0.2.11`):
-
-```text
-vrrp_track_process track_haproxy {
-    process haproxy
-    weight 20
-}
-
-vrrp_instance VIP1 {
-    state MASTER
-    interface eth0
-    virtual_router_id 51
-    priority 110
-    unicast_src_ip 192.0.2.11
-    unicast_peer {
-        192.0.2.12
-    }
-    virtual_ipaddress {
-        192.0.2.101/24
-    }
-    track_process {
-        track_haproxy
-    }
-}
-
-vrrp_instance VIP2 {
-    state BACKUP
-    interface eth0
-    virtual_router_id 52
-    priority 100
-    unicast_src_ip 192.0.2.11
-    unicast_peer {
-        192.0.2.12
-    }
-    virtual_ipaddress {
-        192.0.2.102/24
-    }
-    track_process {
-        track_haproxy
-    }
-}
-```
-
-On `lb2` (address `192.0.2.12`), swap the two addresses in `unicast_src_ip` and
-`unicast_peer`, and swap `state` and `priority` between the two instances, so
-that `lb2` is the MASTER for `VIP2`.
-
-Keepalived adds the `weight` to a node's priority while HAProxy is running on
-it. If HAProxy stops, that node's priority drops below its peer's and the peer
-takes over the VIP. For this to work, the weight must be larger than the
-difference between the two priorities.
-
-HAProxy's `bind *:443` accepts connections on whichever VIPs the node holds at
-the moment. If you bind to the VIPs explicitly instead, set
-`net.ipv4.ip_nonlocal_bind = 1` (in a file under `/etc/sysctl.d/`) so that
-HAProxy can start while the other node holds a VIP.
-
-For an introduction to Keepalived, see the
-[Keepalived documentation](https://www.keepalived.org/documentation.html).
+managed by Keepalived. Publish both VIPs in DNS under the service name, so that
+clients spread their requests across both load balancers. Each load balancer
+normally holds one VIP; if one of them fails, the other takes over its VIP. See
+{ref}`multi-node-ha` for the configuration.
 
 ## Separate pools for reading and writing
 
 You may want to keep data ingestion (for example, from data acquisition) from
 competing with users reading data, by sending them to separate pools of nodes.
-Add a second backend, `tiled-write`, configured like `tiled` above but listing
-the nodes for writing, and choose between them in the frontend in one of these
-ways.
+HAProxy can choose the pool in one of two ways:
 
-**By hostname.** Point a second DNS name, such as `tiled-write.example.org`, at
-the same load balancer (the TLS certificate must cover it too) and add to the
-frontend:
+- **By hostname**: clients that write use a second DNS name, such as
+  `tiled-write.example.org`, that points at the same load balancer.
+- **By request header**: clients that write send a header, which lets them use
+  one hostname for everything. NSLS-II uses this method. In the Python client:
 
-```text
-    use_backend tiled-write if { req.hdr(host) -i tiled-write.example.org }
-```
+  ```python
+  from tiled.client import from_uri
 
-**By request header.** Clients send a header to choose the write pool, which
-lets them use one hostname for everything. NSLS-II uses this method:
+  c = from_uri(
+      "https://tiled.example.org",
+      headers={"tiled-use": "MY_WRITE_PASSPHRASE"},
+  )
+  ```
 
-```text
-    use_backend tiled-write if { req.hdr(tiled-use) -m str MY_WRITE_PASSPHRASE }
-```
-
-```python
-from tiled.client import from_uri
-
-c = from_uri(
-    "https://tiled.example.org",
-    headers={"tiled-use": "MY_WRITE_PASSPHRASE"},
-)
-```
-
-The header only selects the pool of nodes. It is not access control: Tiled
-authenticates and authorizes every request in the same way, whichever pool
-handles it.
+The hostname or header only selects the pool of nodes. It is not access
+control: Tiled authenticates and authorizes every request in the same way,
+whichever pool handles it. See {ref}`multi-node-pools` for the configuration.
 
 ## Redis high availability for streaming
 
@@ -317,6 +189,456 @@ The catalog is kept indefinitely. Columnar data stays in Postgres while an
 experiment is running; afterwards it is to be moved to Parquet files, which
 are cheaper to store, and archived later. The exact retention policy has not
 been set.
+
+(multi-node-detailed-examples)=
+## Detailed examples
+
+The examples below use the hostnames `node1.example.org` to
+`node4.example.org` for the Tiled nodes and `tiled.example.org` for the
+service, with Tiled listening on port 5000.
+
+(multi-node-simple)=
+### A simple multi-node deployment
+
+A single HAProxy load balancer receives all requests to `tiled.example.org`
+and distributes them across the Tiled nodes, as in the diagram under
+{ref}`multi-node-load-balancer` above.
+
+```text
+global
+    log /dev/log local0
+    maxconn 2048
+    daemon
+
+defaults
+    mode http
+    log global
+    timeout connect 5s
+    timeout client 60s
+    timeout server 300s  # allow time for large reads and writes
+    timeout tunnel 1h    # websockets (streaming)
+
+frontend tiled_frontend
+    bind *:80
+    bind *:443 ssl crt /etc/haproxy/certs/tiled.example.org.pem alpn h2,http/1.1
+    default_backend tiled_backend
+    option httplog
+
+    # Redirect HTTP to HTTPS.
+    http-request redirect scheme https code 301 unless { ssl_fc }
+
+    # Make Tiled build https links in its responses.
+    http-request set-header X-Forwarded-Proto https if { ssl_fc }
+
+    # HSTS (63072000 seconds)
+    http-response set-header Strict-Transport-Security max-age=63072000
+
+backend tiled_backend
+    balance roundrobin
+
+    # Send requests only to nodes that pass the health check.
+    option httpchk
+    http-check connect
+    http-check send meth GET uri /healthz ver HTTP/1.1 hdr Host tiled.example.org
+    http-check expect status 200
+
+    server node1 node1.example.org:5000 check
+    server node2 node2.example.org:5000 check
+    server node3 node3.example.org:5000 check
+    server node4 node4.example.org:5000 check
+```
+
+The load balancer listens on HTTP (port 80) and HTTPS (port 443) and redirects
+HTTP to HTTPS. Requests are distributed round-robin to the nodes that pass the
+health check, so if one or more nodes go down, the others keep serving.
+
+The `timeout tunnel` applies to WebSocket connections, which the streaming API
+uses. They are long-lived, so they need a longer timeout than ordinary
+requests.
+
+(multi-node-processes)=
+### Several processes per node
+
+If each node runs 4 Tiled processes, on ports 5000 to 5003, the backend has 16
+server lines. Replace the `backend` section above with this one, and add a
+`resolvers` section:
+
+```text
+resolvers default_dns
+    # DNS servers for HAProxy to use to resolve backend hostnames at run time.
+    nameserver dns1 192.0.2.53:53
+    nameserver dns2 192.0.2.54:53
+    accepted_payload_size 512
+
+    # If a valid response was received within this period, ignore a newer
+    # invalid one.
+    hold valid    180s
+    hold other    180s
+    hold refused  180s
+    hold nx       180s
+    hold timeout  180s
+    hold obsolete 180s
+
+backend tiled_backend
+    balance roundrobin
+
+    option httpchk
+    http-check connect
+    http-check send meth GET uri /healthz ver HTTP/1.1 hdr Host tiled.example.org
+    http-check expect status 200
+
+    default-server check resolvers default_dns init-addr none resolve-opts allow-dup-ip
+    server node1-5000 node1.example.org:5000
+    server node1-5001 node1.example.org:5001
+    server node1-5002 node1.example.org:5002
+    server node1-5003 node1.example.org:5003
+    server node2-5000 node2.example.org:5000
+    server node2-5001 node2.example.org:5001
+    server node2-5002 node2.example.org:5002
+    server node2-5003 node2.example.org:5003
+    server node3-5000 node3.example.org:5000
+    server node3-5001 node3.example.org:5001
+    server node3-5002 node3.example.org:5002
+    server node3-5003 node3.example.org:5003
+    server node4-5000 node4.example.org:5000
+    server node4-5001 node4.example.org:5001
+    server node4-5002 node4.example.org:5002
+    server node4-5003 node4.example.org:5003
+```
+
+Each server line needs a unique name, so the names include the port. The
+`default-server` line applies these options to every server:
+
+- `resolvers default_dns`: resolve the hostnames at run time with the DNS
+  servers in the `resolvers` section. (Instead of listing `nameserver`s, the
+  `resolvers` section can contain `parse-resolv-conf` to use the servers in
+  `/etc/resolv.conf`.)
+- `init-addr none`: do not resolve the hostnames at startup, so that HAProxy
+  starts even if some nodes are not available yet.
+- `resolve-opts allow-dup-ip`: allow several servers with the same IP address.
+  By default HAProxy disables a server that resolves to the same address as
+  another one in the backend, and here every node has 4 servers.
+
+Because HAProxy resolves hostnames at run time, it follows changes without a
+restart, for example when a node's IP address changes.
+
+```{tip}
+With these options, you can list more nodes in the configuration than you have
+now. When a new node is added to DNS and Tiled starts on it, HAProxy starts
+sending requests to it without any change to its configuration and without a
+restart.
+```
+
+(multi-node-ha)=
+### Highly available load balancers
+
+The examples above do not make the load balancer itself highly available. If
+it goes down, the whole service is unavailable, even if all the Tiled nodes are
+healthy. To avoid this, run two HAProxy load balancers, `lb1.example.org`
+(`192.0.2.11`) and `lb2.example.org` (`192.0.2.12`), with the same HAProxy
+configuration, and use Keepalived to share two virtual IP addresses (VIPs),
+`192.0.2.101` and `192.0.2.102`, between them. Both load balancers are active
+(an *active-active* configuration).
+
+To spread requests across both load balancers, DNS resolves the service name
+to both VIPs, and clients choose between them by DNS round robin:
+
+```text
+$ host tiled.example.org
+tiled.example.org has address 192.0.2.101
+tiled.example.org has address 192.0.2.102
+```
+
+Normally each load balancer holds one VIP:
+
+```mermaid
+flowchart LR
+    Client([Client]) -->|192.0.2.101| LB1["lb1.example.org"]
+    Client -->|192.0.2.102| LB2["lb2.example.org"]
+    LB1 --> T1[node1.example.org]
+    LB1 --> T2[node2.example.org]
+    LB1 --> T3[node3.example.org]
+    LB1 --> T4[node4.example.org]
+    LB2 --> T1
+    LB2 --> T2
+    LB2 --> T3
+    LB2 --> T4
+    style LB1 fill:#2ea44f,color:#fff
+    style LB2 fill:#2ea44f,color:#fff
+```
+
+If one load balancer fails, the other takes over its VIP, and serves requests
+to both VIPs:
+
+```mermaid
+flowchart LR
+    Client([Client]) -->|192.0.2.101<br>192.0.2.102| LB2["lb2.example.org"]
+    LB1["lb1.example.org"]
+    LB2 --> T1[node1.example.org]
+    LB2 --> T2[node2.example.org]
+    LB2 --> T3[node3.example.org]
+    LB2 --> T4[node4.example.org]
+    style LB1 fill:#d73a49,color:#fff
+    style LB2 fill:#2ea44f,color:#fff
+```
+
+```{note}
+For an introduction to Keepalived, see this
+[introduction from Red Hat](https://www.redhat.com/en/blog/keepalived-basics)
+and the [Keepalived documentation](https://www.keepalived.org/documentation.html).
+```
+
+The Keepalived configuration on `lb1.example.org`:
+
+```text
+global_defs {
+    router_id lb1
+    enable_script_security
+    script_user keepalived_script
+}
+
+vrrp_track_process chk_haproxy {
+    process "haproxy"
+    weight 10
+}
+
+vrrp_instance 50 {
+    state MASTER
+    interface ens192
+    virtual_router_id 50
+    priority 110
+    advert_int 1
+
+    virtual_ipaddress {
+        192.0.2.101/24
+    }
+
+    unicast_src_ip 192.0.2.11
+    unicast_peer {
+        192.0.2.12
+    }
+
+    track_process {
+        chk_haproxy
+    }
+}
+
+vrrp_instance 51 {
+    state BACKUP
+    interface ens192
+    virtual_router_id 51
+    priority 109
+    advert_int 1
+
+    virtual_ipaddress {
+        192.0.2.102/24
+    }
+
+    unicast_src_ip 192.0.2.11
+    unicast_peer {
+        192.0.2.12
+    }
+
+    track_process {
+        chk_haproxy
+    }
+}
+```
+
+The Keepalived configuration on `lb2.example.org`:
+
+```text
+global_defs {
+    router_id lb2
+    enable_script_security
+    script_user keepalived_script
+}
+
+vrrp_track_process chk_haproxy {
+    process "haproxy"
+    weight 10
+}
+
+vrrp_instance 50 {
+    state BACKUP
+    interface ens192
+    virtual_router_id 50
+    priority 109
+    advert_int 1
+
+    virtual_ipaddress {
+        192.0.2.101/24
+    }
+
+    unicast_src_ip 192.0.2.12
+    unicast_peer {
+        192.0.2.11
+    }
+
+    track_process {
+        chk_haproxy
+    }
+}
+
+vrrp_instance 51 {
+    state MASTER
+    interface ens192
+    virtual_router_id 51
+    priority 110
+    advert_int 1
+
+    virtual_ipaddress {
+        192.0.2.102/24
+    }
+
+    unicast_src_ip 192.0.2.12
+    unicast_peer {
+        192.0.2.11
+    }
+
+    track_process {
+        chk_haproxy
+    }
+}
+```
+
+Each load balancer is the MASTER for one VIP and the BACKUP for the other.
+`unicast_src_ip` is always the node's own address and `unicast_peer` the other
+node's. Keepalived adds the `weight` to the node's priority while HAProxy is
+running on it. If HAProxy stops, the node's priority drops below its peer's
+(here from 120 to 110, against 119), and the peer takes over the VIP. For this
+to work, the weight must be larger than the difference between the priorities.
+
+HAProxy's `bind *:80` and `bind *:443` accept connections on whichever VIPs the
+node holds at the moment. To bind HAProxy to the VIPs only, add the
+`transparent` option, which lets HAProxy bind to an address that the node does
+not hold when HAProxy starts. On `lb1.example.org`:
+
+```text
+frontend tiled_frontend
+    bind 192.0.2.101:80 transparent
+    bind 192.0.2.101:443 transparent ssl crt /etc/haproxy/certs/tiled.example.org.pem alpn h2,http/1.1
+```
+
+and on `lb2.example.org`:
+
+```text
+frontend tiled_frontend
+    bind 192.0.2.102:80 transparent
+    bind 192.0.2.102:443 transparent ssl crt /etc/haproxy/certs/tiled.example.org.pem alpn h2,http/1.1
+```
+
+Instead of `transparent`, you can allow all processes to bind to addresses that
+the node does not hold, by setting this in a file under `/etc/sysctl.d/`:
+
+```text
+net.ipv4.ip_nonlocal_bind = 1
+```
+
+(multi-node-pools)=
+### Separate pools for reading and writing
+
+In these examples, nodes 1–4 serve reading and nodes 5–8 serve writing. Both
+methods below use two backends, `tiled_read_backend` and `tiled_write_backend`.
+Each is configured like `tiled_backend` above, with its own list of servers:
+
+```text
+backend tiled_read_backend
+    balance roundrobin
+
+    option httpchk
+    http-check connect
+    http-check send meth GET uri /healthz ver HTTP/1.1 hdr Host tiled.example.org
+    http-check expect status 200
+
+    default-server check resolvers default_dns init-addr none resolve-opts allow-dup-ip
+    server node1 node1.example.org:5000
+    server node2 node2.example.org:5000
+    server node3 node3.example.org:5000
+    server node4 node4.example.org:5000
+
+backend tiled_write_backend
+    balance roundrobin
+
+    option httpchk
+    http-check connect
+    http-check send meth GET uri /healthz ver HTTP/1.1 hdr Host tiled.example.org
+    http-check expect status 200
+
+    default-server check resolvers default_dns init-addr none resolve-opts allow-dup-ip
+    server node5 node5.example.org:5000
+    server node6 node6.example.org:5000
+    server node7 node7.example.org:5000
+    server node8 node8.example.org:5000
+```
+
+**By hostname.** Clients use `write.tiled.example.org` to write and
+`read.tiled.example.org` to read, and the frontend chooses the backend from the
+`Host` header of the request:
+
+```text
+frontend tiled_frontend
+    # ... as above ...
+    default_backend tiled_read_backend
+
+    acl is_write hdr(host) -i write.tiled.example.org
+    use_backend tiled_write_backend if is_write
+
+    acl is_read hdr(host) -i read.tiled.example.org
+    use_backend tiled_read_backend if is_read
+```
+
+The TLS certificate must cover both names. Both names resolve to the load
+balancer's address (or VIPs), with A records:
+
+```text
+$ host write.tiled.example.org
+write.tiled.example.org has address 192.0.2.101
+
+$ host read.tiled.example.org
+read.tiled.example.org has address 192.0.2.101
+```
+
+or with CNAME records:
+
+```text
+$ host tiled.example.org
+tiled.example.org has address 192.0.2.101
+
+$ host write.tiled.example.org
+write.tiled.example.org is an alias for tiled.example.org.
+
+$ host read.tiled.example.org
+read.tiled.example.org is an alias for tiled.example.org.
+```
+
+**By request header.** NSLS-II uses this method, to send data written by
+beamline data acquisition to the write pool and requests from users to the read
+pool. All clients use one hostname, `tiled.example.org`, and clients that write
+add a `tiled-use` header with an agreed value. A client can then choose the
+pool for each request, using a single pool of HTTP connections.
+
+```text
+frontend tiled_frontend
+    # ... as above ...
+    default_backend tiled_read_backend
+
+    acl is_write hdr(tiled-use) -i MY_WRITE_PASSPHRASE
+    use_backend tiled_write_backend if is_write
+```
+
+For example, with `curl`, this request goes to the write pool:
+
+```text
+curl -H "tiled-use: MY_WRITE_PASSPHRASE" https://tiled.example.org/api/v1/
+```
+
+and a request without the header, or with a different value, goes to the read
+pool:
+
+```text
+curl https://tiled.example.org/api/v1/
+```
 
 [HAProxy]: https://www.haproxy.org/
 
