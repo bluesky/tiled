@@ -732,9 +732,8 @@ responses over the last 60 seconds. The tracking rules must come before the
 rules that use them.
 
 To choose limits, start in a report-only mode: mark requests over the limit
-instead of refusing them, and watch which clients would be refused. NSLS-II
-runs its production service this way; only its staging service refuses
-requests over the read pool's request limit. Replace each `http-request return` rule with a rule that sets a
+instead of refusing them, and watch which clients would be refused.
+Replace each `http-request return` rule with a rule that sets a
 variable, and add the variable to the response:
 
 ```text
