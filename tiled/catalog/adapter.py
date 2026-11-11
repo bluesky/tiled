@@ -46,6 +46,7 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased, selectinload
+from sqlalchemy.sql.elements import False_, True_
 from sqlalchemy.sql.expression import cast as sql_cast
 from sqlalchemy.sql.sqltypes import MatchType
 from starlette.status import (
@@ -463,6 +464,32 @@ class CatalogNodeAdapter:
             # already an AccessTags frozenset of names.
             return self.node.access_tags
         return normalize_access_tags(tag.name for tag in self.node.access_tags)
+
+    async def effective_access_tags(self):
+        """The access tags that govern this node.
+
+        A node with no tags of its own inherits the tags of its nearest tagged
+        ancestor. If there is none, it has no tags, and so is locked.
+        """
+        if self.access_tags:
+            return self.access_tags
+        return await self.inheritable_access_tags()
+
+    async def inheritable_access_tags(self):
+        """The access tags that this node's untagged children inherit.
+
+        These are the tags stored in the catalog on the nearest node at or above
+        this one that has any, other than the catalog root. Neither the root's
+        stored tags nor a catalog's configured `top_level_access_tags` are
+        inherited: they govern only the node they are on.
+        """
+        async with self.context.session() as db:
+            inheritable_tags = (
+                (await db.execute(_nearest_tagged_ancestor_tags(self.node.id)))
+                .scalars()
+                .all()
+            )
+        return normalize_access_tags(inheritable_tags)
 
     def metadata(self):
         return self.node.metadata_
@@ -1003,8 +1030,16 @@ class CatalogNodeAdapter:
             statement = statement.where(orm.NodesClosure.depth <= self.max_depth)
         dialect_name = self.context.engine.dialect.name
         for query, _ in self.access_filters:
+            search_root_inherits_match = _search_root_inherits_match(query, self)
             statement = statement.where(
-                _access_tags_predicate(query, orm.Node, orm.Node.parent, dialect_name)
+                _access_tags_predicate(
+                    query,
+                    orm.Node,
+                    orm.Node.parent,
+                    self.node.id,
+                    search_root_inherits_match,
+                    dialect_name,
+                )
             )
             # No container strictly between this node and the match may fail
             # the policy: otherwise results leak the paths of hidden containers.
@@ -1021,7 +1056,12 @@ class CatalogNodeAdapter:
                 .where(
                     not_(
                         _access_tags_predicate(
-                            query, hidden, hidden.parent, dialect_name
+                            query,
+                            hidden,
+                            hidden.parent,
+                            self.node.id,
+                            search_root_inherits_match,
+                            dialect_name,
                         )
                     )
                 )
@@ -2774,62 +2814,196 @@ def specs(query, tree):
     return tree.new_variation(conditions=tree.conditions + conditions)
 
 
-def _access_tags_predicate(query, node, parent, dialect_name):
-    """Condition: `node` carries one of the query's tags, as a child of `parent`.
+def _nearest_tagged_ancestor_tags(node_id):
+    """SELECT the tag names of the nearest node at or above `node_id` that has tags.
 
-    `parent` is a literal id (`/search`: all candidates share one parent) or
-    `node.parent` (deep search: candidates sit at any depth).
+    The root node (id 0) is skipped: its tags govern the root itself and are
+    not inherited. Selects nothing if neither the node nor any of its other
+    ancestors has tags.
     """
-    if not query.tags:
-        # Results cannot possibly match an empty list,
-        # so put a False condition in the list ensuring that
-        # there are no rows returned.
-        return false()
-    if query.tag_ids is not None:
-        # Fast path (used for server-side ACL filtering): the tag names have
-        # already been resolved to their ``access_tags.id`` values in the
-        # async layer (see ``resolve_access_tag_ids`` /
-        # ``tiled.server.utils.filter_for_access``). Filtering on literal
-        # ``tag_id`` values -- rather than joining ``access_tags`` by name --
-        # lets PostgreSQL apply the (parent_id, tag_id) extended statistics
-        # and estimate this correlated subquery correctly.
-        if not query.tag_ids:
-            # None of the requested tag names exist; match nothing.
-            return false()
-        # Deduplicate and sort so the parameter value is stable across
-        # requests (helps prepared-statement / plan reuse).
-        tag_ids = sorted(set(query.tag_ids))
-        if dialect_name == "postgresql":
-            # Pass all ids in a single array parameter: `tag_id = ANY(...)`.
-            tag_match = orm.NodeAccessTagAssociation.tag_id == any_(
-                literal(tag_ids, ARRAY(Integer))
-            )
-        else:
-            # SQLite has no array type; use a plain IN list.
-            tag_match = orm.NodeAccessTagAssociation.tag_id.in_(tag_ids)
-        return (
-            select(orm.NodeAccessTagAssociation.node_id)
-            .where(orm.NodeAccessTagAssociation.node_id == node.id)
-            .where(orm.NodeAccessTagAssociation.parent_id == parent)
-            .where(tag_match)
-            .exists()
+    nearest_depth = (
+        select(func.min(orm.NodesClosure.depth))
+        .select_from(orm.NodesClosure)
+        .join(
+            orm.NodeAccessTagAssociation,
+            orm.NodeAccessTagAssociation.node_id == orm.NodesClosure.ancestor,
         )
-    # Nodes carrying at least one of the given access tags.
-    # EXISTS is used (vs IN) as it is much more preformant in SQLite,
-    # though performance in Postgres appears similar for both.
+        .where(orm.NodesClosure.descendant == node_id)
+        .where(orm.NodesClosure.ancestor != 0)
+        .scalar_subquery()
+    )
     return (
-        select(orm.NodeAccessTagAssociation.node_id)
-        .join(orm.AccessTag, orm.AccessTag.id == orm.NodeAccessTagAssociation.tag_id)
-        .where(orm.NodeAccessTagAssociation.node_id == node.id)
-        .where(orm.NodeAccessTagAssociation.parent_id == parent)
+        select(orm.AccessTag.name)
+        .join(
+            orm.NodeAccessTagAssociation,
+            orm.NodeAccessTagAssociation.tag_id == orm.AccessTag.id,
+        )
+        .join(
+            orm.NodesClosure,
+            orm.NodesClosure.ancestor == orm.NodeAccessTagAssociation.node_id,
+        )
+        .where(orm.NodesClosure.descendant == node_id)
+        .where(orm.NodesClosure.depth == nearest_depth)
+    )
+
+
+def _search_root_inherits_match(query, tree):
+    """SQL condition: an untagged child of the search root matches `query`.
+
+    `tree` is the search root, the container the search starts from. Its
+    untagged children inherit the tags of its nearest tagged ancestor-or-self
+    (see `CatalogNodeAdapter.inheritable_access_tags`). This condition is true
+    when those inherited tags include at least one of `query.tags`.
+
+    Returns either:
+
+    - the constant `true()` or `false()`, when the server has already worked
+      out the answer and stored it on `query.search_root_inherits_match`
+      (see ``tiled.server.utils.filter_for_access``); or
+    - an EXISTS subquery that works it out in the database, otherwise.
+
+    Callers check for the constants (`True_` / `False_`) to simplify the
+    generated SQL.
+    """
+    if query.search_root_inherits_match is not None:
+        return true() if query.search_root_inherits_match else false()
+    return (
+        _nearest_tagged_ancestor_tags(tree.node.id)
         .where(orm.AccessTag.name.in_(query.tags))
         .exists()
     )
 
 
+def _access_tags_predicate(
+    query, node, parent, search_root_id, search_root_inherits_match, dialect_name
+):
+    """SQL condition: `node` passes the access-tags filter `query`.
+
+    `node` passes if either:
+
+    - it has one of `query.tags` itself; or
+    - it has no tags of its own, and so inherits from its parent, and:
+        - its parent is the search root, and the search root's inheritable
+          tags match (`search_root_inherits_match`; see
+          `_search_root_inherits_match`); or
+        - its parent is below the search root. Inheritance is not resolved
+          here, because callers apply this same predicate to every node
+          between the search root and `node`, so the parent is checked in
+          its own right.
+
+    Parameters
+    ----------
+    query : AccessTagsFilter
+        An empty `query.tags` matches nothing.
+    node :
+        The ORM entity (or alias) for the candidate node.
+    parent :
+        The candidate's parent: a literal id when every candidate is a
+        direct child of the search root (shallow search), or the column
+        `node.parent` when candidates sit at any depth (deep search).
+    search_root_id : int
+        The id of the container the search starts from.
+    search_root_inherits_match :
+        `true()`, `false()`, or a SQL condition, from
+        `_search_root_inherits_match`. Constants produce simpler SQL.
+    dialect_name : str
+        The database dialect, e.g. "postgresql" or "sqlite".
+    """
+    if not query.tags:
+        # Results cannot possibly match an empty list.
+        return false()
+    has_tag = _has_query_tag(query, node, parent, dialect_name)
+    inherits = _untagged_inherits_match(
+        parent, search_root_id, search_root_inherits_match
+    )
+    # SQLAlchemy simplifies a true()/false() only where it is a direct operand
+    # of and_/or_, so the constant cases are handled here. This keeps the SQL
+    # free of `OR false` and `AND true`: a bare EXISTS lets PostgreSQL plan
+    # `has_tag` as a semi-join.
+    if isinstance(inherits, False_):
+        return has_tag
+    untagged = _is_untagged(node, parent)
+    if isinstance(inherits, True_):
+        return or_(has_tag, untagged)
+    return or_(has_tag, and_(untagged, inherits))
+
+
+def _has_query_tag(query, node, parent, dialect_name):
+    "Condition: `node`, a child of `parent`, carries one of the query's own tags."
+    # EXISTS is used (vs IN) as it is much more performant in SQLite,
+    # though performance in Postgres appears similar for both.
+    if query.tag_ids is None:
+        return (
+            select(orm.NodeAccessTagAssociation.node_id)
+            .join(
+                orm.AccessTag, orm.AccessTag.id == orm.NodeAccessTagAssociation.tag_id
+            )
+            .where(orm.NodeAccessTagAssociation.node_id == node.id)
+            .where(orm.NodeAccessTagAssociation.parent_id == parent)
+            .where(orm.AccessTag.name.in_(query.tags))
+            .exists()
+        )
+    if not query.tag_ids:
+        # None of the requested tag names exist, so no node has them.
+        return false()
+    # Fast path (used for server-side ACL filtering): the tag names have
+    # already been resolved to their ``access_tags.id`` values in the
+    # async layer (see ``resolve_access_tag_ids`` /
+    # ``tiled.server.utils.filter_for_access``). Filtering on literal
+    # ``tag_id`` values -- rather than joining ``access_tags`` by name --
+    # lets PostgreSQL apply the (parent_id, tag_id) extended statistics
+    # and estimate this correlated subquery correctly.
+    # Deduplicate and sort so the parameter value is stable across
+    # requests (helps prepared-statement / plan reuse).
+    tag_ids = sorted(set(query.tag_ids))
+    if dialect_name == "postgresql":
+        # Pass all ids in a single array parameter: `tag_id = ANY(...)`.
+        tag_match = orm.NodeAccessTagAssociation.tag_id == any_(
+            literal(tag_ids, ARRAY(Integer))
+        )
+    else:
+        # SQLite has no array type; use a plain IN list.
+        tag_match = orm.NodeAccessTagAssociation.tag_id.in_(tag_ids)
+    return (
+        select(orm.NodeAccessTagAssociation.node_id)
+        .where(orm.NodeAccessTagAssociation.node_id == node.id)
+        .where(orm.NodeAccessTagAssociation.parent_id == parent)
+        .where(tag_match)
+        .exists()
+    )
+
+
+def _is_untagged(node, parent):
+    "Condition: `node`, a child of `parent`, has no access tags of its own."
+    return not_(
+        select(orm.NodeAccessTagAssociation.node_id)
+        .where(orm.NodeAccessTagAssociation.node_id == node.id)
+        .where(orm.NodeAccessTagAssociation.parent_id == parent)
+        .exists()
+    )
+
+
+def _untagged_inherits_match(parent, search_root_id, search_root_inherits_match):
+    """Condition: an untagged child of `parent` may pass the access-tags filter.
+
+    Below the search root, the parent is checked in its own right, so an
+    untagged child always may; directly under it, only if the search root's
+    inheritable tags match. Returns `search_root_inherits_match` itself when
+    the answer does not depend on `parent`, so that constants stay constants.
+    """
+    if isinstance(parent, int) or isinstance(search_root_inherits_match, True_):
+        return search_root_inherits_match
+    return or_(parent != search_root_id, search_root_inherits_match)
+
+
 def access_tags_filter(query, tree):
     condition = _access_tags_predicate(
-        query, orm.Node, tree.node.id, tree.context.engine.dialect.name
+        query,
+        orm.Node,
+        tree.node.id,
+        tree.node.id,
+        _search_root_inherits_match(query, tree),
+        tree.context.engine.dialect.name,
     )
     return tree.new_variation(
         access_filters=tree.access_filters + [(query, condition)],

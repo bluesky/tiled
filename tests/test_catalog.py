@@ -21,7 +21,7 @@ import tifffile
 import xarray
 from hypothesis import given, settings
 from hypothesis import strategies as st
-from sqlalchemy import event, text
+from sqlalchemy import event, false, text
 from sqlalchemy.dialects import postgresql as postgresql_dialect
 from sqlalchemy.dialects import sqlite as sqlite_dialect
 from sqlalchemy.ext.asyncio import create_async_engine
@@ -1611,7 +1611,9 @@ def test_pooling_config(sqlite_or_postgres_uri, sql_storage_uri, desired, expect
 def test_access_predicate_uses_array_parameter_on_postgresql():
     query = AccessTagsFilter(["a"])
     query.tag_ids = [30, 10, 20, 10]
-    condition = _access_tags_predicate(query, catalog_orm.Node, 7, "postgresql")
+    condition = _access_tags_predicate(
+        query, catalog_orm.Node, 7, 7, false(), "postgresql"
+    )
     sql = str(
         condition.compile(
             dialect=postgresql_dialect.dialect(),
@@ -1627,7 +1629,7 @@ def test_access_predicate_uses_array_parameter_on_postgresql():
 def test_access_predicate_uses_in_list_on_sqlite():
     query = AccessTagsFilter(["a"])
     query.tag_ids = [2, 1]
-    condition = _access_tags_predicate(query, catalog_orm.Node, 7, "sqlite")
+    condition = _access_tags_predicate(query, catalog_orm.Node, 7, 7, false(), "sqlite")
     sql = str(
         condition.compile(
             dialect=sqlite_dialect.dialect(), compile_kwargs={"literal_binds": True}
