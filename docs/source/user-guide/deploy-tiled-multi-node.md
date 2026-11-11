@@ -18,14 +18,16 @@ follow in {ref}`multi-node-detailed-examples`.
 Every Tiled process must use the same configuration, and in particular the
 same:
 
-- catalog database (`catalog.uri`) and authentication database
+- Catalog database (`catalog.uri`) and authentication database
   (`database.uri`)
-- `authentication.secret_keys`, so that a token issued by one node is accepted
-  by all the others
 - Redis `streaming_cache`, so that streaming subscribers receive updates written
   through any node
-- storage: files written to `writable_storage` must be readable at the same path
-  on every node (for example, on a shared filesystem).
+- Storage: files written to `writable_storage` must be readable at the same path
+  on every node (for example, on a shared filesystem)
+- If Tiled's internal authentication system is used,
+  `authentication.secret_keys` must be set (rather than randomly generated at
+  startup) so that a token issued by one node is accepted
+  by all the others
 
 The databases and Redis can themselves be made highly available, as described
 below.
@@ -174,31 +176,48 @@ catalog:
 
 These figures, from November 2026, may help with planning.
 
-NSLS-II runs a single Postgres cluster (a primary and 3 replicas) for the whole
-facility. It holds about 11 years of data from 30 beamlines; the facility
-had 5 beamlines in 2015 and has about 33 now. At the time of writing, the
-migration of this history into Tiled was about 80% complete.
+NSLS-II runs a single PostgreSQL cluster (a primary and two replicas) for the
+whole facility. It now holds about 11 years of data from about 30 beamlines.
+(The facility launched with 5 beamlines in 2015 and has about 30 now.) At the
+time of writing, the migration of this history into Tiled was about 80%
+complete.
 
-| | Size on disk |
-| --- | --- |
-| Catalog | 390 GB, of which 158 GB is indexes (mostly the GIN index on metadata, which enables fast filtering on nested JSON) |
-| Columnar (tabular) data | 1288 GB |
+NSLS-II likewise runs a single Redis cluster (a primary and two replicas)
+for the whole facility, supporting Tiled's live-streaming capability and
+"catch up" of recently streamed data. The Redis is configured to hold up to 8
+GB of data for up to one hour. This includes some (small) data and pointers to
+large data. Large array data (e.g., from an area detector) is not typically
+staged in Redis.
 
-The service typically handles about 100 concurrent users and a few hundred
-requests per second. The goal is for common searches to take less than 200 ms.
-Some do already, but others take 1–10 s, and performance work is ongoing.
-WebSocket streaming is used by only a few pilot projects so far.
+**Size:** The catalog database is currently 400 GB on disk including 150 GB of
+indexes, the bulk of which is the GIN index on metadata, which enables fast
+filtering of nested JSON. The database of columnar data (e.g., Events from
+Bluesky) is currently 1300 GB. These numbers represent a single replica, so the
+total storage is the amount times three, plus offsite backup(s). Again, as of
+November 2026 this holds 80% of 11 years of data from 30 beamlines.
 
-So far a single Postgres cluster appears to scale. If it needs help, the plan
-is to use Postgres [table partitioning][], for example by beamline (to spread a
-heavy load) or by year (to keep recent data on faster disks), rather than run a
-separate database per beamline. This is unrelated to Tiled's partitions of
-columnar data.
+**Load:** Today, the service typically handles about 100 concurrent users and a
+few hundred REST requests per second. WebSocket streaming is used by only a few
+pilot projects so far, so load is low. Both REST and WebSocket usage are
+expected to rise.
 
-The catalog is kept indefinitely. Columnar data stays in Postgres while an
-experiment is running; afterwards it is to be moved to Parquet files, which
-are cheaper to store, and archived later. The exact retention policy has not
-been set.
+**Speed:** The goal is for common searches to take less than 200 ms.
+Some do already, but others take ~1–10 s. Significant resources are being
+applied to optimize Tiled performance, with the support of dedicated
+Brookhaven R&D (LDRD-A) funding.
+
+**Retention:** The plan is to keep the catalog (i.e., metadata and pointers to
+data) indefinitely. Columnar data stays in Postgres while an experiment is
+running; afterwards it is to be moved to Parquet files, which are cheaper to
+store, and archived later. The exact archival and retention policy for data has
+not been set.
+
+**Monitoring:** Logs and Prometheus metrics from HAproxy, PostgreSQL, Redis,
+the Tiled application, and the underlying hosts they run on are all stored in
+Loki and Mimir respectively. OpenTelemetry traces from Tiled are stored in
+Tempo. An agent, running frontier models through an internal LLM gateway, is
+given read-only access to all these. This enables fast debugging of live issues
+and analysis of past access patterns.
 
 (multi-node-detailed-examples)=
 ## Detailed examples
@@ -750,5 +769,3 @@ intended total instead.
 [Patroni]: https://patroni.readthedocs.io/
 
 [multiple host connection string syntax]: https://docs.sqlalchemy.org/en/20/dialects/postgresql.html#multihost-connections
-
-[table partitioning]: https://www.postgresql.org/docs/current/ddl-partitioning.html
