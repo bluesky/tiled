@@ -6,9 +6,11 @@ These tests are written based on discussion in issue #1368:
 https://github.com/bluesky/tiled/issues/1368#issuecomment-5284649768
 """
 
+import json
 import uuid
 from pathlib import Path
 
+import h5py
 import numpy
 import pytest
 import pytest_asyncio
@@ -287,6 +289,123 @@ def test_search_deep_requires_query(client):
     "Calling with no queries is an error rather than an unfiltered walk."
     with pytest.raises(TypeError):
         client.search_deep()
+
+
+@pytest.mark.parametrize("format", ["application/json", "application/x-hdf5"])
+def test_export_search_deep_results(client, buffer, format):
+    "An export of deep search results contains only the matching entries."
+    results = client.search_deep(Key("sample_id") == "abc123")
+    assert len(results) == 3
+    results.export(buffer, format=format)
+    # The matches are nested by their path relative to the search root.
+    if format == "application/json":
+        exported = set(_leaf_paths(json.loads(buffer.getvalue())["contents"]))
+    else:
+        with h5py.File(buffer) as file:
+            exported = set(_visit_h5(file))
+    assert exported == {
+        "top_level_match",
+        "nested/images/sample_042",
+        "other_branch/sample_099",
+    }
+
+
+def _leaf_paths(contents, prefix=""):
+    for key, value in contents.items():
+        path = f"{prefix}{key}"
+        if value["contents"]:
+            yield from _leaf_paths(value["contents"], prefix=f"{path}/")
+        else:
+            yield path
+
+
+def _visit_h5(group, prefix=""):
+    "Yield the path of every dataset (leaf) below `group`."
+    for key, value in group.items():
+        path = f"{prefix}{key}"
+        if isinstance(value, h5py.Group):
+            yield from _visit_h5(value, prefix=f"{path}/")
+        else:
+            yield path
+
+
+@pytest.mark.parametrize("format", ["application/json", "application/x-hdf5"])
+def test_export_search_deep_results_no_matches(client, buffer, format):
+    "An export of a deep search with no matches is empty (but not an error)."
+    results = client.search_deep(Key("sample_id") == "does-not-exist")
+    assert len(results) == 0
+    results.export(buffer, format=format)
+    if format == "application/json":
+        assert json.loads(buffer.getvalue())["contents"] == {}
+    else:
+        with h5py.File(buffer) as file:
+            assert list(file.keys()) == []
+
+
+@pytest.mark.parametrize("format", ["application/json", "application/x-hdf5"])
+def test_export_search_deep_results_with_max_depth(client, buffer, format):
+    "max_depth is honored by the export, as it is by the search itself."
+    results = client.search_deep(Key("sample_id") == "abc123", max_depth=1)
+    assert set(results.keys()) == {("top_level_match",)}
+    results.export(buffer, format=format)
+    if format == "application/json":
+        assert set(_leaf_paths(json.loads(buffer.getvalue())["contents"])) == {
+            "top_level_match"
+        }
+    else:
+        with h5py.File(buffer) as file:
+            assert list(file.keys()) == ["top_level_match"]
+
+
+@pytest.mark.parametrize("format", ["application/json", "application/x-hdf5"])
+def test_export_search_deep_results_with_fields(client, buffer, format):
+    "The `fields` argument narrows matches by leaf key."
+    results = client.search_deep(Key("sample_id") == "abc123")
+    results.export(buffer, fields=["sample_042"], format=format)
+    if format == "application/json":
+        assert set(_leaf_paths(json.loads(buffer.getvalue())["contents"])) == {
+            "nested/images/sample_042"
+        }
+    else:
+        with h5py.File(buffer) as file:
+            group = file["nested"]["images"]
+            assert list(group.keys()) == ["sample_042"]
+
+
+def test_export_search_deep_mounted_subtree(mixed_client, buffer):
+    "A deep export from a mixed map/catalog tree includes matches from the mount."
+    results = mixed_client.search_deep(Key("sample_id") == "abc123")
+    results.export(buffer, format="application/json")
+    exported = set(_leaf_paths(json.loads(buffer.getvalue())["contents"]))
+    assert exported == {
+        "map_top",
+        "mounted/top_level_match",
+        "mounted/nested/images/sample_042",
+        "mounted/other_branch/sample_099",
+    }
+
+
+def test_export_search_deep_results_match_container_and_child(buffer):
+    "When a container and one of its descendants both match, both are exported."
+    tree = MapAdapter(
+        {
+            "grp": MapAdapter(
+                {"x": ArrayAdapter.from_array(numpy.ones(3), metadata={"m": 1})},
+                metadata={"m": 1},
+            ),
+            "other": ArrayAdapter.from_array(numpy.ones(3), metadata={"m": 0}),
+        }
+    )
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        results = client.search_deep(Key("m") == 1)
+        assert set(results.keys()) == {("grp",), ("grp", "x")}
+        results.export(buffer, format="application/json")
+    contents = json.loads(buffer.getvalue())["contents"]
+    # The matched container is written with the metadata it matched on, and it
+    # contains its matched child.
+    assert contents["grp"]["metadata"] == {"m": 1}
+    assert "x" in contents["grp"]["contents"]
 
 
 def test_search_deep_multiple_queries_http_params(client):

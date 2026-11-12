@@ -628,6 +628,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             # keys/paths stay relative to the root that `search_deep`
             # was called on.
             root_path_parts=[part for part in self.path_parts if part],
+            full_link=self.item["links"]["full"],
         )
 
     def distinct(
@@ -707,8 +708,13 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
 
         >>> a.export("everything.h5")
 
+        Export only the entries matching a search.
+
+        >>> from tiled.queries import Key
+        >>> a.search(Key("element.category") == "noble_gas").export("noble_gases.h5")
+
         """
-        params = {}
+        params = {**self._queries_as_params}
         if fields is not None:
             params["field"] = fields
         return export_util(
@@ -1665,9 +1671,11 @@ class DeepSearchResults(collections.abc.Mapping):
         max_depth=None,
         include_data_sources=False,
         root_path_parts=(),
+        full_link=None,
     ):
         self.context = context
         self._link = link
+        self._full_link = full_link
         self.structure_clients = structure_clients
         self._queries = list(queries)
         self._queries_as_params = _queries_to_params(*self._queries)
@@ -1678,6 +1686,52 @@ class DeepSearchResults(collections.abc.Mapping):
 
     def __repr__(self):
         return f"<{type(self).__name__} ({len(self)} results)>"
+
+    def export(self, filepath, fields=None, *, format=None):
+        """
+        Download the matching entries below the search root and write to a file.
+
+        Only the nodes that matched the deep search are exported, not the
+        entire container. Entries are nested by path, so a match at
+        ``nested/images/sample_042`` is written under group
+        ``nested/images`` in HDF5 (or the equivalent nested "contents"
+        structure in JSON).
+
+        Parameters
+        ----------
+        file: str or buffer
+            Filepath or writeable buffer.
+        fields: List[str], optional
+            Filter which items match, by leaf key.
+        format : str, optional
+            If format is None and `file` is a filepath, the format is inferred
+            from the name, like 'table.h5' implies format="application/x-hdf5".
+            The format may be given as a file extension ("h5") or a media type
+            ("application/x-hdf5").
+
+        Examples
+        --------
+
+        >>> from tiled.queries import Key
+        >>> results = tree.search_deep(Key("sample_id") == "abc123")
+        >>> results.export("matches.h5")
+        """
+        if self._full_link is None:
+            raise NotImplementedError(
+                "This server does not support exporting deep search results."
+            )
+        params = {**self._queries_as_params, "deep": True}
+        if self._max_depth is not None:
+            params["max_depth"] = self._max_depth
+        if fields is not None:
+            params["field"] = fields
+        return export_util(
+            filepath,
+            format,
+            self.context.http_client.get,
+            self._full_link,
+            params=params,
+        )
 
     def _params(self, extra=None):
         params = {**self._queries_as_params}

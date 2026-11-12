@@ -1521,6 +1521,85 @@ def test_search_deep_user_query_does_not_gate_ancestors(
     assert _deep_keys(sue_client["baz"], marker) == {("ds_ctr", "ds_x")}
 
 
+def test_export_search_results_respects_access_control(
+    access_control_test_context_factory, buffer_factory
+):
+    """
+    An export of search results applies the user's filters AND the access
+    policy: nodes matching the query but not visible to the user are absent.
+    """
+    alice_client = access_control_test_context_factory("alice", "alice")
+    marker = "export_filtered"
+
+    # Both nodes match the user's query and live in `foo`, which is tagged
+    # `alice_tag`: alice (admin) and chris (read access to `alice_tag`) may
+    # enter it. `ds_hidden` carries `physicists_tag`, whose members are sue and
+    # tony -- not chris. `ds_shared` carries `alice_tag`, which chris may read.
+    alice_client["foo"].write_array(
+        arr,
+        key="ds_hidden",
+        access_tags=["physicists_tag"],
+        metadata={"export_marker": marker},
+    )
+    alice_client["foo"].write_array(
+        arr,
+        key="ds_shared",
+        access_tags=["alice_tag"],
+        metadata={"export_marker": marker},
+    )
+
+    alice_export_buffer = buffer_factory()
+    alice_client["foo"].search(Key("export_marker") == marker).export(
+        alice_export_buffer, format="application/json"
+    )
+    alice_exported = set(json.loads(alice_export_buffer.getvalue())["contents"])
+    assert alice_exported == {"ds_hidden", "ds_shared"}
+
+    chris_client = access_control_test_context_factory("chris", "chris")
+    chris_export_buffer = buffer_factory()
+    chris_client["foo"].search(Key("export_marker") == marker).export(
+        chris_export_buffer, format="application/json"
+    )
+    chris_exported = set(json.loads(chris_export_buffer.getvalue())["contents"])
+    assert chris_exported == {"ds_shared"}
+
+
+def test_export_search_deep_results_respects_access_control(
+    access_control_test_context_factory, buffer_factory
+):
+    "A deep export applies the same access rules as a deep search."
+    alice_client = access_control_test_context_factory("alice", "alice")
+    sue_client = access_control_test_context_factory("sue", "sue")
+    marker = "export_deep_filtered"
+
+    # `foo` is tagged `alice_tag`; sue may not enter it at all, so neither the
+    # deep search nor the deep export from the root may reveal anything here.
+    ctr = alice_client["foo"].create_container(key="ds_ctr", access_tags=["alice_tag"])
+    ctr.write_array(
+        arr,
+        key="ds_x",
+        access_tags=["alice_tag"],
+        metadata={"deep_search_marker": marker},
+    )
+
+    alice_export_buffer = buffer_factory()
+    alice_client["foo"].search_deep(Key("deep_search_marker") == marker).export(
+        alice_export_buffer, format="application/json"
+    )
+    alice_exported = json.loads(alice_export_buffer.getvalue())["contents"]
+    assert (
+        alice_exported["ds_ctr"]["contents"]["ds_x"]["metadata"]["deep_search_marker"]
+        == marker
+    )
+
+    assert list(sue_client.search_deep(Key("deep_search_marker") == marker)) == []
+    sue_export_buffer = buffer_factory()
+    sue_client.search_deep(Key("deep_search_marker") == marker).export(
+        sue_export_buffer, format="application/json"
+    )
+    assert json.loads(sue_export_buffer.getvalue())["contents"] == {}
+
+
 def test_search_deep_from_root_applies_policy_to_mounted_catalogs(
     access_control_test_context_factory,
 ):

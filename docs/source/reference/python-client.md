@@ -92,7 +92,8 @@ It adds these methods, which return a new Container instance.
 
 This method searches all descendants, at any depth, and returns a
 {py:class}`~tiled.client.container.DeepSearchResults` mapping rather than a
-Container.
+Container. Like a filtered Container, it can be exported to a file
+containing only the matching entries.
 
 ```{eval-rst}
 .. autosummary::
@@ -100,6 +101,7 @@ Container.
 
    tiled.client.container.Container.search_deep
    tiled.client.container.DeepSearchResults
+   tiled.client.container.DeepSearchResults.export
 ```
 
 It adds this method, which returns the unique metadata keys,

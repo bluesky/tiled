@@ -1,3 +1,6 @@
+import json
+
+import h5py
 import numpy
 import pytest
 
@@ -5,6 +8,7 @@ from tiled.adapters.array import ArrayAdapter
 from tiled.adapters.mapping import MapAdapter
 from tiled.catalog import in_memory
 from tiled.client import Context, from_context
+from tiled.client.utils import handle_error
 from tiled.queries import FullText, Key
 from tiled.server.app import build_app
 
@@ -95,3 +99,52 @@ def test_compound_key_into_results():
         client = from_context(context)
         result = client.search(FullText("hot"))["i", "X", "a"]
         assert "apple" in result.metadata
+
+
+@pytest.mark.parametrize("format", ["application/json", "application/x-hdf5"])
+def test_export_search_results(client, buffer, format):
+    "An export of search results contains only the matching entries."
+    results = client.search(Key("animal") == "dog")
+    assert list(results) == ["a", "b"]
+    results.export(buffer, format=format)
+    assert set(_exported_keys(buffer, format)) == {"a", "b"}
+
+
+@pytest.mark.parametrize("format", ["application/json", "application/x-hdf5"])
+def test_export_search_results_no_matches(client, buffer, format):
+    "An export of a search with no matches is empty (but not an error)."
+    results = client.search(Key("animal") == "does-not-exist")
+    assert list(results) == []
+    results.export(buffer, format=format)
+    assert _exported_keys(buffer, format) == []
+
+
+@pytest.mark.parametrize("format", ["application/json", "application/x-hdf5"])
+def test_export_search_results_with_fields(client, buffer, format):
+    "The `fields` argument and search queries compose."
+    results = client.search(Key("animal") == "dog")
+    results.export(buffer, fields=["a"], format=format)
+    assert _exported_keys(buffer, format) == ["a"]
+
+
+def test_export_search_results_post_route(client, buffer):
+    "The POST sibling of /container/full honors filters too."
+    params = {
+        "format": "application/json",
+        "filter[eq][condition][key]": "animal",
+        "filter[eq][condition][value]": json.dumps("dog"),
+    }
+    response = handle_error(
+        client.context.http_client.post(client.item["links"]["full"], params=params)
+    )
+    assert set(json.loads(response.read())["contents"]) == {"a", "b"}
+
+
+def _exported_keys(buffer, format):
+    "Read back the top-level keys of an exported container file or buffer."
+    if format == "application/json":
+        return sorted(json.loads(buffer.getvalue())["contents"])
+    if format == "application/x-hdf5":
+        with h5py.File(buffer) as file:
+            return sorted(file.keys())
+    raise ValueError(format)

@@ -88,6 +88,7 @@ from .core import (
     NoEntry,
     UnsupportedMediaTypes,
     WrongTypeForRoute,
+    apply_export_filters,
     apply_search,
     construct_data_response,
     construct_entries_response,
@@ -1512,6 +1513,7 @@ def get_router(
         response_model=schemas.Response,
         name="full 'container' metadata and data",
     )
+    @_patch_route_signature(query_registry)
     async def get_container_full(
         request: Request,
         path: str,
@@ -1521,12 +1523,19 @@ def get_router(
         field: list[str] | None = Query(None, min_length=1),
         format: str | None = None,
         filename: str | None = None,
+        deep: bool = Query(False),
+        max_depth: int | None = Query(None, ge=1, le=DEPTH_LIMIT),
         root_tree=Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
         _=Security(check_scopes, scopes=["read:data"]),
+        **filters,
     ):
         """
         Fetch the data for the given container via a GET request.
+
+        Search filters (``filter[...]`` query parameters, as accepted by
+        ``/search``) narrow which entries are included. With ``deep=true``,
+        all descendants matching the filters are exported, nested by path.
         """
         entry = await get_entry(
             path,
@@ -1549,6 +1558,9 @@ def get_router(
             field=field,
             format=format,
             filename=filename,
+            filters=filters,
+            deep=deep,
+            max_depth=max_depth,
         )
 
     @router.post(
@@ -1556,6 +1568,7 @@ def get_router(
         response_model=schemas.Response,
         name="full 'container' metadata and data",
     )
+    @_patch_route_signature(query_registry)
     async def post_container_full(
         request: Request,
         path: str,
@@ -1565,12 +1578,19 @@ def get_router(
         field: list[str] | None = Body(None, min_length=1),
         format: str | None = None,
         filename: str | None = None,
+        deep: bool = Query(False),
+        max_depth: int | None = Query(None, ge=1, le=DEPTH_LIMIT),
         root_tree=Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
         _=Security(check_scopes, scopes=["read:data"]),
+        **filters,
     ):
         """
         Fetch the data for the given container via a POST request.
+
+        Search filters (``filter[...]`` query parameters, as accepted by
+        ``/search``) narrow which entries are included. With ``deep=true``,
+        all descendants matching the filters are exported, nested by path.
         """
         entry = await get_entry(
             path,
@@ -1593,6 +1613,9 @@ def get_router(
             field=field,
             format=format,
             filename=filename,
+            filters=filters,
+            deep=deep,
+            max_depth=max_depth,
         )
 
     async def container_full(
@@ -1604,10 +1627,48 @@ def get_router(
         field: list[str] | None,
         format: str | None,
         filename: str | None,
+        filters: dict | None = None,
+        deep: bool = False,
+        max_depth: int | None = None,
     ):
         """
         Fetch the data for the given container.
         """
+        if filters or deep:
+            # Mounted catalogs are reached by walking, not by `get_entry`, so
+            # their entries need access filtering too (deep search only).
+            deep_access_filter = (
+                partial(
+                    filter_for_access,
+                    access_policy=request.app.state.access_policy,
+                    principal=principal,
+                    authn_access_tags=authn_access_tags,
+                    authn_scopes=authn_scopes,
+                    scopes=["read:data"],
+                    metrics=request.state.metrics,
+                )
+                if deep
+                else None
+            )
+            try:
+                entry = await apply_export_filters(
+                    entry,
+                    filters or {},
+                    query_registry,
+                    deep=deep,
+                    max_depth=max_depth,
+                    deep_access_filter=deep_access_filter,
+                    fields=field,
+                )
+            except NoEntry:
+                raise HTTPException(
+                    status_code=HTTP_404_NOT_FOUND, detail="No such entry."
+                )
+            except BrokenLink as err:
+                raise HTTPException(status_code=HTTP_410_GONE, detail=err.args[0])
+            if deep:
+                # `fields` has already been applied to the matched entries.
+                field = None
         try:
             with record_timing(request.state.metrics, "read"):
                 data = await ensure_awaitable(entry.read, fields=field)

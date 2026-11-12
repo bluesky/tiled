@@ -210,6 +210,99 @@ async def apply_search(tree, filters, query_registry):
     return tree
 
 
+def _insert_deep_match(root, path: str, node) -> None:
+    """
+    Insert `node` into the nested `MapAdapter` tree `root` at the "/"-joined `path`.
+
+    Intermediate path segments become empty containers. Since a leaf and a
+    container cannot share a path, an existing leaf is never replaced.
+    """
+    parent = root
+    segments = path.split("/")
+    for segment in segments[:-1]:
+        child = parent._mapping.get(segment)
+        if isinstance(child, MapAdapter):
+            parent = child
+            continue
+        if child is not None:
+            # A matched non-container node occupies this path. Its children
+            # cannot be represented in the export without overwriting it.
+            return
+        # MapAdapter does not expose a public way to build this nesting
+        # incrementally, so reach into its mapping.
+        child = MapAdapter({})
+        parent._mapping[segment] = child
+        parent = child
+    parent._mapping.setdefault(segments[-1], node)
+
+
+async def materialize_deep_results(tree, fields=None):
+    """
+    Collect the flat results of a deep search into a nested `MapAdapter` tree.
+
+    A deep search yields keys that are "/"-joined paths relative to the
+    search root, e.g. "nested/images/sample_042". The container serializers
+    walk a tree of containers, so rebuild that nesting here. The result can
+    then be serialized by exactly the same code that handles a plain
+    (possibly filtered) container.
+
+    `fields`, if given, narrows the matches by their leaf key, mirroring the
+    way it narrows a non-deep container export.
+    """
+    if hasattr(tree, "items_range"):
+        items = await tree.items_range()
+    elif hasattr(tree, "items"):
+        items = list(tree.items())
+    else:
+        items = [(key, tree[key]) for key in tree.keys()]
+
+    root = MapAdapter({})
+    for path, node in items:
+        if fields and path.split("/")[-1] not in fields:
+            continue
+        _insert_deep_match(root, path, node)
+    return root
+
+
+async def apply_export_filters(
+    tree,
+    filters,
+    query_registry,
+    *,
+    deep=False,
+    max_depth=None,
+    deep_access_filter=None,
+    fields=None,
+):
+    """
+    Narrow a container to the entries that an export should include.
+
+    This applies the client's search filters (and, for deep search, the
+    requested depth and access filtering of mounted catalogs) to `tree`,
+    returning a tree whose contents are exactly what the export should
+    contain. The container serializers walk that tree, applying access
+    filtering as they go, so no further changes are needed there.
+    """
+    if deep:
+        if not hasattr(tree, "search_deep"):
+            raise HTTPException(
+                status_code=HTTP_400_BAD_REQUEST,
+                detail="This Tree does not support deep search.",
+            )
+        try:
+            tree = tree.search_deep(max_depth=max_depth)
+        except (NotImplementedError, ValueError) as err:
+            raise HTTPException(status_code=HTTP_400_BAD_REQUEST, detail=str(err))
+        if deep_access_filter is not None and hasattr(tree, "map_mounts"):
+            # Mounted catalogs are reached by walking, not by `get_entry`, so
+            # the access policy has not been applied to them yet.
+            tree = await tree.map_mounts(deep_access_filter)
+    tree = await apply_search(tree, filters, query_registry)
+    if deep:
+        tree = await materialize_deep_results(tree, fields=fields)
+    return tree
+
+
 async def construct_entries_response(
     query_registry,
     tree,
