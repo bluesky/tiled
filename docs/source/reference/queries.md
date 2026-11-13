@@ -19,6 +19,8 @@ Follow the links in the table below for examples specific to each query.
    tiled.queries.Eq
    tiled.queries.NotEq
    tiled.queries.FullText
+   tiled.queries.KeyLike
+   tiled.queries.KeyLookup
    tiled.queries.KeyPresent
    tiled.queries.In
    tiled.queries.Like
