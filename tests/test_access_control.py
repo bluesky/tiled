@@ -439,9 +439,9 @@ def access_control_test_context_factory(compile_access_tags_tables, tmp_path_fac
         # catalog connection pool, so no asyncpg connection is shared across
         # apps' event loops.
         per_user_config["catalog_pool_size"] = 6 + len(clients)
-        per_user_config["access_control"]["args"][
-            "tag_new_nodes_with_owner"
-        ] = tag_new_nodes_with_owner
+        per_user_config["access_control"]["args"]["tag_new_nodes_with_owner"] = (
+            tag_new_nodes_with_owner
+        )
         app = build_app_from_config(per_user_config)
         context = Context.from_app(
             app, uri=f"http://local-tiled-app-{username}/api/v1", api_key=api_key
@@ -1554,6 +1554,44 @@ def test_search_deep_hides_leaf_under_inaccessible_container(
     assert content["meta"]["count"] == 1
     for item in content["data"]:
         assert "ds_hidden" not in item["attributes"]["ancestors"]
+
+
+def test_search_deep_hides_subtree_of_untagged_child_with_nothing_to_inherit(
+    access_control_test_context_factory, catalog_uri
+):
+    """
+    An untagged child of the search root inherits the search root's stored
+    tags. With none stored, it is admin-only, so a deep search must not reach
+    below it, even to a leaf whose own tags would be visible.
+    """
+    admin_client = access_control_test_context_factory("admin", "admin")
+    alice_client = access_control_test_context_factory("alice", "alice")
+    marker = "nothing_to_inherit"
+    meta = {"deep_search_marker": marker}
+
+    top = "qux"
+    orphan = admin_client[top].create_container(key="ds_orphan", access_tags=[])
+    orphan.write_array(arr, key="ds_leaf", access_tags=["public"], metadata=meta)
+    tagged = admin_client[top].create_container(key="ds_tagged", access_tags=["public"])
+    tagged.write_array(arr, key="ds_leaf", access_tags=[], metadata=meta)
+
+    # While qux keeps its stored public tag, ds_orphan inherits it.
+    assert _deep_keys(alice_client[top], marker) == {
+        ("ds_orphan", "ds_leaf"),
+        ("ds_tagged", "ds_leaf"),
+    }
+    _delete_node_access_tags(catalog_uri, "QUX")
+    try:
+        assert _deep_keys(alice_client[top], marker) == {("ds_tagged", "ds_leaf")}
+        assert (
+            len(alice_client[top].search_deep(Key("deep_search_marker") == marker)) == 1
+        )
+        assert _deep_keys(admin_client[top], marker) == {
+            ("ds_orphan", "ds_leaf"),
+            ("ds_tagged", "ds_leaf"),
+        }
+    finally:
+        _set_node_access_tags(catalog_uri, "QUX", TOP_LEVEL_TAGS[top])
 
 
 def test_search_deep_pagination_skips_leaf_under_inaccessible_container(

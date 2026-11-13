@@ -1665,7 +1665,7 @@ def test_access_predicate_uses_array_parameter_on_postgresql():
     query = AccessTagsFilter(["a"])
     query.tag_ids = [30, 10, 20, 10]
     condition = _access_tags_predicate(
-        query, catalog_orm.Node, 7, 7, false(), "postgresql"
+        query, catalog_orm.Node, 7, false(), "postgresql"
     )
     sql = str(
         condition.compile(
@@ -1682,7 +1682,7 @@ def test_access_predicate_uses_array_parameter_on_postgresql():
 def test_access_predicate_uses_in_list_on_sqlite():
     query = AccessTagsFilter(["a"])
     query.tag_ids = [2, 1]
-    condition = _access_tags_predicate(query, catalog_orm.Node, 7, 7, false(), "sqlite")
+    condition = _access_tags_predicate(query, catalog_orm.Node, 7, false(), "sqlite")
     sql = str(
         condition.compile(
             dialect=sqlite_dialect.dialect(), compile_kwargs={"literal_binds": True}
