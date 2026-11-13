@@ -36,16 +36,17 @@ prepend_sys_path = .
 # version location specification; This defaults
 # to alembic/versions.  When using multiple version
 # directories, initial revisions must be specified with --version-path.
-# The path separator used here should be the separator specified by "version_path_separator"
+# The path separator used here should be the separator specified by "path_separator"
 # version_locations = %(here)s/bar:%(here)s/bat:alembic/versions
 
-# version path separator; As mentioned above, this is the character used to split
-# version_locations. Valid values are:
+# path separator; this is the character used to split version_locations and
+# prepend_sys_path. Valid values are:
 #
-# version_path_separator = :
-# version_path_separator = ;
-# version_path_separator = space
-version_path_separator = os  # default: use os.pathsep
+# path_separator = :
+# path_separator = ;
+# path_separator = space
+# path_separator = newline
+path_separator = os
 
 # the output encoding used when revision files
 # are written from script.py.mako
