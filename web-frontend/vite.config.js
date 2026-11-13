@@ -36,9 +36,6 @@ export default defineConfig(({ command, mode }) => {
       viteRequire(),
       react({
         jsxRuntime: "automatic",
-        babel: {
-          plugins: [],
-        },
       }),
     ],
     test: {
