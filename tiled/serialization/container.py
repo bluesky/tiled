@@ -78,7 +78,7 @@ if modules_available("h5py"):
                             group.attrs.update(node.metadata())
                         except TypeError:
                             raise SerializationError(MSG)
-                if (soft_link := getattr(array_adapter, "soft_link", None)) is not None:
+                if soft_link := getattr(array_adapter, "soft_link", False):
                     # Recreate the link instead of writing a copy of its data.
                     group[key_path[-1]] = h5py.SoftLink(soft_link)
                     continue

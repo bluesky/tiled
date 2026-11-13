@@ -398,6 +398,15 @@ def test_file_with_links_export_preserves_soft_link(example_file_with_links, buf
     """Export an internal soft link as a link, not as a copy of the data it points at."""
 
     h5py = pytest.importorskip("h5py")
+    adapter = HDF5Adapter.from_uris(example_file_with_links, dataset="a/b/soft_link")
+    assert adapter.soft_link == "c/d"
+    assert HDF5ArrayAdapter(
+        adapter._array, adapter.structure(), soft_link="c/d"
+    ).soft_link == ("c/d")
+    assert (
+        HDF5Adapter.from_uris(example_file_with_links, dataset="a/b/c/d").soft_link
+        is False
+    )
     tree = HDF5Adapter.from_uris(example_file_with_links)
     with Context.from_app(build_app(tree)) as context:
         client = from_context(context)

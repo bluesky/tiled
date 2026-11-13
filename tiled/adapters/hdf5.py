@@ -179,10 +179,25 @@ class HDF5ArrayAdapter(ArrayAdapter):
 
     This adapter lazily loads array data from HDF5 files using Dask. Supports reading from datasets spanning
     multiple files.
+
+    Parameters
+    ----------
+    soft_link : str or bool, optional
+        The target of the soft link this dataset is reached through, relative to the
+        group that holds the link. False by default, so an export writes the data.
     """
 
-    # The target of the soft link this dataset is reached through, if any.
-    soft_link: str | None = None
+    def __init__(
+        self,
+        array: NDArray[Any],
+        structure: ArrayStructure,
+        *,
+        metadata: JSON | None = None,
+        specs: list[Spec] | None = None,
+        soft_link: str | bool = False,
+    ) -> None:
+        self.soft_link = soft_link
+        super().__init__(array, structure, metadata=metadata, specs=specs)
 
     @staticmethod
     def lazy_load_hdf5_array(
@@ -400,14 +415,13 @@ class HDF5ArrayAdapter(ArrayAdapter):
         metadata = copy.deepcopy(node.metadata_)
         metadata.update(attrs)
 
-        adapter = cls(
+        return cls(
             array,
             structure,
             metadata=metadata,
             specs=node.specs,
+            soft_link=soft_link or False,
         )
-        adapter.soft_link = soft_link
-        return adapter
 
     @classmethod
     def from_uris(
@@ -440,9 +454,7 @@ class HDF5ArrayAdapter(ArrayAdapter):
             data_uris[0], dataset, swmr=swmr, libver=libver, locking=locking
         )
 
-        adapter = cls(array, structure, metadata=attrs)
-        adapter.soft_link = soft_link
-        return adapter
+        return cls(array, structure, metadata=attrs, soft_link=soft_link or False)
 
 
 class HDF5Adapter(ContainerAdapter["HDF5Adapter | HDF5ArrayAdapter"], IndexersMixin):
