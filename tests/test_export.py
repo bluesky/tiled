@@ -190,3 +190,49 @@ def test_formats(client):
     client.formats
     client["A"].formats
     client["C"].formats
+
+
+def test_export_table_hdf5(tmpdir):
+    h5py = pytest.importorskip("h5py")
+    df = pandas.DataFrame(
+        {
+            "i": numpy.array([1, 2, 3], dtype="int64"),
+            "x": numpy.array([0.5, 1.5, 2.5]),
+            "label": ["a", "bb", "ccc"],
+        }
+    )
+    tree = MapAdapter(
+        {
+            "t": DataFrameAdapter.from_pandas(
+                df, metadata={"sample": "Si", "temperature": 300}, npartitions=1
+            )
+        }
+    )
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        filepath = Path(tmpdir, "table.h5")
+        client["t"].export(str(filepath), format="application/x-hdf5")
+    with h5py.File(filepath, "r") as file:
+        assert set(file) == {"i", "x", "label"}
+        numpy.testing.assert_array_equal(file["i"][()], df["i"].to_numpy())
+        numpy.testing.assert_array_equal(file["x"][()], df["x"].to_numpy())
+        assert [v.decode() for v in file["label"][()]] == ["a", "bb", "ccc"]
+        assert file.attrs["sample"] == "Si"
+        assert file.attrs["temperature"] == 300
+
+
+def test_export_table_hdf5_bad_metadata():
+    pytest.importorskip("h5py")
+    tree = MapAdapter(
+        {
+            "t": DataFrameAdapter.from_pandas(
+                pandas.DataFrame({"x": [1.0]}),
+                metadata={"nested": {"a": {"b": 1}}},
+                npartitions=1,
+            )
+        }
+    )
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        with pytest.raises(ClientError):
+            client["t"].export("/dev/null", format="application/x-hdf5")
