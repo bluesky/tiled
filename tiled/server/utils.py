@@ -1,5 +1,6 @@
 import contextlib
 import contextvars
+import dataclasses
 import importlib.util
 import time
 import types
@@ -198,6 +199,14 @@ async def filter_for_access(
                     if isinstance(query, AccessTagsFilter) and hasattr(
                         entry, "resolve_access_tag_ids"
                     ):
-                        query.tag_ids = await entry.resolve_access_tag_ids(query.tags)
+                        # Copy rather than mutate: these fields are specific to
+                        # this entry, and the policy may reuse its query objects.
+                        query = dataclasses.replace(
+                            query,
+                            tag_ids=await entry.resolve_access_tag_ids(query.tags),
+                            search_root_inherits_match=not set(query.tags).isdisjoint(
+                                await entry.inheritable_access_tags()
+                            ),
+                        )
                     entry = entry.search(query)
     return entry

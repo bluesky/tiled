@@ -342,6 +342,167 @@ FROM node_access_tags_association"""
         )
 
 
+class UntaggedNode(Base):
+    """
+    The nodes that have no access tags of their own, and so inherit them.
+
+    Maintained by database triggers: a node is added when created and when its
+    last tag is removed, and dropped when it gains a tag. Access filters use
+    it to find a container's untagged children through an index, rather than
+    scanning every tag assignment under the container for the ones missing.
+    """
+
+    __tablename__ = "untagged_nodes"
+
+    node_id = Column(
+        Integer,
+        ForeignKey("nodes.id", name="fk_untagged_nodes_node", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    # Denormalized from Node.parent, like NodeAccessTagAssociation.parent_id.
+    parent_id = Column(Integer, nullable=True)
+
+    __table_args__ = (
+        Index("ix_untagged_nodes_parent_id_node_id", "parent_id", "node_id"),
+    )
+
+
+def untagged_nodes_trigger_statements(dialect_name):
+    """SQL creating the triggers that keep 'untagged_nodes' up to date.
+
+    A node is untagged exactly when it has no row in
+    'node_access_tags_association'. The migration that adds the table keeps
+    its own copy of these statements; keep the two in step.
+    """
+    if dialect_name == "sqlite":
+        return [
+            """
+CREATE TRIGGER untagged_nodes_after_node_insert
+AFTER INSERT ON nodes
+BEGIN
+    INSERT OR IGNORE INTO untagged_nodes (node_id, parent_id)
+    VALUES (NEW.id, NEW.parent);
+END""",
+            """
+CREATE TRIGGER untagged_nodes_after_node_move
+AFTER UPDATE OF parent ON nodes
+WHEN NEW.parent IS NOT OLD.parent
+BEGIN
+    UPDATE untagged_nodes SET parent_id = NEW.parent WHERE node_id = NEW.id;
+END""",
+            """
+CREATE TRIGGER untagged_nodes_after_tag_insert
+AFTER INSERT ON node_access_tags_association
+BEGIN
+    DELETE FROM untagged_nodes WHERE node_id = NEW.node_id;
+END""",
+            # The EXISTS guard skips nodes being deleted, whose tag rows are
+            # removed by ON DELETE CASCADE.
+            """
+CREATE TRIGGER untagged_nodes_after_tag_delete
+AFTER DELETE ON node_access_tags_association
+BEGIN
+    INSERT OR IGNORE INTO untagged_nodes (node_id, parent_id)
+    SELECT id, parent FROM nodes
+    WHERE id = OLD.node_id
+      AND NOT EXISTS (
+        SELECT 1 FROM node_access_tags_association WHERE node_id = OLD.node_id
+      );
+END""",
+            """
+CREATE TRIGGER untagged_nodes_after_tag_update
+AFTER UPDATE OF node_id ON node_access_tags_association
+BEGIN
+    DELETE FROM untagged_nodes WHERE node_id = NEW.node_id;
+    INSERT OR IGNORE INTO untagged_nodes (node_id, parent_id)
+    SELECT id, parent FROM nodes
+    WHERE id = OLD.node_id
+      AND NOT EXISTS (
+        SELECT 1 FROM node_access_tags_association WHERE node_id = OLD.node_id
+      );
+END""",
+        ]
+    if dialect_name == "postgresql":
+        return [
+            """
+CREATE OR REPLACE FUNCTION untagged_nodes_after_node_insert()
+RETURNS TRIGGER AS $$
+BEGIN
+    INSERT INTO untagged_nodes (node_id, parent_id)
+    VALUES (NEW.id, NEW.parent)
+    ON CONFLICT DO NOTHING;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql""",
+            """
+CREATE TRIGGER untagged_nodes_after_node_insert
+AFTER INSERT ON nodes
+FOR EACH ROW
+EXECUTE FUNCTION untagged_nodes_after_node_insert()""",
+            """
+CREATE OR REPLACE FUNCTION untagged_nodes_after_node_move()
+RETURNS TRIGGER AS $$
+BEGIN
+    UPDATE untagged_nodes SET parent_id = NEW.parent WHERE node_id = NEW.id;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql""",
+            """
+CREATE TRIGGER untagged_nodes_after_node_move
+AFTER UPDATE OF parent ON nodes
+FOR EACH ROW
+WHEN (NEW.parent IS DISTINCT FROM OLD.parent)
+EXECUTE FUNCTION untagged_nodes_after_node_move()""",
+            # Handles INSERT, DELETE and UPDATE OF node_id. On delete, the
+            # nodes lookup skips nodes being deleted, whose tag rows are
+            # removed by ON DELETE CASCADE.
+            """
+CREATE OR REPLACE FUNCTION untagged_nodes_after_tag_change()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF TG_OP IN ('INSERT', 'UPDATE') THEN
+        DELETE FROM untagged_nodes WHERE node_id = NEW.node_id;
+    END IF;
+    IF TG_OP IN ('DELETE', 'UPDATE') THEN
+        INSERT INTO untagged_nodes (node_id, parent_id)
+        SELECT id, parent FROM nodes
+        WHERE id = OLD.node_id
+          AND NOT EXISTS (
+            SELECT 1 FROM node_access_tags_association
+            WHERE node_id = OLD.node_id
+          )
+        ON CONFLICT DO NOTHING;
+    END IF;
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql""",
+            """
+CREATE TRIGGER untagged_nodes_after_tag_change
+AFTER INSERT OR DELETE OR UPDATE OF node_id ON node_access_tags_association
+FOR EACH ROW
+EXECUTE FUNCTION untagged_nodes_after_tag_change()""",
+        ]
+    return []
+
+
+@event.listens_for(UntaggedNode.__table__, "after_create")
+def create_untagged_nodes_triggers(target, connection, **kw):
+    for statement in untagged_nodes_trigger_statements(connection.engine.dialect.name):
+        connection.execute(text(statement))
+    # Nodes created before this table existed (e.g. the root node).
+    connection.execute(
+        text(
+            """
+INSERT INTO untagged_nodes (node_id, parent_id)
+SELECT id, parent FROM nodes
+WHERE NOT EXISTS (
+    SELECT 1 FROM node_access_tags_association
+    WHERE node_access_tags_association.node_id = nodes.id
+)"""
+        )
+    )
+
+
 class AccessTagsPrincipal(Timestamped, Base):
     """
     A principal (human user or service account) that can be granted access

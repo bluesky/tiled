@@ -36,6 +36,13 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Changed
 
+- Listing a container whose untagged children inherit the user's tags no
+  longer reads every tag assignment under the container. A new
+  `untagged_nodes` table, kept up to date by database triggers, lists the
+  nodes with no tags of its own, so the access filter reads only the rows it
+  returns. This requires a catalog database migration (`tiled catalog
+  upgrade-database`).
+
 - OIDC authenticators now verify id_tokens (and their `at_hash`) at login via
   `verify_login`, while `decode_token` only decodes access tokens.
 
@@ -234,6 +241,16 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Changed
 
+- Access tags are inherited: a node with no access tags of its own is governed
+  by the tags of its nearest tagged ancestor. A node with no tagged ancestor
+  is accessible only to admins; neither the catalog root's tags nor the
+  catalog's `top_level_access_tags` are inherited. This applies to listing, search, deep search, and scope checks.
+- `TagBasedAccessPolicy` no longer tags a node created without access tags
+  with its creator's user tag; the node is left untagged and inherits.
+  Set the new `tag_new_nodes_with_owner: true` policy argument to restore the
+  previous behavior, in which such nodes are private to their creator. This
+  applies to graph entities as well, which do not inherit: when it is off,
+  an entity created without tags is visible only to admins.
 - Replace catalog `access_blob` column with a normalized `access_tags` table.
   Tags, grants, tag ownership, and node-tag associations now live in the
   catalog database; graph entities and links share the same tags table,
