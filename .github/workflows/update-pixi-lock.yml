@@ -30,9 +30,15 @@ jobs:
           cache: false
 
       - name: Update pixi.lock
+        env:
+          # Building tiled for its metadata must not build the web UI.
+          TILED_BUILD_SKIP_UI: "1"
         run: |
           set -euo pipefail
-          pixi update --json --no-install > diff.json
+          # No --no-install: solving the PyPI dependencies needs a conda
+          # environment to build the source packages (tiled itself, from
+          # its path) in, so pixi installs one environment for this platform.
+          pixi update --json > diff.json
           # Render the changes as markdown tables. With many environments and
           # platforms, merge them into one deduplicated table.
           pixi exec --spec pixi-diff-to-markdown==0.3.11 \
