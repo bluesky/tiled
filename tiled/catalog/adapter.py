@@ -39,6 +39,7 @@ from sqlalchemy import (
     text,
     true,
     type_coerce,
+    union,
     update,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, REGCONFIG, TEXT
@@ -2912,7 +2913,6 @@ def _access_tags_predicate(
     if not query.tags:
         # Results cannot possibly match an empty list.
         return false()
-    has_tag = _has_query_tag(query, node, parent, dialect_name)
     inherits = _untagged_inherits_match(
         parent, search_root_id, search_root_inherits_match
     )
@@ -2921,66 +2921,78 @@ def _access_tags_predicate(
     # free of `OR false` and `AND true`: a bare EXISTS lets PostgreSQL plan
     # `has_tag` as a semi-join.
     if isinstance(inherits, False_):
-        return has_tag
-    untagged = _is_untagged(node, parent)
+        return _has_query_tag(query, node, parent, dialect_name)
+    if isinstance(parent, int):
+        # Every candidate is a child of `parent`, so list the passing children
+        # outright, those with a query tag and the untagged ones, and test
+        # membership. PostgreSQL plans this as one semi-join over two index
+        # scans that read only rows that pass. An OR of two EXISTS would make
+        # it test each child separately, reading every tag row under `parent`
+        # to find the untagged ones.
+        # (UNION, not UNION ALL: PostgreSQL misestimates the row count of a
+        # UNION ALL and then probes the children one at a time.)
+        untagged = select(orm.UntaggedNode.node_id).where(
+            orm.UntaggedNode.parent_id == parent
+        )
+        if not isinstance(inherits, True_):
+            untagged = untagged.where(inherits)
+        tagged = _query_tag_rows(query, parent, dialect_name)
+        passing = untagged if tagged is None else union(tagged, untagged)
+        return node.id.in_(passing)
+    # Deep search: candidates sit at any depth, so test each one. (Listing the
+    # passing nodes, as above, would mean listing every match in the database
+    # or joining the closure table; both measured slower for the first page.)
+    has_tag = _has_query_tag(query, node, parent, dialect_name)
+    untagged = (
+        select(orm.UntaggedNode.node_id)
+        .where(orm.UntaggedNode.node_id == node.id)
+        .exists()
+    )
     if isinstance(inherits, True_):
         return or_(has_tag, untagged)
     return or_(has_tag, and_(untagged, inherits))
 
 
-def _has_query_tag(query, node, parent, dialect_name):
-    "Condition: `node`, a child of `parent`, carries one of the query's own tags."
-    # EXISTS is used (vs IN) as it is much more performant in SQLite,
-    # though performance in Postgres appears similar for both.
+def _query_tag_rows(query, parent, dialect_name):
+    """SELECT the ids of `parent`'s children carrying one of the query's tags.
+
+    Returns None if none of the query's tag names exist, so no node has them.
+    """
+    association = orm.NodeAccessTagAssociation
+    statement = select(association.node_id).where(association.parent_id == parent)
     if query.tag_ids is None:
-        return (
-            select(orm.NodeAccessTagAssociation.node_id)
-            .join(
-                orm.AccessTag, orm.AccessTag.id == orm.NodeAccessTagAssociation.tag_id
-            )
-            .where(orm.NodeAccessTagAssociation.node_id == node.id)
-            .where(orm.NodeAccessTagAssociation.parent_id == parent)
-            .where(orm.AccessTag.name.in_(query.tags))
-            .exists()
-        )
+        return statement.join(
+            orm.AccessTag, orm.AccessTag.id == association.tag_id
+        ).where(orm.AccessTag.name.in_(query.tags))
     if not query.tag_ids:
-        # None of the requested tag names exist, so no node has them.
-        return false()
+        return None
     # Fast path (used for server-side ACL filtering): the tag names have
     # already been resolved to their ``access_tags.id`` values in the
     # async layer (see ``resolve_access_tag_ids`` /
     # ``tiled.server.utils.filter_for_access``). Filtering on literal
     # ``tag_id`` values -- rather than joining ``access_tags`` by name --
     # lets PostgreSQL apply the (parent_id, tag_id) extended statistics
-    # and estimate this correlated subquery correctly.
+    # and estimate this subquery correctly.
     # Deduplicate and sort so the parameter value is stable across
     # requests (helps prepared-statement / plan reuse).
     tag_ids = sorted(set(query.tag_ids))
     if dialect_name == "postgresql":
         # Pass all ids in a single array parameter: `tag_id = ANY(...)`.
-        tag_match = orm.NodeAccessTagAssociation.tag_id == any_(
-            literal(tag_ids, ARRAY(Integer))
-        )
+        tag_match = association.tag_id == any_(literal(tag_ids, ARRAY(Integer)))
     else:
         # SQLite has no array type; use a plain IN list.
-        tag_match = orm.NodeAccessTagAssociation.tag_id.in_(tag_ids)
-    return (
-        select(orm.NodeAccessTagAssociation.node_id)
-        .where(orm.NodeAccessTagAssociation.node_id == node.id)
-        .where(orm.NodeAccessTagAssociation.parent_id == parent)
-        .where(tag_match)
-        .exists()
-    )
+        tag_match = association.tag_id.in_(tag_ids)
+    return statement.where(tag_match)
 
 
-def _is_untagged(node, parent):
-    "Condition: `node`, a child of `parent`, has no access tags of its own."
-    return not_(
-        select(orm.NodeAccessTagAssociation.node_id)
-        .where(orm.NodeAccessTagAssociation.node_id == node.id)
-        .where(orm.NodeAccessTagAssociation.parent_id == parent)
-        .exists()
-    )
+def _has_query_tag(query, node, parent, dialect_name):
+    "Condition: `node`, a child of `parent`, carries one of the query's own tags."
+    # EXISTS is used (vs IN) as it is much more performant in SQLite,
+    # though performance in Postgres appears similar for both.
+    rows = _query_tag_rows(query, parent, dialect_name)
+    if rows is None:
+        return false()
+    return rows.where(orm.NodeAccessTagAssociation.node_id == node.id).exists()
 
 
 def _untagged_inherits_match(parent, search_root_id, search_root_inherits_match):

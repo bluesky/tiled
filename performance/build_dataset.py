@@ -12,11 +12,17 @@ Layout (all containers sit directly under the root):
     inherit_false/  tagged 'other'.      Every child tagged grp_<i % groups>.
     half_untagged/  tagged 'bench_user'. Even children untagged, odd ones
                     tagged grp_<i % groups>.
+    half_match/     like half_untagged, but the even children are tagged
+                    'grp_0' instead of untagged. Every version sees the same
+                    children here as the branch sees in half_untagged/, so it
+                    is the fair reference for it.
     deep/           tagged 'bench_user'. A tree `--deep-levels` deep with
                     `--deep-fanout` children per node. At level 1, every 10th
                     node is tagged 'other' (a hidden subtree); the rest are
                     untagged. Below that, even nodes are untagged and odd ones
                     tagged grp_<i % groups>.
+    deep_tagged/    like deep/, but the untagged nodes are tagged 'grp_0': the
+                    fair reference for deep/.
     chain/c/c/c/c   five nested containers, all tagged 'bench_user': a path
                     the user can walk on both main and this branch.
     filler/         tagged 'other'. `--filler` children tagged grp_*, to make
@@ -30,8 +36,9 @@ The benchmark user holds tags ['bench_user', 'grp_0'] (see bench_sql.py), so:
 
 Every child has metadata {"color": "red"|"blue", "i": <int>}.
 
-The same database works for both `main` and this branch: the branch adds no
-migrations.
+Build one database per version being compared (run_ab.sh does this), since
+each version's code requires its own schema revision. The database in `--uri`
+is created if it does not exist.
 
 Usage:
 
@@ -122,7 +129,59 @@ def group_tag(groups):
     return f"'grp_' || (((n.metadata->>'i')::int) % {int(groups)})"
 
 
+async def create_database_if_missing(uri):
+    dsn = plain_dsn(uri)
+    base, _, name = dsn.rpartition("/")
+    conn = await asyncpg.connect(base + "/postgres")
+    exists = await conn.fetchval("SELECT 1 FROM pg_database WHERE datname = $1", name)
+    if not exists:
+        await conn.execute(f'CREATE DATABASE "{name}"')
+        print(f"Created database {name}")
+    await conn.close()
+
+
+async def build_tree(conn, key, fanout, levels, groups, fill_tag):
+    """A container `levels` deep with `fanout` children per node.
+
+    The nodes that deep/ leaves untagged are tagged `fill_tag`, if given.
+    """
+    root = await make_container(conn, 0, key, "bench_user")
+    with Timer("insert"):
+        parents = [root]
+        for level in range(1, levels + 1):
+            for p in parents:
+                await insert_children(conn, p, fanout)
+            parents = [
+                r["descendant"]
+                for r in await conn.fetch(
+                    "SELECT descendant FROM nodes_closure "
+                    "WHERE ancestor = $1 AND depth = $2",
+                    root,
+                    level,
+                )
+            ]
+    level_1 = "n.parent = $1"
+    below = (
+        "n.id IN (SELECT descendant FROM nodes_closure "
+        "         WHERE ancestor = $1 AND depth >= 2)"
+    )
+    is_i = "((n.metadata->>'i')::int)"
+    with Timer("tag"):
+        # Level 1: every 10th node hides its subtree; the rest are untagged.
+        await tag_nodes(conn, f"{level_1} AND {is_i} % 10 = 0", [root], "'other'")
+        # Deeper levels: odd nodes tagged, even nodes untagged.
+        await tag_nodes(conn, f"{below} AND {is_i} % 2 = 1", [root], groups)
+        if fill_tag is not None:
+            await tag_nodes(
+                conn, f"{level_1} AND {is_i} % 10 <> 0", [root], f"'{fill_tag}'"
+            )
+            await tag_nodes(
+                conn, f"{below} AND {is_i} % 2 = 0", [root], f"'{fill_tag}'"
+            )
+
+
 async def build(args):
+    await create_database_if_missing(args.uri)
     if args.reset:
         conn = await asyncpg.connect(plain_dsn(args.uri))
         await conn.execute("DROP SCHEMA public CASCADE; CREATE SCHEMA public;")
@@ -172,41 +231,30 @@ async def build(args):
             groups,
         )
 
+    print(f"half_match: {args.children} children")
+    parent = await make_container(conn, 0, "half_match", "bench_user")
+    with Timer("insert"):
+        await insert_children(conn, parent, args.children)
+    with Timer("tag"):
+        await tag_nodes(
+            conn,
+            "n.parent = $1 AND ((n.metadata->>'i')::int) % 2 = 1",
+            [parent],
+            groups,
+        )
+        await tag_nodes(
+            conn,
+            "n.parent = $1 AND ((n.metadata->>'i')::int) % 2 = 0",
+            [parent],
+            "'grp_0'",
+        )
+
     fanout, levels = args.deep_fanout, args.deep_levels
     total = sum(fanout**level for level in range(1, levels + 1))
     print(f"deep: {levels} levels x fanout {fanout} = {total} nodes")
-    deep = await make_container(conn, 0, "deep", "bench_user")
-    with Timer("insert"):
-        parents = [deep]
-        for level in range(1, levels + 1):
-            for p in parents:
-                await insert_children(conn, p, fanout)
-            parents = [
-                r["descendant"]
-                for r in await conn.fetch(
-                    "SELECT descendant FROM nodes_closure "
-                    "WHERE ancestor = $1 AND depth = $2",
-                    deep,
-                    level,
-                )
-            ]
-    with Timer("tag"):
-        # Level 1: every 10th node hides its subtree; the rest are untagged.
-        await tag_nodes(
-            conn,
-            "n.parent = $1 AND ((n.metadata->>'i')::int) % 10 = 0",
-            [deep],
-            "'other'",
-        )
-        # Deeper levels: odd nodes tagged, even nodes untagged.
-        await tag_nodes(
-            conn,
-            "n.id IN (SELECT descendant FROM nodes_closure "
-            "         WHERE ancestor = $1 AND depth >= 2) "
-            "AND ((n.metadata->>'i')::int) % 2 = 1",
-            [deep],
-            groups,
-        )
+    await build_tree(conn, "deep", fanout, levels, groups, fill_tag=None)
+    print(f"deep_tagged: {levels} levels x fanout {fanout} = {total} nodes")
+    await build_tree(conn, "deep_tagged", fanout, levels, groups, fill_tag="grp_0")
 
     print("chain: 4 nested containers, all tagged 'bench_user'")
     parent = await make_container(conn, 0, "chain", "bench_user")
@@ -222,6 +270,10 @@ async def build(args):
             await tag_nodes(conn, "n.parent = $1", [parent], groups)
 
     with Timer("VACUUM ANALYZE"):
+        # A larger sample than the default (100) keeps the planner's estimates,
+        # and so its plans, the same across rebuilds and across the base and
+        # branch databases.
+        await conn.execute("SET default_statistics_target = 1000")
         await conn.execute("VACUUM ANALYZE")
 
     counts = await conn.fetchrow(

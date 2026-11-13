@@ -36,6 +36,13 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Changed
 
+- Listing a container whose untagged children inherit the user's tags no
+  longer reads every tag assignment under the container. A new
+  `untagged_nodes` table, kept up to date by database triggers, lists the
+  nodes with no tags of its own, so the access filter reads only the rows it
+  returns. This requires a catalog database migration (`tiled catalog
+  upgrade-database`).
+
 - OIDC authenticators now verify id_tokens (and their `at_hash`) at login via
   `verify_login`, while `decode_token` only decodes access tokens.
 

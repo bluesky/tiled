@@ -9,8 +9,8 @@ database.
 
 ```sh
 performance/postgres.sh start
-.pixi/envs/py313/bin/python performance/build_dataset.py --reset
-performance/run_ab.sh
+performance/run_ab.sh --build     # builds both databases the first time
+performance/run_ab.sh             # later runs reuse them
 ```
 
 `run_ab.sh` prints a table like:
@@ -21,7 +21,10 @@ inherit_true.count                      ...        ...      ...x      ...      .
 ...
 ```
 
-A is the base commit and B the current checkout. Plans for every statement
+A is the base commit and B the current checkout. Each gets its own database
+(`tiled_perf_base`, `tiled_perf_branch`), built by its own code, because tiled
+refuses to open a catalog at a schema revision other than its own. Rebuild
+both (`--build`) after changing the schema or the dataset flags. Plans for every statement
 are in `performance/results/<label>/plans/<scenario>.txt`; diff the base and
 branch plans of a slow scenario to see what changed.
 
@@ -33,7 +36,7 @@ branch plans of a slow scenario to see what changed.
 | `build_dataset.py` | Create the catalog schema with tiled, then bulk-insert the test tree with SQL. |
 | `bench_sql.py` | Time each scenario and capture `EXPLAIN (ANALYZE, BUFFERS)` for every query it issues. |
 | `compare.py` | Side-by-side table of two `bench_sql.py` runs. |
-| `run_ab.sh` | Check the base out into a sibling worktree and run both versions, then compare. |
+| `run_ab.sh` | Check the base out into a sibling worktree, optionally build both databases, run both versions, and compare. |
 
 ## Dataset
 
@@ -46,7 +49,9 @@ tagged children match.
 | `inherit_true/` | `bench_user` | all tagged | Inheritable tags match the user: the branch adds `OR untagged`. |
 | `inherit_false/` | `other` | all tagged | Inheritable tags do not match: should be unchanged from base. |
 | `half_untagged/` | `bench_user` | even ones untagged | Inheritance makes half the children visible. |
+| `half_match/` | `bench_user` | even ones tagged `grp_0` | Fair reference for `half_untagged/`: every version sees the same children. |
 | `deep/` | `bench_user` | 4 levels, mixed | Deep search, including the hidden-ancestor check. |
+| `deep_tagged/` | `bench_user` | like `deep/`, untagged ones tagged `grp_0` | Fair reference for `deep/`. |
 | `chain/c/c/c/c` | `bench_user` | tagged throughout | A path both versions can walk. |
 | `filler/` | `other` | `--filler` nodes | Grows the tables towards production size. |
 
@@ -69,6 +74,14 @@ Result counts that differ between the two versions are flagged with `*`.
 That is expected for `half_untagged` and `deep`, where inheritance makes
 untagged nodes visible. A difference anywhere else is a bug.
 
+Because the base sees nothing in `half_untagged/` and `deep/`, its times there
+are not a fair baseline. Compare the branch's `half_untagged.*` with the
+base's `half_match.*`, and `deep.*` with `deep_tagged.*`.
+
+Run-to-run noise on a small VM is large, mostly from PostgreSQL's parallel
+workers: use `--runs 7` or more, and check the `Execution Time` lines in the
+saved plans when a ratio looks surprising.
+
 ## How the access filter is applied
 
 `bench_sql.py` calls the real `filter_for_access` and `get_entry` with a stub
@@ -81,7 +94,5 @@ code without needing authentication or tag grants. The stub's
 
 - Run one group with `--only`, e.g. `performance/run_ab.sh --only inherit_true`.
 - `--no-explain` skips plan capture when you only want timings.
-- Point at another database with `--uri` on both scripts.
-- Rebuild with `--reset` after changing dataset flags. The schema comes from
-  the checkout that runs `build_dataset.py`. The branch adds no migrations, so
-  one database serves both versions.
+- Point at another server with `SERVER=postgresql+asyncpg://user:pw@host:port`,
+  or at specific databases with `BASE_URI` and `BRANCH_URI`.

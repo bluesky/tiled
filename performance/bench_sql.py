@@ -150,7 +150,7 @@ def scenarios(root):
         return [path]
 
     result = []
-    for container in ["inherit_true", "inherit_false", "half_untagged"]:
+    for container in ["inherit_true", "inherit_false", "half_untagged", "half_match"]:
         for name, op in [
             ("count", count),
             ("keys_page", keys_page),
@@ -160,12 +160,15 @@ def scenarios(root):
             result.append(
                 (f"{container}.{name}", lambda c=container, o=op: listing(c, o))
             )
-    for name, op in [
-        ("keys_page", deep_keys_page),
-        ("count", deep_count),
-        ("metadata_search", deep_metadata_search),
-    ]:
-        result.append((f"deep.{name}", lambda o=op: listing("deep", o)))
+    for container in ["deep", "deep_tagged"]:
+        for name, op in [
+            ("keys_page", deep_keys_page),
+            ("count", deep_count),
+            ("metadata_search", deep_metadata_search),
+        ]:
+            result.append(
+                (f"{container}.{name}", lambda c=container, o=op: listing(c, o))
+            )
     # Path resolution only: the per-request cost of reaching a node.
     # `chain/` is tagged all the way down, so it is visible on both versions.
     # `deep/n1/n2/n2/n2` is untagged below `deep/`: visible only with inheritance.

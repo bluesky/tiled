@@ -162,6 +162,59 @@ async def test_known_access_tags_no_insert(a: CatalogContainerAdapter) -> None:
 
 
 @pytest.mark.asyncio
+async def test_untagged_nodes_tracks_tags(a: CatalogContainerAdapter) -> None:
+    "Triggers keep 'untagged_nodes' listing exactly the nodes with no tags."
+
+    async def untagged():
+        rows = await a.context.execute(
+            "SELECT node_id, parent_id FROM untagged_nodes WHERE node_id <> 0"
+        )
+        return dict(rows.all())
+
+    async def node_id(key):
+        result = await a.context.execute(f"SELECT id FROM nodes WHERE key = '{key}'")
+        return result.scalar_one()
+
+    approved = ApprovedAccessTags(["experiment:1234"])
+    await a.create_node(StructureFamily.container, {}, key="x")
+    await a.create_node(StructureFamily.container, {}, key="y", access_tags=approved)
+    x, y = await node_id("x"), await node_id("y")
+    # Created untagged, or created tagged.
+    assert await untagged() == {x: 0}
+
+    # Losing its last tag makes a node untagged; gaining one, tagged again.
+    await a.context.execute(
+        f"DELETE FROM node_access_tags_association WHERE node_id = {y}"
+    )
+    assert await untagged() == {x: 0, y: 0}
+    await a.context.execute(
+        "INSERT INTO node_access_tags_association (node_id, tag_id) "
+        f"SELECT {y}, id FROM access_tags WHERE name = 'experiment:1234'"
+    )
+    assert await untagged() == {x: 0}
+
+    # Moving a node updates its parent.
+    await a.context.execute(f"UPDATE nodes SET parent = {y} WHERE id = {x}")
+    assert await untagged() == {x: y}
+
+    # Deleting nodes, tagged or not, leaves no rows behind, including for
+    # descendants removed by ON DELETE CASCADE along with their tags.
+    x_adapter = await a.lookup_adapter(["y", "x"])
+    await x_adapter.create_node(StructureFamily.container, {}, key="untagged_child")
+    await x_adapter.create_node(
+        StructureFamily.container, {}, key="tagged_child", access_tags=approved
+    )
+    assert set((await untagged()).values()) == {y, x}
+    await a.context.execute(f"DELETE FROM nodes WHERE id = {y}")
+    assert await untagged() == {}
+    remaining = await a.context.execute(
+        "SELECT count(*) FROM nodes WHERE key IN "
+        "('x', 'y', 'untagged_child', 'tagged_child')"
+    )
+    assert remaining.scalar_one() == 0
+
+
+@pytest.mark.asyncio
 async def test_nested_node_creation(a):
     await a.create_node(
         key="b",
