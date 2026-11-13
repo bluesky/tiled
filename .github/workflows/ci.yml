@@ -18,7 +18,9 @@ env:
   # uv.lock, so a new release of a dependency cannot break unrelated PRs.
   # The nightly scheduled run re-resolves to the latest releases, giving early
   # warning of breakage that users installing tiled from PyPI would see.
-  UV_SYNC_FLAGS: ${{ github.event_name == 'schedule' && '--upgrade' || '--locked' }}
+  # `--exclude-newer P0D` lifts the 3-day window from [tool.uv] in
+  # pyproject.toml, so that warning comes as soon as a release is published.
+  UV_SYNC_FLAGS: ${{ github.event_name == 'schedule' && '--upgrade --exclude-newer P0D' || '--locked' }}
 
 jobs:
   pre-commit:
