@@ -1,0 +1,16 @@
+[project]
+name = "tiled-columnar-demo"
+version = "0.1.0"
+description = "Examples of Tiled's columnar (SQL) storage, written with Bluesky's TiledWriter"
+requires-python = ">=3.11"
+dependencies = [
+    # Keep in step with the server image tag in compose.yml.
+    "tiled[client]==0.2.21",
+    "bluesky",
+    "bluesky-tiled-plugins",
+    "ophyd",
+]
+
+[tool.uv]
+# A set of scripts, not an installable package.
+package = false

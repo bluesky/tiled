@@ -1,0 +1,60 @@
+# Minimal Tiled + PostgreSQL stack for exploring Tiled's columnar (SQL) storage.
+#
+#   docker compose up -d        (or: podman compose up -d)
+#
+# Tiled is reachable at http://localhost:8000 with API key "secret"
+# (override with TILED_API_KEY=... in the environment or a .env file).
+---
+services:
+  tiled:
+    # Match this tag to the tiled client version you have installed.
+    image: ghcr.io/bluesky/tiled:${TILED_VERSION:-0.2.21}
+    # To run the code from this checkout instead, comment out `image` above and use:
+    # build:
+    #   context: ..
+    #   dockerfile: Containerfile
+    environment:
+      - TILED_SINGLE_USER_API_KEY=${TILED_API_KEY:-secret}
+      # Catalog: metadata, structures, and pointers to data (one row per node).
+      - TILED_CATALOG_URI=postgresql://tiled:${POSTGRES_PASSWORD:-tiled}@postgres:5432/tiled_catalog
+      # Writable storage, in order of preference per structure family:
+      #  - file:///storage  -> arrays (zarr) written by clients
+      #  - postgresql://... -> tables (the "columnar database")
+      - TILED_CATALOG_WRITABLE_STORAGE=["file:///storage", "postgresql://tiled:${POSTGRES_PASSWORD:-tiled}@postgres:5432/tiled_storage"]
+    volumes:
+      - tiled_data:/storage
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      # CMD-SHELL (not exec form): podman splits exec-form args on spaces.
+      test: ["CMD-SHELL", "python -c \"import httpx; httpx.get('http://localhost:8000/healthz', timeout=5).raise_for_status()\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  postgres:
+    image: docker.io/postgres:16
+    environment:
+      - POSTGRES_USER=tiled
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-tiled}
+      - POSTGRES_DB=postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # Creates the tiled_catalog and tiled_storage databases on first start.
+      - ./initdb:/docker-entrypoint-initdb.d:ro
+    ports:
+      # Exposed so you can inspect the columnar tables directly with psql.
+      - "5432:5432"
+    healthcheck:
+      test: pg_isready -U tiled -d postgres
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  tiled_data:
+  postgres_data:
