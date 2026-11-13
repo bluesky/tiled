@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Start or stop a throwaway PostgreSQL server for the access-tag benchmarks.
 #
-#   performance/postgres.sh start   # listens on localhost:${PGPORT:-5433}
+#   performance/postgres.sh start   # listens on 127.0.0.1:${PGPORT:-5433} only
 #   performance/postgres.sh stop    # removes the container and its data
 #
 # Uses podman if available, otherwise docker.
@@ -21,7 +21,7 @@ case "${1:-}" in
 start)
     "$ENGINE" run -d --rm --name "$NAME" \
         -e POSTGRES_USER=tiled -e POSTGRES_PASSWORD=tiled -e POSTGRES_DB=tiled_perf \
-        -p "$PORT":5432 \
+        -p 127.0.0.1:"$PORT":5432 \
         --shm-size=1g \
         "$IMAGE" \
         -c shared_buffers=1GB -c work_mem=64MB -c maintenance_work_mem=512MB \

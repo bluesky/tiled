@@ -37,6 +37,7 @@ branch plans of a slow scenario to see what changed.
 | `bench_sql.py` | Time each scenario and capture `EXPLAIN (ANALYZE, BUFFERS)` for every query it issues. |
 | `compare.py` | Side-by-side table of two `bench_sql.py` runs. |
 | `run_ab.sh` | Check the base out into a sibling worktree, optionally build both databases, run both versions, and compare. |
+| `results_report.ipynb` | Charts and a table of the saved results: query time by version, slowdown against `main`, JIT share, and statements per request. Includes a `before_fix` label if present. |
 
 ## Dataset
 
