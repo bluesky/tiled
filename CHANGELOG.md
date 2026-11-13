@@ -33,6 +33,9 @@ Write the date in place of the "Unreleased" in the case a new version is release
   external-service calls appear in traces. The example monitoring stack also
   generates a service graph viewable in Grafana, with Tiled's separate Postgres
   databases (catalog, storage, authn) and Redis shown as distinct nodes.
+- Locust acceptance test `locust/slicing.py`: random array slices at doubling
+  sizes plus whole frames; self-written test array, with a failure-ratio
+  threshold that sets the exit code for nightly and pre-release CI.
 
 ### Changed
 
