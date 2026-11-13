@@ -12,6 +12,7 @@ from tiled.adapters.array import ArrayAdapter
 from tiled.adapters.mapping import MapAdapter
 from tiled.catalog import in_memory
 from tiled.client import from_uri
+from tiled.client.utils import DEFAULT_TIMEOUT_PARAMS
 from tiled.config import Authentication, Database
 from tiled.server.app import build_app, build_app_from_config
 from tiled.server.logging_config import LOGGING_CONFIG
@@ -22,6 +23,9 @@ from .utils import Server
 router = APIRouter()
 
 API_KEY = "secret"
+# The client's own timeouts. The httpx default (5 s) is too short for the first
+# request to a server just started on a busy CI runner.
+TIMEOUT = httpx.Timeout(**DEFAULT_TIMEOUT_PARAMS)
 
 
 @pytest.fixture
@@ -116,20 +120,24 @@ def test_internal_authentication_mode_with_password_clients(multiuser_server):
     "The 'internal' authentication mode used to be named 'password'."
     # Mock old client
     response = httpx.get(
-        multiuser_server + "/api/v1/", headers={"user-agent": "python-tiled/0.1.0b16"}
+        multiuser_server + "/api/v1/",
+        headers={"user-agent": "python-tiled/0.1.0b16"},
+        timeout=TIMEOUT,
     )
     actual_mode = response.json()["authentication"]["providers"][0]["mode"]
     assert actual_mode == "password"
 
     # Mock new client
     response = httpx.get(
-        multiuser_server + "/api/v1/", headers={"user-agent": "python-tiled/0.1.0b17"}
+        multiuser_server + "/api/v1/",
+        headers={"user-agent": "python-tiled/0.1.0b17"},
+        timeout=TIMEOUT,
     )
     actual_mode = response.json()["authentication"]["providers"][0]["mode"]
     assert actual_mode == "internal"
 
     # Mock unknown client
-    response = httpx.get(multiuser_server + "/api/v1/", headers={})
+    response = httpx.get(multiuser_server + "/api/v1/", headers={}, timeout=TIMEOUT)
     actual_mode = response.json()["authentication"]["providers"][0]["mode"]
     assert actual_mode == "internal"
 
@@ -143,7 +151,7 @@ def test_about_reports_api_root_path(tmpdir, root_path):
         app, port=0, loop="asyncio", log_config=LOGGING_CONFIG, root_path=root_path
     )
     with Server(config).run_in_thread() as url:
-        response = httpx.get(url + "/api/v1/")
+        response = httpx.get(url + "/api/v1/", timeout=TIMEOUT)
 
     assert response.json()["meta"]["root_path"] == f"{root_path}/api"
 

@@ -203,7 +203,7 @@ def test_distinct_structure_families_and_specs_are_scoped(catalog_client):
 
 async def test_distinct_on_deep_variation_covers_all_descendants(catalog_client):
     "Deep scope counts every descendant of the node, and nothing outside it."
-    catalog = catalog_client.context.app.state.root_tree
+    catalog = catalog_client.context.http_client.app.state.root_tree
     a = await catalog.lookup_adapter(["a"])
     distinct = await a.search_deep().get_distinct(["m"], False, False, True)
     assert _values(distinct) == [("b", 1), ("deep", 1), ("inside", 1)]
