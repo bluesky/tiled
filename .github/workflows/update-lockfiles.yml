@@ -1,7 +1,15 @@
-name: Update pixi.lock
+name: Update lockfiles
 
-# Dependabot does not support pixi, so refresh pixi.lock on the same schedule
-# that .github/dependabot.yml uses for uv.lock and open a PR with the changes.
+# Refresh uv.lock and pixi.lock twice a month and open one PR for each.
+#
+# Dependabot does not support pixi. It does support uv, but it upgrades each
+# locked package on its own, forcing the newest release, and reports an error
+# whenever another package caps that one, which is normal for transitive
+# dependencies. `uv lock --upgrade` resolves the whole project at once, so
+# it takes the newest versions that fit together.
+#
+# Both lockfiles skip releases under 3 days old (exclude-newer in pixi.toml
+# and in [tool.uv] in pyproject.toml).
 
 on:
   workflow_dispatch:
@@ -12,7 +20,56 @@ permissions:
   contents: write
   pull-requests: write
 
+env:
+  # Building tiled for its metadata must not build the web UI.
+  TILED_BUILD_SKIP_UI: "1"
+
 jobs:
+  uv-update:
+    if: github.repository_owner == 'bluesky'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # create-pull-request authenticates with its own token input.
+          persist-credentials: false
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e  # v10.3.2
+
+      - name: Update uv.lock
+        env:
+          NO_COLOR: "1"
+        run: |
+          set -euo pipefail
+          # uv reports each change on stderr, for example
+          # "Updated anyio v4.15.1 -> v4.16.0".
+          uv lock --upgrade 2> uv-lock.log
+          cat uv-lock.log
+          {
+            echo "| Package | Before | After |"
+            echo "| --- | --- | --- |"
+            sed -nE \
+              -e 's/^Updated ([^ ]+) (.+) -> (.+)$/| \1 | \2 | \3 |/p' \
+              -e 's/^Added ([^ ]+) (.+)$/| \1 | | \2 |/p' \
+              -e 's/^Removed ([^ ]+) (.+)$/| \1 | \2 | |/p' \
+              uv-lock.log
+          } > diff.md
+          cat diff.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Create pull request
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1  # v8.1.1
+        with:
+          # See the pixi-update job below for why this is not GITHUB_TOKEN.
+          token: ${{ secrets.LOCKFILE_PR_TOKEN || secrets.GITHUB_TOKEN }}
+          commit-message: "MNT: update uv.lock"
+          title: "MNT: update uv.lock"
+          body-path: diff.md
+          branch: update-uv-lock
+          base: main
+          delete-branch: true
+          add-paths: uv.lock
+
   pixi-update:
     if: github.repository_owner == 'bluesky'
     runs-on: ubuntu-latest
@@ -30,9 +87,6 @@ jobs:
           cache: false
 
       - name: Update pixi.lock
-        env:
-          # Building tiled for its metadata must not build the web UI.
-          TILED_BUILD_SKIP_UI: "1"
         run: |
           set -euo pipefail
           # No --no-install: solving the PyPI dependencies needs a conda
