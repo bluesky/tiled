@@ -110,7 +110,7 @@ const ArrayND: React.FunctionComponent<IProps> = (props) => {
 
       {/* Colormap + log-scale controls — only for grayscale */}
       {!color && (
-        <Stack direction="row" spacing={2} alignItems="center" sx={{ mt: 1 }}>
+        <Stack direction="row" spacing={2} sx={{ alignItems: "center", mt: 1 }}>
           <FormControl size="small" sx={{ minWidth: 130 }}>
             <InputLabel id="colormap-label">Colormap</InputLabel>
             <Select

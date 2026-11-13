@@ -74,7 +74,7 @@ function PasswordLogin({
               fullWidth
               size="small"
               autoFocus
-              InputLabelProps={{ required: false }}
+              slotProps={{ inputLabel: { required: false } }}
             />
             <TextField
               label="Password"
@@ -84,7 +84,7 @@ function PasswordLogin({
               required
               fullWidth
               size="small"
-              InputLabelProps={{ required: false }}
+              slotProps={{ inputLabel: { required: false } }}
             />
             <Button
               type="submit"
