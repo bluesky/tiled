@@ -887,6 +887,78 @@ async def test_entities_listing_filters_by_node_access_tags(store, filter_policy
     assert names == {"node-linked-visible"}
 
 
+@pytest.mark.asyncio
+async def test_entities_query_filters_by_uri(store, filter_policy):
+    """`entities(uri:)` narrows the listing to exact uri matches, combines with
+    entityType and nodePathParts by AND, and access control still applies
+    before LIMIT."""
+    await _insert_node(store, 1, ["team"], key="visible-node")
+    await _insert_node(store, 2, ["other"], key="hidden-node")
+    # Two hidden entities share the uri and are created first, so filtering
+    # access after LIMIT 1 (instead of before) would return nothing.
+    await store.create_entity(
+        entity_type="sample",
+        name="hidden-a",
+        uri="tiled:/scan",
+        node_id=2,
+        access_tags=None,
+    )
+    await store.create_entity(
+        entity_type="dataset",
+        name="hidden-b",
+        uri="tiled:/scan",
+        access_tags=["other"],
+    )
+    await store.create_entity(
+        entity_type="sample",
+        name="by-node",
+        uri="tiled:/scan",
+        node_id=1,
+        access_tags=None,
+    )
+    await store.create_entity(
+        entity_type="dataset",
+        name="by-uri",
+        uri="tiled:/scan",
+        access_tags=["team"],
+    )
+    await store.create_entity(
+        entity_type="dataset",
+        name="elsewhere",
+        uri="tiled:/elsewhere",
+        access_tags=["team"],
+    )
+
+    bob_ctx = _context(store, filter_policy, "bob", {"read:metadata"})
+    query = """
+    query($uri: String, $nodePathParts: [String!], $entityType: String,
+          $limit: Int!) {
+        entities(uri: $uri, nodePathParts: $nodePathParts,
+                 entityType: $entityType, limit: $limit) { name uri }
+    }
+    """
+
+    async def names(**variables):
+        variables.setdefault("limit", 100)
+        result = await _execute(query, bob_ctx, variables)
+        assert result.errors is None
+        return {item["name"] for item in result.data["entities"]}
+
+    assert await names(uri="tiled:/scan") == {"by-node", "by-uri"}
+    first = await names(uri="tiled:/scan", limit=1)
+    assert len(first) == 1 and first <= {"by-node", "by-uri"}
+    assert await names(uri="tiled:/scan", entityType="dataset") == {"by-uri"}
+    assert await names(uri="tiled:/scan", nodePathParts=["visible-node"]) == {"by-node"}
+    assert await names(uri="tiled:/elsewhere", nodePathParts=["visible-node"]) == set()
+    assert await names(uri="tiled:/missing") == set()
+
+    # The store-level filter works without access filters as well.
+    records = await store.list_entities(uri="tiled:/scan")
+    assert {r.name for r in records} == {"hidden-a", "hidden-b", "by-node", "by-uri"}
+    records = await store.list_entities(uri="tiled:/scan", node_id=2)
+    assert [r.name for r in records] == ["hidden-a"]
+
+
 UPSERT_NAMESPACE_MUTATION = """
 mutation($prefix: String!, $uri: String!) {
     upsertNamespace(prefix: $prefix, uri: $uri) { prefix uri }

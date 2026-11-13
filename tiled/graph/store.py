@@ -386,10 +386,16 @@ class GraphSQLAlchemyStore:
         limit: int = 100,
         offset: int = 0,
         access_filters: list[AccessTagsFilter] | None = None,
+        uri: str | None = None,
     ) -> list[EntityRecord]:
+        # uri and node_id are exact-match filters backed by entities_uri_idx
+        # and entities_node_id_idx, so looking an entity up by either does
+        # not require paging through the whole table.
         stmt = select(_entities).order_by(_entities.c.created_at)
         if entity_type is not None:
             stmt = stmt.where(_entities.c.entity_type == entity_type)
+        if uri is not None:
+            stmt = stmt.where(_entities.c.uri == uri)
         if node_id is not None:
             stmt = stmt.where(_entities.c.node_id == node_id)
         if access_filters:

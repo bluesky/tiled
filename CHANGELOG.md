@@ -33,6 +33,11 @@ Write the date in place of the "Unreleased" in the case a new version is release
   external-service calls appear in traces. The example monitoring stack also
   generates a service graph viewable in Grafana, with Tiled's separate Postgres
   databases (catalog, storage, authn) and Redis shown as distinct nodes.
+- The graph API's `entities` query accepts an optional `uri` argument that
+  filters by exact uri (backed by the existing `entities_uri_idx` index). It
+  combines with `entityType` and `nodePathParts` by AND and, like them, is
+  applied together with access control before `limit`/`offset`, so looking up
+  the entities for a uri no longer requires paging through the whole table.
 
 ### Changed
 
