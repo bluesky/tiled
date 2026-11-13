@@ -407,3 +407,7 @@ def setup(app):
 suppress_warnings = [
     "etoc.toctree",  # Suppress warnings about unexpected toctree entries
 ]
+
+# Cards use the card-header/card-footer directives; disable the deprecated
+# '^^^'/'+++' separator syntax (sphinx-design >= 0.8).
+sd_card_legacy_separators = False

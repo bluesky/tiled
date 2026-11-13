@@ -35,10 +35,12 @@ Tiled is a service that enables **secure, structured** access to **scientific da
 :link-type: doc
 :link: getting-started/index
 
+:::{card-header}
 {fas}`running`
 
 Getting started
-^^^^^^^^^^^^^^^
+:::
+
 New to *Tiled*? Unsure what it can be used for? Check out the getting started guides.
 
 
@@ -48,10 +50,11 @@ New to *Tiled*? Unsure what it can be used for? Check out the getting started gu
 :link-type: doc
 :link: user-guide/index
 
+:::{card-header}
 {fas}`wrench`
 
 User guide
-^^^^^^^^^^
+:::
 
 The user guide provides detailed practical instructions for common activities using Tiled.
 ::::
@@ -59,10 +62,11 @@ The user guide provides detailed practical instructions for common activities us
 ::::{grid-item-card}
 :link: explanations/index
 
+:::{card-header}
 {fas}`book-open`
 
 Explanations
-^^^^^^^^^^^^
+:::
 
 This section covers Tiled concepts in detail.
 ::::
@@ -71,10 +75,11 @@ This section covers Tiled concepts in detail.
 :link-type: doc
 :link: reference/index
 
+:::{card-header}
 {fas}`code`
 
 API reference
-^^^^^^^^^^^^^
+:::
 
 The reference guide contains a detailed description of the functions, modules, and objects included in Tiled. The reference describes how the methods work and which parameters can be used. It assumes that the reader has an understanding of the key concepts.
 ::::
