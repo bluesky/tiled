@@ -774,11 +774,16 @@ def build_app(
                     if settings.database_init_if_not_exists:
                         # This is a blocking call (alembic drives its own event
                         # loop), so keep it off the event loop thread.
-                        await asyncio.to_thread(
+                        initialized = await asyncio.to_thread(
                             initialize_authn_database,
                             engine.url.render_as_string(hide_password=False),
                         )
-                        logger.info(f"Initialized new database at {redacted_url}.")
+                        if initialized:
+                            logger.info(f"Initialized new database at {redacted_url}.")
+                        else:
+                            logger.info(
+                                f"Connected to existing database at {redacted_url}."
+                            )
                     else:
                         print(
                             dedent(

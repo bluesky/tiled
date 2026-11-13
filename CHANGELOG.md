@@ -79,6 +79,9 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Fixed
 
+- Serialize database initialization on PostgreSQL with an advisory lock, so
+  replicas starting at once against a fresh database no longer crash on
+  colliding DDL.
 - Treat `anyio.ClosedResourceError` as a normal disconnect in the
   test-client websocket wrapper: starlette >=1.0 raises it when receiving
   on a closed session, which previously killed streaming subscription
