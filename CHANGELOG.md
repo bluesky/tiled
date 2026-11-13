@@ -79,6 +79,10 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Fixed
 
+- Fix opening and registering existing Arrow tables. Infer structure from IPC
+  schemas without loading row data, preserve the partition count, and support
+  `from_uris` plus the `.arrow` and Feather v2 `.feather` extensions. Feather
+  v1 and Arrow IPC streams (`.arrows`) are not supported.
 - Treat `anyio.ClosedResourceError` as a normal disconnect in the
   test-client websocket wrapper: starlette >=1.0 raises it when receiving
   on a closed session, which previously killed streaming subscription
