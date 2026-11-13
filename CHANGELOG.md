@@ -79,6 +79,10 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Fixed
 
+- SQLite reads no longer fail when a float column starts with 1024 or more
+  NULLs. NaN is stored as NULL, and the ADBC driver was inferring INT64 from
+  that first batch, then rejecting a later REAL for the whole table. The read
+  widens that inference batch only far enough to include the first stored float.
 - Treat `anyio.ClosedResourceError` as a normal disconnect in the
   test-client websocket wrapper: starlette >=1.0 raises it when receiving
   on a closed session, which previously killed streaming subscription
