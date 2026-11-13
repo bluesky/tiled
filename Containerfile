@@ -5,7 +5,9 @@ ARG UV_VERSION=0.13.6
 # `COPY --from` cannot expand a variable in an image ref
 FROM ghcr.io/astral-sh/uv:${UV_VERSION} AS uv_bin
 
-FROM --platform=linux/amd64 docker.io/node:26.13.0-alpine AS web_frontend_build
+# The built UI is static files, the same on every platform, so build it on the
+# builder's own platform rather than under emulation for each target platform.
+FROM --platform=$BUILDPLATFORM docker.io/node:26.13.0-alpine AS web_frontend_build
 WORKDIR /src
 # Install deps from the lockfile alone so editing UI source does not re-run npm.
 COPY web-frontend/package.json web-frontend/package-lock.json ./
