@@ -78,6 +78,10 @@ if modules_available("h5py"):
                             group.attrs.update(node.metadata())
                         except TypeError:
                             raise SerializationError(MSG)
+                if soft_link := getattr(array_adapter, "soft_link", False):
+                    # Recreate the link instead of writing a copy of its data.
+                    group[key_path[-1]] = h5py.SoftLink(soft_link)
+                    continue
                 data = await ensure_awaitable(array_adapter.read)
                 dataset = group.create_dataset(key_path[-1], data=data)
                 for k, v in array_adapter.metadata().items():

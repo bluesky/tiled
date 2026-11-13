@@ -103,6 +103,10 @@ Write the date in place of the "Unreleased" in the case a new version is release
   a 401, an access token within a minute of expiring is refreshed before
   connecting. Only a session with neither falls back to minting a short-lived
   API key per connection, and only a key minted this way is revoked afterwards.
+- Exporting a dataset reached through an HDF5 soft link writes the link
+  again instead of a copy of the data it points at. A link whose target
+  lies outside the node being exported keeps the link, so it does not
+  resolve in the new file, where the data was copied before.
 - Fixed `read_partition` on a table with a string column, which failed with
   a dtype mismatch (`object` in the structure, `string` in the data sent by
   the server). The eager client now fetches the partition directly, without
