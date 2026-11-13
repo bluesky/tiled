@@ -30,6 +30,8 @@ def upgrade():
     with Session(bind=connection) as db:
         for role_name in ROLES:
             role = db.query(Role).filter(Role.name == role_name).first()
+            if not role:
+                raise RuntimeError(f"Expected role '{role_name}' not found in db!")
             scopes = role.scopes.copy()
             scopes.extend(NEW_SCOPES)
             role.scopes = scopes
@@ -44,6 +46,8 @@ def downgrade():
     with Session(bind=connection) as db:
         for role_name in ROLES:
             role = db.query(Role).filter(Role.name == role_name).first()
+            if not role:
+                raise RuntimeError(f"Expected role '{role_name}' not found in db!")
             scopes = role.scopes.copy()
             for scope in NEW_SCOPES:
                 if scope in scopes:

@@ -35,6 +35,10 @@ def upgrade():
         json_stmnt = f"specs || '[{json_spec_composite}]'::jsonb"
     elif connection.engine.dialect.name == "sqlite":
         json_stmnt = f"json_insert(specs, '$[#]', json('{json_spec_composite}'))"
+    else:
+        raise NotImplementedError(
+            f"Unsupported database dialect {connection.engine.dialect.name!r}"
+        )
     op.execute(
         f"""
         UPDATE nodes SET specs = {json_stmnt},
@@ -188,6 +192,10 @@ def downgrade():
         json_stmnt = f"specs || '[{json_spec_flattened}]'::jsonb"
     elif connection.engine.dialect.name == "sqlite":
         json_stmnt = f"json_insert(specs, '$[#]', json('{json_spec_flattened}'))"
+    else:
+        raise NotImplementedError(
+            f"Unsupported database dialect {connection.engine.dialect.name!r}"
+        )
     op.execute(
         f"""
         UPDATE nodes SET specs = {json_stmnt}

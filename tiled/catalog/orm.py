@@ -1,3 +1,6 @@
+from datetime import datetime
+from typing import Any
+
 from sqlalchemy import (
     JSON,
     BigInteger,
@@ -37,8 +40,10 @@ class Timestamped:
     forensics.
     """
 
-    time_created = Column(DateTime(timezone=False), server_default=func.now())
-    time_updated = Column(
+    time_created: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=False), server_default=func.now()
+    )
+    time_updated: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=False), onupdate=func.now(), server_default=func.now()
     )
 
@@ -63,18 +68,18 @@ class Node(Timestamped, Base):
     __mapper_args__ = {"eager_defaults": True}
 
     # This id is internal, never exposed to the client.
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    parent = Column(
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    parent: Mapped[int | None] = mapped_column(
         Integer,
         ForeignKey("nodes.id", name="fk_nodes_parent", ondelete="CASCADE"),
         nullable=True,
         index=True,  # An index to support parent lookups
     )
 
-    key = Column(Unicode(1023), nullable=False)
-    structure_family = Column(Enum(StructureFamily), nullable=False)
-    metadata_ = Column("metadata", JSONVariant, nullable=False)
-    specs = Column(JSONVariant, nullable=False)
+    key: Mapped[str] = mapped_column(Unicode(1023))
+    structure_family: Mapped[StructureFamily] = mapped_column(Enum(StructureFamily))
+    metadata_: Mapped[dict[str, Any]] = mapped_column("metadata", JSONVariant)
+    specs: Mapped[Any] = mapped_column(JSONVariant)
 
     data_sources = relationship(
         "DataSource",
@@ -129,13 +134,13 @@ class NodesClosure(Base):
 
     __tablename__ = "nodes_closure"
 
-    ancestor = Column(
+    ancestor: Mapped[int] = mapped_column(
         Integer, ForeignKey("nodes.id", ondelete="CASCADE"), primary_key=True
     )
-    descendant = Column(
+    descendant: Mapped[int] = mapped_column(
         Integer, ForeignKey("nodes.id", ondelete="CASCADE"), primary_key=True
     )
-    depth = Column(Integer, nullable=False)
+    depth: Mapped[int] = mapped_column(Integer)
 
     # Define separate indices on ancestor and descendant for efficient lookups
     __table_args__ = (
@@ -161,10 +166,10 @@ class AccessTag(Timestamped, Base):
 
     __tablename__ = "access_tags"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    name = Column(Unicode(255), nullable=False, unique=True)
-    is_public = Column(
-        Boolean, nullable=False, default=False, server_default=text("false")
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(Unicode(255), unique=True)
+    is_public: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false")
     )
 
     grants: Mapped[list["AccessGrant"]] = relationship(
@@ -199,27 +204,25 @@ class NodeAccessTagAssociation(Base):
 
     __tablename__ = "node_access_tags_association"
 
-    node_id = Column(
+    node_id: Mapped[int] = mapped_column(
         Integer,
         ForeignKey(
             "nodes.id", name="fk_node_access_tags_association_node", ondelete="CASCADE"
         ),
-        nullable=False,
     )
-    tag_id = Column(
+    tag_id: Mapped[int] = mapped_column(
         Integer,
         ForeignKey(
             "access_tags.id",
             name="fk_node_access_tags_association_tag",
             ondelete="CASCADE",
         ),
-        nullable=False,
     )
     # Denormalized from Node.parent so access-tag queries can restrict the
     # association scan to one container. Database triggers maintain this for
     # relationship-generated inserts and any future node moves. The root
     # node's association legitimately has a NULL parent_id.
-    parent_id = Column(Integer, nullable=True)
+    parent_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     __table_args__ = (
         PrimaryKeyConstraint(
@@ -352,8 +355,8 @@ class AccessTagsPrincipal(Timestamped, Base):
 
     __tablename__ = "access_tags_principals"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    name = Column(Unicode(255), nullable=False, unique=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(Unicode(255), unique=True)
 
     grants: Mapped[list["AccessGrant"]] = relationship(
         back_populates="principal",
@@ -383,25 +386,23 @@ class AccessGrant(Base):
 
     __tablename__ = "access_grants"
 
-    tag_id = Column(
+    tag_id: Mapped[int] = mapped_column(
         Integer,
         ForeignKey(
             "access_tags.id",
             name="fk_access_grants_access_tag",
             ondelete="CASCADE",
         ),
-        nullable=False,
     )
-    principal_id = Column(
+    principal_id: Mapped[int] = mapped_column(
         Integer,
         ForeignKey(
             "access_tags_principals.id",
             name="fk_access_grants_principal",
             ondelete="CASCADE",
         ),
-        nullable=False,
     )
-    scope = Column(
+    scope: Mapped[ScopeName] = mapped_column(
         Enum(
             ScopeName,
             name="scope_name",
@@ -412,7 +413,6 @@ class AccessGrant(Base):
             create_constraint=True,
             values_callable=lambda enum: [member.value for member in enum],
         ),
-        nullable=False,
     )
 
     tag: Mapped["AccessTag"] = relationship(back_populates="grants")
@@ -446,23 +446,21 @@ class AccessTagOwnerAssociation(Base):
 
     __tablename__ = "access_tag_owners_association"
 
-    tag_id = Column(
+    tag_id: Mapped[int] = mapped_column(
         Integer,
         ForeignKey(
             "access_tags.id",
             name="fk_access_tag_owners_association_access_tag",
             ondelete="CASCADE",
         ),
-        nullable=False,
     )
-    principal_id = Column(
+    principal_id: Mapped[int] = mapped_column(
         Integer,
         ForeignKey(
             "access_tags_principals.id",
             name="fk_access_tag_owners_association_principal",
             ondelete="CASCADE",
         ),
-        nullable=False,
     )
 
     tag: Mapped["AccessTag"] = relationship(back_populates="owners")
@@ -498,14 +496,12 @@ class DataSourceAssetAssociation(Base):
 
     data_source_id: Mapped[int] = mapped_column(
         ForeignKey("data_sources.id", ondelete="CASCADE"),
-        nullable=False,
     )
     asset_id: Mapped[int] = mapped_column(
         ForeignKey("assets.id", ondelete="CASCADE"),
-        nullable=False,
     )
-    parameter = Column(Unicode(255), nullable=True)
-    num = Column(Integer, nullable=True)
+    parameter: Mapped[str | None] = mapped_column(Unicode(255), nullable=True)
+    num: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     data_source: Mapped["DataSource"] = relationship(
         back_populates="asset_associations"
@@ -804,21 +800,21 @@ class DataSource(Timestamped, Base):
     __mapper_args__ = {"eager_defaults": True}
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    node_id = Column(
-        Integer, ForeignKey("nodes.id", ondelete="CASCADE"), nullable=False, index=True
+    node_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("nodes.id", ondelete="CASCADE"), index=True
     )
-    structure_id = Column(
+    structure_id: Mapped[str | None] = mapped_column(
         Unicode(32), ForeignKey("structures.id", ondelete="CASCADE"), nullable=True
     )
-    mimetype = Column(Unicode(255), nullable=False)  # max length given by RFC 4288
+    mimetype: Mapped[str] = mapped_column(Unicode(255))  # max length given by RFC 4288
     # These are additional parameters passed to the Adapter to guide
     # it to access and arrange the data in the file correctly.
-    parameters = Column(JSONVariant, nullable=True)
+    parameters: Mapped[Any | None] = mapped_column(JSONVariant, nullable=True)
     # These are additional properties describing the data source (e.g. array chunks).
-    properties = Column(JSONVariant, nullable=True)
+    properties: Mapped[Any | None] = mapped_column(JSONVariant, nullable=True)
     # This relates to the mutability of the data.
-    management = Column(Enum(Management), nullable=False)
-    structure_family = Column(Enum(StructureFamily), nullable=False)
+    management: Mapped[Management] = mapped_column(Enum(Management))
+    structure_family: Mapped[StructureFamily] = mapped_column(Enum(StructureFamily))
 
     # many-to-one relationship to Structure
     structure: Mapped["Structure"] = relationship(
@@ -859,8 +855,8 @@ class Structure(Base):
 
     __tablename__ = "structures"
 
-    id: str = Column(Unicode(32), primary_key=True, unique=True)
-    structure = Column(JSONVariant, nullable=False)
+    id: Mapped[str] = mapped_column(Unicode(32), primary_key=True, unique=True)
+    structure: Mapped[Any] = mapped_column(JSONVariant)
 
 
 class Asset(Timestamped, Base):
@@ -873,11 +869,11 @@ class Asset(Timestamped, Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
 
-    data_uri = Column(Unicode(1023), index=True, unique=True)
-    is_directory = Column(Boolean, nullable=False)
-    hash_type = Column(Unicode(63), nullable=True)
-    hash_content = Column(Unicode(1023), nullable=True)
-    size = Column(BigInteger, nullable=True)
+    data_uri: Mapped[str | None] = mapped_column(Unicode(1023), index=True, unique=True)
+    is_directory: Mapped[bool] = mapped_column(Boolean)
+    hash_type: Mapped[str | None] = mapped_column(Unicode(63), nullable=True)
+    hash_content: Mapped[str | None] = mapped_column(Unicode(1023), nullable=True)
+    size: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
 
     # # many-to-many relationship to Asset, bypassing the `Association` class
     data_sources: Mapped[list["DataSource"]] = relationship(
@@ -900,15 +896,15 @@ class Revision(Timestamped, Base):
     __mapper_args__ = {"eager_defaults": True}
 
     # This id is internal, never exposed to the client.
-    id = Column(Integer, primary_key=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
 
-    node_id = Column(
-        Integer, ForeignKey("nodes.id", ondelete="CASCADE"), nullable=False
+    node_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("nodes.id", ondelete="CASCADE")
     )
-    revision_number = Column(Integer, nullable=False)
+    revision_number: Mapped[int] = mapped_column(Integer)
 
-    metadata_ = Column("metadata", JSONVariant, nullable=False)
-    specs = Column(JSONVariant, nullable=False)
+    metadata_: Mapped[dict[str, Any]] = mapped_column("metadata", JSONVariant)
+    specs: Mapped[Any] = mapped_column(JSONVariant)
 
     __table_args__ = (
         UniqueConstraint(
@@ -928,20 +924,21 @@ class Webhook(Timestamped, Base):
     __tablename__ = "webhooks"
     __mapper_args__ = {"eager_defaults": True}
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    node_id = Column(
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    node_id: Mapped[int] = mapped_column(
         Integer,
         ForeignKey("nodes.id", ondelete="CASCADE"),
-        nullable=False,
         index=True,
     )
-    url = Column(Unicode(2048), nullable=False)
+    url: Mapped[str] = mapped_column(Unicode(2048))
     # HMAC-SHA256 secret; NULL means no signature header is sent.
-    secret = Column(Unicode(512), nullable=True)
+    secret: Mapped[str | None] = mapped_column(Unicode(512), nullable=True)
     # JSON list of event type strings, e.g. ["container-child-created"].
     # NULL / empty list means all events.
-    events = Column(JSONVariant, nullable=True)
-    active = Column(Boolean, nullable=False, default=True, server_default=text("true"))
+    events: Mapped[Any | None] = mapped_column(JSONVariant, nullable=True)
+    active: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default=text("true")
+    )
 
     node: Mapped["Node"] = relationship(
         backref="webhooks",
@@ -969,11 +966,10 @@ class WebhookDelivery(Timestamped, Base):
     __tablename__ = "webhook_deliveries"
     __mapper_args__ = {"eager_defaults": True}
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    webhook_id = Column(
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    webhook_id: Mapped[int] = mapped_column(
         Integer,
         ForeignKey("webhooks.id", ondelete="CASCADE"),
-        nullable=False,
         index=True,
     )
     # Stable identifier for the logical event sent in the webhook payload.
@@ -982,21 +978,23 @@ class WebhookDelivery(Timestamped, Base):
     # may receive the same payload twice with the same event_id.  Retries
     # within a single _deliver() call update this row in-place and share this
     # event_id rather than creating a new delivery row.
-    event_id = Column(Unicode(128), nullable=False, index=True)
+    event_id: Mapped[str] = mapped_column(Unicode(128), index=True)
     # Denormalised event info so history is queryable without joining to a
     # separate events table.
-    event_type = Column(Unicode(128), nullable=False)
+    event_type: Mapped[str] = mapped_column(Unicode(128))
     # Full JSON payload that was (or would be) POSTed.
-    payload = Column(JSONVariant, nullable=False)
+    payload: Mapped[Any] = mapped_column(JSONVariant)
     # HTTP status code of the last attempt, NULL while pending.
-    status_code = Column(Integer, nullable=True)
+    status_code: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # Total number of attempts made so far.
-    attempts = Column(Integer, nullable=False, default=0, server_default=text("0"))
-    delivered_at = Column(DateTime(timezone=False), nullable=True)
-    # "pending" | "success" | "failed"
-    outcome = Column(
-        Unicode(16), nullable=False, default="pending", server_default=text("'pending'")
+    attempts: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
+    delivered_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=False), nullable=True
     )
-    error_detail = Column(Unicode(4096), nullable=True)
+    # "pending" | "success" | "failed"
+    outcome: Mapped[str] = mapped_column(
+        Unicode(16), default="pending", server_default=text("'pending'")
+    )
+    error_detail: Mapped[str | None] = mapped_column(Unicode(4096), nullable=True)
 
     webhook: Mapped["Webhook"] = relationship(back_populates="deliveries")
