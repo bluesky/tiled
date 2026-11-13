@@ -1,8 +1,9 @@
 # Tiled Load Testing with Locust
 
-Load testing for Tiled using Locust. Two test files are available:
+Load testing for Tiled using Locust. Three test files are available:
 - `reader.py` - Tests HTTP read operations and search endpoints
 - `streaming.py` - Tests streaming data writes and WebSocket delivery latency
+- `slicing.py` - Tests random array slicing at doubling sizes; pass/fail for CI
 
 ## Quick Start
 
@@ -94,6 +95,24 @@ WRITER_WEIGHT=2 STREAMING_WEIGHT=1 uv run locust -f streaming.py --headless -u 1
 ### Streaming Test Components
 - **WriterUser**: Writes timestamped array data to streaming nodes
 - **StreamingUser**: Connects via WebSocket to measure write-to-delivery latency
+
+## Slicing Acceptance Test (`slicing.py`)
+
+Writes one 3d array (fixed seed) on startup, then requests random regions of interest (ROIs) of it
+(10x10 to 1280x1280), plus whole frames. No pre-existing data required. Each size is a separate row in the stats, so latency can be read per payload.
+
+The run exits with code `1` if more than `--max-failure-ratio` of all requests fail, so a nightly or pre-release CI job is possible.
+
+### Examples
+Run with defaults (API key `secret` - see also `slicing.py`):
+```bash
+uv run locust -f slicing.py --headless -u 20 -r 2 -t 3m --host http://localhost:8000
+```
+
+or allow up to 5% failed requests:
+```bash
+uv run locust -f slicing.py --headless -u 20 -r 2 -t 3m --host http://localhost:8000 --max-failure-ratio 0.05
+```
 
 ## Parameters
 - `-u N`: N concurrent users
