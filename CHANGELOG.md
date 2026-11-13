@@ -158,6 +158,8 @@ Write the date in place of the "Unreleased" in the case a new version is release
   and links. Since v0.2.19, a tag needs a row in the catalog database, and
   only `user:` and `service:` tags got one on write. Tags an access policy
   approved now get a row on first use.
+- Fix HTTP 500 error when exporting a table as HDF5 (`application/x-hdf5`).
+  Tables now use a dedicated HDF5 serializer instead of the one for containers.
 
 ### Maintenance
 
