@@ -24,7 +24,7 @@
     "@mui/icons-material": "^5.4.2",
     "@mui/lab": "^5.0.0-alpha.177",
     "@mui/material": "^5.4.2",
-    "@mui/styled-engine": "^5.18.0",
+    "@mui/styled-engine": "^9.5.0",
     "@mui/system": "^7.0.0",
     "@mui/x-data-grid": "^8.5.0",
     "axios": "^1.9.0",
