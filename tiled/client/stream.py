@@ -174,11 +174,17 @@ class _RegularWebsocketWrapper:
             headers["Authorization"] = auth_header
         if start is not None:
             params = params.set("start", start)
-        self._websocket = connect(
+        websocket = connect(
             str(self._uri.copy_with(params=params)),
             additional_headers=headers,
             max_size=max_size,
         )
+        # The connection outlives this call, so it cannot be used in a `with`
+        # block; enter it by hand instead (close() releases it). Calling
+        # connect() without entering it is deprecated in websockets 17.1, and
+        # its replacement, connect(..., legacy=True), fails on releases
+        # before 17.1, which have no `legacy` parameter.
+        self._websocket = websocket.__enter__()
 
     def recv(self, timeout=None):
         """Receive data from websocket with consistent interface."""

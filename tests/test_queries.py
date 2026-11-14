@@ -77,7 +77,9 @@ def event_loop():
     loop.close()
 
 
-@pytest_asyncio.fixture(scope="module", params=["map", "sqlite", "postgresql"])
+@pytest_asyncio.fixture(
+    scope="module", loop_scope="module", params=["map", "sqlite", "postgresql"]
+)
 async def client(request, tmpdir_module):
     if request.param == "map":
         tree = MapAdapter(mapping, metadata={"backend": request.param})

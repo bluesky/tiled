@@ -942,10 +942,13 @@ class Webhook(Timestamped, Base):
 
     node: Mapped["Node"] = relationship(
         backref="webhooks",
-        # Use noload: wh.node is never accessed in dispatch or router code.
-        # selectin would trigger a superfluous SELECT IN query for every Webhook
-        # batch loaded, e.g. during dispatch.
-        lazy="noload",
+        # wh.node is never accessed in dispatch or router code. selectin would
+        # trigger a superfluous SELECT IN query for every Webhook batch loaded,
+        # e.g. during dispatch. raise_on_sql emits no query and fails loudly if
+        # code starts reading wh.node without loading it explicitly. (It
+        # replaces "noload", deprecated in SQLAlchemy 2.1, which silently
+        # returned None.)
+        lazy="raise_on_sql",
     )
 
     deliveries: Mapped[list["WebhookDelivery"]] = relationship(
