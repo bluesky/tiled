@@ -59,7 +59,7 @@ function PasswordLogin({
     <Card variant="outlined" sx={{ maxWidth: 400, mx: "auto", mt: 2 }}>
       <CardContent>
         {provider.confirmation_message && (
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>
             {provider.confirmation_message}
           </Typography>
         )}
@@ -74,7 +74,7 @@ function PasswordLogin({
               fullWidth
               size="small"
               autoFocus
-              InputLabelProps={{ required: false }}
+              slotProps={{ inputLabel: { required: false } }}
             />
             <TextField
               label="Password"
@@ -84,7 +84,7 @@ function PasswordLogin({
               required
               fullWidth
               size="small"
-              InputLabelProps={{ required: false }}
+              slotProps={{ inputLabel: { required: false } }}
             />
             <Button
               type="submit"
@@ -151,7 +151,7 @@ export default function LoginPage() {
         Log in to Tiled
       </Typography>
       {providers.length === 0 && (
-        <Typography color="text.secondary">
+        <Typography color="textSecondary">
           No authentication providers configured.
         </Typography>
       )}

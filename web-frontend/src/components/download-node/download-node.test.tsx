@@ -17,6 +17,6 @@ describe("DownloadNode", () => {
     expect(alert).toHaveTextContent(
       /Bulk download was only recently added to the Tiled server/,
     );
-    expect(alert).toHaveClass("MuiAlert-standardWarning");
+    expect(alert).toHaveClass("MuiAlert-standard", "MuiAlert-colorWarning");
   });
 });
