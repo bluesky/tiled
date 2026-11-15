@@ -5,6 +5,18 @@ updates:
     schedule:
       interval: cron
       cronjob: "0 0 1,15 * *"
+    groups:
+      # Packages that pin each other through peer dependencies: a PR that
+      # bumps only one of them fails `npm ci`.
+      mui:
+        patterns:
+          - "@mui/*"
+      vite:
+        patterns:
+          - "vite"
+          - "@vitejs/*"
+          - "vitest"
+          - "@vitest/*"
 
   - package-ecosystem: docker
     directory: /
