@@ -2,7 +2,7 @@ import copy
 import itertools
 import operator
 from collections import Counter
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from datetime import UTC, datetime, timedelta
 from typing import (
     TYPE_CHECKING,
@@ -402,9 +402,7 @@ class MapAdapter(Generic[A], ContainerAdapter[A], IndexersMixin):
 
         return data
 
-    def sort(
-        self, sorting: list[SortingItem] | list[tuple[str, int]]
-    ) -> "MapAdapter[A]":
+    def sort(self, sorting: Sequence[SortingItem | tuple[str, int]]) -> "MapAdapter[A]":
         """
 
         Parameters
@@ -417,6 +415,8 @@ class MapAdapter(Generic[A], ContainerAdapter[A], IndexersMixin):
         """
         mapping = copy.copy(self._mapping)
         for sorting_item in reversed(sorting):
+            key: str
+            direction: int
             if isinstance(sorting_item, SortingItem):
                 key = sorting_item.key
                 direction = sorting_item.direction
@@ -441,7 +441,7 @@ class MapAdapter(Generic[A], ContainerAdapter[A], IndexersMixin):
                 mapping = dict(reversed(mapping.items()))
 
         return self.new_variation(
-            mapping=mapping, sorting=cast(list[SortingItem], sorting)
+            mapping=mapping, sorting=cast(list[SortingItem], list(sorting))
         )
 
     # The following two methods are used by keys(), values(), items().
