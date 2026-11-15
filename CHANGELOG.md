@@ -36,6 +36,14 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Changed
 
+- The test suite runs without warnings: async fixtures declare their event loop
+  scope, test JWTs are signed with keys of the length RFC 7518 recommends, and
+  expected warnings are asserted or filtered where they are raised. The flaky
+  `test_internal_authentication_mode_with_password_clients` uses the client's
+  own timeouts, as other tests that start a server do.
+- CI runs pre-commit with current actions in place of the unmaintained
+  `pre-commit/action`, which ran on the deprecated Node.js 20, and the
+  container builds the web UI on the builder's platform (`$BUILDPLATFORM`).
 - OIDC authenticators now verify id_tokens (and their `at_hash`) at login via
   `verify_login`, while `decode_token` only decodes access tokens.
 
@@ -79,6 +87,16 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Fixed
 
+- Close the response compressor on every path. The server opened one for each
+  compressible response but closed it only when it compressed the body, so
+  small responses (sent uncompressed) and streams that ended early leaked one.
+- Clear deprecation warnings raised by current releases of dependencies:
+  SQLAlchemy 2.1 (the `noload` loader strategy on `Webhook.node`, JSON-typed
+  operands of text and containment operators in full-text and specs queries,
+  and a column-level `distinct()`), Alembic (`path_separator` in the generated
+  `alembic.ini`), websockets 17.1 (the client's streaming connection is entered
+  as a context manager), and pydantic (serializing an entry point loaded from
+  a configuration string, such as `adapters_by_mimetype`).
 - Treat `anyio.ClosedResourceError` as a normal disconnect in the
   test-client websocket wrapper: starlette >=1.0 raises it when receiving
   on a closed session, which previously killed streaming subscription

@@ -26,6 +26,7 @@ import anyio
 from fastapi import HTTPException
 from sqlalchemy import (
     Integer,
+    Text,
     and_,
     any_,
     delete,
@@ -2740,7 +2741,8 @@ def contains(query, tree):
 def full_text(query, tree):
     dialect_name = tree.context.engine.url.get_dialect().name
     if dialect_name == "sqlite":
-        condition = orm.metadata_fts5.c.metadata.match(query.text)
+        # The FTS5 column is typed JSON; MATCH is a text operator.
+        condition = type_coerce(orm.metadata_fts5.c.metadata, Text).match(query.text)
     elif dialect_name == "postgresql":
         tsvector = func.jsonb_to_tsvector(
             sql_cast("simple", REGCONFIG),
@@ -2758,17 +2760,23 @@ def specs(query, tree):
     conditions = []
     attr = orm.Node.specs
     if dialect_name == "sqlite":
+        # SQLite stores JSON as text; match the serialized spec by pattern.
+        text_attr = type_coerce(attr, Text)
         # Construct the conditions for includes
         for i, name in enumerate(query.include):
-            conditions.append(attr.like(f'%{{"name":"{name}",%'))
+            conditions.append(text_attr.like(f'%{{"name":"{name}",%'))
         # Construct the conditions for excludes
         for i, name in enumerate(query.exclude):
-            conditions.append(not_(attr.like(f'%{{"name":"{name}",%')))
+            conditions.append(not_(text_attr.like(f'%{{"name":"{name}",%')))
     elif dialect_name == "postgresql":
+
+        def contains(specs):
+            return attr.op("@>", is_comparison=True)(specs_array_to_json(specs))
+
         if query.include:
-            conditions.append(attr.op("@>")(specs_array_to_json(query.include)))
+            conditions.append(contains(query.include))
         if query.exclude:
-            conditions.append(not_(attr.op("@>")(specs_array_to_json(query.exclude))))
+            conditions.append(not_(contains(query.exclude)))
     else:
         raise UnsupportedQueryType("specs")
     return tree.new_variation(conditions=tree.conditions + conditions)

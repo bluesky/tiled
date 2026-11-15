@@ -15,6 +15,8 @@ from starlette.testclient import WebSocketDenialResponse
 from tiled.client import from_context
 from tiled.config import parse_configs
 
+from .conftest import TOY_SECRET_KEY
+
 pytestmark = pytest.mark.skipif(
     sys.platform == "win32", reason="Requires Redis service"
 )
@@ -929,7 +931,7 @@ def test_expired_access_token_query_param(
             "type": "access",
             "exp": datetime.datetime.now(datetime.UTC) - datetime.timedelta(seconds=60),
         },
-        "SECRET",
+        TOY_SECRET_KEY,
         algorithm="HS256",
     )
     token_param = urllib.parse.quote(expired_token, safe="")

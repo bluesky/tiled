@@ -403,10 +403,15 @@ def redis_uri():
         raise pytest.skip("No TILED_TEST_REDIS configured")
 
 
+# Signing keys for test JWTs. PyJWT warns about HMAC keys shorter than the
+# 32 bytes that RFC 7518 recommends for HS256, so these are at least that long.
+TOY_SECRET_KEY = "toy-secret-key-for-tests-0123456789"
+TOY_NEW_SECRET_KEY = "toy-new-secret-key-for-tests-0123456789"
+
 # Shared authentication config for tests that need multi-user JWT auth.
 # Uses the toy DictionaryAuthenticator with alice/bob users.
 TOY_AUTHENTICATION = {
-    "secret_keys": ["SECRET"],
+    "secret_keys": [TOY_SECRET_KEY],
     "providers": [
         {
             "provider": "toy",
