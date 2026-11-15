@@ -414,7 +414,9 @@ class MapAdapter(Generic[A], ContainerAdapter[A], IndexersMixin):
 
         """
         mapping = copy.copy(self._mapping)
-        for key, direction in reversed(sorting):
+        for sorting_item in reversed(sorting):
+            key = sorting_item.key
+            direction = sorting_item.direction
             if key == "_":
                 # Special case to enable reversing the given/default ordering.
                 # Leave mapping as is, and possibly reserve it below.
