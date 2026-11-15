@@ -3,13 +3,14 @@ import uuid
 import numpy as np
 import pandas as pd
 import pytest
+from starlette.status import HTTP_400_BAD_REQUEST
 
 from tiled.adapters.array import ArrayAdapter
 from tiled.adapters.dataframe import DataFrameAdapter
 from tiled.adapters.mapping import MapAdapter
 from tiled.catalog import in_memory
 from tiled.client import Context, from_context
-from tiled.queries import Key
+from tiled.queries import Key, KeyLike
 from tiled.server.app import build_app
 
 values = ["a", "b", "c"]
@@ -199,6 +200,80 @@ def test_distinct_structure_families_and_specs_are_scoped(catalog_client):
         ("container", 1),
     ]
     assert sum(i["count"] for i in distinct["specs"]) == 2
+
+
+def test_distinct_with_key_like(catalog_client):
+    "KeyLike narrows the entries that distinct counts, like any other query."
+    assert _values(
+        catalog_client.search(KeyLike("side")).distinct("m", counts=True)
+    ) == [
+        ("outside", 1),
+    ]
+    assert _values(
+        catalog_client["a"].search(KeyLike("side")).distinct("m", counts=True)
+    ) == [("inside", 1)]
+    # Starts with "in": matches "inside" but not "outside".
+    assert _values(
+        catalog_client["a"]
+        .search(KeyLike("in", before=False))
+        .distinct("m", counts=True)
+    ) == [("inside", 1)]
+    assert (
+        _values(
+            catalog_client.search(KeyLike("in", before=False)).distinct(
+                "m", counts=True
+            )
+        )
+        == []
+    )
+
+
+def _distinct_http(client, params):
+    link = client.item["links"]["self"].replace("/metadata", "/distinct", 1)
+    return client.context.http_client.get(
+        link, params={"metadata": "m", "counts": True, **params}
+    )
+
+
+@pytest.mark.parametrize(
+    "params, message",
+    [
+        (
+            {
+                "filter[key_like][condition][key]": "side",
+                "filter[key_like][condition][before]": "false",
+                "filter[key_like][condition][after]": "false",
+            },
+            "at least one of",
+        ),
+        ({"filter[key_like][condition][key]": ""}, "non-empty"),
+    ],
+)
+def test_distinct_rejects_invalid_key_like(catalog_client, params, message):
+    response = _distinct_http(catalog_client, params)
+    assert response.status_code == HTTP_400_BAD_REQUEST
+    assert message in response.json()["detail"]
+
+
+def test_distinct_rejects_misaligned_filter_parameters(catalog_client):
+    response = _distinct_http(
+        catalog_client,
+        {
+            "filter[eq][condition][key]": ["m", "m"],
+            "filter[eq][condition][value]": ['"a"'],
+        },
+    )
+    assert response.status_code == HTTP_400_BAD_REQUEST
+    assert "different numbers of times" in response.json()["detail"]
+
+
+def test_distinct_rejects_missing_filter_parameter(catalog_client):
+    response = _distinct_http(catalog_client, {"filter[eq][condition][key]": "m"})
+    assert response.status_code == HTTP_400_BAD_REQUEST
+    assert (
+        "missing the required filter parameter(s) 'value'"
+        in (response.json()["detail"])
+    )
 
 
 async def test_distinct_on_deep_variation_covers_all_descendants(catalog_client):

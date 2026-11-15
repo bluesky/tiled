@@ -33,6 +33,13 @@ Write the date in place of the "Unreleased" in the case a new version is release
   external-service calls appear in traces. The example monitoring stack also
   generates a service graph viewable in Grafana, with Tiled's separate Postgres
   databases (catalog, storage, authn) and Redis shown as distinct nodes.
+- New `KeyLike` query (`key_like` over HTTP) matching entries whose key
+  contains, starts with, or ends with some text, selected by the `before`
+  and `after` parameters (both true by default). Matching is case-sensitive
+  and literal: no character acts as a wildcard. It is supported on SQLite and
+  PostgreSQL catalogs. An empty key, or `before` and `after` both false, is
+  rejected with HTTP 400 (and with `QueryValueError` when constructing the
+  query in Python).
 
 ### Changed
 
@@ -46,13 +53,11 @@ Write the date in place of the "Unreleased" in the case a new version is release
   container builds the web UI on the builder's platform (`$BUILDPLATFORM`).
 - OIDC authenticators now verify id_tokens (and their `at_hash`) at login via
   `verify_login`, while `decode_token` only decodes access tokens.
-
 - On PostgreSQL, the access-control filter passes the resolved tag ids as a
   single array parameter (`tag_id = ANY(...)`) instead of one bind parameter
   per tag. For principals with many tags this avoids huge, per-tag-count
   prepared statements, whose parameter-blind generic plans defeated the
   planner statistics.
-
 - Tiled now manages its connection pools to tabular storage more correctly.
   Also, it is now not allowed to use two storage databases with the same
   database on different hosts.
@@ -87,6 +92,12 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Fixed
 
+- Search requests (`/search`, `/search-deep`, `/distinct`) whose filter
+  parameters for one query type were given different numbers of times, for
+  example a query given twice with one of its parameters given only once, now
+  get HTTP 400 with an explanation. Previously the server paired up values by
+  position and silently dropped or misapplied queries. A query missing a
+  required parameter now gets HTTP 400 instead of HTTP 500.
 - Close the response compressor on every path. The server opened one for each
   compressible response but closed it only when it compressed the body, so
   small responses (sent uncompressed) and streams that ended early leaked one.

@@ -83,6 +83,86 @@ class KeyLookup(NoBool):
         return cls(key=key)
 
 
+@register(name="key_like")
+@dataclass
+class KeyLike(NoBool):
+    """
+    Match entries whose key contains, starts with, or ends with some text.
+
+    The match is case-sensitive. The text is matched literally: characters
+    such as ``%``, ``_``, and ``*`` have no special meaning.
+
+    At least one of ``before`` or ``after`` must be True. For an exact match,
+    use an exact-key query (``KeyLookup`` or ``KeysFilter``).
+
+    Parameters
+    ----------
+    key : str
+        Text to look for in the entries' keys. Must not be empty.
+    before : bool, optional
+        Allow other characters before the text. Default True.
+    after : bool, optional
+        Allow other characters after the text. Default True.
+
+    Examples
+    --------
+
+    Search for keys that contain "scan"
+
+    >>> c.search(KeyLike("scan"))
+
+    Search for keys that start with "scan"
+
+    >>> c.search(KeyLike("scan", before=False))
+
+    Search for keys that end with "scan"
+
+    >>> c.search(KeyLike("scan", after=False))
+    """
+
+    key: str
+    before: bool = True
+    after: bool = True
+
+    def __post_init__(self):
+        # Fast feedback in Python, naming the Python query classes. decode()
+        # checks the same conditions first, naming the HTTP query types, so
+        # that any client gets an HTTP 400 it can act on.
+        _validate_key_like(
+            self.key,
+            self.before,
+            self.after,
+            name="KeyLike",
+            exact_queries="KeyLookup or KeysFilter",
+        )
+
+    def encode(self):
+        return {"key": self.key, "before": self.before, "after": self.after}
+
+    @classmethod
+    def decode(cls, *, key, before=True, after=True):
+        _validate_key_like(
+            key,
+            before,
+            after,
+            name="The key_like query",
+            exact_queries="the lookup or keys_filter query",
+        )
+        return cls(key=key, before=before, after=after)
+
+
+def _validate_key_like(key, before, after, *, name, exact_queries):
+    if not isinstance(key, str) or not key:
+        raise QueryValueError(
+            f"{name} requires a non-empty 'key'; an empty key would match every entry."
+        )
+    if not (before or after):
+        raise QueryValueError(
+            f"{name} requires at least one of 'before' or 'after' to be true. "
+            f"To match a key exactly, use {exact_queries} instead."
+        )
+
+
 @register(name="keys_filter")
 @dataclass
 class KeysFilter(NoBool):
