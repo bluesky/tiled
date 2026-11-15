@@ -2,6 +2,7 @@ import builtins
 import copy
 import itertools
 import os
+import posixpath
 import sys
 import warnings
 from collections.abc import Iterator
@@ -76,10 +77,30 @@ def get_hdf5_attrs(
     locking: bool | str | None = None,
 ) -> JSON:
     """Get attributes of an HDF5 dataset"""
+    d, _ = get_hdf5_attrs_and_soft_link(
+        file_uri, dataset, swmr=swmr, libver=libver, locking=locking
+    )
+    return d
+
+
+def get_hdf5_attrs_and_soft_link(
+    file_uri: str,
+    dataset: str | None = None,
+    swmr: bool = SWMR_DEFAULT,
+    libver: str = "latest",
+    locking: bool | str | None = None,
+) -> tuple[JSON, str | None]:
+    """Get attributes of an HDF5 dataset and the target of the soft link it is reached through
+
+    The target is returned relative to the group containing the link, so that it
+    still resolves when the tree is written out to a different location, e.g. by
+    an export. Soft links that are already relative are returned unchanged.
+    """
     file_path = path_from_uri(file_uri)
-    with h5open(
-        file_path, dataset=dataset, swmr=swmr, libver=libver, locking=locking
-    ) as node:
+    key = dataset.strip("/") if dataset else ""
+    with h5open(file_path, swmr=swmr, libver=libver, locking=locking) as file:
+        link = file.get(key, getlink=True) if key else None
+        node = file[dataset] if dataset else file
         d = dict(getattr(node, "attrs", {}))
         for k, v in d.items():
             if isinstance(v, h5py.Empty):
@@ -96,7 +117,12 @@ def get_hdf5_attrs(
                         break
                     except UnicodeDecodeError:
                         pass
-    return d
+    if not isinstance(link, h5py.SoftLink):
+        return d, None
+    if not link.path.startswith("/"):
+        return d, link.path
+    parent = posixpath.dirname("/" + key)
+    return d, posixpath.relpath(link.path, parent)
 
 
 class h5open(h5py.File):  # type: ignore
@@ -153,7 +179,25 @@ class HDF5ArrayAdapter(ArrayAdapter):
 
     This adapter lazily loads array data from HDF5 files using Dask. Supports reading from datasets spanning
     multiple files.
+
+    Parameters
+    ----------
+    soft_link : str or bool, optional
+        The target of the soft link this dataset is reached through, relative to the
+        group that holds the link. False by default, so an export writes the data.
     """
+
+    def __init__(
+        self,
+        array: NDArray[Any],
+        structure: ArrayStructure,
+        *,
+        metadata: JSON | None = None,
+        specs: list[Spec] | None = None,
+        soft_link: str | bool = False,
+    ) -> None:
+        self.soft_link = soft_link
+        super().__init__(array, structure, metadata=metadata, specs=specs)
 
     @staticmethod
     def lazy_load_hdf5_array(
@@ -365,18 +409,18 @@ class HDF5ArrayAdapter(ArrayAdapter):
         # array = dask.array.rechunk(array, chunks=structure.chunks)
 
         # Pull additional metadata from the file attributes
-        metadata = copy.deepcopy(node.metadata_)
-        metadata.update(
-            get_hdf5_attrs(
-                data_uris[0], dataset, swmr=swmr, libver=libver, locking=locking
-            )
+        attrs, soft_link = get_hdf5_attrs_and_soft_link(
+            data_uris[0], dataset, swmr=swmr, libver=libver, locking=locking
         )
+        metadata = copy.deepcopy(node.metadata_)
+        metadata.update(attrs)
 
         return cls(
             array,
             structure,
             metadata=metadata,
             specs=node.specs,
+            soft_link=soft_link or False,
         )
 
     @classmethod
@@ -406,11 +450,11 @@ class HDF5ArrayAdapter(ArrayAdapter):
 
         # Construct the structure and pull additional metadata from the file attributes
         structure = ArrayStructure.from_array(array)
-        metadata = get_hdf5_attrs(
+        attrs, soft_link = get_hdf5_attrs_and_soft_link(
             data_uris[0], dataset, swmr=swmr, libver=libver, locking=locking
         )
 
-        return cls(array, structure, metadata=metadata)
+        return cls(array, structure, metadata=attrs, soft_link=soft_link or False)
 
 
 class HDF5Adapter(ContainerAdapter["HDF5Adapter | HDF5ArrayAdapter"], IndexersMixin):

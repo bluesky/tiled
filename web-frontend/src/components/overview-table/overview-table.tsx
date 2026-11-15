@@ -77,7 +77,7 @@ const TableOverview: React.FunctionComponent<IProps> = (props) => {
   return (
     <Box sx={{ my: 4 }}>
       <Container maxWidth="lg">
-        <Box width="100%" mt={5}>
+        <Box sx={{ width: "100%", mt: 5 }}>
           {npartitions > 1 ? (
             <Box>
               <Alert severity="info">

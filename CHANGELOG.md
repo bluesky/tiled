@@ -7,6 +7,9 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Added
 
+- Documentation page listing the Alembic revisions of the catalog and
+  authentication databases required by each Tiled release, generated from the
+  git tags when the documentation is built.
 - OpenTelemetry tracing for the server, exported over OTLP. The example monitoring
   stack (`compose.monitoring.yml`) now includes an OpenTelemetry Collector, Jaeger,
   and Grafana Tempo (traces are sent to both backends), and the Collector also
@@ -40,15 +43,21 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Changed
 
+- The test suite runs without warnings: async fixtures declare their event loop
+  scope, test JWTs are signed with keys of the length RFC 7518 recommends, and
+  expected warnings are asserted or filtered where they are raised. The flaky
+  `test_internal_authentication_mode_with_password_clients` uses the client's
+  own timeouts, as other tests that start a server do.
+- CI runs pre-commit with current actions in place of the unmaintained
+  `pre-commit/action`, which ran on the deprecated Node.js 20, and the
+  container builds the web UI on the builder's platform (`$BUILDPLATFORM`).
 - OIDC authenticators now verify id_tokens (and their `at_hash`) at login via
   `verify_login`, while `decode_token` only decodes access tokens.
-
 - On PostgreSQL, the access-control filter passes the resolved tag ids as a
   single array parameter (`tag_id = ANY(...)`) instead of one bind parameter
   per tag. For principals with many tags this avoids huge, per-tag-count
   prepared statements, whose parameter-blind generic plans defeated the
   planner statistics.
-
 - Tiled now manages its connection pools to tabular storage more correctly.
   Also, it is now not allowed to use two storage databases with the same
   database on different hosts.
@@ -89,6 +98,16 @@ Write the date in place of the "Unreleased" in the case a new version is release
   get HTTP 400 with an explanation. Previously the server paired up values by
   position and silently dropped or misapplied queries. A query missing a
   required parameter now gets HTTP 400 instead of HTTP 500.
+- Close the response compressor on every path. The server opened one for each
+  compressible response but closed it only when it compressed the body, so
+  small responses (sent uncompressed) and streams that ended early leaked one.
+- Clear deprecation warnings raised by current releases of dependencies:
+  SQLAlchemy 2.1 (the `noload` loader strategy on `Webhook.node`, JSON-typed
+  operands of text and containment operators in full-text and specs queries,
+  and a column-level `distinct()`), Alembic (`path_separator` in the generated
+  `alembic.ini`), websockets 17.1 (the client's streaming connection is entered
+  as a context manager), and pydantic (serializing an entry point loaded from
+  a configuration string, such as `adapters_by_mimetype`).
 - Treat `anyio.ClosedResourceError` as a normal disconnect in the
   test-client websocket wrapper: starlette >=1.0 raises it when receiving
   on a closed session, which previously killed streaming subscription
@@ -113,6 +132,10 @@ Write the date in place of the "Unreleased" in the case a new version is release
   a 401, an access token within a minute of expiring is refreshed before
   connecting. Only a session with neither falls back to minting a short-lived
   API key per connection, and only a key minted this way is revoked afterwards.
+- Exporting a dataset reached through an HDF5 soft link writes the link
+  again instead of a copy of the data it points at. A link whose target
+  lies outside the node being exported keeps the link, so it does not
+  resolve in the new file, where the data was copied before.
 - Fixed `read_partition` on a table with a string column, which failed with
   a dtype mismatch (`object` in the structure, `string` in the data sent by
   the server). The eager client now fetches the partition directly, without
@@ -168,6 +191,8 @@ Write the date in place of the "Unreleased" in the case a new version is release
   and links. Since v0.2.19, a tag needs a row in the catalog database, and
   only `user:` and `service:` tags got one on write. Tags an access policy
   approved now get a row on first use.
+- Fix HTTP 500 error when exporting a table as HDF5 (`application/x-hdf5`).
+  Tables now use a dedicated HDF5 serializer instead of the one for containers.
 
 ### Maintenance
 

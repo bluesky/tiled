@@ -36,8 +36,8 @@ const CutSlider: React.FunctionComponent<CutSliderProps> = (props) => {
 
   return (
     <Box>
-      <Grid container spacing={2} alignItems="center">
-        <Grid item xs>
+      <Grid container spacing={2} sx={{ alignItems: "center" }}>
+        <Grid size="grow">
           <Slider
             getAriaLabel={() => "Array slice range"}
             value={props.value}
@@ -48,7 +48,7 @@ const CutSlider: React.FunctionComponent<CutSliderProps> = (props) => {
             valueLabelDisplay="auto"
           />
         </Grid>
-        <Grid item>
+        <Grid>
           <Input
             value={props.value}
             size="small"
