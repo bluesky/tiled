@@ -15,7 +15,7 @@ def test_sort_reverses_generic_mapping_items() -> None:
     adapter = MapAdapter(mapping)
 
     reversed_adapter = adapter.sort(
-        SortingItem(key="_", direction=SortingDirection.DESCENDING)
+        [SortingItem(key="_", direction=SortingDirection.DESCENDING)]
     )
 
     assert list(reversed_adapter._mapping) == ["second", "first"]

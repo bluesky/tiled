@@ -402,7 +402,7 @@ class MapAdapter(Generic[A], ContainerAdapter[A], IndexersMixin):
 
         return data
 
-    def sort(self, sorting: SortingItem) -> "MapAdapter[A]":
+    def sort(self, sorting: list[SortingItem]) -> "MapAdapter[A]":
         """
 
         Parameters
