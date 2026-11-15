@@ -36,6 +36,8 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Changed
 
+- Reverse-ordered `MapAdapter` mappings without building an intermediate item list, while retaining support for generic mapping views.
+
 - OIDC authenticators now verify id_tokens (and their `at_hash`) at login via
   `verify_login`, while `decode_token` only decodes access tokens.
 

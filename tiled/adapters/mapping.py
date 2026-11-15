@@ -428,11 +428,10 @@ class MapAdapter(Generic[A], ContainerAdapter[A], IndexersMixin):
                 )
 
             if direction < 0:
-                # TODO In Python 3.8 dict items should be reversible
-                # but I have seen errors in the wild that I could not
-                # quickly resolve so for now we convert to list in the middle.
-                to_reverse = list(mapping.items())
-                mapping = dict(reversed(to_reverse))
+                # Normalize generic Mapping views to a built-in dict_items view,
+                # which supports reversed() without an intermediate list.
+                mapping = dict(mapping.items())
+                mapping = dict(reversed(mapping.items()))
 
         return self.new_variation(mapping=mapping, sorting=sorting)
 
