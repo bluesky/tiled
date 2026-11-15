@@ -402,7 +402,9 @@ class MapAdapter(Generic[A], ContainerAdapter[A], IndexersMixin):
 
         return data
 
-    def sort(self, sorting: list[SortingItem]) -> "MapAdapter[A]":
+    def sort(
+        self, sorting: list[SortingItem] | list[tuple[str, int]]
+    ) -> "MapAdapter[A]":
         """
 
         Parameters
@@ -415,8 +417,11 @@ class MapAdapter(Generic[A], ContainerAdapter[A], IndexersMixin):
         """
         mapping = copy.copy(self._mapping)
         for sorting_item in reversed(sorting):
-            key = sorting_item.key
-            direction = sorting_item.direction
+            if isinstance(sorting_item, SortingItem):
+                key = sorting_item.key
+                direction = sorting_item.direction
+            else:
+                key, direction = sorting_item
             if key == "_":
                 # Special case to enable reversing the given/default ordering.
                 # Leave mapping as is, and possibly reserve it below.
@@ -435,7 +440,9 @@ class MapAdapter(Generic[A], ContainerAdapter[A], IndexersMixin):
                 mapping = dict(mapping.items())
                 mapping = dict(reversed(mapping.items()))
 
-        return self.new_variation(mapping=mapping, sorting=sorting)
+        return self.new_variation(
+            mapping=mapping, sorting=cast(list[SortingItem], sorting)
+        )
 
     # The following two methods are used by keys(), values(), items().
 

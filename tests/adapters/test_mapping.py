@@ -1,11 +1,20 @@
 from typing import Any
 
+import pytest
+
 from tiled.adapters.mapping import MapAdapter
 from tiled.server.schemas import SortingDirection, SortingItem
 from tiled.utils import OneShotCachedMap
 
 
-def test_sort_reverses_generic_mapping_items() -> None:
+@pytest.mark.parametrize(
+    "sorting",
+    [
+        [SortingItem(key="_", direction=SortingDirection.DESCENDING)],
+        [("_", SortingDirection.DESCENDING)],
+    ],
+)
+def test_sort_reverses_generic_mapping_items(sorting: list[Any]) -> None:
     mapping: OneShotCachedMap[str, MapAdapter[Any]] = OneShotCachedMap(
         {
             "first": lambda: MapAdapter({}),
@@ -14,8 +23,6 @@ def test_sort_reverses_generic_mapping_items() -> None:
     )
     adapter = MapAdapter(mapping)
 
-    reversed_adapter = adapter.sort(
-        [SortingItem(key="_", direction=SortingDirection.DESCENDING)]
-    )
+    reversed_adapter = adapter.sort(sorting)
 
     assert list(reversed_adapter._mapping) == ["second", "first"]
