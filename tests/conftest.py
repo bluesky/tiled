@@ -25,6 +25,38 @@ from .utils import enter_username_password as utils_enter_uname_passwd
 from .utils import temp_postgres, temp_postgres_sync
 
 
+@pytest.hookimpl(tryfirst=True)
+def pytest_collection_modifyitems(items):
+    """Assign pytest-xdist groups (used with `--dist=loadgroup`).
+
+    Grouping rules:
+
+    - Tests that use the `redis_uri` fixture are all placed in one group, so
+      they run serially on a single worker.
+
+      There is one Redis server for the whole test session, but each test builds
+      its own tiled server with a fresh in-memory catalog, so node IDs restart from 1
+      in every test. The streaming cache keys its Redis entries (`data:{node_id}:{seq}`)
+      and pub/sub channels (`notify:{node_id}`) by node ID alone. If two tests ran
+      at the same time on different workers, each would receive the other's
+      sequences and notifications, and the `flushdb()` in `redis_uri` would
+      delete the other's data mid-test. Giving each worker its own Redis database
+      would not help: pub/sub channels are global to the Redis server.
+
+    - All other tests are grouped by file, so each test module runs on a single
+      worker (the same behaviour as `--dist=loadfile`). Several modules rely
+      on this through module-scoped fixtures.
+    """
+    for item in items:
+        if item.get_closest_marker("xdist_group") is not None:
+            continue
+        if "redis_uri" in getattr(item, "fixturenames", ()):
+            group = "redis"
+        else:
+            group = item.nodeid.split("::", 1)[0]
+        item.add_marker(pytest.mark.xdist_group(name=group))
+
+
 @pytest.fixture(autouse=True, scope="session")
 def deactivate_retries():
     "Deactivate HTTP retries."
