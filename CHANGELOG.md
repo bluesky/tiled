@@ -182,8 +182,9 @@ Write the date in place of the "Unreleased" in the case a new version is release
   approved now get a row on first use.
 - Fix HTTP 500 error when exporting a table as HDF5 (`application/x-hdf5`).
   Tables now use a dedicated HDF5 serializer instead of the one for containers.
-- Intermittent failures in Redis-backed tests vaused by races between xdist workers
-  accessing a single Redis instance; all such tests are now run on the same worker.
+- Intermittent failures in Redis-backed tests caused by races between xdist workers
+  accessing a single Redis instance; such tests now take a shared lock so they never
+  run concurrently.
 
 ### Maintenance
 
