@@ -25,38 +25,6 @@ from .utils import enter_username_password as utils_enter_uname_passwd
 from .utils import temp_postgres, temp_postgres_sync
 
 
-@pytest.hookimpl(tryfirst=True)
-def pytest_collection_modifyitems(items):
-    """Assign pytest-xdist groups (used with `--dist=loadgroup`).
-
-    Grouping rules:
-
-    - Tests that use the `redis_uri` fixture are all placed in one group, so
-      they run serially on a single worker.
-
-      There is one Redis server for the whole test session, but each test builds
-      its own tiled server with a fresh in-memory catalog, so node IDs restart from 1
-      in every test. The streaming cache keys its Redis entries (`data:{node_id}:{seq}`)
-      and pub/sub channels (`notify:{node_id}`) by node ID alone. If two tests ran
-      at the same time on different workers, each would receive the other's sequences
-      and notifications, and the `flushdb()` in `redis_uri` would delete the other's
-      data mid-test. Giving each worker its own Redis database would not help: pub/sub
-      channels are global to the Redis server.
-
-    - All other tests are grouped by file, so each test module runs on a single
-      worker (the same behaviour as `--dist=loadfile`). Several modules rely
-      on this through module-scoped fixtures.
-    """
-    for item in items:
-        if item.get_closest_marker("xdist_group") is not None:
-            continue
-        if "redis_uri" in getattr(item, "fixturenames", ()):
-            group = "redis"
-        else:
-            group = item.nodeid.split("::", 1)[0]
-        item.add_marker(pytest.mark.xdist_group(name=group))
-
-
 @pytest.fixture(autouse=True, scope="session")
 def deactivate_retries():
     "Deactivate HTTP retries."
@@ -422,15 +390,33 @@ def url_limit(request: pytest.FixtureRequest):
 
 
 @pytest.fixture
-def redis_uri():
+def redis_uri(tmp_path_factory):
+    """URI of the Redis server for this test, with exclusive use of it.
+
+    There is one Redis server for the whole test session, but each test builds
+    its own Tiled server with a fresh in-memory catalog, so node IDs restart
+    from 1 in every test. The streaming cache keys its Redis entries
+    (`data:{node_id}:{seq}`) and pub/sub channels (`notify:{node_id}`) by node
+    ID alone. If two tests used the Redis server at the same time on different
+    pytest-xdist workers, each would receive the other's sequences and
+    notifications, and the `flushdb()` below would delete the other's data
+    mid-test. A file lock shared by all workers therefore serializes the tests
+    that use this fixture. Separate Redis databases per worker would not be
+    enough: pub/sub channels are global to the Redis server.
+    """
     if uri := os.getenv("TILED_TEST_REDIS"):
         import redis
+        from filelock import FileLock
 
-        client = redis.from_url(uri, socket_timeout=10, socket_connect_timeout=30)
-        # Delete all keys from the current database before and after test.
-        client.flushdb()
-        yield uri
-        client.flushdb()
+        # With pytest-xdist, each worker has its own basetemp under a common
+        # parent, so the parent is the place for a lock shared by all workers.
+        lock_path = tmp_path_factory.getbasetemp().parent / "redis.lock"
+        with FileLock(lock_path):
+            client = redis.from_url(uri, socket_timeout=10, socket_connect_timeout=30)
+            # Delete all keys from the current database before and after test.
+            client.flushdb()
+            yield uri
+            client.flushdb()
     else:
         raise pytest.skip("No TILED_TEST_REDIS configured")
 

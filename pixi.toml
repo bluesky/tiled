@@ -61,6 +61,7 @@ pyarrow-all = ">=14.0.1"  # includes fix to CVE 2023-47248
 aiohttp = "*"
 coverage = "*"
 ruff = "==0.17.3"
+filelock = "*"
 hypothesis = "*"
 ipython = "*"
 ldap3 = "*"

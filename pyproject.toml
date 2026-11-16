@@ -286,6 +286,7 @@ test = [
     "aiohttp",
     "boto3",
     "coverage",
+    "filelock",
     "hypothesis",
     "ipython",
     "ldap3",
