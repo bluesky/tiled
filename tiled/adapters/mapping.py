@@ -437,8 +437,8 @@ class MapAdapter(Generic[A], ContainerAdapter[A], IndexersMixin):
             if direction < 0:
                 # Normalize generic Mapping views to a built-in dict_items view,
                 # which supports reversed() without an intermediate list.
-                mapping = dict(mapping.items())
-                mapping = dict(reversed(mapping.items()))
+                mapping_items = dict(mapping.items()).items()
+                mapping = dict(reversed(mapping_items))
 
         return self.new_variation(
             mapping=mapping, sorting=cast(list[SortingItem], list(sorting))
