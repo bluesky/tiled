@@ -306,7 +306,9 @@ def test_sql_storage_write_emits_adbc_spans(
         assert any(s.attributes.get("db.name") for s in dbapi_spans)
 
 
-def test_streaming_emits_redis_spans(monkeypatch, span_exporter, redis_uri, tmp_path):
+def test_streaming_emits_redis_spans(
+    monkeypatch, span_exporter, redis_uri, redis_key_prefix, tmp_path
+):
     """Subscribing to a node's stream exercises the Redis streaming cache."""
     _enable_tracing(monkeypatch)
     config = {
@@ -324,6 +326,7 @@ def test_streaming_emits_redis_spans(monkeypatch, span_exporter, redis_uri, tmp_
         ],
         "streaming_cache": {
             "uri": redis_uri,
+            "key_prefix": redis_key_prefix,
             "data_ttl": 600,
             "seq_ttl": 600,
             "socket_timeout": 600,
