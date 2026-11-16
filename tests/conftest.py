@@ -1,8 +1,8 @@
 import io
 import os
+import secrets
 import sys
 import tempfile
-import uuid
 from pathlib import Path
 from typing import Any
 
@@ -398,7 +398,9 @@ def redis_key_prefix():
     pub/sub channels) repeat across tests. A unique prefix keeps tests that run
     at the same time on different xdist workers apart.
     """
-    return f"test-{uuid.uuid4().hex}:"
+    # "test-" marks keys left behind if teardown does not run; the random part
+    # is short enough to type when inspecting Redis by hand.
+    return f"test-{secrets.token_hex(4)}:"
 
 
 @pytest.fixture
