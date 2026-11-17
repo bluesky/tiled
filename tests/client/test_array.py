@@ -27,7 +27,7 @@ from tiled.serialization.array import as_buffer
 from tiled.server.app import build_app
 from tiled.structures.array import ArrayStructure
 
-from .utils import fail_with_status_code
+from ..utils import fail_with_status_code
 
 array_cases = {
     "b": (numpy.arange(10) % 2).astype("b"),
