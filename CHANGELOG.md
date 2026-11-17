@@ -253,6 +253,14 @@ Write the date in place of the "Unreleased" in the case a new version is release
   of awkward buffers went to the source data. These requests are now refused
   with HTTP 405. An update that is only streamed (`persist=false`) is still
   accepted, since it does not touch the data.
+- A location registered by a client is always externally managed. A client
+  could register a location on a data source marked as managed by the server,
+  or change an external data source to managed with `PUT /data_source`, and
+  the server then removed the registered file or directory when the node was
+  deleted. Both are refused with HTTP 403. `PUT /data_source` now changes only
+  an externally managed data source of the node in the request; it used to
+  accept the id of a data source of any node. When a node is deleted, files are
+  removed only from writable storage.
 
 ### Maintenance
 

@@ -834,6 +834,45 @@ class CatalogNodeAdapter:
                     ),
                 )
 
+    def _require_location_is_external(self, data_source):
+        """Respond with 403 if a client names the location of managed data.
+
+        A client that registers data says where the data is. The server only
+        reads such a location: it does not write there, and it does not remove
+        what is there when the node is deleted. That holds as long as every
+        data source that was given a location is externally managed.
+        """
+        if data_source.assets and data_source.management != Management.external:
+            raise HTTPException(
+                status_code=HTTP_403_FORBIDDEN,
+                detail=(
+                    "A data source that names the location of its data must be "
+                    "externally managed."
+                ),
+            )
+
+    def _delete_managed_asset(self, data_uri, **kwargs):
+        """Remove data that this server stored, and nothing else.
+
+        A file or directory is removed only from writable storage. The catalog
+        may hold another location for an internally managed data source, from
+        a version that let a client register one.
+        """
+        if urlparse(data_uri).scheme == "file":
+            writable = [
+                storage.path
+                for storage in self.context.writable_storage.values()
+                if isinstance(storage, FileStorage)
+            ]
+            if file_uris_outside_directories([data_uri], writable):
+                logger.warning(
+                    "Not removing %s because it is outside the writable storage "
+                    "of this server.",
+                    data_uri,
+                )
+                return
+        delete_physical_asset(data_uri, **kwargs)
+
     def _adapter_parameters(self, adapter_cls, data_source):
         """The keyword arguments for building an adapter from a data source.
 
@@ -1249,6 +1288,8 @@ class CatalogNodeAdapter:
         access_tags = normalize_access_tags(access_tags or [])
         key = key or self.context.key_maker()
         data_sources = data_sources or []
+        for data_source in data_sources:
+            self._require_location_is_external(data_source)
         child_path = list(await self.path_segments()) + [key]
         # Keys become URL path segments and, for writable data, directory
         # names under the storage root. The ancestors are checked too, in case
@@ -1462,6 +1503,13 @@ class CatalogNodeAdapter:
         return asset_id
 
     async def put_data_source(self, data_source, patch):
+        # The location and parameters of a data source that this server
+        # manages are its own. A client can change only what it registered.
+        if data_source.management != Management.external:
+            raise HTTPException(
+                status_code=HTTP_403_FORBIDDEN,
+                detail="Only an externally managed data source can be updated.",
+            )
         # Obtain and hash the canonical (RFC 8785) representation of
         # the JSON structure.
         structure = _prepare_structure(
@@ -1487,12 +1535,19 @@ class CatalogNodeAdapter:
             result = await db.execute(
                 update(orm.DataSource)
                 .where(orm.DataSource.id == data_source.id)
+                # The id comes from the client. It must be a data source of
+                # this node, which is the node the client may change.
+                .where(orm.DataSource.node_id == self.node.id)
+                .where(orm.DataSource.management == Management.external)
                 .values(**values)
             )
             if result.rowcount == 0:
                 raise HTTPException(
                     status_code=404,
-                    detail=f"No data_source {data_source.id} on this node.",
+                    detail=(
+                        f"No externally managed data_source {data_source.id} "
+                        "on this node."
+                    ),
                 )
             # Add assets and associate them with the data_source
             for asset in data_source.assets:
@@ -1797,10 +1852,10 @@ class CatalogNodeAdapter:
         # Delete assets backed by files and blobs written by Tiled
         for asset_id, data_uri, is_directory, management in deleted_asset_records:
             if management != Management.external:
-                delete_physical_asset(data_uri, is_directory=is_directory)
+                self._delete_managed_asset(data_uri, is_directory=is_directory)
         # Delete storage database entries (management == writable, always)
         for asset_id, data_uri, table_name, dataset_id in deleted_from_storage:
-            delete_physical_asset(
+            self._delete_managed_asset(
                 data_uri, table_name=table_name, dataset_id=dataset_id
             )
 
@@ -1925,7 +1980,7 @@ class CatalogNodeAdapter:
         if asset_deleted and is_internal:
             data_uri, is_directory = deleted
             await anyio.to_thread.run_sync(
-                partial(delete_physical_asset, data_uri, is_directory=is_directory)
+                partial(self._delete_managed_asset, data_uri, is_directory=is_directory)
             )
             data_deleted = True
 
