@@ -106,11 +106,9 @@ def set_tiled_cache_dir():
     # is still open. It is closed by transport shutdown, but not all tests
     # correctly shut down the transport. This is probably related to the
     # thread-leaking issue.
-    # This option was added to TemporaryDirectory in Python 3.10
-    kwargs = {}
-    if sys.platform.startswith("win") and sys.version_info >= (3, 10):
-        kwargs["ignore_cleanup_errors"] = True
-    with tempfile.TemporaryDirectory(**kwargs) as tmpdir:
+    with tempfile.TemporaryDirectory(
+        ignore_cleanup_errors=sys.platform.startswith("win")
+    ) as tmpdir:
         os.environ["TILED_CACHE_DIR"] = str(tmpdir)
         yield
         del os.environ["TILED_CACHE_DIR"]
@@ -405,10 +403,15 @@ def redis_uri():
         raise pytest.skip("No TILED_TEST_REDIS configured")
 
 
+# Signing keys for test JWTs. PyJWT warns about HMAC keys shorter than the
+# 32 bytes that RFC 7518 recommends for HS256, so these are at least that long.
+TOY_SECRET_KEY = "toy-secret-key-for-tests-0123456789"
+TOY_NEW_SECRET_KEY = "toy-new-secret-key-for-tests-0123456789"
+
 # Shared authentication config for tests that need multi-user JWT auth.
 # Uses the toy DictionaryAuthenticator with alice/bob users.
 TOY_AUTHENTICATION = {
-    "secret_keys": ["SECRET"],
+    "secret_keys": [TOY_SECRET_KEY],
     "providers": [
         {
             "provider": "toy",

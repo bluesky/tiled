@@ -21,7 +21,7 @@ const ArrayLineChart: React.FunctionComponent<ArrayLineChartProps> = (
   props,
 ) => {
   return (
-    <Box height={300}>
+    <Box sx={{ height: 300 }}>
       <ResponsiveContainer>
         <LineChart
           width={500}

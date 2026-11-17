@@ -3,17 +3,12 @@ import functools
 import os
 from abc import abstractmethod
 from collections import defaultdict
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from pathlib import Path
 from typing import (
     TYPE_CHECKING,
-    DefaultDict,
-    Dict,
-    Iterator,
     Literal,
     NamedTuple,
-    Optional,
-    Union,
 )
 from urllib.parse import quote, unquote, urlparse, urlunparse
 
@@ -46,6 +41,10 @@ __all__ = [
 SUPPORTED_OBJECT_URI_SCHEMES = {"http", "https"}  # TODO: Add "s3", "gs", "azure", "az"
 
 POSTGRESQL_SCHEMES = frozenset({"postgresql", "postgres"})
+
+# URI schemes of tabular storage databases. The Asset of a data source stored
+# in one is the database itself, shared by every such data source.
+SQL_STORAGE_SCHEMES = frozenset({"postgresql", "sqlite", "duckdb"})
 
 # libpq connection parameters that determine *which* server and database a
 # connection reaches. Any other query parameter (connect_timeout, sslmode,
@@ -206,9 +205,9 @@ class ObjectStorage(Storage):
 
     uri: str
     provider: Literal["s3", "azure", "google"]
-    bucket: Optional[str] = None
-    username: Optional[str] = None
-    password: Optional[str] = None
+    bucket: str | None = None
+    username: str | None = None
+    password: str | None = None
     config: dict = dataclasses.field(default_factory=dict)
 
     def __post_init__(self):
@@ -249,9 +248,7 @@ class ObjectStorage(Storage):
 
         return base_uri, bucket_name or None, "/".join(blob_path)
 
-    def get_obstore_location(
-        self, uri=None
-    ) -> Union["S3Store", "AzureStore", "GCSStore"]:
+    def get_obstore_location(self, uri=None) -> "S3Store | AzureStore | GCSStore":
         """Get an obstore.store instance rooted at specified URI.
 
         Parameters
@@ -343,7 +340,7 @@ class SQLStorage(Storage):
     def _connection_pool(self) -> "sqlalchemy.pool.QueuePool":
         from .server.metrics import monitor_db_pool
 
-        creator = self._adbc_connection.adbc_clone
+        creator = self._instrument_adbc_creator(self._adbc_connection.adbc_clone)
         if (self.dialect == "duckdb") or (":memory:" in self.uri):
             pool = sqlalchemy.pool.StaticPool(creator)
         else:
@@ -353,6 +350,45 @@ class SQLStorage(Storage):
             monitor_db_pool(pool, self.uri)
 
         return pool
+
+    def _instrument_adbc_creator(self, creator):
+        """Wrap the ADBC connection factory to emit OpenTelemetry spans for its queries.
+
+        The storage database is accessed via ADBC, which the asyncpg instrumentation does
+        not cover, so its queries would otherwise be invisible in traces. A no-op if tracing
+        is off or the optional dbapi instrumentation is not installed.
+        """
+        if not os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT"):
+            return creator
+        try:
+            from opentelemetry.instrumentation.dbapi import instrument_connection
+        except ImportError:
+            return creator
+
+        dialect = self.dialect
+        # Report the database name as `db.name`, so the storage database appears as
+        # its own node in the service graph. ADBC follows the SQL standard naming,
+        # where a "catalog" is a database (and a "schema" is a namespace inside it),
+        # so on Postgres `adbc_current_catalog` is e.g. "tiled_storage". This has
+        # nothing to do with Tiled's catalog. Not every driver implements it (DuckDB
+        # raises), and the instrumentation only tolerates a missing attribute, not
+        # an error, so check once and leave `db.name` unset if it fails.
+        try:
+            self._adbc_connection.adbc_current_catalog
+        except Exception:
+            connection_attributes = {}
+        else:
+            connection_attributes = {"database": "adbc_current_catalog"}
+
+        def instrumented_creator():
+            return instrument_connection(
+                "tiled.storage",
+                creator(),
+                dialect,
+                connection_attributes=connection_attributes,
+            )
+
+        return instrumented_creator
 
     def connect(self) -> "adbc_driver_manager.dbapi.Connection":
         "Get a connection from the pool."
@@ -401,8 +437,8 @@ class EmbeddedSQLStorage(SQLStorage):
 class RemoteSQLStorage(SQLStorage):
     "Authenticated server-based SQL database storage location"
 
-    username: Optional[str] = None
-    password: Optional[str] = None
+    username: str | None = None
+    password: str | None = None
 
     def __post_init__(self):
         # Ensure the URI is sanitized and credentials are stored separately
@@ -451,11 +487,11 @@ class RemoteSQLStorage(SQLStorage):
 # instance owns a connection pool (and a template connection), so sharing
 # instances shares pools: many catalog mounts configured with the same
 # storage use one pool rather than one each.
-_SQL_STORAGE_INSTANCES: Dict["SQLStorage", "SQLStorage"] = {}
+_SQL_STORAGE_INSTANCES: dict["SQLStorage", "SQLStorage"] = {}
 
 
 def parse_storage(
-    item: Union[Path, str, dict],
+    item: Path | str | dict,
     *,
     pool_size: int = 5,
     max_overflow: int = 10,
@@ -473,7 +509,7 @@ def parse_storage(
 
 
 def _parse_storage(
-    item: Union[Path, str, dict],
+    item: Path | str | dict,
     *,
     pool_size: int,
     max_overflow: int,
@@ -493,7 +529,7 @@ def _parse_storage(
             result = RemoteSQLStorage(
                 item, pool_size=pool_size, max_overflow=max_overflow
             )
-        elif scheme in {"sqlite", "duckdb"}:
+        elif scheme in SQL_STORAGE_SCHEMES:
             result = EmbeddedSQLStorage(
                 item, pool_size=pool_size, max_overflow=max_overflow
             )
@@ -506,7 +542,7 @@ def _parse_storage(
 # purpose of obtaining credentials, which are not stored in the catalog
 # database. It is keyed by `storage_registry_key`, so for PostgreSQL lookups
 # depend only on the database name, not on how it is reached.
-_STORAGE: Dict[str, Storage] = {}
+_STORAGE: dict[str, Storage] = {}
 
 
 class AmbiguousStorage(ValueError):
@@ -557,7 +593,7 @@ def unregister_storage(storage: Storage) -> None:
 # Number of active users (e.g. started catalog Contexts) per storage location,
 # keyed by `storage_registry_key`. Since the registry admits one
 # configuration per location, this counts users of one Storage.
-_STORAGE_REFCOUNTS: DefaultDict[str, int] = defaultdict(int)
+_STORAGE_REFCOUNTS: defaultdict[str, int] = defaultdict(int)
 
 
 def acquire_storage(storage: Storage) -> Storage:
@@ -669,7 +705,7 @@ class UriStat(NamedTuple):
     """
 
     is_directory: bool
-    size: Optional[int]
+    size: int | None
 
 
 def stat_uri(data_uri: str) -> UriStat:

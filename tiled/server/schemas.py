@@ -2,18 +2,15 @@ from __future__ import annotations
 
 import enum
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from http import HTTPStatus
 from typing import (
     TYPE_CHECKING,
+    Annotated,
     Any,
-    Dict,
     Generic,
-    List,
     Literal,
-    Optional,
     TypeVar,
-    Union,
 )
 
 import pydantic.generics
@@ -27,7 +24,7 @@ from pydantic import (
     field_validator,
 )
 from pydantic_core import PydanticCustomError
-from typing_extensions import Annotated, TypedDict
+from typing_extensions import TypedDict
 
 from tiled.structures.ragged import RaggedStructure
 
@@ -58,10 +55,10 @@ class Error(pydantic.BaseModel):
 
 
 class Response(pydantic.BaseModel, Generic[DataT, LinksT, MetaT]):
-    data: Optional[DataT]
-    error: Optional[Error] = None
-    links: Optional[LinksT] = None
-    meta: Optional[MetaT] = None
+    data: DataT | None
+    error: Error | None = None
+    links: LinksT | None = None
+    meta: MetaT | None = None
 
     @pydantic.field_validator("error")
     def check_consistency(cls, v, values):
@@ -80,7 +77,7 @@ class PaginationLinks(pydantic.BaseModel):
     last: str
 
 
-class EntryFields(str, enum.Enum):
+class EntryFields(enum.StrEnum):
     metadata = "metadata"
     structure_family = "structure_family"
     structure = "structure"
@@ -93,7 +90,7 @@ class EntryFields(str, enum.Enum):
 
 
 class NodeStructure(pydantic.BaseModel):
-    contents: Optional[Dict[str, Any]]
+    contents: dict[str, Any] | None
     count: int
 
     model_config = pydantic.ConfigDict(extra="forbid")
@@ -116,16 +113,16 @@ class SortingItem(pydantic.BaseModel):
 
 # Wait for fix https://github.com/pydantic/pydantic/issues/3957
 # Specs = pydantic.conlist(Spec, max_length=20, unique_items=True)
-Specs = Annotated[List[Spec], Field(max_length=MAX_ALLOWED_SPECS)]
+Specs = Annotated[list[Spec], Field(max_length=MAX_ALLOWED_SPECS)]
 
 
 class Asset(pydantic.BaseModel):
     data_uri: str
     is_directory: bool
-    size: Optional[int] = None
-    parameter: Optional[str] = None
-    num: Optional[int] = None
-    id: Optional[int] = None
+    size: int | None = None
+    parameter: str | None = None
+    num: int | None = None
+    id: int | None = None
 
     @classmethod
     def from_orm(cls, orm: tiled.catalog.orm.Asset) -> Asset:
@@ -167,13 +164,13 @@ class Revision(pydantic.BaseModel):
 
 
 class DataSource(pydantic.BaseModel, Generic[StructureT]):
-    id: Optional[int] = None
+    id: int | None = None
     structure_family: StructureFamily
-    structure: Optional[StructureT]
-    mimetype: Optional[str] = None
+    structure: StructureT | None
+    mimetype: str | None = None
     parameters: dict = {}
     properties: dict = {}
-    assets: List[Asset] = []
+    assets: list[Asset] = []
     management: Management = Management.writable
 
     model_config = pydantic.ConfigDict(extra="forbid")
@@ -208,26 +205,25 @@ class DataSource(pydantic.BaseModel, Generic[StructureT]):
 
 
 class NodeAttributes(pydantic.BaseModel):
-    ancestors: List[str]
-    structure_family: Optional[StructureFamily] = None
-    specs: Optional[Specs] = None
-    metadata: Optional[Dict] = None  # free-form, user-specified dict
-    structure: Optional[
-        Union[
-            ArrayStructure,
-            AwkwardStructure,
-            BytesStructure,
-            RaggedStructure,
-            SparseStructure,
-            NodeStructure,
-            TableStructure,
-        ]
-    ] = None
+    ancestors: list[str]
+    structure_family: StructureFamily | None = None
+    specs: Specs | None = None
+    metadata: dict | None = None  # free-form, user-specified dict
+    structure: (
+        ArrayStructure
+        | AwkwardStructure
+        | BytesStructure
+        | RaggedStructure
+        | SparseStructure
+        | NodeStructure
+        | TableStructure
+        | None
+    ) = None
     # list of tags that control access to this node
-    access_tags: Optional[List[str]] = None
+    access_tags: list[str] | None = None
 
-    sorting: Optional[List[SortingItem]] = None
-    data_sources: Optional[List[DataSource]] = None
+    sorting: list[SortingItem] | None = None
+    data_sources: list[DataSource] | None = None
 
     model_config = pydantic.ConfigDict(extra="forbid")
 
@@ -244,7 +240,7 @@ class SelfLinkOnly(pydantic.BaseModel):
 class ContainerLinks(pydantic.BaseModel):
     self: str
     search: str
-    search_deep: Optional[str] = None
+    search_deep: str | None = None
     full: str
 
 
@@ -304,10 +300,10 @@ class ContainerMeta(pydantic.BaseModel):
 class Resource(pydantic.BaseModel, Generic[AttributesT, ResourceLinksT, ResourceMetaT]):
     "A JSON API Resource"
 
-    id: Union[str, uuid.UUID]
+    id: str | uuid.UUID
     attributes: AttributesT
-    links: Optional[ResourceLinksT] = None
-    meta: Optional[ResourceMetaT] = None
+    links: ResourceLinksT | None = None
+    meta: ResourceMetaT | None = None
 
 
 class AccessAndRefreshTokens(pydantic.BaseModel):
@@ -327,7 +323,7 @@ class DeviceCode(pydantic.BaseModel):
     grant_type: str
 
 
-class PrincipalType(str, enum.Enum):
+class PrincipalType(enum.StrEnum):
     user = "user"
     service = "service"
 
@@ -336,7 +332,7 @@ class Identity(pydantic.BaseModel):
     model_config = pydantic.ConfigDict(from_attributes=True)
     id: Annotated[str, StringConstraints(max_length=255)]
     provider: Annotated[str, StringConstraints(max_length=255)]
-    latest_login: Optional[datetime] = None
+    latest_login: datetime | None = None
 
     @classmethod
     def from_orm(cls, orm: tiled.authn_database.orm.Identity) -> Identity:
@@ -346,7 +342,7 @@ class Identity(pydantic.BaseModel):
 class Role(pydantic.BaseModel):
     model_config = pydantic.ConfigDict(from_attributes=True)
     name: str
-    scopes: List[str]
+    scopes: list[str]
     # principals
 
     @classmethod
@@ -357,11 +353,11 @@ class Role(pydantic.BaseModel):
 class APIKey(pydantic.BaseModel):
     model_config = pydantic.ConfigDict(from_attributes=True)
     first_eight: Annotated[str, StringConstraints(min_length=8, max_length=8)]
-    expiration_time: Optional[datetime] = None
-    note: Optional[Annotated[str, StringConstraints(max_length=255)]] = None
-    scopes: List[str]
-    access_tags: Optional[List[str]] = None
-    latest_activity: Optional[datetime] = None
+    expiration_time: datetime | None = None
+    note: Annotated[str, StringConstraints(max_length=255)] | None = None
+    scopes: list[str]
+    access_tags: list[str] | None = None
+    latest_activity: datetime | None = None
 
     @classmethod
     def from_orm(cls, orm: tiled.authn_database.orm.APIKey) -> APIKey:
@@ -408,7 +404,7 @@ class Session(pydantic.BaseModel):
     uuid: uuid.UUID
     expiration_time: datetime
     revoked: bool
-    state: Optional[Dict[Any, Any]]
+    state: dict[Any, Any] | None
 
     @classmethod
     def from_orm(cls, orm: tiled.authn_database.orm.Session) -> Session:
@@ -428,18 +424,18 @@ class Principal(pydantic.BaseModel):
     model_config = pydantic.ConfigDict(from_attributes=True)
     uuid: uuid.UUID
     type: PrincipalType
-    identities: List[Identity] = []
-    roles: List[Role] = []
-    api_keys: List[APIKey] = []
-    sessions: List[Session] = []
-    latest_activity: Optional[datetime] = None
-    access_token: Optional[SecretStr] = Field(exclude=True, default=None)
+    identities: list[Identity] = []
+    roles: list[Role] = []
+    api_keys: list[APIKey] = []
+    sessions: list[Session] = []
+    latest_activity: datetime | None = None
+    access_token: SecretStr | None = Field(exclude=True, default=None)
 
     @classmethod
     def from_orm(
         cls,
         orm: tiled.authn_database.orm.Principal,
-        latest_activity: Optional[datetime] = None,
+        latest_activity: datetime | None = None,
     ) -> Principal:
         return cls(
             uuid=orm.uuid,
@@ -456,16 +452,16 @@ class APIKeyRequestParams(pydantic.BaseModel):
     # Provide an example for expires_in. Otherwise, OpenAPI suggests lifetime=0.
     # If the user is not reading carefully, they will be frustrated when they
     # try to use the instantly-expiring API key!
-    expires_in: Optional[int] = pydantic.Field(
+    expires_in: int | None = pydantic.Field(
         ..., json_schema_extra={"example": 600}
     )  # seconds
-    access_tags: Optional[List[str]] = pydantic.Field(
+    access_tags: list[str] | None = pydantic.Field(
         default=None, json_schema_extra={"example": ["writing_tag", "public"]}
     )
-    scopes: Optional[List[str]] = pydantic.Field(
+    scopes: list[str] | None = pydantic.Field(
         ..., json_schema_extra={"example": ["inherit"]}
     )
-    note: Optional[str] = None
+    note: str | None = None
 
 
 # BACK-COMPAT: remove together with the access_blob helpers in _backcompat.py.
@@ -476,14 +472,14 @@ _ACCESS_BLOB_DEPRECATION = (
 
 
 class PostMetadataRequest(pydantic.BaseModel):
-    id: Optional[str] = None
+    id: str | None = None
     structure_family: StructureFamily
-    metadata: Dict = {}
-    data_sources: List[DataSource] = []
+    metadata: dict = {}
+    data_sources: list[DataSource] = []
     specs: Specs = []
-    access_tags: Optional[List[str]] = None
+    access_tags: list[str] | None = None
     # BACK-COMPAT: remove together with the access_blob helpers in _backcompat.py.
-    access_blob: Optional[Dict] = pydantic.Field(
+    access_blob: dict | None = pydantic.Field(
         default=None, deprecated=_ACCESS_BLOB_DEPRECATION
     )
 
@@ -517,39 +513,39 @@ class PutDataSourceRequest(pydantic.BaseModel):
 
 class PostMetadataResponse(pydantic.BaseModel, Generic[ResourceLinksT]):
     id: str
-    links: Union[ArrayLinks, DataFrameLinks, SparseLinks]
-    metadata: Dict
-    data_sources: List[DataSource]
-    access_tags: List[str]
+    links: ArrayLinks | DataFrameLinks | SparseLinks
+    metadata: dict
+    data_sources: list[DataSource]
+    access_tags: list[str]
 
 
 class PutMetadataResponse(pydantic.BaseModel, Generic[ResourceLinksT]):
     id: str
-    links: Union[ArrayLinks, DataFrameLinks, SparseLinks]
+    links: ArrayLinks | DataFrameLinks | SparseLinks
     # May be None if not altered
-    metadata: Optional[Dict] = None
-    data_sources: Optional[List[DataSource]] = None
-    access_tags: Optional[List[str]] = None
+    metadata: dict | None = None
+    data_sources: list[DataSource] | None = None
+    access_tags: list[str] | None = None
 
 
 class DistinctValueInfo(pydantic.BaseModel):
     value: Any = None
-    count: Optional[int] = None
+    count: int | None = None
 
 
 class GetDistinctResponse(pydantic.BaseModel):
-    metadata: Optional[Dict[str, List[DistinctValueInfo]]] = None
-    structure_families: Optional[List[DistinctValueInfo]] = None
-    specs: Optional[List[DistinctValueInfo]] = None
+    metadata: dict[str, list[DistinctValueInfo]] | None = None
+    structure_families: list[DistinctValueInfo] | None = None
+    specs: list[DistinctValueInfo] | None = None
 
 
 class PutMetadataRequest(pydantic.BaseModel):
     # These fields are optional because None means "no changes; do not update".
-    metadata: Optional[Dict] = None
-    specs: Optional[Specs] = None
-    access_tags: Optional[List[str]] = None
+    metadata: dict | None = None
+    specs: Specs | None = None
+    access_tags: list[str] | None = None
     # BACK-COMPAT: remove together with the access_blob helpers in _backcompat.py.
-    access_blob: Optional[Dict] = pydantic.Field(
+    access_blob: dict | None = pydantic.Field(
         default=None, deprecated=_ACCESS_BLOB_DEPRECATION
     )
 
@@ -593,23 +589,21 @@ class PatchMetadataRequest(HyphenizedBaseModel):
 
     # These fields are optional because None means "no changes; do not update".
     # Dict for merge-patch:
-    metadata: Optional[Union[List[JSONPatchAny], Dict]] = None
+    metadata: list[JSONPatchAny] | dict | None = None
 
     # Specs for merge-patch. left_to_right mode is used to distinguish between
     # merge-patch List[asdict(Spec)] and json-patch List[Dict]
-    specs: Optional[Union[Specs, List[JSONPatchSpec]]] = Field(
-        union_mode="left_to_right"
-    )
+    specs: Specs | list[JSONPatchSpec] | None = Field(union_mode="left_to_right")
 
     # These fields are optional because None means "no changes; do not update".
     # List for merge-patch:
     # Define an alias to override parent class alias generator
-    access_tags: Optional[Union[List[JSONPatchAny], List[str]]] = Field(
+    access_tags: list[JSONPatchAny] | list[str] | None = Field(
         alias="access_tags", default=None
     )
     # BACK-COMPAT: remove together with the access_blob helpers in _backcompat.py.
     # A legacy client patches the blob, so this is a patch of a Dict.
-    access_blob: Optional[Union[List[JSONPatchAny], Dict]] = Field(
+    access_blob: list[JSONPatchAny] | dict | None = Field(
         alias="access_blob", default=None, deprecated=_ACCESS_BLOB_DEPRECATION
     )
 
@@ -634,30 +628,30 @@ class PatchMetadataRequest(HyphenizedBaseModel):
 
 class PatchMetadataResponse(pydantic.BaseModel, Generic[ResourceLinksT]):
     id: str
-    links: Union[ArrayLinks, DataFrameLinks, SparseLinks]
+    links: ArrayLinks | DataFrameLinks | SparseLinks
     # May be None if not altered
-    metadata: Optional[Dict]
-    data_sources: Optional[List[DataSource]]
-    access_tags: Optional[List[str]]
+    metadata: dict | None
+    data_sources: list[DataSource] | None
+    access_tags: list[str] | None
 
 
 SearchResponse = Response[
-    List[Resource[NodeAttributes, Dict, Dict]], PaginationLinks, Dict
+    list[Resource[NodeAttributes, dict, dict]], PaginationLinks, dict
 ]
 
 
-class EnvelopeFormat(str, enum.Enum):
+class EnvelopeFormat(enum.StrEnum):
     json = "json"
     msgpack = "msgpack"
 
 
-class EventType(str, enum.Enum):
+class EventType(enum.StrEnum):
     container_child_created = "container-child-created"
     container_child_metadata_updated = "container-child-metadata-updated"
     stream_closed = "stream-closed"
 
 
-class DeliveryOutcome(str, enum.Enum):
+class DeliveryOutcome(enum.StrEnum):
     pending = "pending"
     success = "success"
     failed = "failed"
@@ -692,19 +686,15 @@ class StreamClosedEvent(pydantic.BaseModel):
 
 
 WebhookEvent = Annotated[
-    Union[
-        ContainerChildCreatedEvent,
-        ContainerChildMetadataUpdatedEvent,
-        StreamClosedEvent,
-    ],
+    ContainerChildCreatedEvent | ContainerChildMetadataUpdatedEvent | StreamClosedEvent,
     Field(discriminator="type"),
 ]
 
 
 class WebhookRegistrationRequest(pydantic.BaseModel):
     url: AnyHttpUrl
-    secret: Optional[str] = None
-    events: Optional[List[EventType]] = None
+    secret: str | None = None
+    events: list[EventType] | None = None
 
     def check_https(self) -> None:
         """Raise ValueError if the URL scheme is not HTTPS.
@@ -729,7 +719,7 @@ class WebhookResponse(pydantic.BaseModel):
 
     id: int
     url: AnyHttpUrl
-    events: Optional[List[EventType]]
+    events: list[EventType] | None
     active: bool
     time_created: AwareDatetime
 
@@ -737,7 +727,7 @@ class WebhookResponse(pydantic.BaseModel):
     @classmethod
     def ensure_tz(cls, v: datetime) -> datetime:
         if isinstance(v, datetime) and v.tzinfo is None:
-            return v.replace(tzinfo=timezone.utc)
+            return v.replace(tzinfo=UTC)
         return v
 
 
@@ -752,18 +742,18 @@ class DeliveryResponse(pydantic.BaseModel):
     webhook_id: int
     event_type: EventType
     payload: dict
-    status_code: Optional[HTTPStatus]
+    status_code: HTTPStatus | None
     attempts: int
     outcome: DeliveryOutcome
-    error_detail: Optional[str]
+    error_detail: str | None
     time_created: AwareDatetime
-    delivered_at: Optional[AwareDatetime]
+    delivered_at: AwareDatetime | None
 
     @field_validator("time_created", "delivered_at", mode="before")
     @classmethod
     def ensure_tz(cls, v: datetime) -> datetime:
         if isinstance(v, datetime) and v.tzinfo is None:
-            return v.replace(tzinfo=timezone.utc)
+            return v.replace(tzinfo=UTC)
         return v
 
 

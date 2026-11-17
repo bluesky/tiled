@@ -1,7 +1,7 @@
 import copy
 import itertools
 from collections.abc import Set
-from typing import Any, List, Optional, Tuple, Union
+from typing import Any
 from urllib.parse import quote_plus
 
 import dask.dataframe
@@ -23,7 +23,7 @@ from ..utils import path_from_uri
 from .utils import init_adapter_from_catalog
 
 
-def load_block(uri: str) -> Tuple[List[int], Tuple[NDArray[Any], Any]]:
+def load_block(uri: str) -> tuple[list[int], tuple[NDArray[Any], Any]]:
     # TODO This can be done without pandas.
     # Better to use a plain I/O library.
     df = pandas.read_parquet(path_from_uri(uri))
@@ -35,11 +35,11 @@ def load_block(uri: str) -> Tuple[List[int], Tuple[NDArray[Any], Any]]:
 class SparseBlocksParquetAdapter(Adapter[SparseStructure]):
     def __init__(
         self,
-        data_uris: List[str],
+        data_uris: list[str],
         structure: COOStructure,
         *,
-        metadata: Optional[JSON] = None,
-        specs: Optional[List[Spec]] = None,
+        metadata: JSON | None = None,
+        specs: list[Spec] | None = None,
     ) -> None:
         num_blocks = (range(len(n)) for n in structure.chunks)
         self.blocks = {}
@@ -57,7 +57,7 @@ class SparseBlocksParquetAdapter(Adapter[SparseStructure]):
         data_source: DataSource[SparseStructure],
         node: Node,
         /,
-        **kwargs: Optional[Any],
+        **kwargs: Any | None,
     ) -> "SparseBlocksParquetAdapter":
         return init_adapter_from_catalog(cls, data_source, node, **kwargs)
 
@@ -66,7 +66,7 @@ class SparseBlocksParquetAdapter(Adapter[SparseStructure]):
         cls,
         storage: Storage,
         data_source: DataSource[COOStructure],
-        path_parts: List[str],
+        path_parts: list[str],
     ) -> DataSource[COOStructure]:
         data_source = copy.deepcopy(data_source)  # Do not mutate caller input.
         data_uri = storage.uri + "".join(
@@ -90,8 +90,8 @@ class SparseBlocksParquetAdapter(Adapter[SparseStructure]):
 
     def write_block(
         self,
-        data: Union[dask.dataframe.DataFrame, pandas.DataFrame],
-        block: Tuple[int, ...],
+        data: dask.dataframe.DataFrame | pandas.DataFrame,
+        block: tuple[int, ...],
         slice: NDSlice = NDSlice(...),
     ) -> None:
         if slice:
@@ -102,7 +102,7 @@ class SparseBlocksParquetAdapter(Adapter[SparseStructure]):
         uri = self.blocks[block]
         data.to_parquet(path_from_uri(uri))
 
-    def write(self, data: Union[dask.dataframe.DataFrame, pandas.DataFrame]) -> None:
+    def write(self, data: dask.dataframe.DataFrame | pandas.DataFrame) -> None:
         if len(self.blocks) > 1:
             raise NotImplementedError
         uri = self.blocks[(0,) * len(self.structure().shape)]

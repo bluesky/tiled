@@ -39,7 +39,7 @@ import sys
 import tempfile
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import numpy
 
@@ -413,8 +413,8 @@ def seed_graph(
     *,
     base_url: str,
     dataset_names: set[str],
-    dataset_container: Optional[str] = None,
-    definition_path: Optional[Path] = None,
+    dataset_container: str | None = None,
+    definition_path: Path | None = None,
 ) -> None:
     """Register namespaces and create the demo's entities and links via GraphQL.
 
@@ -498,7 +498,7 @@ def _make_catalog(directory: Path, *, init: bool):
 def build_demo_tree(
     *,
     base_url: str = "http://127.0.0.1:8000",
-    directory: Optional[str] = None,
+    directory: str | None = None,
     api_key: str = DEMO_API_KEY,
 ):
     """Create, populate, and return a catalog-backed demo tree.

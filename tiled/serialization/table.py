@@ -182,7 +182,39 @@ if modules_available("orjson"):
 
 
 if modules_available("h5py"):
-    from .container import serialize_hdf5
+
+    def serialize_hdf5(mimetype, df, metadata, preserve_index=False):
+        import h5py
+        import numpy
+
+        from ..utils import SerializationError
+
+        buffer = io.BytesIO()
+        with h5py.File(buffer, mode="w") as file:
+            try:
+                file.attrs.update(metadata)
+            except TypeError:
+                raise SerializationError(
+                    "Metadata contains types or structure that does not fit into HDF5."
+                )
+            if preserve_index:
+                df = df.reset_index()
+            for column in df.columns:
+                values = df[column].to_numpy()
+                if values.dtype == object:
+                    try:
+                        file.create_dataset(
+                            str(column),
+                            data=numpy.array([str(v) for v in values], dtype=object),
+                            dtype=h5py.string_dtype(),
+                        )
+                    except (TypeError, ValueError) as err:
+                        raise SerializationError(
+                            f"Column {column!r} cannot be stored in HDF5: {err}"
+                        )
+                else:
+                    file.create_dataset(str(column), data=values)
+        return buffer.getbuffer()
 
     default_serialization_registry.register(
         StructureFamily.table, "application/x-hdf5", serialize_hdf5
