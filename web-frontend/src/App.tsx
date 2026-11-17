@@ -1,6 +1,12 @@
 import Container from "@mui/material/Container";
 import ErrorBoundary from "./components/error-boundary/error-boundary";
-import { Outlet, Navigate, BrowserRouter, Route, Routes } from "react-router-dom";
+import {
+  Outlet,
+  Navigate,
+  BrowserRouter,
+  Route,
+  Routes,
+} from "react-router-dom";
 import TiledAppBar from "./components/tiled-app-bar/tiled-app-bar";
 import React, { useEffect, useState } from "react";
 import * as ReactDOM from "react-dom";
@@ -20,6 +26,7 @@ import { uiBasePath } from "./settings";
 (window as any).ReactDOM = ReactDOM;
 
 const Browse = lazy(() => import("./routes/browse"));
+const GraphPage = lazy(() => import("./routes/graph"));
 const LoginPage = lazy(() => import("./routes/login"));
 const AuthCallback = lazy(() => import("./routes/auth-callback"));
 
@@ -43,8 +50,9 @@ function RequireAuth({ children }: { children: React.ReactElement }) {
 
 function App() {
   const [settings, setSettings] = useState(emptySettings);
-  const [authentication, setAuthentication] =
-    useState<components["schemas"]["AboutAuthentication"] | null>(null);
+  const [authentication, setAuthentication] = useState<
+    components["schemas"]["AboutAuthentication"] | null
+  >(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -96,6 +104,18 @@ function App() {
                     />
                   ) : (
                     <Route path="/browse/*" element={<Browse />} />
+                  )}
+                  {redirectToLogin ? (
+                    <Route
+                      path="/graph"
+                      element={
+                        <RequireAuth>
+                          <GraphPage />
+                        </RequireAuth>
+                      }
+                    />
+                  ) : (
+                    <Route path="/graph" element={<GraphPage />} />
                   )}
                 </Route>
                 <Route path="/login" element={<LoginPage />} />
