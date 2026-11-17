@@ -218,6 +218,10 @@ Write the date in place of the "Unreleased" in the case a new version is release
   (HTTP 422). Below a container named `..`, the storage of new tables and
   awkward arrays was created outside of the writable storage directory.
   Creating a node below an existing container with such a key is refused too.
+- In the Python client, `raw_export` wrote outside of the destination
+  directory if the server sent a file name or a manifest entry that contained
+  `..` or was absolute. It now raises `UnsafePath` for such a manifest entry
+  and does not write a file with such a name.
 
 ### Maintenance
 

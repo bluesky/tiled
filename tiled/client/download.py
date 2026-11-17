@@ -6,7 +6,7 @@ import signal
 from _thread import LockType
 from collections.abc import Iterable, MutableMapping
 from concurrent.futures import ThreadPoolExecutor, wait
-from pathlib import Path
+from pathlib import Path, PurePath, PurePosixPath
 from threading import Event, Lock
 
 import httpx2 as httpx
@@ -20,6 +20,7 @@ from rich.progress import (
     TransferSpeedColumn,
 )
 
+from ..utils import UnsafePath, is_safe_path_segment
 from .utils import handle_error, retry_context
 
 # This extracts the filename to the Content-Disposition header.
@@ -49,16 +50,46 @@ def _resolve_placeholder(target, response: httpx.Response):
     if isinstance(target, Path):
         if target.name != ATTACHMENT_FILENAME_PLACEHOLDER:
             return target
-        filename = CONTENT_DISPOSITION_PATTERN.match(
-            response.headers["Content-Disposition"]
-        ).group(1)
-        return Path(target.parent, filename)
+        return Path(target.parent, _attachment_filename(response))
     if ATTACHMENT_FILENAME_PLACEHOLDER not in target:
         return target
+    return target.replace(
+        ATTACHMENT_FILENAME_PLACEHOLDER, _attachment_filename(response)
+    )
+
+
+def _attachment_filename(response: httpx.Response) -> str:
+    """Return the filename that the server gave in `Content-Disposition`.
+
+    The server names the file. It does not choose where the file goes, so a
+    name that is not a plain file name is refused."""
     filename = CONTENT_DISPOSITION_PATTERN.match(
         response.headers["Content-Disposition"]
     ).group(1)
-    return target.replace(ATTACHMENT_FILENAME_PLACEHOLDER, filename)
+    if not is_safe_path_segment(filename) or PurePath(filename).name != filename:
+        raise UnsafePath(
+            f"The server named the downloaded file {filename!r}, which is not "
+            "a plain file name."
+        )
+    return filename
+
+
+def require_relative_path(path: str) -> None:
+    """Raise UnsafePath unless a path given by the server stays inside the
+    directory that it will be joined to.
+
+    This looks at the text of the path only. It is for the paths in an asset
+    manifest, which become the paths of downloaded files."""
+    # The server gives POSIX-style paths. Also read the path as this platform
+    # would, which on Windows recognizes drives and backslashes.
+    for flavor in {PurePosixPath, type(PurePath())}:
+        parsed = flavor(path)
+        # The anchor is the root or drive of an absolute path.
+        if not parsed.parts or parsed.anchor or ".." in parsed.parts:
+            raise UnsafePath(
+                f"The server listed the file {path!r}, which is not a path "
+                "inside of the asset. Refusing to download it."
+            )
 
 
 def _download_url(

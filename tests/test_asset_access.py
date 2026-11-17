@@ -1,6 +1,7 @@
 import hashlib
 from pathlib import Path
 
+import httpx2 as httpx
 import pandas
 import pytest
 from starlette.status import (
@@ -13,9 +14,10 @@ from starlette.status import (
 
 from tiled.catalog import in_memory
 from tiled.client import Context, from_context
+from tiled.client.download import ATTACHMENT_FILENAME_PLACEHOLDER, download
 from tiled.client.utils import get_asset_filepaths
 from tiled.server.app import build_app
-from tiled.utils import path_from_uri
+from tiled.utils import UnsafePath, path_from_uri
 
 from .utils import fail_with_status_code
 
@@ -297,3 +299,78 @@ def test_asset_size_stripped_for_old_python_clients(
                 f"user-agent={user_agent!r}: expected size key "
                 f"present={expect_size_key}, got asset={asset!r}"
             )
+
+
+@pytest.mark.parametrize(
+    "filename",
+    ["../../../outside.txt", "{outside}", "sub/inside.txt", "..", ""],
+)
+def test_download_refuses_filename_that_is_not_a_file_name(tmp_path, filename):
+    "The server names a downloaded file, but does not choose its directory."
+    destination = tmp_path / "exports" / "deep" / "directory"
+    destination.mkdir(parents=True)
+    filename = filename.format(outside=tmp_path / "outside.txt")
+
+    def respond(request):
+        return httpx.Response(
+            200,
+            content=b"DOWNLOADED",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+
+    with httpx.Client(transport=httpx.MockTransport(respond)) as http_client:
+        download(
+            http_client,
+            ["http://server.invalid/api/v1/asset/bytes/x?id=1"],
+            [destination / ATTACHMENT_FILENAME_PLACEHOLDER],
+        )
+
+    written = [
+        path
+        for path in tmp_path.rglob("*")
+        if path.is_file() and path.read_bytes() == b"DOWNLOADED"
+    ]
+    assert not written
+
+
+def test_download_names_file_as_the_server_says(tmp_path):
+    def respond(request):
+        return httpx.Response(
+            200,
+            content=b"DOWNLOADED",
+            headers={"Content-Disposition": 'attachment; filename="data.bin"'},
+        )
+
+    with httpx.Client(transport=httpx.MockTransport(respond)) as http_client:
+        (path,) = download(
+            http_client,
+            ["http://server.invalid/api/v1/asset/bytes/x?id=1"],
+            [tmp_path / ATTACHMENT_FILENAME_PLACEHOLDER],
+        )
+
+    assert path == tmp_path / "data.bin"
+    assert path.read_bytes() == b"DOWNLOADED"
+
+
+@pytest.mark.parametrize(
+    "entry", ["../outside.txt", "c/../../outside.txt", "{outside}", ".."]
+)
+@pytest.mark.parametrize("in_memory_destination", [False, True])
+def test_raw_export_refuses_manifest_entry_outside_destination(
+    client, tmp_path, monkeypatch, entry, in_memory_destination
+):
+    "A manifest from the server cannot place a file outside of the destination."
+    asset_id, _directory = directory_asset(client)
+    node = client["x"]
+    entry = entry.format(outside=tmp_path / "outside.txt")
+    monkeypatch.setattr(
+        type(node), "asset_manifest", lambda self, data_sources: {asset_id: [entry]}
+    )
+    destination = {} if in_memory_destination else tmp_path / "exported"
+    files_before = sorted(tmp_path.rglob("*"))
+
+    with pytest.raises(UnsafePath):
+        node.raw_export(destination)
+
+    assert sorted(tmp_path.rglob("*")) == files_before
+    assert not in_memory_destination or destination == {}
