@@ -14,6 +14,7 @@ from starlette.status import (
     HTTP_200_OK,
     HTTP_403_FORBIDDEN,
     HTTP_404_NOT_FOUND,
+    HTTP_422_UNPROCESSABLE_CONTENT,
 )
 
 from tiled.catalog import from_uri
@@ -173,6 +174,28 @@ def test_external_table_already_in_catalog_is_not_read_or_emptied(
     # The node can be removed. The rows it named are left alone.
     assert http_client.delete("/api/v1/metadata/mine").status_code == HTTP_200_OK
     assert "mine" not in client
+    assert rows(client, "theirs") == ["their-1", "their-2"]
+
+
+def test_managed_table_with_forged_parameters_already_in_catalog_is_not_read(
+    client, tables, layout
+):
+    "Parameters of a managed table that are not identifiers are not put into SQL."
+    mine = stored_data_source(client, "mine")
+    forged = {**mine["parameters"], "dataset_id": "-1 OR 1=1"}
+    with sqlite3.connect(layout / "catalog.db") as connection:
+        cursor = connection.execute(
+            "UPDATE data_sources SET parameters = ? WHERE id = ?",
+            (json.dumps(forged), mine["id"]),
+        )
+        assert cursor.rowcount == 1
+
+    response = client.context.http_client.get(
+        "/api/v1/table/full/mine", params={"format": "text/csv"}
+    )
+
+    assert response.status_code == HTTP_422_UNPROCESSABLE_CONTENT
+    assert b"their" not in response.content
     assert rows(client, "theirs") == ["their-1", "their-2"]
 
 

@@ -195,7 +195,9 @@ wherever it is used.
   URI has the scheme of a database (which also let a file outside of readable
   storage be read), is refused with HTTP 403. Such a data source already in a
   catalog is not read, and deleting its node no longer deletes rows. Tables
-  written through the server are unaffected.
+  written through the server are unaffected. A table whose stored dataset id
+  is not an integer, or whose stored table name holds characters other than
+  letters, digits and underscores, is not read (HTTP 422).
 - `PUT /data_source` changes only an externally managed data source of the
   node in the request, and keeps it externally managed. It used to accept the
   id of a data source of any node.
