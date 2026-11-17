@@ -612,7 +612,7 @@ def serve_demo(
         ),
     ),
     port: int = typer.Option(8000, help="Bind to a socket with this port."),
-    api_key: Optional[str] = typer.Option(
+    api_key: str | None = typer.Option(
         None,
         "--api-key",
         help=(
