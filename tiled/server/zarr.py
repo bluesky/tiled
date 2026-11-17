@@ -1,7 +1,6 @@
 import json
 import os
 import re
-from typing import Optional, Tuple, Union
 
 import numcodecs
 import orjson
@@ -47,7 +46,7 @@ zarr_codec = numcodecs.get_codec(ZARR_CODEC_SPEC)
 ARRAY_RETRY_AFTER_SECONDS = int(os.getenv("TILED_ARRAY_RETRY_AFTER", "1"))
 
 
-def convert_chunks_for_zarr(tiled_chunks: Tuple[Tuple[int]]):
+def convert_chunks_for_zarr(tiled_chunks: tuple[tuple[int]]):
     """Convert full tiled/dask chunk specification into zarr format
 
     Zarr only accepts chunks of constant size along each dimension; this function
@@ -67,8 +66,8 @@ def get_zarr_router_v2() -> APIRouter:
     async def get_zarr_attrs(
         request: Request,
         path: str,
-        principal: Union[Principal] = Depends(get_current_principal),
-        authn_access_tags: Optional[AccessTags] = Depends(get_current_access_tags),
+        principal: Principal = Depends(get_current_principal),
+        authn_access_tags: AccessTags | None = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
@@ -103,8 +102,8 @@ def get_zarr_router_v2() -> APIRouter:
     async def get_zarr_group_metadata(
         request: Request,
         path: str,
-        principal: Union[Principal] = Depends(get_current_principal),
-        authn_access_tags: Optional[AccessTags] = Depends(get_current_access_tags),
+        principal: Principal = Depends(get_current_principal),
+        authn_access_tags: AccessTags | None = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
@@ -131,8 +130,8 @@ def get_zarr_router_v2() -> APIRouter:
     async def get_zarr_array_metadata(
         request: Request,
         path: str,
-        principal: Union[Principal] = Depends(get_current_principal),
-        authn_access_tags: Optional[AccessTags] = Depends(get_current_access_tags),
+        principal: Principal = Depends(get_current_principal),
+        authn_access_tags: AccessTags | None = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
@@ -175,8 +174,8 @@ def get_zarr_router_v2() -> APIRouter:
     async def get_zarr_array(
         request: Request,
         path: str,
-        principal: Union[Principal] = Depends(get_current_principal),
-        authn_access_tags: Optional[AccessTags] = Depends(get_current_access_tags),
+        principal: Principal = Depends(get_current_principal),
+        authn_access_tags: AccessTags | None = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
@@ -304,8 +303,8 @@ def get_zarr_router_v3() -> APIRouter:
     async def get_zarr_metadata(
         request: Request,
         path: str,
-        principal: Union[Principal] = Depends(get_current_principal),
-        authn_access_tags: Optional[AccessTags] = Depends(get_current_access_tags),
+        principal: Principal = Depends(get_current_principal),
+        authn_access_tags: AccessTags | None = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
@@ -396,8 +395,8 @@ def get_zarr_router_v3() -> APIRouter:
         request: Request,
         path: str,
         block: str,
-        principal: Union[Principal] = Depends(get_current_principal),
-        authn_access_tags: Optional[AccessTags] = Depends(get_current_access_tags),
+        principal: Principal = Depends(get_current_principal),
+        authn_access_tags: AccessTags | None = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
@@ -487,8 +486,8 @@ def get_zarr_router_v3() -> APIRouter:
     async def get_zarr_group(
         request: Request,
         path: str,
-        principal: Union[Principal] = Depends(get_current_principal),
-        authn_access_tags: Optional[AccessTags] = Depends(get_current_access_tags),
+        principal: Principal = Depends(get_current_principal),
+        authn_access_tags: AccessTags | None = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),

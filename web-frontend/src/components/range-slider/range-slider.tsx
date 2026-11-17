@@ -72,8 +72,8 @@ const RangeSlider: React.FunctionComponent<RangeSliderProps> = (props) => {
           ? "Optionally slice a range of elements from the array"
           : `Slice a range of up to ${props.limit} elements of the array`}
       </Typography>
-      <Grid container spacing={2} alignItems="center">
-        <Grid item xs>
+      <Grid container spacing={2} sx={{ alignItems: "center" }}>
+        <Grid size="grow">
           <Slider
             getAriaLabel={() => "Array slice range"}
             value={props.value}
@@ -84,7 +84,7 @@ const RangeSlider: React.FunctionComponent<RangeSliderProps> = (props) => {
             valueLabelDisplay="auto"
           />
         </Grid>
-        <Grid item>
+        <Grid>
           <Input
             value={props.value[0]}
             size="small"
@@ -99,8 +99,8 @@ const RangeSlider: React.FunctionComponent<RangeSliderProps> = (props) => {
             }}
           />
         </Grid>
-        <Grid item>&ndash;</Grid>
-        <Grid item>
+        <Grid>&ndash;</Grid>
+        <Grid>
           <Input
             value={props.value[1]}
             size="small"

@@ -11,7 +11,7 @@ from copy import copy
 from dataclasses import asdict
 from pathlib import Path
 from threading import Lock
-from typing import Optional, Union
+from typing import Optional
 from weakref import WeakValueDictionary
 
 import httpx2 as httpx
@@ -38,11 +38,12 @@ MSGPACK_MIME_TYPE = "application/x-msgpack"
 
 def raise_for_status(response) -> None:
     """
-    Raise the `httpx.HTTPStatusError` if one occurred. Include correlation ID.
+    Raise the `httpx.HTTPStatusError` if one occurred. Include correlation ID
+    and, if the server traced the request, trace ID.
     """
     # This is adapted from the method httpx.Response.raise_for_status, modified to
     # remove the generic link to HTTP status documentation and include the
-    # correlation ID.
+    # correlation ID and trace ID.
     request = response._request
     if request is None:
         raise RuntimeError(
@@ -55,19 +56,23 @@ def raise_for_status(response) -> None:
 
     # correlation ID may be missing if request didn't make it to the server
     correlation_id = response.headers.get("x-tiled-request-id", None)
+    lookup = f"correlation ID {correlation_id}"
+    # trace ID is only present if the server has tracing enabled
+    if trace_id := response.headers.get("x-tiled-trace-id", None):
+        lookup += f" and traces for trace ID {trace_id}"
 
     if response.has_redirect_location:
         message = (
             "{error_type} '{0.status_code} {0.reason_phrase}' for url '{0.url}'\n"
             "Redirect location: '{0.headers[location]}'\n"
             "For more information, server admin can search server logs for "
-            "correlation ID {correlation_id}."
+            "{lookup}."
         )
     else:
         message = (
             "{error_type} '{0.status_code} {0.reason_phrase}' for url '{0.url}'\n"
             "For more information, server admin can search server logs for "
-            "correlation ID {correlation_id}."
+            "{lookup}."
         )
 
     status_class = response.status_code // 100
@@ -78,9 +83,7 @@ def raise_for_status(response) -> None:
         5: "Server error",
     }
     error_type = error_types.get(status_class, "Invalid status code")
-    message = message.format(
-        response, error_type=error_type, correlation_id=correlation_id
-    )
+    message = message.format(response, error_type=error_type, lookup=lookup)
     raise httpx.HTTPStatusError(message, request=request, response=response)
 
 
@@ -591,11 +594,9 @@ def params_from_slice(slice):
                         "Slices with a 'step' other than 1 are not supported."
                     )
                 slices.append(
-                    (
-                        (str(dim.start) if dim.start else "")
-                        + ":"
-                        + (str(dim.stop) if dim.stop else "")
-                    )
+                    (str(dim.start) if dim.start else "")
+                    + ":"
+                    + (str(dim.stop) if dim.stop else "")
                 )
             else:
                 slices.append(str(int(dim)))
@@ -705,10 +706,10 @@ def chunks_repr(chunks: Chunks) -> str:
 
 
 # The forms in which a caller may supply specs to the writing methods.
-Specs = Optional[Union[list[str], list[Spec], str]]
+Specs = Optional[list[str] | list[Spec] | str]
 
 
-def normalize_specs(specs: Specs) -> Optional[list[dict[str, str]]]:
+def normalize_specs(specs: Specs) -> list[dict[str, str]] | None:
     "Represent a list of Spec objects, strings, or dicts as a list of dicts."
 
     if specs is None:
@@ -735,9 +736,7 @@ def apply_patch(doc, patch, content_type):
     )
 
 
-def normalize_specs_patch(
-    specs_patch: Optional[list], content_type: str
-) -> Optional[list]:
+def normalize_specs_patch(specs_patch: list | None, content_type: str) -> list | None:
     """Normalize string specs inside a specs patch to `{"name", "version"}` dicts.
 
     The two patch representations carry specs differently: a merge patch

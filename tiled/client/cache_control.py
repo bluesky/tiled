@@ -5,7 +5,7 @@ in accordance with its BSD-3 license
 
 import logging
 import typing as tp
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from email.utils import parsedate_to_datetime
 
 import attr
@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 _PERMANENT_REDIRECT_STATUSES = (301, 308)
 
 
-def parse_headers_date(headers_date: tp.Optional[str]) -> tp.Optional[datetime]:
+def parse_headers_date(headers_date: str | None) -> datetime | None:
     """Parse a 'Date' header and return it as an optional datetime object.
 
     If the 'Date' does not exist return None
@@ -40,7 +40,7 @@ def parse_headers_date(headers_date: tp.Optional[str]) -> tp.Optional[datetime]:
 
 def parse_cache_control_headers(
     headers: httpx.Headers,
-) -> tp.Dict[str, tp.Optional[int]]:
+) -> dict[str, int | None]:
     """Parse cache-control headers.
 
     Args:
@@ -50,7 +50,7 @@ def parse_cache_control_headers(
         parsed cache-control headers as dict.
     """
 
-    cache_control: tp.Dict[str, tp.Optional[int]] = {}
+    cache_control: dict[str, int | None] = {}
     directives = headers.get_list("cache-control", split_commas=True)
     for directive in directives:
         if "=" in directive:
@@ -113,8 +113,8 @@ class CacheControl:
     def __init__(
         self,
         *,
-        cacheable_methods: tp.Tuple[str, ...] = ("GET",),
-        cacheable_status_codes: tp.Tuple[int, ...] = (
+        cacheable_methods: tuple[str, ...] = ("GET",),
+        cacheable_status_codes: tuple[int, ...] = (
             httpx.codes.OK,
             httpx.codes.NON_AUTHORITATIVE_INFORMATION,
             httpx.codes.MULTIPLE_CHOICES,
@@ -246,7 +246,7 @@ class CacheControl:
             return False
 
         # get response age (timedelta)
-        now = datetime.now(tz=timezone.utc)
+        now = datetime.now(tz=UTC)
         response_age = now - response_date
         if isinstance(req_min_fresh, int):
             # logger.debug(

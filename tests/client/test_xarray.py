@@ -183,7 +183,7 @@ def test_url_limit_bypass(client, url_limit, expected_method):
             assert "POST" not in request_methods  # No POST request
 
 
-@pytest.mark.parametrize("ds_node", tree.values(), ids=tree.keys())
+@pytest.mark.parametrize("ds_node", list(tree.values()), ids=list(tree.keys()))
 @pytest.mark.asyncio
 async def test_serialize_json(ds_node: DatasetAdapter):
     """Verify that serialized Dataset keys are a subset

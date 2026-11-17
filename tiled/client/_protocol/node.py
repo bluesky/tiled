@@ -27,9 +27,10 @@ from __future__ import annotations
 
 import collections.abc
 import uuid
+from collections.abc import Sequence
 from copy import deepcopy
 from dataclasses import asdict, dataclass
-from typing import Any, Optional, Sequence, Union
+from typing import Any
 
 import httpx2 as httpx
 import jsonpatch
@@ -77,9 +78,9 @@ def draft_request_patch_metadata(
     self_link: str,
     *,
     content_type: str,
-    metadata_patch: Optional[list],
-    specs_patch: Optional[list],
-    access_tags_patch: Optional[list],
+    metadata_patch: list | None,
+    specs_patch: list | None,
+    access_tags_patch: list | None,
     drop_revision: bool = False,
 ) -> RequestDraft:
     """Draft the request that patches a node's metadata, via `PATCH /metadata`.
@@ -107,10 +108,10 @@ def draft_request_patch_metadata(
 
 def build_metadata_patches(
     attributes: JSON,
-    metadata: Optional[JSON] = None,
-    specs: Optional[list] = None,
-    access_tags: Optional[list] = None,
-) -> tuple[Optional[list], Optional[list], Optional[list]]:
+    metadata: JSON | None = None,
+    specs: list | None = None,
+    access_tags: list | None = None,
+) -> tuple[list | None, list | None, list | None]:
     """Build JSON Patches (RFC 6902) that express updates against `attributes`.
 
     `metadata` is a `dict.update`-like specification (which may mark keys for
@@ -156,9 +157,9 @@ def build_metadata_patches(
 def merge_mutated_attributes(
     content: JSON,
     *,
-    metadata: Optional[JSON] = None,
-    specs: Optional[list] = None,
-    access_tags: Optional[list] = None,
+    metadata: JSON | None = None,
+    specs: list | None = None,
+    access_tags: list | None = None,
 ) -> dict[str, Any]:
     """The node attributes to consider current after a metadata mutation.
 
@@ -182,9 +183,9 @@ def merge_mutated_attributes(
 def draft_request_replace_metadata(
     self_link: str,
     *,
-    metadata: Optional[JSON],
-    specs: Optional[list],
-    access_tags: Optional[list],
+    metadata: JSON | None,
+    specs: list | None,
+    access_tags: list | None,
     drop_revision: bool = False,
 ) -> RequestDraft:
     """Draft the request that replaces a node's metadata entirely, via `PUT /metadata`.
@@ -254,15 +255,15 @@ class CreateNodeRecipe:
         cls,
         self_link: str,
         path_parts: list[str],
-        structure_family: Union[StructureFamily, str],
+        structure_family: StructureFamily | str,
         data_sources: list[DataSource],
         *,
-        key: Optional[str] = None,
-        metadata: Optional[JSON] = None,
+        key: str | None = None,
+        metadata: JSON | None = None,
         specs: Specs = None,
-        access_tags: Optional[list[str]] = None,
+        access_tags: list[str] | None = None,
         library_version: str,
-    ) -> "CreateNodeRecipe":
+    ) -> CreateNodeRecipe:
         """A recipe that creates a new node under the container at `self_link`.
 
         `library_version` is the server's reported library version; it selects
@@ -372,7 +373,7 @@ class CreateNodeRecipe:
         item.update(content)
         return item
 
-    def matches_existing(self, existing_attrs: JSON) -> Optional[str]:
+    def matches_existing(self, existing_attrs: JSON) -> str | None:
         """Check whether an existing node matches the create it conflicted with.
 
         Returns None if the node's attributes match this recipe (same

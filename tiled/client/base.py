@@ -2,7 +2,6 @@ import time
 from collections.abc import MutableMapping
 from copy import deepcopy
 from pathlib import Path
-from typing import Dict, List, Union
 from urllib.parse import parse_qs, urlparse
 
 import httpx2 as httpx
@@ -42,7 +41,7 @@ from .utils import (
 
 # TODO: Duplicated from  tiled.type_aliases to prevent importing numpy
 # After #1407 replace AnyAdapter with the BaseClass and remove this redefinition
-JSON_ITEM = Union[str, int, float, bool, Dict[str, "JSON_ITEM"], List["JSON_ITEM"]]
+JSON_ITEM = str | int | float | bool | dict[str, "JSON_ITEM"] | list["JSON_ITEM"]
 
 
 # How long a fetched collection length may be served from cache.
@@ -96,6 +95,8 @@ class MetadataRevisions(LengthCacheMixin):
                 self._pages_builder.first_page_link(item_, 1)
             )
             content = send_request_draft(self.context, draft).json()
+            if not content["data"]:
+                raise IndexError(f"revision index {item_} out of range")
             (result,) = content["data"]
             return result
 
@@ -122,6 +123,11 @@ class MetadataRevisions(LengthCacheMixin):
                 next_page_url = content["links"]["next"]
 
             return result["data"]
+
+    def __iter__(self):
+        # Fetch all the revisions, one page at a time, rather than one request
+        # per revision as iteration over `__getitem__` would.
+        return iter(self[:])
 
     def delete_revision(self, n):
         draft = draft_request_delete(self._link, params={"number": n})

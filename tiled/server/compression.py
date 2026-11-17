@@ -41,11 +41,27 @@ class CompressionResponder:
         self.scope: Scope = None
         self.initial_message: Message = {}
         self.started = False
+        self.compressed_file = None
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         self.send = send
         self.scope = scope
-        await self.app(scope, receive, self.send_compressed)
+        try:
+            await self.app(scope, receive, self.send_compressed)
+        finally:
+            # A streaming response that ends early (e.g. the client went
+            # away) leaves the compressor open; close it here, not at garbage
+            # collection, when its buffer may already be gone.
+            self._close_compressed_file()
+
+    def _open_compressed_file(self) -> None:
+        self.compressed_buffer = io.BytesIO()
+        self.compressed_file = self.file_factory(self.compressed_buffer)
+
+    def _close_compressed_file(self) -> None:
+        if self.compressed_file is not None:
+            self.compressed_file.close()
+            self.compressed_file = None
 
     async def send_compressed(self, message: Message) -> None:
         message_type = message["type"]
@@ -58,11 +74,12 @@ class CompressionResponder:
             media_type, *_ = headers.get("Content-Type", "").split(";", 1)
             for encoding in self.compression_registry.encodings(media_type):
                 if encoding in self.accepted:
-                    file_factory = self.compression_registry.dispatch(
+                    # Open the compressor only once the body is known to be
+                    # compressed. One opened for a small response, which is
+                    # sent as is, would never be closed and would leak.
+                    self.file_factory = self.compression_registry.dispatch(
                         media_type=media_type, encoding=encoding
                     )
-                    self.compressed_buffer = io.BytesIO()
-                    self.compressed_file = file_factory(self.compressed_buffer)
                     self.encoding = encoding
                     break
             else:
@@ -80,8 +97,9 @@ class CompressionResponder:
                 if self.encoding is not None:
                     # Standard (non-streaming) response.
                     t0 = time.perf_counter()
+                    self._open_compressed_file()
                     self.compressed_file.write(body)
-                    self.compressed_file.close()
+                    self._close_compressed_file()
                     compression_time = time.perf_counter() - t0
                     compressed_body = self.compressed_buffer.getvalue()
                     # Check to see if the compression ratio is significant.
@@ -113,6 +131,7 @@ class CompressionResponder:
                     headers.add_vary_header("Accept-Encoding")
                     del headers["Content-Length"]
 
+                    self._open_compressed_file()
                     self.compressed_file.write(body)
                     message["body"] = self.compressed_buffer.getvalue()
                     self.compressed_buffer.seek(0)
@@ -129,7 +148,7 @@ class CompressionResponder:
 
                 self.compressed_file.write(body)
                 if not more_body:
-                    self.compressed_file.close()
+                    self._close_compressed_file()
 
                 message["body"] = self.compressed_buffer.getvalue()
                 self.compressed_buffer.seek(0)

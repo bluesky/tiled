@@ -1,39 +1,23 @@
-import sys
-
-from pydantic import AfterValidator
-
-if sys.version_info < (3, 10):
-    EllipsisType = type(Ellipsis)
-else:
-    from types import EllipsisType
-
+from collections.abc import Callable, Coroutine, Mapping, Sequence
+from types import EllipsisType
 from typing import (
     Annotated,
     Any,
-    Callable,
-    Coroutine,
-    FrozenSet,
-    List,
-    Mapping,
-    Sequence,
-    Set,
-    Tuple,
     TypedDict,
-    Union,
 )
+
+from pydantic import AfterValidator, PlainSerializer, SerializationInfo
 
 from .utils import import_object
 
-JSON_ITEM = Union[
-    str, int, float, Mapping[str, "JSON_ITEM"], Sequence["JSON_ITEM"], None
-]
+JSON_ITEM = str | int | float | Mapping[str, "JSON_ITEM"] | Sequence["JSON_ITEM"] | None
 JSON = Mapping[str, JSON_ITEM]
 
-AccessTags = FrozenSet[str]
-Scopes = Set[str]
+AccessTags = frozenset[str]
+Scopes = set[str]
 Query = Any  # for now...
-Filters = List[Query]
-Chunks = Tuple[Tuple[int, ...], ...]
+Filters = list[Query]
+Chunks = tuple[tuple[int, ...], ...]
 
 AppTask = Callable[[], Coroutine[None, None, Any]]
 """Async function to be run as part of the app's lifecycle"""
@@ -45,9 +29,22 @@ class TaskMap(TypedDict):
     shutdown: list[AppTask]
 
 
+def _serialize_entry_point(obj: Any, info: SerializationInfo) -> Any:
+    # Validation replaces the "module:name" string with the object it names.
+    # Dumping to Python returns that object unchanged; dumping to JSON names it.
+    if not info.mode_is_json():
+        return obj
+    module = getattr(obj, "__module__", None)
+    qualname = getattr(obj, "__qualname__", None)
+    if module and qualname:
+        return f"{module}:{qualname}"
+    return str(obj)
+
+
 EntryPointString = Annotated[
     str,
     AfterValidator(import_object),
+    PlainSerializer(_serialize_entry_point, return_type=Any),
 ]
 
 

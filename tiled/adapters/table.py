@@ -1,4 +1,5 @@
-from typing import Any, Iterator, List, Optional, Tuple, Union
+from collections.abc import Iterator
+from typing import Any
 
 import dask.dataframe
 import pandas
@@ -27,11 +28,11 @@ class TableAdapter(Adapter[TableStructure]):
 
     def __init__(
         self,
-        partitions: Union[dask.dataframe.DataFrame, pandas.DataFrame],
+        partitions: dask.dataframe.DataFrame | pandas.DataFrame,
         structure: TableStructure,
         *,
-        metadata: Optional[JSON] = None,
-        specs: Optional[List[Spec]] = None,
+        metadata: JSON | None = None,
+        specs: list[Spec] | None = None,
     ) -> None:
         """
 
@@ -49,8 +50,8 @@ class TableAdapter(Adapter[TableStructure]):
     def from_pandas(
         cls,
         *args: Any,
-        metadata: Optional[JSON] = None,
-        specs: Optional[List[Spec]] = None,
+        metadata: JSON | None = None,
+        specs: list[Spec] | None = None,
         npartitions: int = 1,
         **kwargs: Any,
     ) -> "TableAdapter":
@@ -77,8 +78,8 @@ class TableAdapter(Adapter[TableStructure]):
     def from_dict(
         cls,
         *args: Any,
-        metadata: Optional[JSON] = None,
-        specs: Optional[List[Spec]] = None,
+        metadata: JSON | None = None,
+        specs: list[Spec] | None = None,
         npartitions: int = 1,
         **kwargs: Any,
     ) -> "TableAdapter":
@@ -106,8 +107,8 @@ class TableAdapter(Adapter[TableStructure]):
         cls,
         ddf: dask.dataframe.DataFrame,
         *,
-        metadata: Optional[JSON] = None,
-        specs: Optional[List[Spec]] = None,
+        metadata: JSON | None = None,
+        specs: list[Spec] | None = None,
     ) -> "TableAdapter":
         """
 
@@ -140,17 +141,17 @@ class TableAdapter(Adapter[TableStructure]):
 
         return ArrayAdapter.from_array(array)
 
-    def get(self, key: str) -> Union[ArrayAdapter, None]:
+    def get(self, key: str) -> ArrayAdapter | None:
         if key not in self.structure().columns:
             return None
         return self[key]
 
-    def items(self) -> Iterator[Tuple[str, ArrayAdapter]]:
+    def items(self) -> Iterator[tuple[str, ArrayAdapter]]:
         yield from ((key, self[key]) for key in self._structure.columns)
 
     def read(
-        self, fields: Optional[List[str]] = None
-    ) -> Union[dask.dataframe.DataFrame, pandas.DataFrame]:
+        self, fields: list[str] | None = None
+    ) -> dask.dataframe.DataFrame | pandas.DataFrame:
         if any(p is None for p in self._partitions):
             raise ValueError("Not all partitions have been stored.")
         if isinstance(self._partitions[0], dask.dataframe.DataFrame):
@@ -169,8 +170,8 @@ class TableAdapter(Adapter[TableStructure]):
     def read_partition(
         self,
         partition: int,
-        fields: Optional[List[str]] = None,
-    ) -> Union[pandas.DataFrame, dask.dataframe.DataFrame]:
+        fields: list[str] | None = None,
+    ) -> pandas.DataFrame | dask.dataframe.DataFrame:
         df = self._partitions[partition]
         if df is None:
             raise RuntimeError(f"Partition {partition} has not been stored yet.")

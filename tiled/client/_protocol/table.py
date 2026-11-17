@@ -11,8 +11,9 @@ response content back through the parsers.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Optional, Sequence
+from typing import TYPE_CHECKING, Any
 
 from ...serialization.table import deserialize_arrow, serialize_arrow
 from ...structures.core import StructureFamily
@@ -36,7 +37,7 @@ class TableReadRecipe:
     draft: RequestDraft
 
     @staticmethod
-    def parse_response(content: bytes) -> "pandas.DataFrame":
+    def parse_response(content: bytes) -> pandas.DataFrame:
         "Decode an Arrow IPC response body into a pandas DataFrame."
         return deserialize_arrow(content)
 
@@ -45,8 +46,8 @@ class TableReadRecipe:
         cls,
         link: str,
         partition: int,
-        columns: Optional[Sequence[str]],
-    ) -> "TableReadRecipe":
+        columns: Sequence[str] | None,
+    ) -> TableReadRecipe:
         """A recipe that reads one partition, via `/table/partition`.
 
         Selected columns ride in the URL as a repeated `column` parameter, or in
@@ -65,7 +66,7 @@ class TableReadRecipe:
         return cls(draft)
 
     @classmethod
-    def for_wide_table(cls, full_link: str, fields: Sequence[str]) -> "TableReadRecipe":
+    def for_wide_table(cls, full_link: str, fields: Sequence[str]) -> TableReadRecipe:
         """A recipe that reads selected fields of a node as one Arrow table.
 
         Used by the xarray wide-table optimization: many scalar/short variables
@@ -163,7 +164,7 @@ def data_source_from_table(data: Any) -> DataSource:
 
 
 def data_source_for_appendable_table(
-    schema: Any, npartitions: int, table_name: Optional[str] = None
+    schema: Any, npartitions: int, table_name: str | None = None
 ) -> DataSource:
     """The data source that describes an appendable (SQL-backed) table.
 

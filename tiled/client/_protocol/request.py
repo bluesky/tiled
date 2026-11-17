@@ -16,8 +16,9 @@ from __future__ import annotations
 
 import enum
 import string
+from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Any, ClassVar, Optional, Sequence
+from typing import Any, ClassVar
 from urllib.parse import parse_qs, urlparse
 
 import orjson
@@ -88,7 +89,7 @@ class RequestDraft:
     url: str
     params: dict[str, Any] = field(default_factory=dict)
     headers: dict[str, str] = field(default_factory=dict)
-    content: Optional[bytes] = None
+    content: bytes | None = None
     retry_policy: RetryPolicy = RetryPolicy.IDEMPOTENT
 
     @classmethod
@@ -97,10 +98,10 @@ class RequestDraft:
         url: str,
         *,
         repeated_param: str,
-        values: Optional[Sequence[str]],
-        params: Optional[dict] = None,
-        headers: Optional[dict] = None,
-    ) -> "RequestDraft":
+        values: Sequence[str] | None,
+        params: dict | None = None,
+        headers: dict | None = None,
+    ) -> RequestDraft:
         """A GET with one repeated query parameter, or an equivalent POST.
 
         Tiled endpoints that select a subset via a repeated query parameter
@@ -142,7 +143,7 @@ class RequestDraft:
 
 
 def draft_request_get_item(
-    link: str, params: Optional[dict[str, Any]] = None
+    link: str, params: dict[str, Any] | None = None
 ) -> RequestDraft:
     """Draft a GET of one item (msgpack-encoded JSON on the wire).
 
@@ -159,7 +160,7 @@ def draft_request_get_item(
 
 
 def draft_request_delete(
-    link: str, params: Optional[dict[str, Any]] = None
+    link: str, params: dict[str, Any] | None = None
 ) -> RequestDraft:
     """Draft a DELETE of the resource that a link addresses.
 

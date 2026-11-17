@@ -1,6 +1,7 @@
 import os
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable, Optional, Tuple
+from typing import Any
 
 import cachetools
 
@@ -17,7 +18,7 @@ import cachetools
 DEFAULT_MAX_SIZE = int(os.getenv("TILED_RESOURCE_CACHE_MAX_SIZE", "1024"))
 DEFAULT_TIME_TO_USE_SECONDS = float(os.getenv("TILED_RESOURCE_CACHE_TTU", "60."))
 
-AnyCache = cachetools.Cache[Tuple[Any, Path], Any]
+AnyCache = cachetools.Cache[tuple[Any, Path], Any]
 
 
 def get_resource_cache() -> AnyCache:
@@ -63,10 +64,10 @@ def default_resource_cache() -> cachetools.TLRUCache[Any, Any]:
 
 
 def with_resource_cache(
-    cache_key: Tuple[Any, ...],
+    cache_key: tuple[Any, ...],
     factory: Callable[..., Any],
     *args: Any,
-    _resource_cache: Optional[AnyCache] = None,
+    _resource_cache: AnyCache | None = None,
     **kwargs: Any,
 ) -> Any:
     """

@@ -1,5 +1,6 @@
 import axios from "axios";
 import { components } from "./openapi_schemas";
+import { bootstrapApiUrl } from "./settings";
 
 export const axiosInstance = axios.create();
 
@@ -119,6 +120,6 @@ export const metadata = async (
 };
 
 export const about = async (): Promise<components["schemas"]["About"]> => {
-  const response = await axiosInstance.get("/api/v1/");
+  const response = await axiosInstance.get(`${bootstrapApiUrl}/`);
   return response.data;
 };

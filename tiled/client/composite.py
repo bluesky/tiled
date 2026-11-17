@@ -1,6 +1,7 @@
 import itertools as it
 import warnings
-from typing import TYPE_CHECKING, Iterable, Optional, Union
+from collections.abc import Iterable
+from typing import TYPE_CHECKING
 
 from ..structures.core import StructureFamily
 from ._protocol.dataset import assign_dataset_dims
@@ -95,7 +96,7 @@ class CompositeClient(Container):
 
     def delete_contents(
         self,
-        keys: Optional[Union[str, Iterable[str]]] = None,
+        keys: str | Iterable[str] | None = None,
         external_only: bool = True,
     ) -> "CompositeClient":
         """Delete the contents of this Composite node.
@@ -294,7 +295,7 @@ class CompositeClient(Container):
         metadata=None,
         specs=None,
         access_tags=None,
-        table_name: Optional[str] = None,
+        table_name: str | None = None,
     ):
         if set(self.keys()).intersection(schema.names):
             raise ValueError(

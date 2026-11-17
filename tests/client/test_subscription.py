@@ -758,3 +758,90 @@ def test_subscribe_no_api_key_public(tiled_websocket_context_public):
 
     with subscription.start_in_thread(0):
         assert received_event.wait(timeout=10.0), "Timeout waiting for messages"
+
+
+def test_access_token_expires_soon():
+    import base64
+    import json
+    import time
+
+    from tiled.client.stream import _expires_soon
+
+    def jwt(claims):
+        payload = base64.urlsafe_b64encode(json.dumps(claims).encode()).rstrip(b"=")
+        return f"header.{payload.decode()}.signature"
+
+    assert _expires_soon(jwt({"exp": time.time() + 10}))
+    assert not _expires_soon(jwt({"exp": time.time() + 3600}))
+    # Not a JWT, or no exp: leave it to the server.
+    assert not _expires_soon("opaque-token")
+    assert not _expires_soon(jwt({"sub": "alice"}))
+
+
+def test_subscribe_refreshes_expiring_access_token(
+    tiled_websocket_context_multiuser, monkeypatch
+):
+    "A JWT session refreshes an about-to-expire access token before connecting."
+    context = tiled_websocket_context_multiuser
+    client = from_context(context)
+    refreshes = []
+    force_auth_refresh = context.force_auth_refresh
+
+    def counting_refresh():
+        refreshes.append(None)
+        return force_auth_refresh()
+
+    monkeypatch.setattr(context, "force_auth_refresh", counting_refresh)
+    monkeypatch.setattr("tiled.client.stream._expires_soon", lambda token: True)
+    created = threading.Event()
+
+    def on_child_created(update):
+        created.set()
+
+    with client.subscribe().start_in_thread(1) as sub:
+        sub.child_created.add_callback(on_child_created)
+        client.create_container("x")
+        assert created.wait(timeout=10.0), "Timeout waiting for messages"
+    # A reconnect during the test refreshes again, so only require one.
+    assert refreshes
+
+
+def test_access_checked_only_at_websocket_open(tiled_websocket_context):
+    "Access granted at the handshake holds for the life of the connection."
+    from tiled.access_control.access_policies import ALL_SCOPES, DummyAccessPolicy
+
+    class RevocablePolicy(DummyAccessPolicy):
+        revoked = False
+
+        async def allowed_scopes(self, *args, **kwargs):
+            if self.revoked:
+                return ALL_SCOPES - {"read:data"}
+            return ALL_SCOPES
+
+    context = tiled_websocket_context
+    policy = RevocablePolicy()
+    context.http_client.app.state.access_policy = policy
+    client = from_context(context)
+    streaming_node = client.write_array(
+        np.arange(10), key=f"test_stream_revoke_{uuid.uuid4().hex[:8]}"
+    )
+
+    received = []
+    received_event = threading.Event()
+
+    def callback(update):
+        received.append(update)
+        if len(received) >= 2:
+            received_event.set()
+
+    subscription = streaming_node.subscribe()
+    subscription.new_data.add_callback(callback)
+    with subscription.start_in_thread():
+        streaming_node.write(np.arange(10) + 1)
+        policy.revoked = True
+        # A new read is now denied...
+        with fail_with_status_code(403):
+            streaming_node.read()
+        # ...but the open connection keeps the access it was granted.
+        streaming_node.write(np.arange(10) + 2)
+        assert received_event.wait(timeout=10.0), "Timeout waiting for messages"

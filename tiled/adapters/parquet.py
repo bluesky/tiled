@@ -1,7 +1,7 @@
 import copy
 from collections.abc import Set
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 from urllib.parse import quote_plus
 
 import dask.dataframe
@@ -26,11 +26,11 @@ class ParquetDatasetAdapter(Adapter[TableStructure]):
 
     def __init__(
         self,
-        data_uris: List[str],
+        data_uris: list[str],
         structure: TableStructure,
         *,
-        metadata: Optional[JSON] = None,
-        specs: Optional[List[Spec]] = None,
+        metadata: JSON | None = None,
+        specs: list[Spec] | None = None,
     ) -> None:
         # TODO Store data_uris instead and generalize to non-file schemes.
         if isinstance(data_uris, str):
@@ -48,7 +48,7 @@ class ParquetDatasetAdapter(Adapter[TableStructure]):
         data_source: DataSource[TableStructure],
         node: Node,
         /,
-        **kwargs: Optional[Any],
+        **kwargs: Any | None,
     ) -> "ParquetDatasetAdapter":
         return init_adapter_from_catalog(cls, data_source, node, **kwargs)
 
@@ -56,7 +56,7 @@ class ParquetDatasetAdapter(Adapter[TableStructure]):
     def from_uris(
         cls,
         *data_uris: str,
-        **kwargs: Optional[Any],
+        **kwargs: Any | None,
     ) -> "ParquetDatasetAdapter":
         # Each URI is one partition of a single table; infer the structure from
         # all of them together.
@@ -68,11 +68,11 @@ class ParquetDatasetAdapter(Adapter[TableStructure]):
     def generate_data_sources(
         self,
         mimetype: str,
-        item: Union[str, Path],
+        item: str | Path,
         is_directory: bool,
-        size: Optional[int] = None,
-        parameters: Optional[Dict[str, Any]] = None,
-    ) -> List[DataSource[TableStructure]]:
+        size: int | None = None,
+        parameters: dict[str, Any] | None = None,
+    ) -> list[DataSource[TableStructure]]:
         return [
             DataSource(
                 structure_family=self.structure_family,
@@ -110,7 +110,7 @@ class ParquetDatasetAdapter(Adapter[TableStructure]):
         cls,
         storage: Storage,
         data_source: DataSource[TableStructure],
-        path_parts: List[str],
+        path_parts: list[str],
     ) -> DataSource[TableStructure]:
         data_source = copy.deepcopy(data_source)  # Do not mutate caller input.
         data_uri = storage.uri + "".join(
@@ -131,7 +131,7 @@ class ParquetDatasetAdapter(Adapter[TableStructure]):
         return data_source
 
     def write_partition(
-        self, partition: int, data: Union[dask.dataframe.DataFrame, pandas.DataFrame]
+        self, partition: int, data: dask.dataframe.DataFrame | pandas.DataFrame
     ) -> None:
         """Write data to a specific partition
 
@@ -146,7 +146,7 @@ class ParquetDatasetAdapter(Adapter[TableStructure]):
         uri = self._partition_paths[partition]
         data.to_parquet(uri)
 
-    def write(self, data: Union[dask.dataframe.DataFrame, pandas.DataFrame]) -> None:
+    def write(self, data: dask.dataframe.DataFrame | pandas.DataFrame) -> None:
         if self.structure().npartitions != 1:
             raise NotImplementedError
         uri = self._partition_paths[0]
@@ -158,5 +158,5 @@ class ParquetDatasetAdapter(Adapter[TableStructure]):
     def read_partition(self, *args: Any, **kwargs: Any) -> pandas.DataFrame:
         return self.dataframe_adapter.read_partition(*args, **kwargs)
 
-    def get(self, key: str) -> Union[ArrayAdapter, None]:
+    def get(self, key: str) -> ArrayAdapter | None:
         return self.dataframe_adapter.get(key)

@@ -32,8 +32,9 @@ what search-backed collections fix at construction.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Any, Optional, Sequence
+from typing import Any
 
 from ...queries import KeyLookup, queries_to_params
 from ...type_aliases import JSON
@@ -79,7 +80,7 @@ class PaginatedCollectionBuilder:
     def __post_init__(self) -> None:
         _reject_pagination_params(self.fixed_params)
 
-    def first_page_link(self, offset: int, limit: Optional[int] = None) -> str:
+    def first_page_link(self, offset: int, limit: int | None = None) -> str:
         """The link to the first page of the collection, starting at `offset`.
 
         Each page of results links to the next, so only the first page's link
@@ -92,7 +93,7 @@ class PaginatedCollectionBuilder:
         return link
 
     def draft_request_read_page(
-        self, page_link: str, extra_params: Optional[dict[str, Any]] = None
+        self, page_link: str, extra_params: dict[str, Any] | None = None
     ) -> RequestDraft:
         """Draft the request that fetches one page of the collection.
 
@@ -146,9 +147,9 @@ class DeepSearchBuilder(PaginatedCollectionBuilder):
         search_deep_link: str,
         queries: Sequence[Any],
         *,
-        max_depth: Optional[int] = None,
+        max_depth: int | None = None,
         include_data_sources: bool = False,
-    ) -> "DeepSearchBuilder":
+    ) -> DeepSearchBuilder:
         "Encode the queries (and options) once, for all drafts built from them."
         fixed_params = queries_to_params(*queries)
         if max_depth is not None:
@@ -184,7 +185,7 @@ class ChildrenSearchBuilder(PaginatedCollectionBuilder):
         search_link: str,
         queries: Sequence[Any],
         sorting: Sequence[tuple[str, int]],
-    ) -> "ChildrenSearchBuilder":
+    ) -> ChildrenSearchBuilder:
         "Encode the queries once, for all drafts built from them."
         return cls(
             link=search_link,
@@ -220,7 +221,7 @@ class ChildrenSearchBuilder(PaginatedCollectionBuilder):
 
     @staticmethod
     def may_serve_from_inlined_contents(
-        contents: Optional[JSON],
+        contents: JSON | None,
         queries: Sequence[Any],
         sorting: Sequence[tuple[str, int]],
     ) -> bool:

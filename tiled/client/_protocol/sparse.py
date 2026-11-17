@@ -13,8 +13,9 @@ response content back through the parser function.
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
-from typing import Any, Iterable, Optional, Sequence
+from typing import Any
 
 import numpy
 import sparse
@@ -61,7 +62,7 @@ class SparseReadRecipe:
     @classmethod
     def for_full(
         cls, link: str, structure: COOStructure, slice: Any = None
-    ) -> "SparseReadRecipe":
+    ) -> SparseReadRecipe:
         "A recipe that reads the whole array or a slice of it, via `/array/full`."
         draft = RequestDraft(
             "GET",
@@ -78,7 +79,7 @@ class SparseReadRecipe:
         structure: COOStructure,
         block: Iterable[int],
         slice: Any = None,
-    ) -> "SparseReadRecipe":
+    ) -> SparseReadRecipe:
         """A recipe that reads one block (chunk) of the array, via `/array/block`.
 
         The block index is sent as a comma-joined `block` query parameter,
@@ -140,7 +141,7 @@ def draft_request_write_sparse_block(
 
 
 def data_source_from_coo(
-    coords: Any, data: Any, shape: tuple[int, ...], dims: Optional[Sequence[str]]
+    coords: Any, data: Any, shape: tuple[int, ...], dims: Sequence[str] | None
 ) -> DataSource:
     "The data source that describes a single-chunk sparse (COO) array upload."
     from ...structures.array import BuiltinDtype

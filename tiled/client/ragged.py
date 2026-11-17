@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Union
+from typing import Any
 
 import numpy as np
 import ragged
@@ -141,7 +141,7 @@ class RaggedClient(CommonRaggedClient, BaseClient):
     def write_block(
         self,
         array: RaggedCompatibleType,
-        block: Union[int, tuple[int, ...]],
+        block: int | tuple[int, ...],
         persist=True,
     ):
         """Write a block of ragged array data.
@@ -163,7 +163,7 @@ class RaggedClient(CommonRaggedClient, BaseClient):
     def patch(
         self,
         array: RaggedCompatibleType,
-        offset: Union[int, tuple[int, ...]],
+        offset: int | tuple[int, ...],
         extend=False,
         persist=True,
     ):
