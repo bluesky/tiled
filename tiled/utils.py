@@ -662,10 +662,10 @@ def contained_path(root: str | Path, untrusted: str | Path) -> Path:
     """
     Join an untrusted relative path onto a trusted root directory.
 
-    Return the joined path with ``..`` components and symbolic links resolved.
+    Return the joined path with `..` components and symbolic links resolved.
     Raise UnsafePath unless that path is the root itself or inside it.
 
-    An absolute ``untrusted`` path replaces the root when joined, so it is
+    An absolute `untrusted` path replaces the root when joined, so it is
     rejected by the same check unless it happens to point inside the root.
     """
     try:
@@ -686,7 +686,7 @@ def is_safe_path_segment(segment: str) -> bool:
     """
     Tell whether a string can be used as one segment of a path.
 
-    A segment that is empty, is ``.`` or ``..``, or contains a path separator
+    A segment that is empty, is `.` or `..`, or contains a path separator
     or a null byte would address something other than a direct child.
     """
     # "/" separates segments in URLs on every platform.
