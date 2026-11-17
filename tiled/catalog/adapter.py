@@ -851,6 +851,34 @@ class CatalogNodeAdapter:
                 ),
             )
 
+    def _require_external_is_not_in_sql_storage(self, data_source):
+        """Respond with 403 for externally managed data in SQL storage.
+
+        The server writes the tables in SQL storage, many to a database, and
+        records for each one which rows are its own. If a client could register
+        a table there, it would choose those rows itself. For the same reason
+        an external asset cannot be a database: its URI also names a path, and
+        would let a file be read from outside of readable storage.
+        """
+        if data_source.management != Management.external:
+            return
+        adapter_cls = self.context.adapters_by_mimetype.get(data_source.mimetype)
+        in_sql_storage = adapter_cls is not None and any(
+            issubclass(storage_cls, SQLStorage)
+            for storage_cls in getattr(adapter_cls, "supported_storage", set)()
+        )
+        if in_sql_storage or any(
+            urlparse(asset.data_uri).scheme in SQL_STORAGE_SCHEMES
+            for asset in data_source.assets
+        ):
+            raise HTTPException(
+                status_code=HTTP_403_FORBIDDEN,
+                detail=(
+                    "Data in SQL storage is managed by this server. It cannot "
+                    "be registered or read as externally managed data."
+                ),
+            )
+
     def _delete_managed_asset(self, data_uri, **kwargs):
         """Remove data that this server stored, and nothing else.
 
@@ -898,6 +926,7 @@ class CatalogNodeAdapter:
             raise RuntimeError(
                 f"Server configuration has no adapter for mimetype {data_source.mimetype!r}"
             )
+        self._require_external_is_not_in_sql_storage(data_source)
         await self._require_readable(
             asset.data_uri
             for asset in data_source.assets
@@ -1290,6 +1319,7 @@ class CatalogNodeAdapter:
         data_sources = data_sources or []
         for data_source in data_sources:
             self._require_location_is_external(data_source)
+            self._require_external_is_not_in_sql_storage(data_source)
         child_path = list(await self.path_segments()) + [key]
         # Keys become URL path segments and, for writable data, directory
         # names under the storage root. The ancestors are checked too, in case
@@ -1510,6 +1540,7 @@ class CatalogNodeAdapter:
                 status_code=HTTP_403_FORBIDDEN,
                 detail="Only an externally managed data source can be updated.",
             )
+        self._require_external_is_not_in_sql_storage(data_source)
         # Obtain and hash the canonical (RFC 8785) representation of
         # the JSON structure.
         structure = _prepare_structure(
@@ -1733,6 +1764,9 @@ class CatalogNodeAdapter:
                     orm.Asset.id == orm.DataSourceAssetAssociation.asset_id,
                 )
                 .where(orm.NodesClosure.ancestor == self.node.id)
+                # The rows of a table are the server's to remove only if the
+                # server wrote them.
+                .where(orm.DataSource.management != Management.external)
                 # Select only data sources related to storage DBs
                 .where(
                     or_(

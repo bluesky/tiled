@@ -261,6 +261,15 @@ Write the date in place of the "Unreleased" in the case a new version is release
   an externally managed data source of the node in the request; it used to
   accept the id of a data source of any node. When a node is deleted, files are
   removed only from writable storage.
+- A table in SQL storage cannot be registered as external data. The table name
+  and dataset id of a registered table came from the client, so it could read
+  the rows of any other table in the storage database, through the dataset id
+  or through SQL placed in it, and deleting the node deleted those rows.
+  Registering external data with a SQL storage format, or with an asset whose
+  URI has the scheme of a database (which also let a file outside of readable
+  storage be read), is refused with HTTP 403. Such a data source already in a
+  catalog is not read, and deleting its node no longer deletes rows. Tables
+  written through the server are unaffected.
 
 ### Maintenance
 
