@@ -122,10 +122,12 @@ from ..utils import (
     UNCHANGED,
     Conflicts,
     OneShotCachedMap,
+    UnsafePath,
     UnsupportedQueryType,
     ensure_awaitable,
     ensure_specified_sql_driver,
     import_object,
+    is_safe_path_segment,
     path_from_uri,
 )
 from . import orm
@@ -1150,6 +1152,16 @@ class CatalogNodeAdapter:
         key = key or self.context.key_maker()
         data_sources = data_sources or []
         child_path = list(await self.path_segments()) + [key]
+        # Keys become URL path segments and, for writable data, directory
+        # names under the storage root. The ancestors are checked too, in case
+        # the catalog already holds a key that would not be accepted now.
+        for segment in child_path:
+            if not is_safe_path_segment(segment):
+                raise UnsafePath(
+                    f"The key {segment!r} in the path /{'/'.join(child_path)} "
+                    "cannot be used. A key must not be '.' or '..' or contain "
+                    "'/'."
+                )
 
         node = orm.Node(
             key=key,

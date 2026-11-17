@@ -214,6 +214,10 @@ Write the date in place of the "Unreleased" in the case a new version is release
   now used only if they are plain file names. An upload may hold only the
   buffers that the node's form names (HTTP 400 otherwise), and a form with
   unusable keys is refused when the node is created (HTTP 422).
+- A node cannot be created with the key `.` or `..`, or a key containing `/`
+  (HTTP 422). Below a container named `..`, the storage of new tables and
+  awkward arrays was created outside of the writable storage directory.
+  Creating a node below an existing container with such a key is refused too.
 
 ### Maintenance
 
