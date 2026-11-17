@@ -502,7 +502,9 @@ properties:
         type: string
         description: |
           Configure the application with a root_path when it is behind a proxy
-          serving it on some path prefix.
+          serving it on some path prefix. The proxy must strip the prefix
+          before forwarding the request. See the user guide, "Serve Tiled
+          Behind a Reverse Proxy".
       proxy_headers:
         type: boolean
         description: |

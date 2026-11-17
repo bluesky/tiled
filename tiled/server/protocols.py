@@ -1,6 +1,5 @@
 from abc import ABC
 from dataclasses import dataclass
-from typing import Optional
 
 from fastapi import Request
 
@@ -14,10 +13,10 @@ class UserSessionState:
 
 
 class InternalAuthenticator(ABC):
-    def authenticate(self, username: str, password: str) -> Optional[UserSessionState]:
+    def authenticate(self, username: str, password: str) -> UserSessionState | None:
         raise NotImplementedError
 
 
 class ExternalAuthenticator(ABC):
-    def authenticate(self, request: Request) -> Optional[UserSessionState]:
+    def authenticate(self, request: Request) -> UserSessionState | None:
         raise NotImplementedError

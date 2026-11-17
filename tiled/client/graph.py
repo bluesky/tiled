@@ -31,7 +31,7 @@ tied to a namespace). Link `predicate` values and property keys may be CURIEs
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 
 from .utils import handle_error, retry_context
 
@@ -133,7 +133,7 @@ class GraphClient:
     def __repr__(self):
         return f"<GraphClient {self._url!r}>"
 
-    def _execute(self, query: str, variables: Optional[dict] = None) -> dict:
+    def _execute(self, query: str, variables: dict | None = None) -> dict:
         for attempt in retry_context():
             with attempt:
                 response = handle_error(
@@ -176,10 +176,10 @@ class GraphClient:
         *,
         kind: str,
         name: str,
-        node_path_parts: Optional[list[str]] = None,
-        uri: Optional[str] = None,
-        properties: Optional[dict[str, Any]] = None,
-    ) -> "EntityHandle":
+        node_path_parts: list[str] | None = None,
+        uri: str | None = None,
+        properties: dict[str, Any] | None = None,
+    ) -> EntityHandle:
         "Create a graph entity. Prefer `node.bind_entity` / :func:`make_entity`."
         input: dict[str, Any] = {
             "kind": kind,
@@ -198,9 +198,9 @@ class GraphClient:
         kind: str,
         name: str,
         node_path_parts: list[str],
-        uri: Optional[str] = None,
-        properties: Optional[dict[str, Any]] = None,
-    ) -> "EntityHandle":
+        uri: str | None = None,
+        properties: dict[str, Any] | None = None,
+    ) -> EntityHandle:
         """Get-or-create a node-bound entity, keyed on (node, kind, name).
 
         Idempotent: returns the existing entity if one already matches, else
@@ -219,7 +219,7 @@ class GraphClient:
         data = self._execute(_UPSERT_ENTITY, {"input": input})
         return EntityHandle._from_json(self, data["upsertEntity"])
 
-    def get_entity(self, id: str) -> Optional["EntityHandle"]:
+    def get_entity(self, id: str) -> EntityHandle | None:
         "Fetch a single entity by id; returns None if it does not exist / is hidden."
         record = self._execute(_ENTITY, {"id": id})["entity"]
         return EntityHandle._from_json(self, record) if record else None
@@ -227,12 +227,12 @@ class GraphClient:
     def find_entities(
         self,
         *,
-        kind: Optional[str] = None,
-        name: Optional[str] = None,
-        node_path_parts: Optional[list[str]] = None,
+        kind: str | None = None,
+        name: str | None = None,
+        node_path_parts: list[str] | None = None,
         limit: int = 100,
         offset: int = 0,
-    ) -> list["EntityHandle"]:
+    ) -> list[EntityHandle]:
         "List entities, optionally filtered by kind, name, and/or bound node."
         records = self._execute(
             _ENTITIES,
@@ -254,12 +254,12 @@ class GraphClient:
         self,
         id: str,
         *,
-        kind: Optional[str] = None,
-        name: Optional[str] = None,
+        kind: str | None = None,
+        name: str | None = None,
         node_path_parts: Any = _UNSET,
         uri: Any = _UNSET,
         properties: Any = _UNSET,
-    ) -> Optional["EntityHandle"]:
+    ) -> EntityHandle | None:
         """Update an entity by id; returns the updated handle, or None if absent.
 
         Only the arguments you pass are changed. `kind` and `name` are left
@@ -289,8 +289,8 @@ class GraphClient:
         subject_id: str,
         predicate: str,
         object_id: str,
-        properties: Optional[dict[str, Any]] = None,
-    ) -> "LinkHandle":
+        properties: dict[str, Any] | None = None,
+    ) -> LinkHandle:
         "Create a `subject -predicate-> object` link. Prefer :func:`make_link`."
         data = self._execute(
             _CREATE_LINK,
@@ -309,7 +309,7 @@ class GraphClient:
         "Delete a link by id."
         return bool(self._execute(_DELETE_LINK, {"id": id})["deleteLink"])
 
-    def get_link(self, id: str) -> Optional["LinkHandle"]:
+    def get_link(self, id: str) -> LinkHandle | None:
         "Fetch a single link by id; returns None if it does not exist / is hidden."
         record = self._execute(_LINK, {"id": id})["link"]
         return LinkHandle._from_json(self, record) if record else None
@@ -317,12 +317,12 @@ class GraphClient:
     def find_links(
         self,
         *,
-        subject_id: Optional[str] = None,
-        predicate: Optional[str] = None,
-        object_id: Optional[str] = None,
+        subject_id: str | None = None,
+        predicate: str | None = None,
+        object_id: str | None = None,
         limit: int = 100,
         offset: int = 0,
-    ) -> list["LinkHandle"]:
+    ) -> list[LinkHandle]:
         "Find links, optionally filtered by subject, predicate, and/or object."
         records = self._execute(
             _LINKS,
@@ -337,8 +337,8 @@ class GraphClient:
         return [LinkHandle._from_json(self, r) for r in records]
 
     def update_link(
-        self, id: str, *, predicate: Optional[str] = None, properties: Any = _UNSET
-    ) -> Optional["LinkHandle"]:
+        self, id: str, *, predicate: str | None = None, properties: Any = _UNSET
+    ) -> LinkHandle | None:
         """Update a link's predicate and/or properties by id; returns the handle.
 
         The predicate is left unchanged when omitted (or None); `properties` is
@@ -368,8 +368,8 @@ class EntityHandle:
         kind: str,
         name: str,
         is_node_bound: bool = False,
-        uri: Optional[str] = None,
-        properties: Optional[dict] = None,
+        uri: str | None = None,
+        properties: dict | None = None,
     ):
         self._graph = graph
         self.id = id
@@ -382,7 +382,7 @@ class EntityHandle:
         self.properties = properties or {}
 
     @classmethod
-    def _from_json(cls, graph: GraphClient, record: dict) -> "EntityHandle":
+    def _from_json(cls, graph: GraphClient, record: dict) -> EntityHandle:
         return cls(
             graph,
             id=record["id"],
@@ -401,16 +401,16 @@ class EntityHandle:
         return self._graph.delete_entity(self.id)
 
     def outgoing_links(
-        self, *, predicate: Optional[str] = None, limit: int = 100, offset: int = 0
-    ) -> list["LinkHandle"]:
+        self, *, predicate: str | None = None, limit: int = 100, offset: int = 0
+    ) -> list[LinkHandle]:
         "Links where this entity is the subject."
         return self._graph.find_links(
             subject_id=self.id, predicate=predicate, limit=limit, offset=offset
         )
 
     def incoming_links(
-        self, *, predicate: Optional[str] = None, limit: int = 100, offset: int = 0
-    ) -> list["LinkHandle"]:
+        self, *, predicate: str | None = None, limit: int = 100, offset: int = 0
+    ) -> list[LinkHandle]:
         "Links where this entity is the object."
         return self._graph.find_links(
             object_id=self.id, predicate=predicate, limit=limit, offset=offset
@@ -419,12 +419,12 @@ class EntityHandle:
     def update(
         self,
         *,
-        kind: Optional[str] = None,
-        name: Optional[str] = None,
+        kind: str | None = None,
+        name: str | None = None,
         node_path_parts: Any = _UNSET,
         uri: Any = _UNSET,
         properties: Any = _UNSET,
-    ) -> "EntityHandle":
+    ) -> EntityHandle:
         "Update this entity in place; see :meth:`GraphClient.update_entity`."
         updated = self._graph.update_entity(
             self.id,
@@ -455,7 +455,7 @@ class LinkHandle:
         subject_id: str,
         predicate: str,
         object_id: str,
-        properties: Optional[dict] = None,
+        properties: dict | None = None,
     ):
         self._graph = graph
         self.id = id
@@ -465,7 +465,7 @@ class LinkHandle:
         self.properties = properties or {}
 
     @classmethod
-    def _from_json(cls, graph: GraphClient, record: dict) -> "LinkHandle":
+    def _from_json(cls, graph: GraphClient, record: dict) -> LinkHandle:
         return cls(
             graph,
             id=record["id"],
@@ -484,17 +484,17 @@ class LinkHandle:
         "Delete this link."
         return self._graph.delete_link(self.id)
 
-    def subject(self) -> Optional["EntityHandle"]:
+    def subject(self) -> EntityHandle | None:
         "The entity at the subject (tail) end of this link."
         return self._graph.get_entity(self.subject_id)
 
-    def object(self) -> Optional["EntityHandle"]:
+    def object(self) -> EntityHandle | None:
         "The entity at the object (head) end of this link."
         return self._graph.get_entity(self.object_id)
 
     def update(
-        self, *, predicate: Optional[str] = None, properties: Any = _UNSET
-    ) -> "LinkHandle":
+        self, *, predicate: str | None = None, properties: Any = _UNSET
+    ) -> LinkHandle:
         "Update this link in place; see :meth:`GraphClient.update_link`."
         updated = self._graph.update_link(
             self.id, predicate=predicate, properties=properties
@@ -519,8 +519,8 @@ def make_entity(
     *,
     kind: str,
     name: str,
-    uri: Optional[str] = None,
-    properties: Optional[dict[str, Any]] = None,
+    uri: str | None = None,
+    properties: dict[str, Any] | None = None,
 ) -> EntityHandle:
     """
     Create a free-standing (external) entity with no catalog node behind it,
@@ -537,7 +537,7 @@ def make_link(
     subject: EntityHandle,
     object: EntityHandle,
     predicate: str,
-    properties: Optional[dict[str, Any]] = None,
+    properties: dict[str, Any] | None = None,
 ) -> LinkHandle:
     """Create a directed link between two entityhandles
 

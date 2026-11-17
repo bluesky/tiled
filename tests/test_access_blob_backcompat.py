@@ -117,7 +117,8 @@ def test_request_models_accept_access_blob(model):
     """Without this the field is silently dropped by pydantic's extra='ignore'."""
     kwargs = {"structure_family": "container"} if model is PostMetadataRequest else {}
     body = model.model_validate({**kwargs, "access_blob": {"tags": ["x"]}})
-    assert access_tags_from_request(body) == frozenset({"x"})
+    with pytest.warns(DeprecationWarning, match="access_tags"):
+        assert access_tags_from_request(body) == frozenset({"x"})
 
 
 @pytest.mark.parametrize("model", [PostMetadataRequest, PutMetadataRequest])
@@ -171,5 +172,6 @@ def test_patch_request_model_accepts_an_access_blob_patch():
             "access_blob": [{"op": "add", "path": "/tags", "value": ["a"]}],
         }
     )
-    assert body.access_blob == [{"op": "add", "path": "/tags", "value": ["a"]}]
+    with pytest.warns(DeprecationWarning, match="access_tags"):
+        assert body.access_blob == [{"op": "add", "path": "/tags", "value": ["a"]}]
     assert body.access_tags is None

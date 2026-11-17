@@ -1,5 +1,4 @@
 import json
-from typing import Optional
 
 from pydantic import HttpUrl
 
@@ -16,9 +15,9 @@ class ExampleAuthorizationPolicy(ExternalPolicyDecisionPoint):
         create_node_endpoint: str,
         allowed_tags_endpoint: str,
         scopes_endpoint: str,
-        modify_node_endpoint: Optional[str] = None,
+        modify_node_endpoint: str | None = None,
         empty_access_tags_public: bool = False,
-        provider: Optional[str] = None,
+        provider: str | None = None,
     ):
         self._token_audience = token_audience
         self._type_adapter = None
@@ -36,9 +35,9 @@ class ExampleAuthorizationPolicy(ExternalPolicyDecisionPoint):
     def build_input(
         self,
         principal: Principal,
-        authn_access_tags: Optional[AccessTags],
+        authn_access_tags: AccessTags | None,
         authn_scopes: Scopes,
-        access_tags: Optional[AccessTags] = None,
+        access_tags: AccessTags | None = None,
     ) -> str:
         _input = {"audience": self._token_audience}
 

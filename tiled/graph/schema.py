@@ -31,7 +31,6 @@ node.
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 import strawberry
 from graphql import GraphQLError
@@ -42,7 +41,7 @@ from strawberry.types import Info
 from strawberry.types.unset import UNSET, UnsetType
 
 from tiled.access_control.access_policies import NO_ACCESS
-from tiled.access_control.protocols import normalize_access_tags
+from tiled.access_control.protocols import ApprovedAccessTags, normalize_access_tags
 from tiled.queries import AccessTagsFilter
 from tiled.type_aliases import AccessTags
 
@@ -103,12 +102,12 @@ class _RequestCache:
 
     def __init__(self, store: GraphSQLAlchemyStore):
         self._store = store
-        self._namespaces: Optional[Namespaces] = None
+        self._namespaces: Namespaces | None = None
         self._access_filters: dict[str, object] = {}
-        self.entities: DataLoader[str, Optional[EntityRecord]] = DataLoader(
+        self.entities: DataLoader[str, EntityRecord | None] = DataLoader(
             load_fn=self._load_entities
         )
-        self.node_tags: DataLoader[int, Optional[frozenset[str]]] = DataLoader(
+        self.node_tags: DataLoader[int, frozenset[str] | None] = DataLoader(
             load_fn=self._load_node_tags
         )
         # Keyed on (endpoint, endpoint_id, predicate, limit, offset, scope):
@@ -128,13 +127,11 @@ class _RequestCache:
         "Drop the memoized registry after a mutation changes it."
         self._namespaces = None
 
-    async def _load_entities(self, ids: list[str]) -> list[Optional[EntityRecord]]:
+    async def _load_entities(self, ids: list[str]) -> list[EntityRecord | None]:
         found = await self._store.get_entities(ids)
         return [found.get(id_) for id_ in ids]
 
-    async def _load_node_tags(
-        self, node_ids: list[int]
-    ) -> list[Optional[frozenset[str]]]:
+    async def _load_node_tags(self, node_ids: list[int]) -> list[frozenset[str] | None]:
         found = await self._store.get_node_access_tags_batch(node_ids)
         return [found.get(node_id) for node_id in node_ids]
 
@@ -195,8 +192,8 @@ async def _namespaces(info: Info) -> Namespaces:
 
 async def _resolve_node_binding(
     info: Info,
-    node_path_parts: Optional[list[str]],
-) -> Optional[int]:
+    node_path_parts: list[str] | None,
+) -> int | None:
     """Resolve the catalog node (ID) an entity should bind to given node path
 
     The provided node path is resolved to the id of an internal node in the catalog
@@ -215,13 +212,11 @@ async def _resolve_node_binding(
 
 
 class _PolicyNode:
-    def __init__(self, access_tags: Optional[AccessTags]):
+    def __init__(self, access_tags: AccessTags | None):
         self.access_tags = normalize_access_tags(access_tags or ())
 
 
-async def _is_allowed(
-    info: Info, access_tags: Optional[AccessTags], scope: str
-) -> bool:
+async def _is_allowed(info: Info, access_tags: AccessTags | None, scope: str) -> bool:
     authn_scopes = info.context["authn_scopes"]
     if scope not in authn_scopes:
         return False
@@ -238,13 +233,13 @@ async def _is_allowed(
 
 
 async def _assert_allowed(
-    info: Info, access_tags: Optional[AccessTags], scope: str
+    info: Info, access_tags: AccessTags | None, scope: str
 ) -> None:
     if not await _is_allowed(info, access_tags, scope):
         raise GraphQLError("Not permitted")
 
 
-async def _assert_node_write(info: Info, node_id: Optional[int]) -> None:
+async def _assert_node_write(info: Info, node_id: int | None) -> None:
     """
     Require write:metadata on the catalog node an entity is being bound to.
 
@@ -334,9 +329,7 @@ def _access_tags_from_input(access_tags: list[str]) -> AccessTags:
         ) from exc
 
 
-async def _init_access_tags(
-    info: Info, access_tags: Optional[AccessTags]
-) -> AccessTags:
+async def _init_access_tags(info: Info, access_tags: AccessTags | None) -> AccessTags:
     policy = info.context.get("access_policy")
     if policy is not None and hasattr(policy, "init_node"):
         try:
@@ -350,14 +343,14 @@ async def _init_access_tags(
             raise GraphQLError(f"Access policy rejects access tags: {exc}") from exc
         if not isinstance(new_access_tags, frozenset):
             raise TypeError("access policy must return a frozenset of access tags")
-        return new_access_tags
+        return ApprovedAccessTags(new_access_tags)
     return access_tags if access_tags is not None else normalize_access_tags()
 
 
 async def _modify_access_tags(
     info: Info,
-    current_access_tags: Optional[AccessTags],
-    requested_access_tags: Optional[AccessTags],
+    current_access_tags: AccessTags | None,
+    requested_access_tags: AccessTags | None,
 ) -> AccessTags:
     policy = info.context.get("access_policy")
     if policy is not None and hasattr(policy, "modify_node"):
@@ -373,7 +366,7 @@ async def _modify_access_tags(
             raise GraphQLError(f"Access policy rejects access tags: {exc}") from exc
         if not isinstance(new_access_tags, frozenset):
             raise TypeError("access policy must return a frozenset of access tags")
-        return new_access_tags
+        return ApprovedAccessTags(new_access_tags)
     if requested_access_tags is not None:
         return requested_access_tags
     return normalize_access_tags(current_access_tags or ())
@@ -390,18 +383,18 @@ class Entity:
     is_node_bound: bool
     kind: str
     name: str
-    uri: Optional[str]
-    properties: Optional[JSON]  # type: ignore[valid-type]
+    uri: str | None
+    properties: JSON | None  # type: ignore[valid-type]
     created_at: str
 
     @strawberry.field(description="Links where this entity is the subject.")
     async def outgoing_links(
         self,
         info: Info,
-        predicate: Optional[str] = None,
+        predicate: str | None = None,
         limit: int = 100,
         offset: int = 0,
-    ) -> list["Link"]:
+    ) -> list[Link]:
         return await _load_links(
             info, "subject_id", str(self.id), predicate, limit, offset
         )
@@ -410,10 +403,10 @@ class Entity:
     async def incoming_links(
         self,
         info: Info,
-        predicate: Optional[str] = None,
+        predicate: str | None = None,
         limit: int = 100,
         offset: int = 0,
-    ) -> list["Link"]:
+    ) -> list[Link]:
         return await _load_links(
             info, "object_id", str(self.id), predicate, limit, offset
         )
@@ -423,10 +416,10 @@ async def _load_links(
     info: Info,
     endpoint: str,
     endpoint_id: str,
-    predicate: Optional[str],
+    predicate: str | None,
     limit: int,
     offset: int,
-) -> list["Link"]:
+) -> list[Link]:
     """
     Resolve one page of an entity's links at one endpoint, through the
     request's link loader so that expanding the links of every entity on a
@@ -451,20 +444,20 @@ class Link:
     subject_id: strawberry.ID
     predicate: str
     object_id: strawberry.ID
-    properties: Optional[JSON]  # type: ignore[valid-type]
+    properties: JSON | None  # type: ignore[valid-type]
     access_tags: list[str]
     created_at: str
 
     @strawberry.field
-    async def subject(self, info: Info) -> Optional[Entity]:
+    async def subject(self, info: Info) -> Entity | None:
         return await _load_visible_entity(info, str(self.subject_id))
 
     @strawberry.field
-    async def object(self, info: Info) -> Optional[Entity]:
+    async def object(self, info: Info) -> Entity | None:
         return await _load_visible_entity(info, str(self.object_id))
 
 
-async def _load_visible_entity(info: Info, id: str) -> Optional[Entity]:
+async def _load_visible_entity(info: Info, id: str) -> Entity | None:
     """
     Resolve a link endpoint, or None if it does not exist or the principal may
     not read it. Goes through the request's entity loader so that the endpoints
@@ -526,21 +519,21 @@ def _link_from_record(r: LinkRecord, namespaces: Namespaces) -> Link:
 
 @strawberry.input
 class UpdateEntityInput:
-    name: Optional[str] = None
+    name: str | None = None
     # Re-bind to a catalog node by path (list of key segments), detach with an
     # explicit null, or leave the current binding unchanged by omitting it.
-    node_path_parts: Optional[list[str]] | UnsetType = UNSET
-    uri: Optional[str] | UnsetType = UNSET
-    kind: Optional[str] = None
-    properties: Optional[JSON] | UnsetType = UNSET  # type: ignore[valid-type]
-    access_tags: Optional[list[str]] | UnsetType = UNSET
+    node_path_parts: list[str] | None | UnsetType = UNSET
+    uri: str | None | UnsetType = UNSET
+    kind: str | None = None
+    properties: JSON | None | UnsetType = UNSET  # type: ignore[valid-type]
+    access_tags: list[str] | None | UnsetType = UNSET
 
 
 @strawberry.input
 class UpdateLinkInput:
-    predicate: Optional[str] | UnsetType = UNSET
-    properties: Optional[JSON] | UnsetType = UNSET  # type: ignore[valid-type]
-    access_tags: Optional[list[str]] | UnsetType = UNSET
+    predicate: str | None | UnsetType = UNSET
+    properties: JSON | None | UnsetType = UNSET  # type: ignore[valid-type]
+    access_tags: list[str] | None | UnsetType = UNSET
 
 
 @strawberry.input
@@ -551,10 +544,10 @@ class CreateEntityInput:
     # (e.g. ["a", "b"]). Resolved to the internal node id server-side, so
     # clients never handle the catalog's integer ids. Omit for an entity that
     # is not tied to a node in this server's catalog.
-    node_path_parts: Optional[list[str]] = None
-    uri: Optional[str] = None
-    properties: Optional[JSON] = None  # type: ignore[valid-type]
-    access_tags: Optional[list[str]] = None
+    node_path_parts: list[str] | None = None
+    uri: str | None = None
+    properties: JSON | None = None  # type: ignore[valid-type]
+    access_tags: list[str] | None = None
 
 
 @strawberry.input
@@ -562,8 +555,8 @@ class CreateLinkInput:
     subject_id: strawberry.ID
     predicate: str
     object_id: strawberry.ID
-    properties: Optional[JSON] = None  # type: ignore[valid-type]
-    access_tags: Optional[list[str]] = None
+    properties: JSON | None = None  # type: ignore[valid-type]
+    access_tags: list[str] | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -574,7 +567,7 @@ class CreateLinkInput:
 @strawberry.type
 class Query:
     @strawberry.field
-    async def entity(self, info: Info, id: strawberry.ID) -> Optional[Entity]:
+    async def entity(self, info: Info, id: strawberry.ID) -> Entity | None:
         record = await _store(info).get_entity(str(id))
         if record is None:
             return None
@@ -587,9 +580,9 @@ class Query:
     async def entities(
         self,
         info: Info,
-        kind: Optional[str] = None,
-        name: Optional[str] = None,
-        node_path_parts: Optional[list[str]] = None,
+        kind: str | None = None,
+        name: str | None = None,
+        node_path_parts: list[str] | None = None,
         limit: int = 100,
         offset: int = 0,
     ) -> list[Entity]:
@@ -614,7 +607,7 @@ class Query:
         return [_entity_from_record(r, namespaces) for r in records]
 
     @strawberry.field
-    async def link(self, info: Info, id: strawberry.ID) -> Optional[Link]:
+    async def link(self, info: Info, id: strawberry.ID) -> Link | None:
         record = await _store(info).get_link(str(id))
         if not record or not await _is_allowed(
             info, normalize_access_tags(record.access_tags), "read:metadata"
@@ -628,9 +621,9 @@ class Query:
     async def links(
         self,
         info: Info,
-        subject_id: Optional[strawberry.ID] = None,
-        predicate: Optional[str] = None,
-        object_id: Optional[strawberry.ID] = None,
+        subject_id: strawberry.ID | None = None,
+        predicate: str | None = None,
+        object_id: strawberry.ID | None = None,
         limit: int = 100,
         offset: int = 0,
     ) -> list[Link]:
@@ -798,7 +791,7 @@ class Mutation:
     @strawberry.mutation(description="Update an entity's name, uri, or kind.")
     async def update_entity(
         self, info: Info, id: strawberry.ID, input: UpdateEntityInput
-    ) -> Optional[Entity]:
+    ) -> Entity | None:
         current = await _store(info).get_entity(str(id))
         if current is None:
             return None
@@ -884,7 +877,7 @@ class Mutation:
     @strawberry.mutation(description="Update a link's predicate or properties.")
     async def update_link(
         self, info: Info, id: strawberry.ID, input: UpdateLinkInput
-    ) -> Optional[Link]:
+    ) -> Link | None:
         current = await _store(info).get_link(str(id))
         if current is None:
             return None

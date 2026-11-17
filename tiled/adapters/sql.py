@@ -3,23 +3,18 @@ from __future__ import annotations
 import copy
 import hashlib
 import logging
+import os
 import re
-from collections.abc import Set
-from contextlib import closing
+from collections.abc import Callable, Iterator, Sequence, Set
+from contextlib import AbstractContextManager, closing, nullcontext
 from typing import (
     TYPE_CHECKING,
     Any,
-    Callable,
-    Iterator,
-    List,
     Literal,
-    Optional,
-    Sequence,
-    Tuple,
     TypedDict,
-    Union,
     cast,
 )
+from urllib.parse import urlparse
 
 from tiled.utils import UnsafeIdentifier
 
@@ -50,6 +45,13 @@ from ..structures.data_source import Asset, DataSource
 from ..structures.table import TableStructure
 from ..type_aliases import JSON
 from .array import ArrayAdapter
+
+try:
+    from opentelemetry import trace as _otel_trace
+
+    _STORAGE_TRACER = _otel_trace.get_tracer("tiled.storage")
+except ImportError:  # OpenTelemetry is an optional dependency.
+    _STORAGE_TRACER = None
 
 DIALECTS = Literal["postgresql", "sqlite", "duckdb"]
 TABLE_NAME_PATTERN = re.compile(r"^[a-z][a-z0-9_]*$")
@@ -152,10 +154,10 @@ class SQLAdapter(Adapter[TableStructure]):
         table_name: str,
         dataset_id: int,
         *,
-        order_by_args: Optional[List[_OrderByArgs]] = None,
-        primary_key: Optional[List[str]] = None,
-        metadata: Optional[JSON] = None,
-        specs: Optional[List[Spec]] = None,
+        order_by_args: list[_OrderByArgs] | None = None,
+        primary_key: list[str] | None = None,
+        metadata: JSON | None = None,
+        specs: list[Spec] | None = None,
     ) -> None:
         self.storage: SQLStorage = cast(SQLStorage, get_storage(data_uri))
         self._metadata = metadata or {}
@@ -164,8 +166,8 @@ class SQLAdapter(Adapter[TableStructure]):
         self.table_name = table_name
         self.dataset_id = dataset_id
 
-        self.order_by_args: List[_OrderByArgs] = order_by_args or []
-        self.primary_key: List[str] = primary_key or []
+        self.order_by_args: list[_OrderByArgs] = order_by_args or []
+        self.primary_key: list[str] = primary_key or []
 
         for arg in self.order_by_args:
             column = arg["column"]
@@ -211,7 +213,7 @@ class SQLAdapter(Adapter[TableStructure]):
         return {SQLStorage, EmbeddedSQLStorage, RemoteSQLStorage}
 
     @classmethod
-    def get_table_name(cls, data_source: "DataSource[TableStructure]") -> str:
+    def get_table_name(cls, data_source: DataSource[TableStructure]) -> str:
         "If not defined, generate a default table name based on the Arrow schema and parameters"
 
         suffix = "".join(data_source.parameters.get("primary_key", ""))
@@ -227,7 +229,7 @@ class SQLAdapter(Adapter[TableStructure]):
         cls,
         storage: SQLStorage,
         data_source: DataSource[TableStructure],
-        path_parts: Optional[List[str]] = None,
+        path_parts: list[str] | None = None,
     ) -> DataSource[TableStructure]:
         """Initialize (or update) a data source, including the list of assets, for given uri.
 
@@ -346,8 +348,8 @@ class SQLAdapter(Adapter[TableStructure]):
         data_source: DataSource[TableStructure],
         node: Node,
         /,
-        **kwargs: Optional[Any],
-    ) -> "SQLAdapter":
+        **kwargs: Any | None,
+    ) -> SQLAdapter:
         return cls(
             data_source.assets[0].data_uri,
             structure=data_source.structure,
@@ -362,7 +364,7 @@ class SQLAdapter(Adapter[TableStructure]):
     def structure(self) -> TableStructure:
         return self._structure
 
-    def get(self, key: str) -> Union[ArrayAdapter, AwkwardAdapter, RaggedAdapter, None]:
+    def get(self, key: str) -> ArrayAdapter | AwkwardAdapter | RaggedAdapter | None:
         """Get the data for a specific key
 
         Parameters
@@ -379,7 +381,7 @@ class SQLAdapter(Adapter[TableStructure]):
 
     def __getitem__(
         self, key: str
-    ) -> Union[ArrayAdapter, AwkwardAdapter, RaggedAdapter, None]:
+    ) -> ArrayAdapter | AwkwardAdapter | RaggedAdapter | None:
         """Get the data for a specific key.
 
         Parameters
@@ -402,7 +404,7 @@ class SQLAdapter(Adapter[TableStructure]):
             and isinstance(array[0], numpy.ndarray)
         ):
             # accumulate errors until an attempt succeeds
-            errors: List[Exception] = []
+            errors: list[Exception] = []
 
             try:
                 array = numpy.vstack(cast("Sequence[numpy.ndarray]", array))
@@ -450,7 +452,7 @@ class SQLAdapter(Adapter[TableStructure]):
 
     def items(
         self,
-    ) -> Iterator[Tuple[str, Union[ArrayAdapter, AwkwardAdapter, RaggedAdapter]]]:
+    ) -> Iterator[tuple[str, ArrayAdapter | AwkwardAdapter | RaggedAdapter]]:
         """Iterate over the SQLAdapter data.
 
         Returns
@@ -466,12 +468,10 @@ class SQLAdapter(Adapter[TableStructure]):
     def append_partition(
         self,
         partition: int,
-        data: Union[
-            List[pyarrow.record_batch],
-            pyarrow.record_batch,
-            pandas.DataFrame,
-            pyarrow.Table,
-        ],
+        data: list[pyarrow.RecordBatch]
+        | pyarrow.RecordBatch
+        | pandas.DataFrame
+        | pyarrow.Table,
     ) -> None:
         """Write the data as arrow format
 
@@ -479,7 +479,7 @@ class SQLAdapter(Adapter[TableStructure]):
         ----------
         partition : int
             The partition number to which the data will be appended.
-        data : Union[List[pyarrow.record_batch], pyarrow.record_batch, pandas.DataFrame, pyarrow.Table]
+        data : list[pyarrow.RecordBatch] | pyarrow.RecordBatch | pandas.DataFrame | pyarrow.Table
             data to append to the database.
         """
 
@@ -513,11 +513,38 @@ class SQLAdapter(Adapter[TableStructure]):
 
         with closing(self.storage.connect()) as conn:
             with conn.cursor() as cursor:
-                cursor.adbc_ingest(self.table_name, table, mode="append")
+                with self._adbc_ingest_span():
+                    cursor.adbc_ingest(self.table_name, table, mode="append")
             conn.commit()
 
+    def _adbc_ingest_span(self) -> AbstractContextManager[Any]:
+        """OpenTelemetry tracing span for the bulk `adbc_ingest` write.
+
+        `adbc_ingest` bypasses the DBAPI `execute()` path, so the generic
+        dbapi instrumentation does not trace it; emit a span explicitly with the
+        same db attributes as the other storage spans. A no-op if OpenTelemetry
+        is not installed or tracing is not configured.
+        """
+        if _STORAGE_TRACER is None or not os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT"):
+            return nullcontext()
+        attributes = {
+            "db.system": self.storage.dialect,
+            "db.sql.table": self.table_name,
+        }
+        db_name = urlparse(self.storage.uri).path.lstrip("/")
+        if db_name:
+            attributes["db.name"] = db_name
+        return cast(
+            AbstractContextManager[Any],
+            _STORAGE_TRACER.start_as_current_span(
+                "adbc_ingest",
+                kind=_otel_trace.SpanKind.CLIENT,
+                attributes=attributes,
+            ),
+        )
+
     def _read_full_table_or_partition(
-        self, fields: Optional[List[str]] = None, partition: Optional[int] = None
+        self, fields: list[str] | None = None, partition: int | None = None
     ) -> pyarrow.Table:
         """Read the data from the database
 
@@ -579,7 +606,7 @@ class SQLAdapter(Adapter[TableStructure]):
 
         return data.cast(target_schema)
 
-    def read(self, fields: Optional[List[str]] = None) -> pandas.DataFrame:
+    def read(self, fields: list[str] | None = None) -> pandas.DataFrame:
         """Read the concatenated data from the entire table.
 
         Parameters
@@ -594,7 +621,7 @@ class SQLAdapter(Adapter[TableStructure]):
         return self._read_full_table_or_partition(fields=fields).to_pandas()
 
     def read_partition(
-        self, partition: int, fields: Optional[List[str]] = None
+        self, partition: int, fields: list[str] | None = None
     ) -> pandas.DataFrame:
         """Read a batch of data from a given partition.
 
@@ -656,7 +683,7 @@ ARROW_TO_PG_TYPES: dict[pyarrow.Field, str] = {
 }
 
 
-def arrow_field_to_pg_type(field: Union[pyarrow.Field, pyarrow.DataType]) -> str:
+def arrow_field_to_pg_type(field: pyarrow.Field | pyarrow.DataType) -> str:
     """Get the PostgreSQL type name for a given PyArrow field.
 
     Parameters
@@ -689,8 +716,8 @@ def arrow_field_to_pg_type(field: Union[pyarrow.Field, pyarrow.DataType]) -> str
     """
 
     def _resolve_type(
-        arrow_type: Union[pyarrow.Field, pyarrow.DataType],
-    ) -> Union[pyarrow.Field, pyarrow.DataType, str]:
+        arrow_type: pyarrow.Field | pyarrow.DataType,
+    ) -> pyarrow.Field | pyarrow.DataType | str:
         """Internal helper to resolve type, handling nested cases."""
         # Handle list types
         if pyarrow.types.is_list(arrow_type):
@@ -794,7 +821,7 @@ ARROW_TO_DUCKDB_TYPES = {
 }
 
 
-def arrow_field_to_duckdb_type(field: Union[pyarrow.Field, pyarrow.DataType]) -> str:
+def arrow_field_to_duckdb_type(field: pyarrow.Field | pyarrow.DataType) -> str:
     """Get the DuckDB type name for a given PyArrow field.
 
     Parameters
@@ -827,8 +854,8 @@ def arrow_field_to_duckdb_type(field: Union[pyarrow.Field, pyarrow.DataType]) ->
     """
 
     def _resolve_type(
-        arrow_type: Union[pyarrow.Field, pyarrow.DataType],
-    ) -> Union[pyarrow.Field, pyarrow.DataType, str]:
+        arrow_type: pyarrow.Field | pyarrow.DataType,
+    ) -> pyarrow.Field | pyarrow.DataType | str:
         """Internal helper to resolve type, handling nested cases."""
         # Handle decimal types with custom precision/scale
         if pyarrow.types.is_decimal(arrow_type):
@@ -928,7 +955,7 @@ ARROW_TO_SQLITE_TYPES: dict[pyarrow.Field, str] = {
 }
 
 
-def arrow_field_to_sqlite_type(field: Union[pyarrow.Field, pyarrow.DataType]) -> str:
+def arrow_field_to_sqlite_type(field: pyarrow.Field | pyarrow.DataType) -> str:
     """Get the SQLite type name for a given PyArrow field.
 
     Parameters
@@ -991,7 +1018,7 @@ def arrow_field_to_sqlite_type(field: Union[pyarrow.Field, pyarrow.DataType]) ->
 
 
 DIALECT_TO_TYPE_CONVERTER: dict[
-    DIALECTS, Callable[[Union[pyarrow.Field, pyarrow.DataType]], str]
+    DIALECTS, Callable[[pyarrow.Field | pyarrow.DataType], str]
 ] = {
     "duckdb": arrow_field_to_duckdb_type,
     "sqlite": arrow_field_to_sqlite_type,
