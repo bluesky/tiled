@@ -1,5 +1,3 @@
-from typing import List, Optional
-
 import typer
 
 from tiled.commandline._utils import echo_api_keys_table, get_context
@@ -9,13 +7,13 @@ admin_api_key_app = typer.Typer(no_args_is_help=True)
 
 @admin_api_key_app.command("create")
 def create_api_key(
-    profile: Optional[str] = typer.Option(
+    profile: str | None = typer.Option(
         None, help="If you use more than one Tiled server, use this to specify which."
     ),
     principal_uuid: str = typer.Argument(
         ..., help="UUID identifying Principal to create API key for"
     ),
-    expires_in: Optional[str] = typer.Option(
+    expires_in: str | None = typer.Option(
         None,
         help=(
             "Number of seconds until API key expires, given as integer seconds "
@@ -24,14 +22,14 @@ def create_api_key(
             "have the maximum lifetime allowed by the server. "
         ),
     ),
-    scopes: Optional[List[str]] = typer.Option(
+    scopes: list[str] | None = typer.Option(
         None,
         help=(
             "Restrict the access available to this API key by listing scopes. "
             "By default, it will inherit the scopes of the Principal."
         ),
     ),
-    access_tags: Optional[List[str]] = typer.Option(
+    access_tags: list[str] | None = typer.Option(
         None,
         help=(
             "Restrict the access available to the API key by listing specific tags. "
@@ -39,7 +37,7 @@ def create_api_key(
             "By default, it will have no limits on access tags."
         ),
     ),
-    note: Optional[str] = typer.Option(None, help="Add a note to label this API key."),
+    note: str | None = typer.Option(None, help="Add a note to label this API key."),
 ):
     """
     Create an API key for a Principal.
@@ -64,7 +62,7 @@ def create_api_key(
 
 @admin_api_key_app.command("list")
 def list_api_keys(
-    profile: Optional[str] = typer.Option(
+    profile: str | None = typer.Option(
         None, help="If you use more than one Tiled server, use this to specify which."
     ),
     principal_uuid: str = typer.Argument(
@@ -84,7 +82,7 @@ def list_api_keys(
 
 @admin_api_key_app.command("revoke")
 def revoke_api_key(
-    profile: Optional[str] = typer.Option(
+    profile: str | None = typer.Option(
         None, help="If you use more than one Tiled server, use this to specify which."
     ),
     principal_uuid: str = typer.Argument(

@@ -39,6 +39,7 @@ classifiers = [
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
   "Topic :: Scientific/Engineering :: Physics",
 ]
 
@@ -88,6 +89,13 @@ all = [
     "numba >=0.59.0",  # indirect, pinned to assist uv solve
     "obstore",
     "openpyxl",
+    "opentelemetry-exporter-otlp-proto-http",
+    "opentelemetry-instrumentation-asyncpg",
+    "opentelemetry-instrumentation-dbapi",
+    "opentelemetry-instrumentation-fastapi",
+    "opentelemetry-instrumentation-httpx >=0.65b0", # traces httpx2 clients
+    "opentelemetry-instrumentation-redis",
+    "opentelemetry-sdk",
     "packaging",
     "pandas <3",
     "pillow",
@@ -100,7 +108,7 @@ all = [
     "redis",
     "rich",
     "sparse >=0.15.5",
-    "sqlalchemy[asyncio] >=2,<2.1",
+    "sqlalchemy[asyncio] >=2",
     "stamina",
     "starlette >=0.48.0",
     "strawberry-graphql[fastapi]>=0.315.3",
@@ -119,7 +127,7 @@ array = [
 # This is the "kichen sink" fully-featured client dependency set.
 client = [
     "awkward >=2.4.3",
-    "blosc2; python_version >= '3.10'",
+    "blosc2",
     "dask[array]",
     "dask[dataframe]",
     "entrypoints",
@@ -141,7 +149,7 @@ client = [
 # These are used by the client/server to more efficiently compress.
 # They fall back to gzip (which is slower) if these are not installed.
 compression = [
-    "blosc2; python_version >= '3.10'",
+    "blosc2",
     "lz4",
     "zstandard",
 ]
@@ -188,7 +196,7 @@ minimal-server = [
     "python-dateutil",
     "python-multipart",
     "redis",
-    "sqlalchemy[asyncio] >=2,<2.1",
+    "sqlalchemy[asyncio] >=2",
     "starlette >=0.48.0",
     "uvicorn[standard]",
     "zarr",
@@ -205,7 +213,7 @@ server = [
     "asgi-correlation-id",
     "asyncpg >=0.28",
     "awkward >=2.4.3",
-    "blosc2; python_version >= '3.10'",
+    "blosc2",
     "cachetools",
     "canonicaljson",
     "dask",
@@ -229,6 +237,13 @@ server = [
     "numpy",
     "obstore",
     "openpyxl",
+    "opentelemetry-exporter-otlp-proto-http",
+    "opentelemetry-instrumentation-asyncpg",
+    "opentelemetry-instrumentation-dbapi",
+    "opentelemetry-instrumentation-fastapi",
+    "opentelemetry-instrumentation-httpx >=0.65b0", # traces httpx2 clients
+    "opentelemetry-instrumentation-redis",
+    "opentelemetry-sdk",
     "packaging",
     "pandas",
     "pillow",
@@ -242,7 +257,7 @@ server = [
     "stamina",
     "strawberry-graphql[fastapi]>=0.315.3",
     "redis",
-    "sqlalchemy[asyncio] >=2,<2.1",
+    "sqlalchemy[asyncio] >=2",
     "starlette >=0.48.0",
     "tifffile",
     "uvicorn[standard]",
@@ -272,7 +287,6 @@ test = [
     "boto3",
     "coverage",
     "hypothesis",
-    "importlib_resources;python_version < \"3.9\"",
     "ipython",
     "ldap3",
     "locust",
@@ -334,6 +348,13 @@ version-file = "tiled/_version.py"
 "share/tiled/templates" = "share/tiled/templates"
 "share/tiled/ui" = "share/tiled/ui"
 
+[tool.uv]
+# Ignore packages published in the last 3 days when locking, matching
+# exclude-newer in pixi.toml, to reduce the risk of picking up a broken or
+# compromised release. uv.lock records the span, not a date, so the lockfile
+# does not go stale as time passes.
+exclude-newer = "3 days"
+
 [tool.ruff]
 line-length = 88
 force-exclude = true
@@ -347,8 +368,13 @@ extend-exclude = [
 ]
 
 [tool.ruff.lint]
-# Match the previous flake8 (pycodestyle + pyflakes) and isort checks.
-select = ["E", "F", "W", "I"]
+select = [
+    "E",  # pycodestyle errors - https://docs.astral.sh/ruff/rules/#error-e
+    "F",  # pyflakes rules - https://docs.astral.sh/ruff/rules/#pyflakes-f
+    "W",  # pycodestyle warnings - https://docs.astral.sh/ruff/rules/#warning-w
+    "I",  # isort - https://docs.astral.sh/ruff/rules/#isort-i
+    "UP", # pyupgrade - https://docs.astral.sh/ruff/rules/#pyupgrade-up
+]
 
 [tool.ruff.lint.pycodestyle]
 max-line-length = 115

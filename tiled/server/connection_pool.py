@@ -1,7 +1,6 @@
 import os
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Callable
 from contextlib import nullcontext
-from typing import Callable, Optional, Union
 
 from fastapi import Depends
 from sqlalchemy import event
@@ -62,7 +61,7 @@ async def close_database_connection_pool(database_settings: DatabaseSettings):
 
 
 def get_database_engine(
-    settings: Union[Settings, DatabaseSettings] = Depends(get_settings),
+    settings: Settings | DatabaseSettings = Depends(get_settings),
 ) -> AsyncEngine:
     database_settings = (
         settings.database_settings if isinstance(settings, Settings) else settings
@@ -78,7 +77,7 @@ def get_database_engine(
 
 async def get_database_session_factory(
     engine: AsyncEngine = Depends(get_database_engine),
-) -> AsyncGenerator[Callable[[], Optional[AsyncSession]]]:
+) -> AsyncGenerator[Callable[[], AsyncSession | None]]:
     # Special case for single-user mode
     if engine is None:
 
@@ -113,7 +112,7 @@ def _set_postgresql_plan_cache_mode(conn, record):
     conn.commit()
 
 
-def is_memory_sqlite(url: Union[URL, str]) -> bool:
+def is_memory_sqlite(url: URL | str) -> bool:
     """
     Check if a SQLAlchemy URL is a memory-backed SQLite database.
 

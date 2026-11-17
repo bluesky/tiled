@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Literal
 
 from pydantic import BaseModel
 
@@ -7,9 +7,9 @@ class AboutAuthenticationProvider(BaseModel):
     provider: str
     # "password" is a back-compat alias for "internal"; "internal should be preferred.
     mode: Literal["internal", "external", "password"]
-    links: Dict[str, str]
-    confirmation_message: Optional[str] = None
-    extra_scopes: Optional[List[str]] = None
+    links: dict[str, str]
+    confirmation_message: str | None = None
+    extra_scopes: list[str] | None = None
 
 
 class AboutAuthenticationLinks(BaseModel):
@@ -22,16 +22,16 @@ class AboutAuthenticationLinks(BaseModel):
 
 class AboutAuthentication(BaseModel):
     required: bool
-    providers: List[AboutAuthenticationProvider]
-    links: Optional[AboutAuthenticationLinks] = None
+    providers: list[AboutAuthenticationProvider]
+    links: AboutAuthenticationLinks | None = None
 
 
 class About(BaseModel):
     api_version: int
     library_version: str
-    formats: Dict[str, List[str]]
-    aliases: Dict[str, Dict[str, List[str]]]
-    queries: List[str]
+    formats: dict[str, list[str]]
+    aliases: dict[str, dict[str, list[str]]]
+    queries: list[str]
     authentication: AboutAuthentication
-    links: Dict[str, str]
-    meta: Dict[str, Any]
+    links: dict[str, str]
+    meta: dict[str, Any]

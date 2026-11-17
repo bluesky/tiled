@@ -1,4 +1,4 @@
-from typing import Any, Optional
+from typing import Any
 
 import dask.dataframe
 import pandas
@@ -92,7 +92,7 @@ class ExcelAdapter(MapAdapter[TableAdapter]):
         data_source: DataSource[None],
         node: Node,
         /,
-        **kwargs: Optional[Any],
+        **kwargs: Any | None,
     ) -> "ExcelAdapter":
         data_uri = data_source.assets[0].data_uri
         return cls.from_uris(

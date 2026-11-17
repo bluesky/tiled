@@ -12,7 +12,8 @@ implementing the same duck-typed paging protocol as `CatalogNodeAdapter`
 (see `tiled.server.core.construct_entries_response`).
 """
 
-from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 from ..structures.core import Spec, StructureFamily
 from ..type_aliases import JSON
@@ -26,23 +27,23 @@ class MergedDeepSearchAdapter:
 
     def __init__(
         self,
-        flat: Dict[str, Any],
-        mounts: List[Tuple[str, Any]],
+        flat: dict[str, Any],
+        mounts: list[tuple[str, Any]],
         *,
-        metadata: Optional[JSON] = None,
-        specs: Optional[List[Spec]] = None,
+        metadata: JSON | None = None,
+        specs: list[Spec] | None = None,
     ) -> None:
         self._flat = dict(flat)
         self._mounts = list(mounts)
         self._metadata = metadata or {}
         self._specs = specs or []
-        self._mount_lens: Dict[int, int] = {}
+        self._mount_lens: dict[int, int] = {}
 
     def metadata(self) -> JSON:
         return self._metadata
 
     @property
-    def specs(self) -> List[Spec]:
+    def specs(self) -> list[Spec]:
         return self._specs
 
     def new_variation(
@@ -94,8 +95,8 @@ class MergedDeepSearchAdapter:
         return self._mount_lens[index]
 
     async def _mount_keys(
-        self, subtree: Any, offset: int, limit: Optional[int]
-    ) -> List[str]:
+        self, subtree: Any, offset: int, limit: int | None
+    ) -> list[str]:
         if hasattr(subtree, "keys_range"):
             return list(await subtree.keys_range(offset, limit))
         keys = list(subtree.keys())
@@ -103,8 +104,8 @@ class MergedDeepSearchAdapter:
         return keys[offset:stop]
 
     async def _mount_items(
-        self, subtree: Any, offset: int, limit: Optional[int]
-    ) -> List[Tuple[str, Any]]:
+        self, subtree: Any, offset: int, limit: int | None
+    ) -> list[tuple[str, Any]]:
         if hasattr(subtree, "items_range"):
             return list(await subtree.items_range(offset, limit))
         items = list(subtree.items())
@@ -112,12 +113,12 @@ class MergedDeepSearchAdapter:
         return items[offset:stop]
 
     async def _paginate(
-        self, offset: int, limit: Optional[int], *, keys_only: bool
-    ) -> Tuple[List[Any], Optional[int]]:
+        self, offset: int, limit: int | None, *, keys_only: bool
+    ) -> tuple[list[Any], int | None]:
         # The local (flat) part and each mount are concatenated, in order,
         # into one logical sequence; `remaining_offset`/`remaining_limit`
         # track our position as we walk across that concatenation.
-        collected: List[Any] = []
+        collected: list[Any] = []
         remaining_offset = offset
         remaining_limit = None if limit is None else limit + 1  # peek 1 for "has more"
 
@@ -171,28 +172,26 @@ class MergedDeepSearchAdapter:
             total += await self._mount_len(index, subtree)
         return total
 
-    async def cursor_for_offset(self, offset: int) -> Optional[int]:
+    async def cursor_for_offset(self, offset: int) -> int | None:
         # Our cursor space is just the offset itself; see keys_page/items_page.
         return offset or None
 
     async def keys_page(
-        self, cursor: Optional[int] = None, limit: Optional[int] = None
-    ) -> Tuple[List[str], Optional[int]]:
+        self, cursor: int | None = None, limit: int | None = None
+    ) -> tuple[list[str], int | None]:
         return await self._paginate(cursor or 0, limit, keys_only=True)
 
     async def items_page(
-        self, cursor: Optional[int] = None, limit: Optional[int] = None
-    ) -> Tuple[List[Tuple[str, Any]], Optional[int]]:
+        self, cursor: int | None = None, limit: int | None = None
+    ) -> tuple[list[tuple[str, Any]], int | None]:
         return await self._paginate(cursor or 0, limit, keys_only=False)
 
-    async def keys_range(
-        self, offset: int = 0, limit: Optional[int] = None
-    ) -> List[str]:
+    async def keys_range(self, offset: int = 0, limit: int | None = None) -> list[str]:
         keys, _ = await self._paginate(offset, limit, keys_only=True)
         return keys
 
     async def items_range(
-        self, offset: int = 0, limit: Optional[int] = None
-    ) -> List[Tuple[str, Any]]:
+        self, offset: int = 0, limit: int | None = None
+    ) -> list[tuple[str, Any]]:
         items, _ = await self._paginate(offset, limit, keys_only=False)
         return items
