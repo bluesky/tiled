@@ -197,6 +197,12 @@ Write the date in place of the "Unreleased" in the case a new version is release
   read, without credentials, when the path contained `..` or was absolute. It
   now serves only the files of the UI distribution and responds with HTTP 404
   to anything else.
+- `/asset/bytes` served files outside of a directory asset when
+  `relative_path` contained `..`. It now responds with HTTP 400, also for a
+  symbolic link that leads out of the asset's directory.
+- `/asset/manifest` lists paths relative to the asset, as documented. It listed
+  absolute paths on the server, which `/asset/bytes` refuses, so `raw_export`
+  of a directory asset (a Zarr array, for example) wrote no files.
 
 ### Maintenance
 

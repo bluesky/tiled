@@ -56,7 +56,14 @@ from ..ndslice import NDBlock, NDSlice
 from ..stream_messages import ArrayPatch
 from ..structures.core import Spec, StructureFamily
 from ..type_aliases import AccessTags, Scopes
-from ..utils import BrokenLink, ensure_awaitable, patch_mimetypes, path_from_uri
+from ..utils import (
+    BrokenLink,
+    UnsafePath,
+    contained_path,
+    ensure_awaitable,
+    patch_mimetypes,
+    path_from_uri,
+)
 from ..validation_registration import ValidationError, ValidationRegistry
 from . import schemas
 from ._backcompat import (
@@ -2883,19 +2890,25 @@ def get_router(
             )
         path = path_from_uri(asset.data_uri)
         if relative_path is not None:
-            # Be doubly sure that this is under the Asset's data_uri directory
-            # and not sneakily escaping it.
-            if not os.path.commonpath([path, path / relative_path]) != path:
-                # This should not be possible.
-                raise RuntimeError(
-                    f"Refusing to serve {path / relative_path} because it is outside "
-                    "of the Asset's directory"
+            # The relative path comes from the request. Serve only files inside
+            # the Asset's directory, after resolving ".." and symbolic links.
+            try:
+                full_path = await anyio.to_thread.run_sync(
+                    contained_path, path, relative_path
                 )
-            full_path = path / relative_path
+            except UnsafePath:
+                raise HTTPException(
+                    status_code=HTTP_400_BAD_REQUEST,
+                    detail=(
+                        "relative_path query parameter must name a file inside "
+                        "of this asset's directory"
+                    ),
+                )
+            filename = relative_path.name
         else:
             full_path = path
+            filename = path.name
         stat_result = await anyio.to_thread.run_sync(os.stat, full_path)
-        filename = full_path.name
         return FileResponse(
             full_path,
             stat_result=stat_result,
@@ -2959,7 +2972,9 @@ def get_router(
         # Walk the directory and any subdirectories. Aggregate a list of all the
         # files, given as paths relative to the directory root.
         for root, _directories, files in os.walk(path):
-            manifest.extend(Path(root, file) for file in files)
+            manifest.extend(
+                Path(root, file).relative_to(path).as_posix() for file in files
+            )
         return json_or_msgpack(request, {"manifest": manifest})
 
     @router.delete(

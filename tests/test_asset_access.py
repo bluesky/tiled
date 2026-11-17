@@ -63,7 +63,8 @@ def test_include_data_sources_kwarg(context):
 def test_raw_export(client, tmpdir):
     "Use raw_export() and compare hashes or original and exported files."
     client.write_array([1, 2, 3], key="x")
-    exported_paths = client["x"].raw_export(tmpdir / "exported")
+    destination = Path(tmpdir / "exported")
+    exported_paths = client["x"].raw_export(destination)
     data_sources = client["x"].include_data_sources().data_sources()
     orig_dir = path_from_uri(data_sources[0].assets[0].data_uri)
     _asset_id, relative_paths = client["x"].asset_manifest(data_sources).popitem()
@@ -73,6 +74,84 @@ def test_raw_export(client, tmpdir):
         hashlib.md5(path.read_bytes()).digest() for path in exported_paths
     ]
     assert orig_hashes == exported_hashes
+    # The files are copies in the destination, laid out as in the asset.
+    assert relative_paths
+    assert sorted(exported_paths) == sorted(
+        destination / relative_path for relative_path in relative_paths
+    )
+    assert not set(exported_paths) & set(orig_paths)
+
+
+def directory_asset(client, key="x"):
+    "Write an array, stored as a directory. Return its asset id and directory."
+    client.write_array([1, 2, 3], key=key)
+    (asset,) = client[key].include_data_sources().data_sources()[0].assets
+    assert asset.is_directory
+    return asset.id, path_from_uri(asset.data_uri)
+
+
+def test_asset_manifest_gives_relative_paths(client):
+    "Each manifest entry is relative to the asset and can be passed to /asset/bytes."
+    asset_id, directory = directory_asset(client)
+    manifest = (
+        client.context.http_client.get(f"/api/v1/asset/manifest/x?id={asset_id}")
+        .raise_for_status()
+        .json()["manifest"]
+    )
+    assert manifest
+    for relative_path in manifest:
+        assert not Path(relative_path).is_absolute()
+        assert "\\" not in relative_path
+        response = client.context.http_client.get(
+            "/api/v1/asset/bytes/x",
+            params={"id": asset_id, "relative_path": relative_path},
+        ).raise_for_status()
+        assert response.content == (directory / relative_path).read_bytes()
+
+
+@pytest.mark.parametrize(
+    "relative_path",
+    [
+        "../outside.txt",
+        "c/../../outside.txt",
+        "../x/../outside.txt",
+        "{directory}/../outside.txt",
+        "{outside}",
+    ],
+)
+def test_asset_bytes_refuses_path_outside_asset(client, relative_path):
+    "The relative_path parameter cannot name a file outside of the asset."
+    asset_id, directory = directory_asset(client)
+    outside = directory.parent / "outside.txt"
+    outside.write_text("OUTSIDE")
+    response = client.context.http_client.get(
+        "/api/v1/asset/bytes/x",
+        params={
+            "id": asset_id,
+            "relative_path": relative_path.format(directory=directory, outside=outside),
+        },
+    )
+    assert b"OUTSIDE" not in response.content
+    with fail_with_status_code(HTTP_400_BAD_REQUEST):
+        response.raise_for_status()
+
+
+def test_asset_bytes_refuses_symlink_leaving_asset(client):
+    "A symbolic link in the asset is not followed out of the asset."
+    asset_id, directory = directory_asset(client)
+    outside = directory.parent / "outside.txt"
+    outside.write_text("OUTSIDE")
+    try:
+        (directory / "link.txt").symlink_to(outside)
+    except OSError:
+        pytest.skip("Cannot create symbolic links on this platform.")
+    response = client.context.http_client.get(
+        "/api/v1/asset/bytes/x",
+        params={"id": asset_id, "relative_path": "link.txt"},
+    )
+    assert b"OUTSIDE" not in response.content
+    with fail_with_status_code(HTTP_400_BAD_REQUEST):
+        response.raise_for_status()
 
 
 def test_asset_range_request(client, tmpdir):
