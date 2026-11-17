@@ -43,6 +43,25 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Changed
 
+- `tiled serve demo` now serves a single, catalog-backed demo that combines the
+  data-structure showcase with the experimental "graph of links" provenance
+  feature. The server is public (anonymous read access) and prints a
+  single-user API key (default `secret`) for trying out writes and graph
+  mutations. The graph is defined in `tiled/examples/demo_graph.json`. The
+  standalone `example_configs/graphs/` scripts have been removed in favor of
+  this demo.
+- Enforce canonical identity for graph entities bound to a catalog node: at most
+  one entity may exist for a given `(node_id, kind, name)` (a unique index).
+  Free-standing (external) entities, which have no node, are left unconstrained.
+  A new `upsertEntity` mutation does an atomic get-or-create against that
+  constraint (via `INSERT ... ON CONFLICT`), so concurrent writers converge on
+  one entity instead of racing a check-then-insert and fragmenting the graph. A
+  duplicate `createEntity`/`updateEntity` now fails with an `ENTITY_EXISTS` error.
+- Binding a graph entity to a catalog node (via `createEntity`, `upsertEntity`,
+  or re-binding through `updateEntity`) now requires `write:metadata` permission
+  on that specific node, not merely the global `write:metadata` scope.
+- Rename the experimental graph entity's `entity_type` field to `kind`, in both
+  the database column and the GraphQL API (`entityType` becomes `kind`).
 - The test suite runs without warnings: async fixtures declare their event loop
   scope, test JWTs are signed with keys of the length RFC 7518 recommends, and
   expected warnings are asserted or filtered where they are raised. The flaky
@@ -92,6 +111,12 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Fixed
 
+- Fix the experimental graph's GraphQL resolvers issuing one database query
+  per node per field: a nested traversal re-read the namespace registry and
+  re-ran the access policy for every node, and fetched link endpoints and link
+  lists one row at a time (hundreds of statements for a small graph). Lookups
+  are now memoized per request and batched, so the number of statements is
+  bounded by the query's depth rather than the number of entities.
 - Search requests (`/search`, `/search-deep`, `/distinct`) whose filter
   parameters for one query type were given different numbers of times, for
   example a query given twice with one of its parameters given only once, now
@@ -397,6 +422,9 @@ Write the date in place of the "Unreleased" in the case a new version is release
 ### Fixed
 
 - Fix precedence of scope check for `ProxiedOIDCAuthenticator`.
+- Fix `TypeError: Type is not JSON serializable: bytes` when serializing a
+  table with a bytes-dtype (numpy `S`) column to `application/json` or
+  `application/json-seq`. Such values are now decoded to strings.
 - If refreshing access tokens yields `400 Bad Request`, clear the cached tokens
   and prompt for login.
 
