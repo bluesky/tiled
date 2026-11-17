@@ -28,7 +28,7 @@ def scrape_server_url_from_logs(process):
     def target(queue):
         pattern = re.compile(r"Uvicorn running on .*(http:\/\/\S+:\d+).*")
         lines = []
-        while not process.poll():
+        while process.poll() is None:
             line = process.stderr.readline()
             lines.append(line.decode())
             if match := pattern.search(line.decode()):
@@ -43,7 +43,10 @@ def scrape_server_url_from_logs(process):
     queue = Queue()
     thread = threading.Thread(target=target, args=(queue,))
     thread.start()
-    url = queue.get(timeout=20)
+    # Starting a server means importing tiled and its dependencies in a new
+    # interpreter, which takes well over 20 s when the test suite runs in
+    # parallel on a loaded machine.
+    url = queue.get(timeout=120)
     # If the server has an error starting up, the target() will
     # never find a match, and a TimeoutError will be raised above.
     # The thread will leak. This is the best reasonably simple,
@@ -83,9 +86,9 @@ def test_serve_directory(args, tmp_path):
         "--api-key secret",
     ],
 )
-def test_serve_catalog_temp(args, tmp_path):
+def test_serve_catalog_temp(args):
     "Test 'tiled serve catalog --temp ... with a variety of arguments."
-    with run_cli(f"tiled serve directory {tmp_path!s} --port 0 " + args) as process:
+    with run_cli("tiled serve catalog --temp --port 0 " + args) as process:
         check_server_readiness(process)
 
 
