@@ -11,7 +11,6 @@ from copy import copy
 from dataclasses import asdict
 from pathlib import Path
 from threading import Lock
-from typing import Optional
 from weakref import WeakValueDictionary
 
 import httpx2 as httpx
@@ -706,7 +705,7 @@ def chunks_repr(chunks: Chunks) -> str:
 
 
 # The forms in which a caller may supply specs to the writing methods.
-Specs = Optional[list[str] | list[Spec] | str]
+Specs = list[str] | list[Spec] | str | None
 
 
 def normalize_specs(specs: Specs) -> list[dict[str, str]] | None:
