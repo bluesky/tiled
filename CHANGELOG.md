@@ -248,6 +248,11 @@ Write the date in place of the "Unreleased" in the case a new version is release
   A NetCDF file, which is an HDF5 file read by another library, is served only
   if it refers to no other file. Adapters used directly, outside of a server,
   are not restricted unless `readable_directories` is passed.
+- Writing to a node whose data is externally managed changed the registered
+  files: a write or an append to a registered CSV file, Zarr array or directory
+  of awkward buffers went to the source data. These requests are now refused
+  with HTTP 405. An update that is only streamed (`persist=false`) is still
+  accepted, since it does not touch the data.
 
 ### Maintenance
 

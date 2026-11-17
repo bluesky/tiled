@@ -52,6 +52,7 @@ from sqlalchemy.sql.sqltypes import MatchType
 from starlette.status import (
     HTTP_403_FORBIDDEN,
     HTTP_404_NOT_FOUND,
+    HTTP_405_METHOD_NOT_ALLOWED,
     HTTP_415_UNSUPPORTED_MEDIA_TYPE,
 )
 
@@ -816,6 +817,22 @@ class CatalogNodeAdapter:
                     "of this data."
                 ),
             )
+
+    def _require_managed_data(self):
+        """Respond with 405 if the data of this node is externally managed.
+
+        External data is registered to be read. This server did not write it,
+        may not be the only one that reads it, and does not change it.
+        """
+        for data_source in self.node.data_sources or []:
+            if data_source.management == Management.external:
+                raise HTTPException(
+                    status_code=HTTP_405_METHOD_NOT_ALLOWED,
+                    detail=(
+                        "The data of this node is externally managed. It cannot "
+                        "be written through this server."
+                    ),
+                )
 
     def _adapter_parameters(self, adapter_cls, data_source):
         """The keyword arguments for building an adapter from a data source.
@@ -2406,6 +2423,8 @@ class CatalogArrayAdapter(CatalogNodeAdapter):
         }
 
     async def write(self, media_type, deserializer, entry, body, persist=True):
+        if persist:
+            self._require_managed_data()
         shape = entry.structure().shape
         if self.context.streaming_cache:
             await self._stream(media_type, entry, body, shape)
@@ -2425,6 +2444,8 @@ class CatalogArrayAdapter(CatalogNodeAdapter):
     async def write_block(
         self, block, media_type, deserializer, entry, body, persist=True
     ):
+        if persist:
+            self._require_managed_data()
         shape = block.shape_from_chunks(entry.structure().chunks)
         if self.context.streaming_cache:
             await self._stream(media_type, entry, body, shape, block=block)
@@ -2444,6 +2465,8 @@ class CatalogArrayAdapter(CatalogNodeAdapter):
     async def patch(
         self, shape, offset, extend, media_type, deserializer, entry, body, persist=True
     ):
+        if persist:
+            self._require_managed_data()
         if self.context.streaming_cache:
             await self._stream(media_type, entry, body, shape, offset=offset)
         if not persist:
@@ -2491,6 +2514,7 @@ class CatalogAwkwardAdapter(CatalogNodeAdapter):
         )
 
     async def write(self, *args, **kwargs):
+        self._require_managed_data()
         return await ensure_awaitable((await self.get_adapter()).write, *args, **kwargs)
 
 
@@ -2528,6 +2552,8 @@ class CatalogRaggedAdapter(CatalogArrayAdapter):
     async def write_block(
         self, block, media_type, deserializer, entry, body, persist=True
     ):
+        if persist:
+            self._require_managed_data()
         # Unlike regular arrays, ragged structures have variable-length
         # dimensions (None) so we cannot compute a per-block shape via
         # block.shape_from_chunks(). Stream the full structure shape instead.
@@ -2545,6 +2571,8 @@ class CatalogRaggedAdapter(CatalogArrayAdapter):
     async def patch(
         self, shape, offset, extend, media_type, deserializer, entry, body, persist=True
     ):
+        if persist:
+            self._require_managed_data()
         if self.context.streaming_cache:
             await self._stream(media_type, entry, body, shape, offset=offset)
         if not persist:
@@ -2620,6 +2648,7 @@ class CatalogTableAdapter(CatalogNodeAdapter):
         return await ensure_awaitable((await self.get_adapter()).read, *args, **kwargs)
 
     async def write(self, media_type, deserializer, entry, body):
+        self._require_managed_data()
         if self.context.streaming_cache:
             await self._stream(media_type, entry, body, None, False)
         data = await ensure_awaitable(deserializer, body)
@@ -2631,6 +2660,7 @@ class CatalogTableAdapter(CatalogNodeAdapter):
         )
 
     async def write_partition(self, media_type, deserializer, entry, body, partition):
+        self._require_managed_data()
         if self.context.streaming_cache:
             await self._stream(media_type, entry, body, partition, False)
         data = await ensure_awaitable(deserializer, body)
@@ -2639,6 +2669,7 @@ class CatalogTableAdapter(CatalogNodeAdapter):
         )
 
     async def append_partition(self, media_type, deserializer, entry, body, partition):
+        self._require_managed_data()
         if self.context.streaming_cache:
             await self._stream(media_type, entry, body, partition, True)
         data = await ensure_awaitable(deserializer, body)
