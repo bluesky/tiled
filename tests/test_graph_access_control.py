@@ -1,4 +1,5 @@
 import uuid
+from datetime import UTC
 
 import pytest
 from sqlalchemy import delete as sa_delete
@@ -1087,10 +1088,10 @@ async def test_pagination_stable_under_created_at_ties(store):
     is assigned per-row in Python and can collide on bulk inserts), so the
     store breaks ties on the unique id.
     """
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     ids = [str(uuid.uuid4()) for _ in range(5)]
-    tie = datetime(2020, 1, 1, tzinfo=timezone.utc)
+    tie = datetime(2020, 1, 1, tzinfo=UTC)
     async with store._engine.begin() as conn:
         for i, id_ in enumerate(ids):
             await conn.execute(
