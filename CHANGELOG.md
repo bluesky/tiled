@@ -203,6 +203,11 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - `/asset/manifest` lists paths relative to the asset, as documented. It listed
   absolute paths on the server, which `/asset/bytes` refuses, so `raw_export`
   of a directory asset (a Zarr array, for example) wrote no files.
+- The `/zarr/v2` and `/zarr/v3` routes did not check scopes, so a server that
+  requires authentication answered requests that carried no credentials. They
+  now require `read:data`, and `read:metadata` for the metadata documents, like
+  the routes under `/api/v1`. Servers that allow anonymous access are
+  unaffected.
 
 ### Maintenance
 
