@@ -1,4 +1,5 @@
 import logging
+from collections.abc import Iterable
 
 from sqlalchemy import literal, select, text
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
