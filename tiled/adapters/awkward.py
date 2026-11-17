@@ -1,7 +1,6 @@
 import copy
 from collections.abc import Set
 from pathlib import Path
-from typing import Dict, List, Optional, Union
 from urllib.parse import quote_plus
 
 import awkward
@@ -23,11 +22,11 @@ class AwkwardAdapter(Adapter[AwkwardStructure]):
 
     def __init__(
         self,
-        container: Dict[str, bytes],
+        container: dict[str, bytes],
         structure: AwkwardStructure,
         *,
-        metadata: Optional[JSON] = None,
-        specs: Optional[List[Spec]] = None,
+        metadata: JSON | None = None,
+        specs: list[Spec] | None = None,
     ):
         self._container = container
         self._array = awkward.from_buffers(
@@ -40,8 +39,8 @@ class AwkwardAdapter(Adapter[AwkwardStructure]):
         cls,
         array: awkward.Array,
         *,
-        metadata: Optional[JSON] = None,
-        specs: Optional[List[Spec]] = None,
+        metadata: JSON | None = None,
+        specs: list[Spec] | None = None,
     ) -> "AwkwardAdapter":
         form, length, container = awkward.to_buffers(array)
         structure = AwkwardStructure(length=length, form=form.to_dict())
@@ -61,7 +60,7 @@ class AwkwardAdapter(Adapter[AwkwardStructure]):
         cls,
         storage: Storage,
         data_source: DataSource[AwkwardStructure],
-        path_parts: List[str],
+        path_parts: list[str],
     ) -> DataSource[AwkwardStructure]:
         data_source = copy.deepcopy(data_source)  # Do not mutate caller input.
         data_uri = storage.uri + "".join(
@@ -76,7 +75,7 @@ class AwkwardAdapter(Adapter[AwkwardStructure]):
         )
         return data_source
 
-    def read_buffers(self, form_keys: Optional[List[str]] = None) -> Dict[str, bytes]:
+    def read_buffers(self, form_keys: list[str] | None = None) -> dict[str, bytes]:
         keys = [
             key
             for key in self._structure.awkward_form.expected_from_buffers()
@@ -95,11 +94,11 @@ class AwkwardBuffersAdapter(Adapter[AwkwardStructure]):
 
     def __init__(
         self,
-        container: Union[DirectoryContainer, Dict[str, bytes]],
+        container: DirectoryContainer | dict[str, bytes],
         structure: AwkwardStructure,
         *,
-        metadata: Optional[JSON] = None,
-        specs: Optional[List[Spec]] = None,
+        metadata: JSON | None = None,
+        specs: list[Spec] | None = None,
     ):
         self._container = container
         super().__init__(structure=structure, metadata=metadata, specs=specs)
@@ -122,7 +121,7 @@ class AwkwardBuffersAdapter(Adapter[AwkwardStructure]):
         cls,
         storage: Storage,
         data_source: DataSource[AwkwardStructure],
-        path_parts: List[str],
+        path_parts: list[str],
     ) -> DataSource[AwkwardStructure]:
         data_source = copy.deepcopy(data_source)  # Do not mutate caller input.
         data_uri = storage.uri + "".join(
@@ -137,7 +136,7 @@ class AwkwardBuffersAdapter(Adapter[AwkwardStructure]):
         )
         return data_source
 
-    def read_buffers(self, form_keys: Optional[List[str]] = None) -> Dict[str, bytes]:
+    def read_buffers(self, form_keys: list[str] | None = None) -> dict[str, bytes]:
         # Return all buffers as a dictionary mapping of form keys to bytes
         keys = [
             key

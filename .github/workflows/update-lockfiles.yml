@@ -1,0 +1,130 @@
+name: Update lockfiles
+
+# Refresh uv.lock and pixi.lock twice a month and open one PR for each.
+#
+# Dependabot does not support pixi. It does support uv, but it upgrades each
+# locked package on its own, forcing the newest release, and reports an error
+# whenever another package caps that one, which is normal for transitive
+# dependencies. `uv lock --upgrade` resolves the whole project at once, so
+# it takes the newest versions that fit together.
+#
+# Both lockfiles skip releases under 3 days old (exclude-newer in pixi.toml
+# and in [tool.uv] in pyproject.toml).
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 0 1,15 * *"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+env:
+  # Building tiled for its metadata must not build the web UI.
+  TILED_BUILD_SKIP_UI: "1"
+
+jobs:
+  uv-update:
+    if: github.repository_owner == 'bluesky'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # create-pull-request authenticates with its own token input.
+          persist-credentials: false
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e  # v10.3.2
+
+      - name: Update uv.lock
+        env:
+          NO_COLOR: "1"
+        run: |
+          set -euo pipefail
+          # uv reports each change on stderr, for example
+          # "Updated anyio v4.15.1 -> v4.16.0".
+          uv lock --upgrade 2> uv-lock.log
+          cat uv-lock.log
+          {
+            echo "| Package | Before | After |"
+            echo "| --- | --- | --- |"
+            sed -nE \
+              -e 's/^Updated ([^ ]+) (.+) -> (.+)$/| \1 | \2 | \3 |/p' \
+              -e 's/^Added ([^ ]+) (.+)$/| \1 | | \2 |/p' \
+              -e 's/^Removed ([^ ]+) (.+)$/| \1 | \2 | |/p' \
+              uv-lock.log
+          } > diff.md
+          cat diff.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Create pull request
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1  # v8.1.1
+        with:
+          # See the pixi-update job below for why this is not GITHUB_TOKEN.
+          token: ${{ secrets.LOCKFILE_PR_TOKEN || secrets.GITHUB_TOKEN }}
+          commit-message: "MNT: update uv.lock"
+          title: "MNT: update uv.lock"
+          body-path: diff.md
+          branch: update-uv-lock
+          base: main
+          delete-branch: true
+          add-paths: uv.lock
+
+  pixi-update:
+    if: github.repository_owner == 'bluesky'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # create-pull-request authenticates with its own token input.
+          persist-credentials: false
+
+      - name: Set up pixi
+        uses: prefix-dev/setup-pixi@ad1da6449d9e506fd127fd67ab2d054a769f6a94  # v0.11.2
+        with:
+          pixi-version: v0.83.0
+          run-install: false
+          cache: false
+
+      - name: Update pixi.lock
+        run: |
+          set -euo pipefail
+          # No --no-install: solving the PyPI dependencies needs a conda
+          # environment to build the source packages (tiled itself, from
+          # its path) in, so pixi installs one environment for this platform.
+          pixi update --json > diff.json
+          # Render the changes as markdown tables. With many environments and
+          # platforms, merge them into one deduplicated table.
+          pixi exec --spec pixi-diff-to-markdown==0.3.11 \
+            pixi-diff-to-markdown --merge-dependencies=yes < diff.json > diff.md
+          cat diff.md >> "$GITHUB_STEP_SUMMARY"
+          # GitHub caps a PR description at 65536 characters, and
+          # create-pull-request would cut the tables off mid-row. If the
+          # changes do not fit, link to this run's summary instead.
+          if [ "$(wc -c < diff.md)" -gt 60000 ]; then
+            {
+              echo "The list of changes is too long for a PR description."
+              echo "See the summary of the workflow run that opened this PR:"
+              echo
+              echo "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            } > diff.md
+          fi
+
+      - name: Create pull request
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1  # v8.1.1
+        with:
+          # A PR opened with the default GITHUB_TOKEN does not trigger CI:
+          # GitHub suppresses workflow runs for events caused by that token
+          # (to prevent recursion), so the update PR would arrive with no
+          # checks. LOCKFILE_PR_TOKEN should be a fine-grained PAT (or a
+          # GitHub App installation token) with contents and pull-requests
+          # write access to this repository. Fall back to GITHUB_TOKEN so the
+          # workflow still opens a (check-less) PR if the secret is missing.
+          token: ${{ secrets.LOCKFILE_PR_TOKEN || secrets.GITHUB_TOKEN }}
+          commit-message: "MNT: update pixi.lock"
+          title: "MNT: update pixi.lock"
+          body-path: diff.md
+          branch: update-pixi-lock
+          base: main
+          delete-branch: true
+          add-paths: pixi.lock

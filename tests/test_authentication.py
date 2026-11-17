@@ -22,7 +22,7 @@ from tiled.client.context import PasswordRejected, password_grant
 from tiled.server import authentication
 from tiled.server.app import build_app_from_config
 
-from .conftest import TOY_AUTHENTICATION
+from .conftest import TOY_AUTHENTICATION, TOY_NEW_SECRET_KEY, TOY_SECRET_KEY
 from .utils import fail_with_status_code
 
 arr = ArrayAdapter.from_array(numpy.ones((5, 5)))
@@ -164,8 +164,11 @@ def test_key_rotation(enter_username_password, config):
         client = from_context(context)
 
     # Rotate in a new key.
-    config["authentication"]["secret_keys"].insert(0, "NEW_SECRET")
-    assert config["authentication"]["secret_keys"] == ["NEW_SECRET", "SECRET"]
+    config["authentication"]["secret_keys"].insert(0, TOY_NEW_SECRET_KEY)
+    assert config["authentication"]["secret_keys"] == [
+        TOY_NEW_SECRET_KEY,
+        TOY_SECRET_KEY,
+    ]
 
     with Context.from_app(build_app_from_config(config)) as context:
         # The refresh token from the old key is still valid. No login prompt here.
@@ -177,7 +180,7 @@ def test_key_rotation(enter_username_password, config):
 
     # Rotate out the old key.
     del config["authentication"]["secret_keys"][1]
-    assert config["authentication"]["secret_keys"] == ["NEW_SECRET"]
+    assert config["authentication"]["secret_keys"] == [TOY_NEW_SECRET_KEY]
 
     with Context.from_app(build_app_from_config(config)) as context:
         # New refresh token works with the new key
@@ -735,8 +738,11 @@ def test_admin_delete_principal_apikey(
             context.whoami()
 
 
-@pytest.mark.timeout(5)
-def test_remaining_authenticated_when_tokens_not_remembered(config):
+def test_remaining_authenticated_when_tokens_not_remembered(config, monkeypatch):
+    def fail_on_prompt(*args, **kwargs):
+        raise AssertionError("Prompted for credentials despite holding valid tokens")
+
+    monkeypatch.setattr("tiled.client.context.prompt_for_credentials", fail_on_prompt)
     with Context.from_app(build_app_from_config(config)) as context:
         provider = context.server_info.authentication.providers[0]
         auth_endpoint = provider.links["auth_endpoint"]
@@ -744,6 +750,6 @@ def test_remaining_authenticated_when_tokens_not_remembered(config):
             context.http_client, auth_endpoint, provider.provider, "alice", "secret1"
         )
         context.configure_auth(tokens, remember_me=False)
-        # This will timeout if waiting for a prompt response
+        # This must reuse the configured tokens, not prompt for credentials.
         client = from_context(context, remember_me=False)
         assert client.context.authenticated

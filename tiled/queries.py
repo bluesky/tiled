@@ -9,7 +9,7 @@ import collections
 import enum
 import json
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from .query_registration import default_query_registry, register
 from .structures.core import StructureFamily as StructureFamilyEnum
@@ -84,6 +84,86 @@ class KeyLookup(NoBool):
         return cls(key=key)
 
 
+@register(name="key_like")
+@dataclass
+class KeyLike(NoBool):
+    """
+    Match entries whose key contains, starts with, or ends with some text.
+
+    The match is case-sensitive. The text is matched literally: characters
+    such as ``%``, ``_``, and ``*`` have no special meaning.
+
+    At least one of ``before`` or ``after`` must be True. For an exact match,
+    use an exact-key query (``KeyLookup`` or ``KeysFilter``).
+
+    Parameters
+    ----------
+    key : str
+        Text to look for in the entries' keys. Must not be empty.
+    before : bool, optional
+        Allow other characters before the text. Default True.
+    after : bool, optional
+        Allow other characters after the text. Default True.
+
+    Examples
+    --------
+
+    Search for keys that contain "scan"
+
+    >>> c.search(KeyLike("scan"))
+
+    Search for keys that start with "scan"
+
+    >>> c.search(KeyLike("scan", before=False))
+
+    Search for keys that end with "scan"
+
+    >>> c.search(KeyLike("scan", after=False))
+    """
+
+    key: str
+    before: bool = True
+    after: bool = True
+
+    def __post_init__(self):
+        # Fast feedback in Python, naming the Python query classes. decode()
+        # checks the same conditions first, naming the HTTP query types, so
+        # that any client gets an HTTP 400 it can act on.
+        _validate_key_like(
+            self.key,
+            self.before,
+            self.after,
+            name="KeyLike",
+            exact_queries="KeyLookup or KeysFilter",
+        )
+
+    def encode(self):
+        return {"key": self.key, "before": self.before, "after": self.after}
+
+    @classmethod
+    def decode(cls, *, key, before=True, after=True):
+        _validate_key_like(
+            key,
+            before,
+            after,
+            name="The key_like query",
+            exact_queries="the lookup or keys_filter query",
+        )
+        return cls(key=key, before=before, after=after)
+
+
+def _validate_key_like(key, before, after, *, name, exact_queries):
+    if not isinstance(key, str) or not key:
+        raise QueryValueError(
+            f"{name} requires a non-empty 'key'; an empty key would match every entry."
+        )
+    if not (before or after):
+        raise QueryValueError(
+            f"{name} requires at least one of 'before' or 'after' to be true. "
+            f"To match a key exactly, use {exact_queries} instead."
+        )
+
+
 @register(name="keys_filter")
 @dataclass
 class KeysFilter(NoBool):
@@ -95,7 +175,7 @@ class KeysFilter(NoBool):
     keys : List[str]
     """
 
-    keys: List[str]
+    keys: list[str]
 
     def encode(self):
         return {"keys": json.dumps(self.keys)}
@@ -219,7 +299,7 @@ class NotEq(NoBool):
         return cls(key=key, value=json.loads(value))
 
 
-class Operator(str, enum.Enum):
+class Operator(enum.StrEnum):
     lt = "lt"
     gt = "gt"
     le = "le"
@@ -325,7 +405,7 @@ class In:
     """
 
     key: str
-    value: List[JSONSerializable]
+    value: list[JSONSerializable]
 
     def __post_init__(self):
         self.value = list(self.value)
@@ -360,7 +440,7 @@ class NotIn:
     """
 
     key: str
-    value: List[JSONSerializable]
+    value: list[JSONSerializable]
 
     def __post_init__(self):
         self.value = list(self.value)
@@ -466,8 +546,8 @@ class SpecsQuery:
     >>> c.search(SpecsQuery(include=["foo", "bar"], exclude=["baz"]))
     """
 
-    include: List[str]
-    exclude: List[str]
+    include: list[str]
+    exclude: list[str]
 
     def __init__(self, include, exclude=None):
         exclude = exclude or []
@@ -534,7 +614,7 @@ class AccessTagsFilter:
     >>> c.search(AccessTagsFilter(["tag_for_bill", "useful_data"]))
     """
 
-    tags: List[str]
+    tags: list[str]
     # Server-internal field (NOT a query parameter, NOT sent over the wire):
     # the tag 'id's corresponding to 'tags', resolved against the
     # 'access_tags' table on the server side. The 'internal' metadata marks it
@@ -544,7 +624,7 @@ class AccessTagsFilter:
     # filter on 'tag_id' literals directly instead of joining 'access_tags' by
     # name. For catalog queries, this also lets PostgreSQL use the
     # (parent_id, tag_id) extended statistics to estimate the ACL subquery.
-    tag_ids: Optional[List[int]] = field(
+    tag_ids: list[int] | None = field(
         default=None, compare=False, metadata={"internal": True}
     )
 
@@ -645,7 +725,7 @@ class QueryValueError(ValueError):
     pass
 
 
-def queries_to_params(*queries: Any) -> Dict[str, List[Any]]:
+def queries_to_params(*queries: Any) -> dict[str, list[Any]]:
     """Encode queries as the HTTP API's `filter[...]` query parameters.
 
     Each registered query type encodes as parameters named

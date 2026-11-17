@@ -2,8 +2,9 @@ import builtins
 import math
 import os
 from abc import abstractmethod
+from collections.abc import Iterable
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any, Dict, Iterable, List, Optional, Union
+from typing import Any
 
 import numpy as np
 from ndindex import ndindex
@@ -63,7 +64,7 @@ class _LazyFilepaths:
     def __len__(self) -> int:
         return len(self._data_uris)
 
-    def __getitem__(self, key: Union[int, builtins.slice]) -> Any:
+    def __getitem__(self, key: int | builtins.slice) -> Any:
         item = self._data_uris[key]
         if isinstance(key, builtins.slice):
             return [path_from_uri(uri) for uri in item]
@@ -112,12 +113,12 @@ class FileSequenceAdapter(Adapter[ArrayStructure]):
 
     def __init__(
         self,
-        data_uris: Optional[Iterable[str]] = None,
-        structure: Optional[ArrayStructure] = None,
+        data_uris: Iterable[str] | None = None,
+        structure: ArrayStructure | None = None,
         *,
-        metadata: Optional[JSON] = None,
-        specs: Optional[List[Spec]] = None,
-        chunks: Optional[tuple[tuple[int, ...], ...]] = None,
+        metadata: JSON | None = None,
+        specs: list[Spec] | None = None,
+        chunks: tuple[tuple[int, ...], ...] | None = None,
     ) -> None:
         # `self.filepaths` is a lazy view over the URIs: each is converted to a
         # local path (path_from_uri) only when accessed. `data_uris` is a
@@ -149,7 +150,7 @@ class FileSequenceAdapter(Adapter[ArrayStructure]):
         data_source: DataSource[ArrayStructure],
         node: Node,
         /,
-        **kwargs: Optional[Any],
+        **kwargs: Any | None,
     ) -> "FileSequenceAdapter":
         # One entry point for both the eager and lazy paths. The eager path
         # derives `data_uris` from the data source's assets (dense 0-based
@@ -185,7 +186,7 @@ class FileSequenceAdapter(Adapter[ArrayStructure]):
 
     @abstractmethod
     def _load_from_files(
-        self, slice: Union[builtins.slice, int, Iterable[int]] = slice(None)
+        self, slice: builtins.slice | int | Iterable[int] = slice(None)
     ) -> NDArray[Any]:
         """Load the array data from files
 
@@ -212,7 +213,7 @@ class FileSequenceAdapter(Adapter[ArrayStructure]):
         """
         raise NotImplementedError
 
-    def _map_read(self, filepaths: Iterable[str]) -> List[NDArray[Any]]:
+    def _map_read(self, filepaths: Iterable[str]) -> list[NDArray[Any]]:
         """Read files concurrently via `_read_one`, preserving input order.
 
         Overlaps the (I/O-bound) per-file reads across `IO_WORKERS` threads.
@@ -288,7 +289,7 @@ class FileSequenceAdapter(Adapter[ArrayStructure]):
         return super().metadata()
 
     def read(
-        self, slice: Union[NDSlice, EllipsisType, builtins.slice] = ...
+        self, slice: NDSlice | EllipsisType | builtins.slice = ...
     ) -> NDArray[Any]:
         """Return a numpy array
 
@@ -402,7 +403,7 @@ class FileSequenceAdapter(Adapter[ArrayStructure]):
     def _stacking_grid_shape(
         struct_shape: tuple[int, ...],
         true_shape: tuple[int, ...],
-    ) -> Optional[tuple[int, ...]]:
+    ) -> tuple[int, ...] | None:
         """The shape of the file-stacking dimensions, or None if not partially-loadable.
 
         Pure function of the structure shape and the true (stored) shape -- no
@@ -428,9 +429,9 @@ class FileSequenceAdapter(Adapter[ArrayStructure]):
         structure: ArrayStructure,
         n_files: int,
         slice: Any = ...,
-        properties: Optional[Dict[str, Any]] = None,
-        parameters: Optional[Dict[str, Any]] = None,
-    ) -> Optional[tuple[int, ...]]:
+        properties: dict[str, Any] | None = None,
+        parameters: dict[str, Any] | None = None,
+    ) -> tuple[int, ...] | None:
         """Return the global file (stack) indices needed to satisfy `slice`.
 
         The leading `grid_shape_for_files` dimensions map onto the `n_files` files,

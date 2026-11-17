@@ -10,7 +10,8 @@ the wide-table request, progress reporting) stays in the client classes.
 
 from __future__ import annotations
 
-from typing import AbstractSet, Mapping, Optional, Sequence
+from collections.abc import Mapping, Sequence
+from typing import AbstractSet
 
 # Variables longer than this are fetched directly rather than batched into
 # a wide table (their size defeats the purpose of batching small fetches).
@@ -58,8 +59,8 @@ def xarray_variable_role(spec_names: AbstractSet[str]) -> str:
 
 def assign_dataset_dims(
     shapes: Mapping[str, tuple[int, ...]],
-    explicit_dims: Mapping[str, Optional[Sequence[str]]],
-    dim0: Optional[str] = None,
+    explicit_dims: Mapping[str, Sequence[str] | None],
+    dim0: str | None = None,
 ) -> dict[str, Sequence[str]]:
     """Dimension names for each variable of an assembled dataset.
 

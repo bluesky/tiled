@@ -1,5 +1,4 @@
 from pathlib import Path
-from typing import Optional
 
 import typer
 
@@ -39,7 +38,7 @@ def initialize_database(database_uri: str):
 @admin_app.command("upgrade-database")
 def upgrade_database(
     database_uri: str,
-    revision: Optional[str] = typer.Argument(
+    revision: str | None = typer.Argument(
         None,
         help="The ID of a revision to upgrade to. By default, upgrade to the latest one.",
     ),
@@ -143,7 +142,7 @@ def check_config(
 
 @admin_app.command("list-principals")
 def list_principals(
-    profile: Optional[str] = typer.Option(
+    profile: str | None = typer.Option(
         None, help="If you use more than one Tiled server, use this to specify which."
     ),
     page_offset: int = typer.Argument(0),
@@ -161,7 +160,7 @@ def list_principals(
 
 @admin_app.command("show-principal")
 def show_principal(
-    profile: Optional[str] = typer.Option(
+    profile: str | None = typer.Option(
         None, help="If you use more than one Tiled server, use this to specify which."
     ),
     uuid: str = typer.Argument(..., help="UUID identifying Principal of interest"),
@@ -178,10 +177,10 @@ def show_principal(
 
 @admin_app.command("create-service-principal")
 def create_service_principal(
-    profile: Optional[str] = typer.Option(
+    profile: str | None = typer.Option(
         None, help="If you use more than one Tiled server, use this to specify which."
     ),
-    role: Optional[str] = typer.Option(
+    role: str | None = typer.Option(
         "user", help="Role of the new service principal (e.g. 'admin' or 'user')."
     ),
 ):

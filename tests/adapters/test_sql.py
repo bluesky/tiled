@@ -1,5 +1,6 @@
+from collections.abc import Callable, Generator
 from pathlib import Path
-from typing import Any, Callable, Generator, Optional, Union, cast
+from typing import Any, cast
 
 import numpy as np
 import pyarrow as pa
@@ -68,7 +69,7 @@ def adapter_from_data_source(
 @pytest.fixture
 def data_source_from_init_storage() -> Generator[
     Callable[
-        [str, int, Optional[pa.Table], Optional[dict[str, Any]]],
+        [str, int, pa.Table | None, dict[str, Any] | None],
         DataSource[TableStructure],
     ],
     None,
@@ -79,8 +80,8 @@ def data_source_from_init_storage() -> Generator[
     def _data_source_from_init_storage(
         data_uri: str,
         num_partitions: int,
-        table: Optional[pa.Table] = None,
-        parameters: Optional[dict[str, Any]] = None,
+        table: pa.Table | None = None,
+        parameters: dict[str, Any] | None = None,
     ) -> DataSource[TableStructure]:
         if table is None:
             table = pa.Table.from_arrays(data0, names)
@@ -518,7 +519,7 @@ def test_write_read_one_batch_many_part(
         ),
     ],
 )
-def test_check_table_name_is_safe(table_name: str, expected: Union[None, Any]) -> None:
+def test_check_table_name_is_safe(table_name: str, expected: None | Any) -> None:
     if isinstance(expected, type(pytest.raises(ValueError))):
         with expected:
             is_safe_identifier(
@@ -1065,7 +1066,7 @@ def test_order_by_table_name_hash() -> None:
     not affect the hash. This is a pure unit test: no database is needed."""
     structure = TableStructure.from_arrow_table(_ts_value_schema.empty_table())
 
-    def make_ds(primary_key: Optional[list[str]]) -> DataSource[TableStructure]:
+    def make_ds(primary_key: list[str] | None) -> DataSource[TableStructure]:
         params: dict[str, Any] = {}
         if primary_key is not None:
             params["primary_key"] = primary_key

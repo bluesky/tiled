@@ -11,8 +11,9 @@ response content back through the parsers.
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
-from typing import Any, Iterable, Optional, Sequence, Union
+from typing import Any
 
 import orjson
 import ragged
@@ -58,7 +59,7 @@ class RaggedReadRecipe:
     @classmethod
     def for_full(
         cls, link: str, structure: RaggedStructure, slice: Any = None
-    ) -> "RaggedReadRecipe":
+    ) -> RaggedReadRecipe:
         "A recipe that reads the whole array or a slice of it, via `/ragged/full`."
         scalar = (len(structure.shape) == 0) or NDSlice(slice).is_scalar(
             structure.shape
@@ -103,7 +104,7 @@ def draft_request_write_ragged_full(
 
 def draft_request_write_ragged_block(
     link: str,
-    block: Union[int, Iterable[int]],
+    block: int | Iterable[int],
     array: CanonicalRaggedArray,
     persist: bool = True,
 ) -> RequestDraft:
@@ -128,7 +129,7 @@ def draft_request_write_ragged_block(
 def draft_request_patch_ragged_full(
     link: str,
     array: CanonicalRaggedArray,
-    offset: Union[int, tuple[int, ...]],
+    offset: int | tuple[int, ...],
     extend: bool = False,
     persist: bool = True,
 ) -> RequestDraft:
@@ -157,7 +158,7 @@ def draft_request_patch_ragged_full(
 
 
 def data_source_from_ragged(
-    array: Any, dims: Optional[Sequence[str]], max_partition_bytes: int
+    array: Any, dims: Sequence[str] | None, max_partition_bytes: int
 ) -> DataSource:
     """The data source that describes a ragged array upload.
 

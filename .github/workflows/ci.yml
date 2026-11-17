@@ -14,6 +14,13 @@ on:
 
 env:
   TEST_TAG: bluesky/tiled:test
+  # Pull requests and pushes install the exact versions in the committed
+  # uv.lock, so a new release of a dependency cannot break unrelated PRs.
+  # The nightly scheduled run re-resolves to the latest releases, giving early
+  # warning of breakage that users installing tiled from PyPI would see.
+  # `--exclude-newer P0D` lifts the 3-day window from [tool.uv] in
+  # pyproject.toml, so that warning comes as soon as a release is published.
+  UV_SYNC_FLAGS: ${{ github.event_name == 'schedule' && '--upgrade --exclude-newer P0D' || '--locked' }}
 
 jobs:
   pre-commit:
@@ -21,7 +28,27 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v7
-    - uses: pre-commit/action@v3.0.1
+    - name: Install uv
+      uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e  # v10.3.2
+    - name: Cache pre-commit environments
+      uses: actions/cache@v6
+      with:
+        path: ~/.cache/pre-commit
+        key: pre-commit-${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml') }}
+    - name: Run pre-commit
+      run: uvx pre-commit run --all-files --show-diff-on-failure --color=always
+    # uv.lock staleness fails every job that runs `uv sync --locked`; give
+    # pixi.lock the same guarantee, so a PR that edits pixi.toml without
+    # running `pixi lock` is caught here rather than by the next scheduled
+    # lockfile refresh.
+    - name: Set up pixi
+      uses: prefix-dev/setup-pixi@ad1da6449d9e506fd127fd67ab2d054a769f6a94  # v0.11.2
+      with:
+        pixi-version: v0.83.0
+        run-install: false
+        cache: false
+    - name: Check that pixi.lock matches pixi.toml
+      run: pixi lock --check
 
   linux_checks:
 
@@ -48,7 +75,10 @@ jobs:
         python-version: ${{ matrix.python-version }}
 
     - name: Install tiled
-      run: uv sync --all-extras
+      run: uv sync --all-extras ${{ env.UV_SYNC_FLAGS }}
+
+    - name: List installed packages
+      run: uv pip list
 
     # TODO Find a new image to use.
     # https://github.com/bluesky/tiled/issues/1109
@@ -99,7 +129,7 @@ jobs:
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v7
       with:
-        name: ${{ inputs.python-version }}/${{ inputs.runs-on }}
+        name: ${{ matrix.python-version }}/${{ runner.os }}
         files: cov.xml
       env:
         CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
@@ -117,7 +147,7 @@ jobs:
     - name: Set up Node.js
       uses: actions/setup-node@v7
       with:
-        node-version: "20"
+        node-version: "26.13.0"
         cache: npm
         cache-dependency-path: web-frontend/package-lock.json
 
@@ -153,7 +183,7 @@ jobs:
         python-version: ${{ matrix.python-version }}
 
     - name: Install tiled
-      run: uv sync --all-extras
+      run: uv sync --all-extras ${{ env.UV_SYNC_FLAGS }}
       env:
         TILED_BUILD_SKIP_UI: 1
 

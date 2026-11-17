@@ -56,7 +56,7 @@ class AwkwardReadRecipe:
     @classmethod
     def for_buffers(
         cls, link: str, structure: AwkwardStructure, slice: Any = ...
-    ) -> "AwkwardReadRecipe":
+    ) -> AwkwardReadRecipe:
         """A recipe that reads the buffers touched by one slice, via `POST /awkward/buffers`.
 
         A typetracer pass over the slice determines which form keys (buffers)

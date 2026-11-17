@@ -14,8 +14,9 @@ from __future__ import annotations
 
 import itertools
 import math
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any, Optional, Sequence, Union
+from typing import Any
 
 import numpy
 from numpy.typing import DTypeLike, NDArray
@@ -101,8 +102,8 @@ class ArrayReadRecipe:
         link: str,
         structure: ArrayStructure,
         block: NDBlock,
-        block_slice: Optional[NDSlice] = None,
-    ) -> "ArrayReadRecipe":
+        block_slice: NDSlice | None = None,
+    ) -> ArrayReadRecipe:
         """A recipe that reads one block (chunk) of an array, via `/array/block`.
 
         The block boundaries are determined by `structure.chunks`, and usually
@@ -144,7 +145,7 @@ class ArrayReadRecipe:
         structure: ArrayStructure,
         array_slice: NDSlice,
         bytesize_limit: int,
-    ) -> "ArrayReadRecipe":
+    ) -> ArrayReadRecipe:
         """A recipe that reads the whole array or a slice of it, via `/array/full`.
 
         If a read is expected to exceed `bytesize_limit`, it is split into multiple fetches,
@@ -288,7 +289,7 @@ def draft_request_write_array_block(
 def draft_request_patch_array_full(
     link: str,
     array: NDArray[Any],
-    offset: Union[int, tuple[int, ...]],
+    offset: int | tuple[int, ...],
     extend: bool = False,
     persist: bool = True,
 ) -> RequestDraft:
@@ -314,7 +315,7 @@ def draft_request_patch_array_full(
 
 
 def data_source_from_array(
-    array: Any, dims: Optional[Sequence[str]], max_chunk_bytes: int
+    array: Any, dims: Sequence[str] | None, max_chunk_bytes: int
 ) -> DataSource:
     """The data source that describes an array upload.
 

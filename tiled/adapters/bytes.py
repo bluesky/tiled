@@ -1,5 +1,5 @@
 from collections.abc import Set
-from typing import Any, Optional
+from typing import Any
 
 from ..catalog.orm import Node
 from ..storage import FileStorage, ObjectStorage, Storage
@@ -29,8 +29,8 @@ class BytesAdapter(Adapter[BytesStructure]):
         self,
         structure: BytesStructure,
         *,
-        metadata: Optional[JSON] = None,
-        specs: Optional[list[Spec]] = None,
+        metadata: JSON | None = None,
+        specs: list[Spec] | None = None,
     ) -> None:
         super().__init__(structure=structure, metadata=metadata, specs=specs)
 
@@ -44,7 +44,7 @@ class BytesAdapter(Adapter[BytesStructure]):
         data_source: DataSource[BytesStructure],
         node: Node,
         /,
-        **kwargs: Optional[Any],
+        **kwargs: Any | None,
     ) -> "BytesAdapter":
         return cls(
             structure=data_source.structure,

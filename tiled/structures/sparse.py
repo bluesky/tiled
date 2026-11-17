@@ -1,7 +1,7 @@
 import enum
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Any, Optional, Tuple, Union
+from typing import Any, Self
 
 from tiled.structures.root import Structure
 
@@ -9,7 +9,7 @@ from ..type_aliases import Chunks
 from .array import BuiltinDtype, Endianness, Kind, StructDtype
 
 
-class SparseLayout(str, enum.Enum):
+class SparseLayout(enum.StrEnum):
     # Only COO is currently supported, but this lays a path
     # for adding other layouts like CSC, CSR, etc. in the future.
     COO = "COO"
@@ -18,20 +18,20 @@ class SparseLayout(str, enum.Enum):
 @dataclass
 class COOStructure(Structure):
     chunks: Chunks  # tuple-of-tuples-of-ints like ((3,), (3,))
-    shape: Tuple[int, ...]  # tuple of ints like (3, 3)
-    data_type: Optional[Union[BuiltinDtype, StructDtype]] = None
-    coord_data_type: Optional[BuiltinDtype] = field(
+    shape: tuple[int, ...]  # tuple of ints like (3, 3)
+    data_type: BuiltinDtype | StructDtype | None = None
+    coord_data_type: BuiltinDtype | None = field(
         default_factory=lambda: BuiltinDtype(
             Endianness("little"), Kind("u"), 8
         )  # numpy 'uint' dtype
     )
-    dims: Optional[Tuple[str, ...]] = None  # None or tuple of names like ("x", "y")
-    resizable: Union[bool, Tuple[bool, ...]] = False
+    dims: tuple[str, ...] | None = None  # None or tuple of names like ("x", "y")
+    resizable: bool | tuple[bool, ...] = False
     layout: SparseLayout = SparseLayout.COO
     # TODO Include fill_value?
 
     @classmethod
-    def from_json(cls, structure: Mapping[str, Any]) -> "COOStructure":
+    def from_json(cls, structure: Mapping[str, Any]) -> Self:
         data_type = structure.get("data_type", None)
         if data_type is not None and "fields" in data_type:
             data_type = StructDtype.from_json(data_type)

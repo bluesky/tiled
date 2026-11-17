@@ -16,8 +16,9 @@ import sys
 import threading
 import warnings
 from collections import namedtuple
+from collections.abc import Callable, Iterator
 from pathlib import Path
-from typing import Any, Callable, Generic, Iterator, Optional, Tuple, TypeVar, Union
+from typing import Any, Generic, TypeVar
 from urllib.parse import urlparse, urlunparse
 
 import anyio
@@ -172,7 +173,7 @@ class OneShotCachedMap(collections.abc.Mapping[K, V], Generic[K, V]):
     __slots__ = ("__mapping", "__lock")
 
     def __init__(self, *args, **kwargs: Callable[[], V]):
-        dictionary: dict[K, Union[Callable[[], V], V]] = dict(*args, **kwargs)
+        dictionary: dict[K, Callable[[], V] | V] = dict(*args, **kwargs)
         wrap = _OneShotCachedMapWrapper
         # TODO should be recursive lock?
         self.__lock = threading.Lock()
@@ -222,12 +223,10 @@ class OneShotCachedMap(collections.abc.Mapping[K, V], Generic[K, V]):
         # make sure checking 'in' does not trigger evaluation
         return k in self.__mapping
 
-    def __getstate__(self) -> collections.abc.Mapping[K, Union[Callable[[], V], V]]:
+    def __getstate__(self) -> collections.abc.Mapping[K, Callable[[], V] | V]:
         return self.__mapping
 
-    def __setstate__(
-        self, mapping: collections.abc.Mapping[K, Union[Callable[[], V], V]]
-    ):
+    def __setstate__(self, mapping: collections.abc.Mapping[K, Callable[[], V] | V]):
         self.__mapping = mapping
         self.__lock = threading.Lock()
 
@@ -319,11 +318,11 @@ class CachingMap(collections.abc.Mapping[K, V], Generic[K, V]):
 
     def __getstate__(
         self,
-    ) -> Tuple[collections.abc.Mapping[K, Callable[[], V]], dict[K, V]]:
+    ) -> tuple[collections.abc.Mapping[K, Callable[[], V]], dict[K, V]]:
         return self.__mapping, self.__cache
 
     def __setstate__(
-        self, state: Tuple[collections.abc.Mapping[K, Callable[[], V]], dict[K, V]]
+        self, state: tuple[collections.abc.Mapping[K, Callable[[], V]], dict[K, V]]
     ):
         mapping, cache = state
         self.__mapping = mapping
@@ -568,7 +567,7 @@ def expand_environment_variables(config: T) -> T:
 
 
 @contextlib.contextmanager
-def prepend_to_sys_path(*paths: Union[str, Path]) -> Iterator[None]:
+def prepend_to_sys_path(*paths: str | Path) -> Iterator[None]:
     "Temporarily prepend items to sys.path."
 
     for item in reversed(paths):
@@ -832,7 +831,7 @@ def ensure_uri(uri_or_path) -> str:
     return str(uri_str)
 
 
-def sanitize_uri(uri: str) -> tuple[str, Optional[str], Optional[str]]:
+def sanitize_uri(uri: str) -> tuple[str, str | None, str | None]:
     "Remove the username and password from uri if they are present."
     parsed_uri = urlparse(uri)
     netloc = parsed_uri.netloc
