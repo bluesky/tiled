@@ -1,7 +1,6 @@
 import collections.abc
 import dataclasses
 import inspect
-import itertools
 import operator
 import re
 import sys
@@ -147,6 +146,57 @@ def pagination_links(base_url, route, path_parts, page, next_cursor, length_hint
     return links
 
 
+def _check_filter_parameters(query_name, query_class, parameters_dict_of_lists):
+    """Check that a query type's filter parameters form complete queries.
+
+    A query type given N times in one request is sent as N values for each of
+    its fields, e.g. filter[eq][condition][key] and filter[eq][condition][value]
+    each repeated N times, and the server pairs the values up by position.
+    If the fields were given different numbers of times, there is no way to
+    know which values belong together, so reject the request instead of
+    guessing, which would silently apply the wrong queries or drop some.
+
+    Return N.
+    """
+    counts = {
+        field_name: len(values)
+        for field_name, values in parameters_dict_of_lists.items()
+    }
+    if len(set(counts.values())) > 1:
+        given = ", ".join(
+            f"{field_name!r} {count} time(s)"
+            for field_name, count in sorted(counts.items())
+        )
+        raise HTTPException(
+            status_code=HTTP_400_BAD_REQUEST,
+            detail=(
+                f"The filter parameters of the {query_name!r} query were given "
+                f"different numbers of times ({given}). When a query is given "
+                "more than once, give every one of its parameters once for each "
+                "query, in the same order."
+            ),
+        )
+    signature = inspect.signature(query_class.decode)
+    required = {
+        name
+        for name, parameter in signature.parameters.items()
+        if parameter.default is inspect.Parameter.empty
+        and parameter.kind
+        in (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY)
+    }
+    missing = sorted(required - set(counts))
+    if missing:
+        raise HTTPException(
+            status_code=HTTP_400_BAD_REQUEST,
+            detail=(
+                f"The {query_name!r} query is missing the required filter "
+                f"parameter(s) {', '.join(map(repr, missing))}."
+            ),
+        )
+    (count,) = set(counts.values())
+    return count
+
+
 async def apply_search(tree, filters, query_registry):
     queries = defaultdict(
         dict
@@ -161,15 +211,15 @@ async def apply_search(tree, filters, query_registry):
     # Apply the queries and obtain a narrowed tree.
     key_lookups = []
     for query_name, parameters_dict_of_lists in queries.items():
-        for i in itertools.count(0):
-            try:
-                parameters = {
-                    field_name: parameters_list[i]
-                    for field_name, parameters_list in parameters_dict_of_lists.items()
-                }
-            except IndexError:
-                break
-            query_class = query_registry.name_to_query_type[query_name]
+        query_class = query_registry.name_to_query_type[query_name]
+        count = _check_filter_parameters(
+            query_name, query_class, parameters_dict_of_lists
+        )
+        for i in range(count):
+            parameters = {
+                field_name: parameters_list[i]
+                for field_name, parameters_list in parameters_dict_of_lists.items()
+            }
             try:
                 query = query_class.decode(**parameters)
                 # Special case: Do key-lookups at the end after all other filtering.

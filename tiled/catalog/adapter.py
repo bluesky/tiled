@@ -26,6 +26,8 @@ import anyio
 from fastapi import HTTPException
 from sqlalchemy import (
     Integer,
+    Text,
+    and_,
     any_,
     delete,
     exists,
@@ -60,6 +62,7 @@ from tiled.queries import (
     Eq,
     FullText,
     In,
+    KeyLike,
     KeyPresent,
     KeysFilter,
     Like,
@@ -102,6 +105,7 @@ from ..server.settings import DatabaseSettings
 from ..server.streaming import StreamingCache
 from ..server.webhooks import WebhookDispatcher
 from ..storage import (
+    SQL_STORAGE_SCHEMES,
     SUPPORTED_OBJECT_URI_SCHEMES,
     FileStorage,
     ObjectStorage,
@@ -129,7 +133,7 @@ from .core import (
     check_catalog_database,
     initialize_catalog_database,
     initialize_database,
-    register_principal_tag_rows,
+    register_tag_rows,
     resolve_access_tag_ids,
 )
 from .explain import ExplainAsyncSession
@@ -239,7 +243,7 @@ async def _resolve_access_tags(db, access_tag_names):
     Principal tags are slightly different: these need to exist at write,
     possibly before the access tags compiler has been able to create them.
     """
-    await register_principal_tag_rows(await db.connection(), access_tag_names)
+    await register_tag_rows(await db.connection(), access_tag_names)
     tag_rows = (
         (
             await db.execute(
@@ -1283,7 +1287,7 @@ class CatalogNodeAdapter:
 
                 # Notify subscribers of the *parent* node about the new child.
                 sequence = await self.context.streaming_cache.incr_seq(self.node.id)
-                metadata = {
+                message = {
                     "type": "container-child-created",
                     "sequence": sequence,
                     "timestamp": datetime.now().isoformat(),
@@ -1298,7 +1302,7 @@ class CatalogNodeAdapter:
 
                 # Cache data in Redis with a TTL, and publish
                 # a notification about it.
-                await self.context.streaming_cache.set(self.node.id, sequence, metadata)
+                await self.context.streaming_cache.set(self.node.id, sequence, message)
             if self.context.webhook_dispatcher:
                 await self.context.webhook_dispatcher.dispatch(
                     ContainerChildCreatedEvent(
@@ -1565,9 +1569,10 @@ class CatalogNodeAdapter:
                 # Select only data sources related to storage DBs
                 .where(
                     or_(
-                        orm.Asset.data_uri.startswith("postgresql"),
-                        orm.Asset.data_uri.startswith("sqlite"),
-                        orm.Asset.data_uri.startswith("duckdb"),
+                        *(
+                            orm.Asset.data_uri.startswith(scheme)
+                            for scheme in SQL_STORAGE_SCHEMES
+                        )
                     )
                 )
                 .distinct()
@@ -1696,13 +1701,17 @@ class CatalogNodeAdapter:
         the given `asset_id` are removed. If, afterward, the Asset is no longer
         referenced by any DataSource (belonging to any Node), the Asset record
         is deleted; and, if it is internally managed, the underlying data (file,
-        directory, object, or storage-database rows) is deleted as well.
+        directory, or object) is deleted as well.
 
         If the Asset is still referenced by other Nodes/DataSources, only the
         association with this Node is removed; the Asset record and its
         underlying data are retained.
 
         Externally managed Assets are never physically deleted, even if unreferenced.
+
+        The Asset of an SQL-backed table is the storage database itself, shared by all
+        such tables; it cannot be deleted for one node (raises `Conflicts`).
+        Delete the node to remove its rows.
 
         Parameters
         ----------
@@ -1724,14 +1733,15 @@ class CatalogNodeAdapter:
                 select(
                     orm.DataSourceAssetAssociation.data_source_id,
                     orm.DataSource.management,
-                    # keep only table_name and dataset_id from parameters
-                    orm.DataSource.parameters["table_name"].label("table_name"),
-                    orm.DataSource.parameters["dataset_id"].label("dataset_id"),
+                    orm.Asset.data_uri,
                 )
                 .select_from(orm.DataSourceAssetAssociation)
                 .join(
                     orm.DataSource,
                     orm.DataSource.id == orm.DataSourceAssetAssociation.data_source_id,
+                )
+                .join(
+                    orm.Asset, orm.Asset.id == orm.DataSourceAssetAssociation.asset_id
                 )
                 .where(orm.DataSource.node_id == self.node.id)
                 .where(orm.DataSourceAssetAssociation.asset_id == asset_id)
@@ -1739,7 +1749,19 @@ class CatalogNodeAdapter:
             rows = (await db.execute(info_stmt)).all()
             if not rows:
                 return None  # This Node has no such Asset.
-            table_name, dataset_id = rows[0].table_name, rows[0].dataset_id
+
+            # For a SQL-backed table, the Asset is the storage database, shared
+            # by every such table on this server, and the node's data are rows
+            # in one of its tables. Dissociating the node from the database is
+            # not a meaningful operation: the Asset stays (other nodes use it),
+            # and the rows would be left behind with nothing referring to them.
+            # Deleting the node removes the rows, instead.
+            if urlparse(rows[0].data_uri).scheme in SQL_STORAGE_SCHEMES:
+                raise Conflicts(
+                    "This asset is the storage database shared by all SQL-backed "
+                    "tables on this server, so it cannot be deleted for one node. "
+                    "Delete the node instead to remove its data."
+                )
 
             # Safety check: refuse to delete internally-managed data unless the
             # caller explicitly opts in. Treat the Asset as internally managed
@@ -1791,13 +1813,7 @@ class CatalogNodeAdapter:
         if asset_deleted and is_internal:
             data_uri, is_directory = deleted
             await anyio.to_thread.run_sync(
-                partial(
-                    delete_physical_asset,
-                    data_uri,
-                    is_directory=is_directory,
-                    table_name=table_name,
-                    dataset_id=dataset_id,
-                )
+                partial(delete_physical_asset, data_uri, is_directory=is_directory)
             )
             data_deleted = True
 
@@ -1881,7 +1897,7 @@ class CatalogNodeAdapter:
             # Upon successful update, inform websocket subscribers through redis
             if self.context.streaming_cache:
                 sequence = await self.context.streaming_cache.incr_seq(self.node.parent)
-                metadata = {
+                message = {
                     "type": "container-child-metadata-updated",
                     "key": self.node.key,
                     "sequence": sequence,
@@ -1890,9 +1906,9 @@ class CatalogNodeAdapter:
                     "metadata": metadata,
                 }
                 if not drop_revision:
-                    metadata["revision_number"] = next_revision_number
+                    message["revision_number"] = next_revision_number
                 await self.context.streaming_cache.set(
-                    self.node.parent, sequence, metadata
+                    self.node.parent, sequence, message
                 )
             if self.context.webhook_dispatcher:
                 segments = list(await self.path_segments())
@@ -2546,7 +2562,7 @@ def delete_physical_asset(
             shutil.rmtree(path)
         else:
             Path(path).unlink()
-    elif url.scheme in {"duckdb", "sqlite", "postgresql"}:
+    elif url.scheme in SQL_STORAGE_SCHEMES:
         if (table_name is not None) and (dataset_id is not None):
             storage = cast(SQLStorage, get_storage(data_uri))
             with closing(storage.connect()) as conn:
@@ -2655,6 +2671,18 @@ def _get_value(value, type):
     return getattr(value, _TYPE_CONVERSION_MAP[type])()
 
 
+def _sqlite_json_value(attr):
+    """The JSON value at a path, as SQLite's JSON_EXTRACT returns it.
+
+    JSON_EXTRACT returns SQL values of the JSON value's own type, so comparing
+    them with a query value matches on type as well (0 does not equal '0').
+    The as_*() accessors cannot be used for this: from SQLAlchemy 2.1 they
+    render CAST(JSON_EXTRACT(...) AS <type>) on SQLite, which converts the
+    stored value to the query value's type before comparing.
+    """
+    return func.json_extract(attr.left, attr.right)
+
+
 def _prepare_structure(structure_family, structure):
     "Convert from pydantic model to dict."
     if structure is None:
@@ -2669,7 +2697,12 @@ def binary_op(query, tree, operation):
     keys = query.key.split(".")
     attr = orm.Node.metadata_[keys]
     if dialect_name == "sqlite":
-        condition = operation(_get_value(attr, type(query.value)), query.value)
+        if query.value is None and operation in (operator.eq, operator.ne):
+            # JSON_EXTRACT gives SQL NULL both for a JSON null and for a missing
+            # key; JSON_TYPE tells them apart ('null' vs SQL NULL).
+            condition = operation(func.json_type(attr.left, attr.right), "null")
+        else:
+            condition = operation(_sqlite_json_value(attr), query.value)
     # specific case where GIN optomized index can be used to speed up POSTGRES equals queries
     elif (dialect_name == "postgresql") and (operation == operator.eq):
         condition = orm.Node.metadata_.op("@>")(
@@ -2709,7 +2742,8 @@ def contains(query, tree):
 def full_text(query, tree):
     dialect_name = tree.context.engine.url.get_dialect().name
     if dialect_name == "sqlite":
-        condition = orm.metadata_fts5.c.metadata.match(query.text)
+        # The FTS5 column is typed JSON; MATCH is a text operator.
+        condition = type_coerce(orm.metadata_fts5.c.metadata, Text).match(query.text)
     elif dialect_name == "postgresql":
         tsvector = func.jsonb_to_tsvector(
             sql_cast("simple", REGCONFIG),
@@ -2727,17 +2761,23 @@ def specs(query, tree):
     conditions = []
     attr = orm.Node.specs
     if dialect_name == "sqlite":
+        # SQLite stores JSON as text; match the serialized spec by pattern.
+        text_attr = type_coerce(attr, Text)
         # Construct the conditions for includes
         for i, name in enumerate(query.include):
-            conditions.append(attr.like(f'%{{"name":"{name}",%'))
+            conditions.append(text_attr.like(f'%{{"name":"{name}",%'))
         # Construct the conditions for excludes
         for i, name in enumerate(query.exclude):
-            conditions.append(not_(attr.like(f'%{{"name":"{name}",%')))
+            conditions.append(not_(text_attr.like(f'%{{"name":"{name}",%')))
     elif dialect_name == "postgresql":
+
+        def contains(specs):
+            return attr.op("@>", is_comparison=True)(specs_array_to_json(specs))
+
         if query.include:
-            conditions.append(attr.op("@>")(specs_array_to_json(query.include)))
+            conditions.append(contains(query.include))
         if query.exclude:
-            conditions.append(not_(attr.op("@>")(specs_array_to_json(query.exclude))))
+            conditions.append(not_(contains(query.exclude)))
     else:
         raise UnsupportedQueryType("specs")
     return tree.new_variation(conditions=tree.conditions + conditions)
@@ -2817,8 +2857,23 @@ def in_or_not_in_sqlite(query, tree, method):
         else:  # method == "not_in"
             # All results are always "not in" an empty list.
             condition = true()
+    elif None in query.value:
+        # SQL NULL never compares equal in IN / NOT IN, and JSON_EXTRACT gives
+        # it both for a JSON null and for a missing key, so match a JSON null
+        # with JSON_TYPE as Eq/NotEq do.
+        values = [value for value in query.value if value is not None]
+        json_type = func.json_type(attr.left, attr.right)
+        if method == "in_":
+            condition = json_type == "null"
+            if values:
+                condition = or_(condition, _sqlite_json_value(attr).in_(values))
+        else:  # method == "not_in"
+            # A missing key is excluded, as in a NotIn without None.
+            condition = json_type != "null"
+            if values:
+                condition = and_(condition, _sqlite_json_value(attr).not_in(values))
     else:
-        condition = getattr(_get_value(attr, type(query.value[0])), method)(query.value)
+        condition = getattr(_sqlite_json_value(attr), method)(query.value)
     return tree.new_variation(conditions=tree.conditions + [condition])
 
 
@@ -2882,6 +2937,31 @@ def keys_filter(query, tree):
     return tree.new_variation(conditions=tree.conditions + [condition])
 
 
+def key_like(query, tree):
+    # Case-sensitive on every backend. SQLAlchemy's startswith/endswith/contains
+    # compile to LIKE, which SQLite evaluates case-insensitively, so SQLite gets
+    # substr/instr instead. Neither form treats any character as a wildcard.
+    dialect_name = tree.context.engine.url.get_dialect().name
+    key = orm.Node.key
+    if dialect_name == "sqlite":
+        if query.before and query.after:
+            condition = func.instr(key, query.key) > 0
+        elif query.after:
+            condition = func.substr(key, 1, len(query.key)) == query.key
+        else:
+            condition = func.substr(key, -len(query.key)) == query.key
+    elif dialect_name == "postgresql":
+        if query.before and query.after:
+            condition = key.contains(query.key, autoescape=True)
+        elif query.after:
+            condition = key.startswith(query.key, autoescape=True)
+        else:
+            condition = key.endswith(query.key, autoescape=True)
+    else:
+        raise UnsupportedQueryType("key_like")
+    return tree.new_variation(conditions=tree.conditions + [condition])
+
+
 def structure_family(query, tree):
     condition = orm.Node.structure_family == query.value
     return tree.new_variation(conditions=tree.conditions + [condition])
@@ -2895,6 +2975,7 @@ CatalogNodeAdapter.register_query(In, partial(in_or_not_in, method="in_"))
 CatalogNodeAdapter.register_query(NotIn, partial(in_or_not_in, method="not_in"))
 CatalogNodeAdapter.register_query(KeyPresent, key_present)
 CatalogNodeAdapter.register_query(KeysFilter, keys_filter)
+CatalogNodeAdapter.register_query(KeyLike, key_like)
 CatalogNodeAdapter.register_query(StructureFamilyQuery, structure_family)
 CatalogNodeAdapter.register_query(SpecsQuery, specs)
 CatalogNodeAdapter.register_query(AccessTagsFilter, access_tags_filter)

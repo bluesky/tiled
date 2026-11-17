@@ -42,6 +42,10 @@ SUPPORTED_OBJECT_URI_SCHEMES = {"http", "https"}  # TODO: Add "s3", "gs", "azure
 
 POSTGRESQL_SCHEMES = frozenset({"postgresql", "postgres"})
 
+# URI schemes of tabular storage databases. The Asset of a data source stored
+# in one is the database itself, shared by every such data source.
+SQL_STORAGE_SCHEMES = frozenset({"postgresql", "sqlite", "duckdb"})
+
 # libpq connection parameters that determine *which* server and database a
 # connection reaches. Any other query parameter (connect_timeout, sslmode,
 # target_session_attrs, application_name, ...) only tunes *how* we connect.
@@ -336,7 +340,7 @@ class SQLStorage(Storage):
     def _connection_pool(self) -> "sqlalchemy.pool.QueuePool":
         from .server.metrics import monitor_db_pool
 
-        creator = self._adbc_connection.adbc_clone
+        creator = self._instrument_adbc_creator(self._adbc_connection.adbc_clone)
         if (self.dialect == "duckdb") or (":memory:" in self.uri):
             pool = sqlalchemy.pool.StaticPool(creator)
         else:
@@ -346,6 +350,45 @@ class SQLStorage(Storage):
             monitor_db_pool(pool, self.uri)
 
         return pool
+
+    def _instrument_adbc_creator(self, creator):
+        """Wrap the ADBC connection factory to emit OpenTelemetry spans for its queries.
+
+        The storage database is accessed via ADBC, which the asyncpg instrumentation does
+        not cover, so its queries would otherwise be invisible in traces. A no-op if tracing
+        is off or the optional dbapi instrumentation is not installed.
+        """
+        if not os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT"):
+            return creator
+        try:
+            from opentelemetry.instrumentation.dbapi import instrument_connection
+        except ImportError:
+            return creator
+
+        dialect = self.dialect
+        # Report the database name as `db.name`, so the storage database appears as
+        # its own node in the service graph. ADBC follows the SQL standard naming,
+        # where a "catalog" is a database (and a "schema" is a namespace inside it),
+        # so on Postgres `adbc_current_catalog` is e.g. "tiled_storage". This has
+        # nothing to do with Tiled's catalog. Not every driver implements it (DuckDB
+        # raises), and the instrumentation only tolerates a missing attribute, not
+        # an error, so check once and leave `db.name` unset if it fails.
+        try:
+            self._adbc_connection.adbc_current_catalog
+        except Exception:
+            connection_attributes = {}
+        else:
+            connection_attributes = {"database": "adbc_current_catalog"}
+
+        def instrumented_creator():
+            return instrument_connection(
+                "tiled.storage",
+                creator(),
+                dialect,
+                connection_attributes=connection_attributes,
+            )
+
+        return instrumented_creator
 
     def connect(self) -> "adbc_driver_manager.dbapi.Connection":
         "Get a connection from the pool."
@@ -486,7 +529,7 @@ def _parse_storage(
             result = RemoteSQLStorage(
                 item, pool_size=pool_size, max_overflow=max_overflow
             )
-        elif scheme in {"sqlite", "duckdb"}:
+        elif scheme in SQL_STORAGE_SCHEMES:
             result = EmbeddedSQLStorage(
                 item, pool_size=pool_size, max_overflow=max_overflow
             )

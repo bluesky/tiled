@@ -77,6 +77,8 @@ class MetadataRevisions:
                             },
                         )
                     ).json()
+            if not content["data"]:
+                raise IndexError(f"revision index {offset} out of range")
             (result,) = content["data"]
             return result
 
@@ -107,6 +109,11 @@ class MetadataRevisions:
                 next_page_url = content["links"]["next"]
 
             return result["data"]
+
+    def __iter__(self):
+        # Fetch all the revisions, one page at a time, rather than one request
+        # per revision as iteration over `__getitem__` would.
+        return iter(self[:])
 
     def delete_revision(self, n):
         for attempt in retry_context():

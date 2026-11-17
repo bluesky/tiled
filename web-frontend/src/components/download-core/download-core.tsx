@@ -154,8 +154,8 @@ const Download: React.FunctionComponent<DownloadProps> = (props) => {
             vertical: "top",
             horizontal: "right",
           }}
-          PaperProps={{
-            style: { width: 500 },
+          slotProps={{
+            paper: { style: { width: 500 } },
           }}
         >
           <Box sx={{ px: 2, py: 2 }}>
@@ -165,8 +165,8 @@ const Download: React.FunctionComponent<DownloadProps> = (props) => {
               label="Link"
               sx={{ width: "90%" }}
               defaultValue={props.link}
-              InputProps={{
-                readOnly: true,
+              slotProps={{
+                input: { readOnly: true },
               }}
               variant="outlined"
             />
