@@ -302,7 +302,9 @@ def _virtual_source_candidates(home: str, file_name: str) -> list[str]:
     # the holding file, which it makes absolute without resolving anything.
     home_directory = os.path.dirname(os.path.join(cwd, home))
     candidates = []
-    if os.path.isabs(file_name):
+    if os.path.isabs(file_name) or file_name[:1] in ("/", "\\"):
+        # HDF5 counts a name that starts at a root as absolute, also on
+        # Windows, where Python requires a drive as well.
         candidates.append(file_name)
         file_name = os.path.basename(file_name)
     for prefix in os.environ.get("HDF5_VDS_PREFIX", "").split(os.pathsep):
