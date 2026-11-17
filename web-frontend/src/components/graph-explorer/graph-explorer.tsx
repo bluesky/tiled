@@ -227,7 +227,7 @@ function DetailPanel({ selection }: { selection: Selection }) {
     return (
       <Stack spacing={1.5}>
         <Box>
-          <Stack direction="row" alignItems="center" spacing={0.5}>
+          <Stack direction="row" spacing={0.5} sx={{ alignItems: "center" }}>
             <Typography variant="h6">{e.name}</Typography>
             <UriPictogram uri={e.uri} />
           </Stack>
@@ -275,7 +275,12 @@ function Legend({
   onToggle: (kind: string) => void;
 }) {
   return (
-    <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap alignItems="center">
+    <Stack
+      direction="row"
+      spacing={1}
+      useFlexGap
+      sx={{ flexWrap: "wrap", alignItems: "center" }}
+    >
       {types.map((type) => {
         const off = hidden.has(type);
         return (
