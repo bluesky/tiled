@@ -10,12 +10,10 @@ structure family name.
 
 from __future__ import annotations
 
-from typing import Optional
-
 from ...structures.core import StructureFamily
 from ...utils import OneShotCachedMap
 
-_DEFAULT_STRUCTURE_CLIENTS: Optional[OneShotCachedMap] = None
+_DEFAULT_STRUCTURE_CLIENTS: OneShotCachedMap | None = None
 
 
 def default_structure_clients() -> OneShotCachedMap:

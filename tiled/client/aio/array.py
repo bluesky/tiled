@@ -11,7 +11,7 @@ concurrently with `asyncio.gather`, bounded by the context's connection limit.
 from __future__ import annotations
 
 import asyncio
-from typing import Any, Union
+from typing import Any
 
 from numpy.typing import NDArray
 
@@ -67,7 +67,7 @@ class AsyncArrayClient(CommonArrayClient, AsyncBaseClient):
     async def patch(
         self,
         array: NDArray[Any],
-        offset: Union[int, tuple[int, ...]],
+        offset: int | tuple[int, ...],
         extend: bool = False,
         persist: bool = True,
     ) -> None:

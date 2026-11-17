@@ -6,7 +6,7 @@ same protocol layer, returning `ragged.array` objects.
 
 from __future__ import annotations
 
-from typing import Any, Union
+from typing import Any
 
 import ragged
 
@@ -25,7 +25,7 @@ class AsyncRaggedClient(CommonRaggedClient, AsyncBaseClient):
     async def _write_block(
         self,
         array: RaggedCompatibleType,
-        block: Union[int, tuple[int, ...]],
+        block: int | tuple[int, ...],
         persist=True,
     ) -> None:
         """Overwrite one block of the array.
@@ -38,7 +38,7 @@ class AsyncRaggedClient(CommonRaggedClient, AsyncBaseClient):
     async def patch(
         self,
         array: RaggedCompatibleType,
-        offset: Union[int, tuple[int, ...]],
+        offset: int | tuple[int, ...],
         extend=False,
         persist=True,
     ) -> None:

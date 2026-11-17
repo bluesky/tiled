@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 
 import httpx2 as httpx
 
@@ -16,10 +16,10 @@ from .dispatch import default_structure_clients
 async def from_uri(
     uri: str,
     *,
-    api_key: Optional[str] = None,
+    api_key: str | None = None,
     structure_clients: Any = None,
     include_data_sources: bool = False,
-    timeout: Optional[httpx.Timeout] = None,
+    timeout: httpx.Timeout | None = None,
     verify: bool = True,
 ):
     """Connect to a Node on a local or remote server, asynchronously.
@@ -73,7 +73,7 @@ async def from_context(
     context: AsyncContext,
     *,
     structure_clients: Any = None,
-    node_path_parts: Optional[list[str]] = None,
+    node_path_parts: list[str] | None = None,
     include_data_sources: bool = False,
 ):
     "Build a client for the node at `node_path_parts` (default: the root node)."

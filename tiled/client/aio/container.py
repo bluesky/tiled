@@ -13,7 +13,8 @@ the interface is explicit coroutines and async iterators:
 from __future__ import annotations
 
 import asyncio
-from typing import Any, Iterable, Optional, Union
+from collections.abc import Iterable
+from typing import Any
 
 import httpx2 as httpx
 import stamina
@@ -51,9 +52,7 @@ class AsyncContainer(CommonContainer, AsyncBaseClient):
         async for key in self.keys():
             yield key
 
-    async def _iter_search_pages(
-        self, keys_only: bool, page_size: Optional[int] = None
-    ):
+    async def _iter_search_pages(self, keys_only: bool, page_size: int | None = None):
         "Iterate over the pages of entries that match the active queries."
         builder = self._children_search_builder
         next_page_url = builder.first_page_link(0, page_size)
@@ -68,13 +67,13 @@ class AsyncContainer(CommonContainer, AsyncBaseClient):
             yield content["data"]
             next_page_url = content["links"]["next"]
 
-    async def keys(self, page_size: Optional[int] = None):
+    async def keys(self, page_size: int | None = None):
         "Iterate over the entry keys, in pages."
         async for page in self._iter_search_pages(keys_only=True, page_size=page_size):
             for item in page:
                 yield item["id"]
 
-    async def items(self, page_size: Optional[int] = None):
+    async def items(self, page_size: int | None = None):
         "Iterate over (key, client) pairs, in pages."
         async for page in self._iter_search_pages(keys_only=False, page_size=page_size):
             for item in page:
@@ -88,7 +87,7 @@ class AsyncContainer(CommonContainer, AsyncBaseClient):
                     ),
                 )
 
-    async def values(self, page_size: Optional[int] = None):
+    async def values(self, page_size: int | None = None):
         "Iterate over the entry clients, in pages."
         async for _key, value in self.items(page_size=page_size):
             yield value
@@ -197,10 +196,10 @@ class AsyncContainer(CommonContainer, AsyncBaseClient):
 
     async def delete_contents(
         self,
-        keys: Optional[Union[str, Iterable[str]]] = None,
+        keys: str | Iterable[str] | None = None,
         recursive: bool = False,
         external_only: bool = True,
-    ) -> "AsyncContainer":
+    ) -> AsyncContainer:
         """Delete the contents of this container.
 
         See the synchronous `Container.delete_contents` for parameters.
@@ -501,7 +500,7 @@ class AsyncContainer(CommonContainer, AsyncBaseClient):
         metadata=None,
         specs=None,
         access_tags=None,
-        table_name: Optional[str] = None,
+        table_name: str | None = None,
     ):
         """Initialize a table whose rows can be appended to a partition.
 
@@ -542,7 +541,7 @@ class AsyncDeepSearchResults(CommonDeepSearchResults):
         content = (await self.context.send(draft)).json()
         return self._cache_length(self._pages_builder.parse_response_count(content))
 
-    async def items(self, page_size: Optional[int] = None):
+    async def items(self, page_size: int | None = None):
         "Iterate over (key, client) pairs, in pages."
         next_page_url = self._pages_builder.first_page_link(0, page_size)
         while next_page_url is not None:
@@ -561,12 +560,12 @@ class AsyncDeepSearchResults(CommonDeepSearchResults):
                 )
             next_page_url = content["links"]["next"]
 
-    async def keys(self, page_size: Optional[int] = None):
+    async def keys(self, page_size: int | None = None):
         "Iterate over the result keys, in pages."
         async for key, _value in self.items(page_size=page_size):
             yield key
 
-    async def values(self, page_size: Optional[int] = None):
+    async def values(self, page_size: int | None = None):
         "Iterate over the result clients, in pages."
         async for _key, value in self.items(page_size=page_size):
             yield value

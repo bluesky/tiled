@@ -18,7 +18,7 @@ handing the context out, preferably as an async context manager:
 from __future__ import annotations
 
 import asyncio
-from typing import Any, Optional, Union
+from typing import Any
 
 import httpx2 as httpx
 import stamina
@@ -51,11 +51,11 @@ class AsyncContext:
 
     def __init__(
         self,
-        uri: Union[str, httpx.URL],
+        uri: str | httpx.URL,
         *,
-        api_key: Optional[str] = None,
-        app: Optional[Any] = None,
-        timeout: Optional[httpx.Timeout] = None,
+        api_key: str | None = None,
+        app: Any | None = None,
+        timeout: httpx.Timeout | None = None,
         verify: bool = True,
         max_connections: int = MAX_CONCURRENT_CONNECTIONS,
     ) -> None:
@@ -94,20 +94,20 @@ class AsyncContext:
         # unbounded `asyncio.gather` fan-outs in the clients safe.
         self._semaphore = asyncio.Semaphore(max_connections)
         # Optionally set by `from_app`; entered/exited with this context.
-        self._lifespan_context: Optional[Any] = None
+        self._lifespan_context: Any | None = None
         # Fetched by `connect`/`from_app` before the context is handed out.
-        self.server_info: Optional[About] = None
+        self.server_info: About | None = None
 
     @classmethod
     async def connect(
         cls,
-        uri: Union[str, httpx.URL],
+        uri: str | httpx.URL,
         *,
-        api_key: Optional[str] = None,
-        timeout: Optional[httpx.Timeout] = None,
+        api_key: str | None = None,
+        timeout: httpx.Timeout | None = None,
         verify: bool = True,
         max_connections: int = MAX_CONCURRENT_CONNECTIONS,
-    ) -> "AsyncContext":
+    ) -> AsyncContext:
         """Construct a context and fetch the server description.
 
         The returned context is ready for use and should be closed when done,
@@ -135,7 +135,7 @@ class AsyncContext:
         api_key: Any = UNSET,
         uri: str = "http://local-tiled-app/api/v1",
         run_lifespan: bool = True,
-    ) -> "AsyncContext":
+    ) -> AsyncContext:
         """Construct a context around an in-process ASGI app. Primarily for testing.
 
         Unless `run_lifespan` is False, the app's lifespan (startup/shutdown
@@ -173,7 +173,7 @@ class AsyncContext:
         response = await self.send(draft)
         self.server_info = TypeAdapter(About).validate_python(response.json())
 
-    async def __aenter__(self) -> "AsyncContext":
+    async def __aenter__(self) -> AsyncContext:
         return self
 
     async def __aexit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
