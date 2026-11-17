@@ -272,6 +272,10 @@ Write the date in place of the "Unreleased" in the case a new version is release
   written through the server are unaffected.
 - `/asset/bytes` responds with HTTP 404, not 500, when `relative_path` names
   no file in the asset.
+- In the Python client, `raw_export` logged a failed download and returned as
+  if the export were complete, leaving files missing or cut short. It now
+  attempts every file, removes any that was written only in part, and raises
+  the first error.
 
 ### Maintenance
 

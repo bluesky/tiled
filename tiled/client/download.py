@@ -104,9 +104,13 @@ def _download_url(
     accept_encoding: str | None,
 ):
     """Fetch `url` and write the body to disk (when `mapping is None`) or to
-    a `BytesIO` stored in `mapping` (otherwise). Returns the resolved target."""
+    a `BytesIO` stored in `mapping` (otherwise). Returns the resolved target.
+
+    If the download fails, the error is raised, and a file that was written
+    in part is removed."""
     progress.console.log(f"Requesting {url}")
     resolved = target
+    written: Path | None = None
     # Override the client's default Accept-Encoding so that raw-asset downloads
     # do not negotiate blosc2 (see STREAMING_ACCEPT_ENCODING) or, when the
     # caller disables compression, are served uncompressed with a
@@ -118,6 +122,9 @@ def _download_url(
         for attempt in retry_context():
             with attempt:
                 with client.stream("GET", url, headers=headers) as response:
+                    if response.is_error:
+                        # The body holds the server's explanation.
+                        response.read()
                     handle_error(response)
                     resolved = _resolve_placeholder(target, response)
                     # Content-Length is absent when the server streams a
@@ -130,6 +137,7 @@ def _download_url(
                     progress.start_task(task_id)
                     if mapping is None:
                         sink = open(resolved, "wb")
+                        written = resolved
                     else:
                         sink = io.BytesIO()
                     try:
@@ -147,8 +155,11 @@ def _download_url(
                             sink.close()
     except Exception as err:
         progress.console.log(f"ERROR {err!r}")
-    else:
-        progress.console.log(f"Downloaded {resolved}")
+        if written is not None:
+            # Do not leave part of a file behind as if it were the whole.
+            written.unlink(missing_ok=True)
+        raise
+    progress.console.log(f"Downloaded {resolved}")
     return resolved
 
 
@@ -172,6 +183,9 @@ def download(
     A target may embed `ATTACHMENT_FILENAME_PLACEHOLDER`, which is replaced
     with the filename advertised by the server via `Content-Disposition`.
     Returns the list of resolved targets in submission order.
+
+    Every download is attempted. If any of them fails, the first error is
+    raised once all are done, with a note of how many failed.
 
     `totals`, if given, must be parallel to `urls`; each entry pre-seeds the
     known content length so the progress bar is determinate even when the
@@ -239,4 +253,11 @@ def download(
     finally:
         # Restore SIGINT handler.
         signal.signal(signal.SIGINT, original_sigint_handler)
+    errors = [error for future in futures if (error := future.exception())]
+    if errors:
+        errors[0].add_note(
+            f"{len(errors)} of {len(futures)} downloads failed. "
+            "This is the first error."
+        )
+        raise errors[0]
     return [future.result() for future in futures]

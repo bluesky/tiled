@@ -15,7 +15,7 @@ from starlette.status import (
 from tiled.catalog import in_memory
 from tiled.client import Context, from_context
 from tiled.client.download import ATTACHMENT_FILENAME_PLACEHOLDER, download
-from tiled.client.utils import get_asset_filepaths
+from tiled.client.utils import ClientError, get_asset_filepaths
 from tiled.server.app import build_app
 from tiled.utils import UnsafePath, path_from_uri
 
@@ -333,11 +333,12 @@ def test_download_refuses_filename_that_is_not_a_file_name(tmp_path, filename):
         )
 
     with httpx.Client(transport=httpx.MockTransport(respond)) as http_client:
-        download(
-            http_client,
-            ["http://server.invalid/api/v1/asset/bytes/x?id=1"],
-            [destination / ATTACHMENT_FILENAME_PLACEHOLDER],
-        )
+        with pytest.raises(UnsafePath):
+            download(
+                http_client,
+                ["http://server.invalid/api/v1/asset/bytes/x?id=1"],
+                [destination / ATTACHMENT_FILENAME_PLACEHOLDER],
+            )
 
     written = [
         path
@@ -388,3 +389,62 @@ def test_raw_export_refuses_manifest_entry_outside_destination(
 
     assert sorted(tmp_path.rglob("*")) == files_before
     assert not in_memory_destination or destination == {}
+
+
+def test_download_raises_when_a_file_fails(tmp_path):
+    "The other files are downloaded. The error is raised, not only logged."
+
+    def respond(request):
+        if request.url.path.endswith("missing"):
+            return httpx.Response(404, json={"detail": "No such file"})
+        return httpx.Response(200, content=b"DOWNLOADED")
+
+    names = ["a", "missing", "b", "also-missing"]
+    with httpx.Client(transport=httpx.MockTransport(respond)) as http_client:
+        with pytest.raises(ClientError, match="404") as exc_info:
+            download(
+                http_client,
+                [f"http://server.invalid/{name}" for name in names],
+                [tmp_path / name for name in names],
+            )
+
+    assert exc_info.value.__notes__ == [
+        "2 of 4 downloads failed. This is the first error."
+    ]
+    assert sorted(path.name for path in tmp_path.iterdir()) == ["a", "b"]
+
+
+def test_download_removes_file_that_was_written_in_part(tmp_path):
+    class Truncated(httpx.SyncByteStream):
+        def __iter__(self):
+            yield b"PART"
+            raise RuntimeError("connection lost")
+
+    def respond(request):
+        return httpx.Response(200, stream=Truncated())
+
+    with httpx.Client(transport=httpx.MockTransport(respond)) as http_client:
+        with pytest.raises(RuntimeError, match="connection lost"):
+            download(http_client, ["http://server.invalid/x"], [tmp_path / "x"])
+
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_raw_export_raises_when_a_file_cannot_be_downloaded(
+    client, tmp_path, monkeypatch
+):
+    "An export that is not complete does not return as if it were."
+    asset_id, _directory = directory_asset(client)
+    node = client["x"]
+    monkeypatch.setattr(
+        type(node),
+        "asset_manifest",
+        lambda self, data_sources: {asset_id: ["zarr.json", "no-such-file"]},
+    )
+
+    with pytest.raises(ClientError):
+        node.raw_export(tmp_path / "exported")
+
+    assert sorted(path.name for path in (tmp_path / "exported").iterdir()) == [
+        "zarr.json"
+    ]
