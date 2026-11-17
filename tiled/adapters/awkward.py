@@ -63,6 +63,10 @@ class AwkwardAdapter(Adapter[AwkwardStructure]):
         path_parts: list[str],
     ) -> DataSource[AwkwardStructure]:
         data_source = copy.deepcopy(data_source)  # Do not mutate caller input.
+        # Each buffer is stored in a file named by its key. The form, and so
+        # the keys, come from the client.
+        for key in data_source.structure.awkward_form.expected_from_buffers():
+            DirectoryContainer.validate_key(key)
         data_uri = storage.uri + "".join(
             f"/{quote_plus(segment)}" for segment in path_parts
         )
@@ -124,6 +128,10 @@ class AwkwardBuffersAdapter(Adapter[AwkwardStructure]):
         path_parts: list[str],
     ) -> DataSource[AwkwardStructure]:
         data_source = copy.deepcopy(data_source)  # Do not mutate caller input.
+        # Each buffer is stored in a file named by its key. The form, and so
+        # the keys, come from the client.
+        for key in data_source.structure.awkward_form.expected_from_buffers():
+            DirectoryContainer.validate_key(key)
         data_uri = storage.uri + "".join(
             f"/{quote_plus(segment)}" for segment in path_parts
         )

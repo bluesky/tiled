@@ -59,7 +59,9 @@ async def test_collision(example_data_dir, tmpdir):
     p = Path(example_data_dir, "a.tiff")
     tifffile.imwrite(str(p), data)
 
-    catalog = in_memory(writable_storage=str(tmpdir))
+    catalog = in_memory(
+        writable_storage=str(tmpdir), readable_storage=[example_data_dir]
+    )
     with Context.from_app(build_app(catalog)) as context:
         client = from_context(context)
         await register(client, example_data_dir)

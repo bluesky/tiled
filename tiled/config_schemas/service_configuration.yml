@@ -151,6 +151,13 @@ properties:
       seq_ttl:
         type: number
         description: Max retention time for streaming sequence counter (seconds)
+      max_replay:
+        type: integer
+        minimum: 1
+        description: |
+          The most past messages that a subscriber can ask to have replayed
+          when it connects with `start`. A subscriber that asks for more gets
+          the most recent ones. The default is 1000.
       socket_timeout:
         type: number
         description: |

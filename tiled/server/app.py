@@ -69,7 +69,9 @@ from ..utils import (
     BrokenLink,
     Conflicts,
     UnsafeIdentifier,
+    UnsafePath,
     UnsupportedQueryType,
+    contained_path,
 )
 from ..validation_registration import ValidationRegistry, default_validation_registry
 from ._backcompat import raw_python_tiled_client_version
@@ -376,7 +378,14 @@ def build_app(
                     # has already removed.
                     headers={"Cache-Control": "no-store"},
                 )
-            full_path = Path(SHARE_TILED_PATH, "ui", path)
+            try:
+                # The path comes from the request URL. Serve only files of the
+                # UI distribution.
+                full_path = await anyio.to_thread.run_sync(
+                    contained_path, Path(SHARE_TILED_PATH, "ui"), path
+                )
+            except UnsafePath:
+                raise HTTPException(status_code=HTTP_404_NOT_FOUND)
             try:
                 stat_result = await anyio.to_thread.run_sync(os.stat, full_path)
             except PermissionError:
@@ -479,6 +488,13 @@ def build_app(
     async def unsafe_identifier_exception_handler(
         request: Request, exc: UnsafeIdentifier
     ):
+        return JSONResponse(
+            status_code=HTTP_422_UNPROCESSABLE_CONTENT,
+            content={"detail": exc.args[0]},
+        )
+
+    @app.exception_handler(UnsafePath)
+    async def unsafe_path_exception_handler(request: Request, exc: UnsafePath):
         return JSONResponse(
             status_code=HTTP_422_UNPROCESSABLE_CONTENT,
             content={"detail": exc.args[0]},

@@ -55,6 +55,8 @@ except ImportError:  # OpenTelemetry is an optional dependency.
 
 DIALECTS = Literal["postgresql", "sqlite", "duckdb"]
 TABLE_NAME_PATTERN = re.compile(r"^[a-z][a-z0-9_]*$")
+# What a table name read back from a catalog must look like.
+STORED_TABLE_NAME_PATTERN = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
 COLUMN_NAME_PATTERN = re.compile(r"^[a-zA-Z_].*$")
 FORBIDDEN_CHARACTERS = re.compile(
     r"""
@@ -163,6 +165,13 @@ class SQLAdapter(Adapter[TableStructure]):
         self._metadata = metadata or {}
         self._structure = structure
         self.specs = list(specs or [])
+        # Both go into SQL statements as text. The server chooses them for the
+        # data sources it creates, but a catalog may hold other values. A
+        # stored table name may have capitals, so only the characters that a
+        # quoted identifier cannot hold safely are refused.
+        is_safe_identifier(table_name, STORED_TABLE_NAME_PATTERN)
+        if not isinstance(dataset_id, int) or isinstance(dataset_id, bool):
+            raise UnsafeIdentifier(f"The dataset id {dataset_id!r} is not an integer.")
         self.table_name = table_name
         self.dataset_id = dataset_id
 

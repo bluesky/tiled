@@ -5,6 +5,103 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## Unreleased
 
+### Security
+
+This release addresses security issues identified by a frontier AI model. One
+was also responsibly disclosed by Santosh Kumar Puppala (@Santoshkumarpuppala).
+Some of them can be used without credentials, or by any user who can
+read data. Every release since v0.1.0a54 is affected by at least one of them.
+Updating promptly is recommended.
+
+- The web UI route (`/ui/...`) served any file that the server process could
+  read, without credentials, when the path contained `..` or was absolute. It
+  now serves only the files of the UI distribution and responds with HTTP 404
+  to anything else. True for /ui and /asset/bytes: This attack vector was
+  considered, but the measures in place were not effective.
+- `/asset/bytes` served files outside of a directory asset when
+  `relative_path` contained `..`. It now responds with HTTP 400, also for a
+  symbolic link that leads out of the asset's directory.
+- The `/zarr/v2` and `/zarr/v3` routes did not check scopes, so a server that
+  requires authentication answered requests that carried no credentials. They
+  now require `read:data`, and `read:metadata` for the metadata documents, like
+  the routes under `/api/v1`. Servers that allow anonymous access are
+  unaffected.
+- Uploading an awkward array as a zip archive wrote files outside of the
+  node's directory when a member name contained `..` or was absolute, and an
+  awkward form with such a `form_key` read files outside of it. Buffer keys are
+  now used only if they are plain file names. An upload may hold only the
+  buffers that the node's form names (HTTP 400 otherwise), and a form with
+  unusable keys is refused when the node is created (HTTP 422).
+- A node cannot be created with the key `.` or `..`, or a key containing `/`
+  (HTTP 422). Below a container named `..`, the storage of new tables and
+  awkward arrays was created outside of the writable storage directory.
+  Creating a node below an existing container with such a key is refused too.
+- In the Python client, `raw_export` wrote outside of the destination
+  directory if the server sent a file name or a manifest entry that contained
+  `..` or was absolute. It now raises `UnsafePath` for such a manifest entry
+  and does not write a file with such a name.
+- A WebSocket subscription with a `start` far below the current sequence made
+  the server look up every sequence in between without giving up the event
+  loop. With the in-memory streaming cache, one such request stopped the
+  server from answering anything else, and it kept running after the client
+  had disconnected. A `start` below -1 is now refused, the replay stops when
+  the client disconnects, and it covers at most the most recent `max_replay`
+  messages. `max_replay` is a new `streaming_cache` setting, 1000 by default.
+- External files are served only from readable storage. The check compared
+  paths as text, so a registered path that left a readable directory through
+  `..` or a symbolic link was served, and `/asset/bytes` and `/asset/manifest`
+  did not check at all. Paths are now compared after resolving `..` and
+  symbolic links, and the check is made when a file is registered and whenever
+  it is read or downloaded, with HTTP 403 on refusal. Registering a file
+  outside of readable storage, which used to succeed and then fail on read, is
+  refused. A file reached through a symbolic link that leads out of readable
+  storage is no longer served unless the link's target is readable storage too.
+  The same holds for every asset of a data source, also one that is not passed
+  to the adapter. An asset URI without a scheme, which some adapters read as a
+  path, or with a scheme that no readable storage of the server has, which
+  some adapters would fetch from the network, is refused too; an object
+  storage URI must be in a readable bucket.
+- A registered HDF5 file could make the server read other files: through an
+  external link, through the sources of a virtual dataset, and through a
+  dataset whose raw data is stored in an external file, which can be any file
+  at all. The server now follows external links and virtual dataset sources
+  only into readable storage, and does not read a dataset with external raw
+  storage. An entry that is refused is reported like a broken link (HTTP 410).
+  A NetCDF file, which is an HDF5 file read by another library, is served only
+  if it refers to no other file. Adapters used directly, outside of a server,
+  are not restricted unless `readable_directories` is passed.
+
+For a server that cannot be updated right away, the reverse proxy in front of
+it can refuse the requests that the most exposed of these issues depend on.
+The measures below were tested with nginx against a server without the fixes.
+Apply each to the decoded and normalized path, as an nginx `location` does,
+so that `/%75i/` is treated as `/ui/`. If Tiled is served under a path prefix,
+the paths below come after the prefix.
+
+- Refuse any request whose path has a `..` segment, also when it is written
+  with `%2e`.
+- `/ui/`: block it. To keep the web UI, refuse requests under it whose path, as
+  the client sent it, contains `//`, `%2f`, `%2e` or `%5c`. A proxy that
+  forwards the path unchanged does not protect this route by itself.
+- `/zarr/`: block it. To keep Zarr access, require an `Authorization` header
+  made of `Apikey` or `Bearer` and a credential, which Tiled then checks. A
+  header with no credential after the scheme counts as no credentials. A key
+  given in the URL or in a cookie no longer works under this rule.
+- `/api/v1/asset/`: block it, or set `expose_raw_assets: false` in the Tiled
+  configuration, which has the same effect.
+- `/api/v1/awkward/`: block it. Awkward arrays can then be neither read nor
+  written.
+- `/api/v1/stream/`: block it. To keep streaming, accept the `start` query
+  parameter only if it is made of digits, and refuse a query string that
+  contains `%` or `+`. Refusing a leading `-` is not enough: Tiled reads `0-5`
+  and `+-5` as negative numbers too.
+
+These measures do not cover the files that a registered HDF5 file, or a
+symbolic link in readable storage, refers to. Until the server is updated,
+the directories that it reads should hold only files from trusted sources.
+The fix to `raw_export` is in the Python client, which has to be updated
+wherever it is used.
+
 ### Added
 
 - Documentation page listing the Alembic revisions of the catalog and
@@ -89,9 +186,27 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - Type annotations throughout use PEP 604 (`X | Y`) and built-in generics
   (`list[str]`) instead of `typing.Union`, `Optional`, `List`, etc., enforced
   by the ruff `UP` (pyupgrade) rules.
+- A table in SQL storage cannot be registered as external data, which was
+  never a supported use. The table name and dataset id of a registered table
+  came from the client, so a client with the `register` scope could read the
+  rows of any other table in the storage database, through the dataset id or
+  through SQL placed in it, and deleting the node deleted those rows.
+  Registering external data with a SQL storage format, or with an asset whose
+  URI has the scheme of a database (which also let a file outside of readable
+  storage be read), is refused with HTTP 403. Such a data source already in a
+  catalog is not read, and deleting its node no longer deletes rows. Tables
+  written through the server are unaffected. A table whose stored dataset id
+  is not an integer, or whose stored table name holds characters other than
+  letters, digits and underscores, is not read (HTTP 422).
+- `PUT /data_source` changes only an externally managed data source of the
+  node in the request, and keeps it externally managed. It used to accept the
+  id of a data source of any node.
 
 ### Fixed
 
+- Composing a slice with a negative step with a second slice gave an empty
+  result when the composed stop lay before the first element: the stop was a
+  negative number, which Python counts from the end. Such a stop is now open.
 - Search requests (`/search`, `/search-deep`, `/distinct`) whose filter
   parameters for one query type were given different numbers of times, for
   example a query given twice with one of its parameters given only once, now
@@ -193,6 +308,26 @@ Write the date in place of the "Unreleased" in the case a new version is release
   approved now get a row on first use.
 - Fix HTTP 500 error when exporting a table as HDF5 (`application/x-hdf5`).
   Tables now use a dedicated HDF5 serializer instead of the one for containers.
+- `/asset/manifest` lists paths relative to the asset, as documented. It listed
+  absolute paths on the server, which `/asset/bytes` refuses, so `raw_export`
+  of a directory asset (a Zarr array, for example) wrote no files.
+- `/asset/bytes` responds with HTTP 404, not 500, when `relative_path` names
+  no file in the asset.
+- In the Python client, `raw_export` logged a failed download and returned as
+  if the export were complete, leaving files missing or cut short. It now
+  attempts every file, removes any that was written only in part, and raises
+  the first error.
+- Writing to a node whose data is externally managed changed the registered
+  files: a write or an append to a registered CSV file, Zarr array or directory
+  of awkward buffers went to the source data. These requests are now refused
+  with HTTP 405. An update that is only streamed (`persist=false`) is still
+  accepted, since it does not touch the data.
+- A location registered by a client is always externally managed. A client
+  with the `register` scope could register a location on a data source marked
+  as managed by the server, or change an external data source to managed with
+  `PUT /data_source`, and the server then removed the registered file or
+  directory when the node was deleted. Both are refused with HTTP 403. When a
+  node is deleted, files are removed only from writable storage.
 
 ### Maintenance
 
