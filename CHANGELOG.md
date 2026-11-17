@@ -193,6 +193,10 @@ Write the date in place of the "Unreleased" in the case a new version is release
   approved now get a row on first use.
 - Fix HTTP 500 error when exporting a table as HDF5 (`application/x-hdf5`).
   Tables now use a dedicated HDF5 serializer instead of the one for containers.
+- The web UI route (`/ui/...`) served any file that the server process could
+  read, without credentials, when the path contained `..` or was absolute. It
+  now serves only the files of the UI distribution and responds with HTTP 404
+  to anything else.
 
 ### Maintenance
 
