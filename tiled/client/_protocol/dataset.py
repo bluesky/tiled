@@ -10,8 +10,7 @@ the wide-table request, progress reporting) stays in the client classes.
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
-from typing import AbstractSet
+from collections.abc import Mapping, Sequence, Set
 
 # Variables longer than this are fetched directly rather than batched into
 # a wide table (their size defeats the purpose of batching small fetches).
@@ -41,7 +40,7 @@ def wide_table_batch(
     }
 
 
-def xarray_variable_role(spec_names: AbstractSet[str]) -> str:
+def xarray_variable_role(spec_names: Set[str]) -> str:
     """Whether a child of an xarray dataset is a "coord" or a "data_var".
 
     The role is declared by the child's specs, as written by
