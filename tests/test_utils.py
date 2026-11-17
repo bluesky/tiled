@@ -18,6 +18,7 @@ from tiled.utils import (
     UnsafePath,
     contained_path,
     ensure_specified_sql_driver,
+    is_safe_key,
     is_safe_path_segment,
     parse_mimetype,
     parse_time_string,
@@ -746,3 +747,16 @@ def test_safe_path_segment(segment):
 @pytest.mark.parametrize("segment", ["", ".", "..", "a/b", "/a", "a/", "a\x00", None])
 def test_unsafe_path_segment(segment):
     assert not is_safe_path_segment(segment)
+
+
+@pytest.mark.parametrize(
+    "key", ["a", "a.b", "..a", "a b", "run#1", "é", "a%2Fb", "a\\b"]
+)
+def test_safe_key(key):
+    "Any character but '/' and a null byte; a backslash is not a separator in a URL."
+    assert is_safe_key(key)
+
+
+@pytest.mark.parametrize("key", ["", ".", "..", "a/b", "/a", "a/", "a\x00b", None])
+def test_unsafe_key(key):
+    assert not is_safe_key(key)

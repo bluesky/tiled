@@ -668,11 +668,14 @@ def contained_path(root: str | Path, untrusted: str | Path) -> Path:
     An absolute `untrusted` path replaces the root when joined, so it is
     rejected by the same check unless it happens to point inside the root.
     """
+    if "\x00" in str(untrusted):
+        # Not every platform refuses a null byte when a path is resolved.
+        raise UnsafePath(f"The path {str(untrusted)!r} cannot be resolved.")
     try:
         resolved_root = Path(root).resolve()
         candidate = (resolved_root / untrusted).resolve()
     except (OSError, RuntimeError, ValueError) as err:
-        # For example a null byte, or a loop of symbolic links.
+        # For example a loop of symbolic links.
         raise UnsafePath(f"The path {str(untrusted)!r} cannot be resolved.") from err
     if not candidate.is_relative_to(resolved_root):
         raise UnsafePath(
@@ -695,6 +698,22 @@ def is_safe_path_segment(segment: str) -> bool:
         isinstance(segment, str)
         and segment not in ("", ".", "..")
         and not any(character in segment for character in forbidden)
+    )
+
+
+def is_safe_key(key: str) -> bool:
+    """
+    Tell whether a string can be the key of a node.
+
+    A key is one segment of a URL path, so it cannot be empty, `.` or `..`,
+    or contain `/` or a null byte. Any other character is allowed: where a
+    key becomes a directory name, it is URL-quoted first.
+    """
+    return (
+        isinstance(key, str)
+        and key not in ("", ".", "..")
+        and "/" not in key
+        and "\x00" not in key
     )
 
 

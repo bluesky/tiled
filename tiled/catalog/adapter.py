@@ -129,7 +129,7 @@ from ..utils import (
     ensure_awaitable,
     ensure_specified_sql_driver,
     import_object,
-    is_safe_path_segment,
+    is_safe_key,
     path_from_uri,
 )
 from . import orm
@@ -1344,11 +1344,11 @@ class CatalogNodeAdapter:
             self._require_location_is_external(data_source)
             self._require_external_is_not_in_sql_storage(data_source)
         child_path = list(await self.path_segments()) + [key]
-        # Keys become URL path segments and, for writable data, directory
-        # names under the storage root. The ancestors are checked too: a
-        # catalog may hold such a key.
+        # Keys become URL path segments and, for writable data, URL-quoted
+        # directory names under the storage root. The ancestors are checked
+        # too: a catalog may hold such a key.
         for segment in child_path:
-            if not is_safe_path_segment(segment):
+            if not is_safe_key(segment):
                 raise UnsafePath(
                     f"The key {segment!r} in the path /{'/'.join(child_path)} "
                     "cannot be used. A key must not be '.' or '..' or contain "

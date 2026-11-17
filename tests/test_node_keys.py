@@ -81,7 +81,7 @@ def test_unsafe_key_is_refused(client, key):
 
 
 @pytest.mark.parametrize(
-    "key", ["a", "a.b", "..a", "a..", "a b", "run#1", "é", "a%2Fb"]
+    "key", ["a", "a.b", "..a", "a..", "a b", "run#1", "é", "a%2Fb", "a\\b"]
 )
 def test_ordinary_key_is_accepted(client, key):
     body = {"id": key, "structure_family": "container", "metadata": {}, "specs": []}
