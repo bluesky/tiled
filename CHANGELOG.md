@@ -56,6 +56,11 @@ Updating promptly is recommended.
   outside of readable storage, which used to succeed and then fail on read, is
   refused. A file reached through a symbolic link that leads out of readable
   storage is no longer served unless the link's target is readable storage too.
+  The same holds for every asset of a data source, also one that is not passed
+  to the adapter. An asset URI without a scheme, which some adapters read as a
+  path, or with a scheme that no readable storage of the server has, which
+  some adapters would fetch from the network, is refused too; an object
+  storage URI must be in a readable bucket.
 - A registered HDF5 file could make the server read other files: through an
   external link, through the sources of a virtual dataset, and through a
   dataset whose raw data is stored in an external file, which can be any file

@@ -117,6 +117,7 @@ from ..storage import (
     parse_storage,
     register_storage,
     release_storage,
+    storage_registry_key,
 )
 from ..structures.core import Spec, StructureFamily
 from ..utils import (
@@ -152,7 +153,7 @@ logger = logging.getLogger(__name__)
 def file_uris_outside_directories(data_uris, directories):
     """Return the `file://` URIs that do not lead into one of the directories.
 
-    Paths are compared after resolving ``..`` and symbolic links, in the URIs
+    Paths are compared after resolving `..` and symbolic links, in the URIs
     and in the directories alike. This reads the filesystem.
     """
     resolved_directories = []
@@ -783,26 +784,50 @@ class CatalogNodeAdapter:
         return STRUCTURES[node.structure_family](self.context, node)
 
     async def _require_readable(self, data_uris):
-        """Respond with 403 unless every `file://` URI is in readable storage.
+        """Respond with 403 unless every URI is in readable storage.
 
-        External files are served only from the directories that the server is
-        configured to read. A path is judged by where it leads, with ``..`` and
-        symbolic links resolved, so that a path written to look as if it were
-        inside a readable directory is not accepted. URIs with other schemes
-        are not paths and pass through unchecked.
+        External data is served only from the storage that the server is
+        configured to read. A `file://` path is judged by where it leads, with
+        `..` and symbolic links resolved, so that a path written to look as if
+        it were inside a readable directory is not accepted. An object storage
+        URI must be in a bucket of the readable object storage, and a database
+        URI must name a database of the readable SQL storage. A URI with any
+        other scheme, or with none, is refused: an adapter would read it as a
+        path or fetch it from the network.
         """
-        data_uris = [uri for uri in data_uris if urlparse(uri).scheme == "file"]
-        if not data_uris:
-            return
-        roots = [
-            storage.path
-            for storage in self.context.readable_storage.values()
-            if isinstance(storage, FileStorage)
-        ]
-        # Resolving paths reads the filesystem.
-        outside = await anyio.to_thread.run_sync(
-            file_uris_outside_directories, data_uris, roots
-        )
+        file_uris = []
+        outside = []
+        buckets = set()
+        databases = set()
+        for storage in self.context.readable_storage.values():
+            if isinstance(storage, ObjectStorage):
+                buckets.add(storage.uri)
+            elif isinstance(storage, SQLStorage):
+                databases.add(storage_registry_key(storage.uri))
+        for data_uri in data_uris:
+            scheme = urlparse(data_uri).scheme
+            if scheme == "file":
+                file_uris.append(data_uri)
+            elif scheme in SUPPORTED_OBJECT_URI_SCHEMES:
+                if ObjectStorage.parse_blob_uri(data_uri)[0] not in buckets:
+                    outside.append(data_uri)
+            elif scheme in SQL_STORAGE_SCHEMES:
+                if storage_registry_key(data_uri) not in databases:
+                    outside.append(data_uri)
+            else:
+                outside.append(data_uri)
+        if file_uris:
+            roots = [
+                storage.path
+                for storage in self.context.readable_storage.values()
+                if isinstance(storage, FileStorage)
+            ]
+            # Resolving paths reads the filesystem.
+            outside.extend(
+                await anyio.to_thread.run_sync(
+                    file_uris_outside_directories, file_uris, roots
+                )
+            )
         if outside:
             for data_uri in outside:
                 logger.warning(
@@ -927,11 +952,9 @@ class CatalogNodeAdapter:
                 f"Server configuration has no adapter for mimetype {data_source.mimetype!r}"
             )
         self._require_external_is_not_in_sql_storage(data_source)
-        await self._require_readable(
-            asset.data_uri
-            for asset in data_source.assets
-            if asset.parameter is not None
-        )
+        # Every asset, also those not passed to the adapter: some adapters open
+        # the first asset of the data source whatever its parameter.
+        await self._require_readable(asset.data_uri for asset in data_source.assets)
         adapter = await anyio.to_thread.run_sync(
             partial(
                 adapter_cls.from_catalog,
@@ -998,6 +1021,7 @@ class CatalogNodeAdapter:
         # Data source meta only (no assets); the structure is enough (with the
         # file count) to compute the file geometry.
         data_source = DataSource.from_orm(ds, include_assets=False)
+        self._require_external_is_not_in_sql_storage(data_source)
         structure = data_source.structure
 
         # A block read's file selection depends ONLY on the block: read_block

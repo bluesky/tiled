@@ -25,6 +25,21 @@ from .utils import fail_with_status_code
 df = pandas.DataFrame({"a": [1, 2, 3], "b": [4.0, 5.0, 6.0]})
 SECRET = b"a,b\n7,8.0\n"
 
+# Asset URIs that are not in readable storage, with `{layout}` for the test
+# directory. A `file://` path is judged by where it leads. Without a scheme,
+# some adapters read a URI as a path; with a scheme that this server has no
+# storage for, some would fetch it from the network.
+OUTSIDE_URIS = {
+    "outside": "file://localhost{layout}/outside/secret.csv",
+    "dot-dot": "file://localhost{layout}/readable/../outside/secret.csv",
+    "link-to-file": "file://localhost{layout}/readable/link.csv",
+    "link-to-directory": "file://localhost{layout}/readable/linked/secret.csv",
+    "no-scheme": "{layout}/readable/ok.csv",
+    "http": "http://example.invalid/bucket/ok.csv",
+    "ftp": "ftp://example.invalid/secret.csv",
+    "s3": "s3://bucket/secret.csv",
+}
+
 
 @pytest.fixture
 def layout(tmp_path):
@@ -72,14 +87,12 @@ def client(layout, database):
         yield from_context(context)
 
 
-def csv_data_source(path):
+def csv_data_source(data_uri):
     return DataSource(
         mimetype="text/csv;header=present",
         assets=[
             Asset(
-                # Not ensure_uri(path), which would make the path absolute
-                # and so remove any "..".
-                data_uri=f"file://localhost{path}",
+                data_uri=data_uri,
                 is_directory=False,
                 parameter="data_uris",
                 num=0,
@@ -91,10 +104,10 @@ def csv_data_source(path):
     )
 
 
-def register_csv(client, key, path):
+def register_csv(client, key, data_uri):
     return client.new(
         structure_family=StructureFamily.table,
-        data_sources=[csv_data_source(path)],
+        data_sources=[csv_data_source(data_uri)],
         key=key,
     )
 
@@ -126,18 +139,25 @@ def asset_id(client, key):
     return asset.id
 
 
-def repoint_asset(database, old_path, new_path):
-    "Make an asset in the catalog name another file, as an older server allowed."
+def repoint_asset(database, old_path, new_uri, parameter="data_uri"):
+    """Make an asset in the catalog name another location.
+
+    With parameter=None the asset is not passed to the adapter."""
     with sqlite3.connect(database) as connection:
         cursor = connection.execute(
             "UPDATE assets SET data_uri = ? WHERE data_uri = ?",
-            (f"file://localhost{new_path}", ensure_uri(old_path)),
+            (new_uri, ensure_uri(old_path)),
         )
         assert cursor.rowcount == 1
+        connection.execute(
+            "UPDATE data_source_asset_association SET parameter = ? "
+            "WHERE asset_id = (SELECT id FROM assets WHERE data_uri = ?)",
+            (parameter, new_uri),
+        )
 
 
 def test_file_in_readable_storage_is_served(client, layout):
-    register_csv(client, "ok", layout / "readable" / "ok.csv")
+    register_csv(client, "ok", ensure_uri(layout / "readable" / "ok.csv"))
 
     assert client["ok"].read().equals(df)
     response = client.context.http_client.get(
@@ -147,37 +167,26 @@ def test_file_in_readable_storage_is_served(client, layout):
     assert response.content == (layout / "readable" / "ok.csv").read_bytes()
 
 
-@pytest.mark.parametrize(
-    "path",
-    [
-        "outside/secret.csv",
-        "readable/../outside/secret.csv",
-        "readable/link.csv",
-        "readable/linked/secret.csv",
-    ],
-    ids=["outside", "dot-dot", "link-to-file", "link-to-directory"],
-)
-def test_file_outside_readable_storage_cannot_be_registered(client, layout, path):
+@pytest.mark.parametrize("data_uri", OUTSIDE_URIS.values(), ids=OUTSIDE_URIS)
+def test_asset_outside_readable_storage_cannot_be_registered(client, layout, data_uri):
     with fail_with_status_code(HTTP_403_FORBIDDEN):
-        register_csv(client, "x", f"{layout}/{path}")
+        register_csv(client, "x", data_uri.format(layout=layout))
 
     assert "x" not in client
 
 
-@pytest.mark.parametrize(
-    "path",
-    [
-        "outside/secret.csv",
-        "readable/../outside/secret.csv",
-        "readable/link.csv",
-        "readable/linked/secret.csv",
-    ],
-    ids=["outside", "dot-dot", "link-to-file", "link-to-directory"],
-)
-def test_file_outside_readable_storage_is_not_served(client, layout, database, path):
+@pytest.mark.parametrize("data_uri", OUTSIDE_URIS.values(), ids=OUTSIDE_URIS)
+def test_asset_outside_readable_storage_is_not_served(
+    client, layout, database, data_uri
+):
     "An asset that the catalog already holds is checked whenever it is read."
-    register_csv(client, "x", layout / "readable" / "ok.csv")
-    repoint_asset(database, layout / "readable" / "ok.csv", f"{layout}/{path}")
+    register_csv(client, "x", ensure_uri(layout / "readable" / "ok.csv"))
+    repoint_asset(
+        database,
+        layout / "readable" / "ok.csv",
+        data_uri.format(layout=layout),
+        parameter="data_uris",
+    )
     http_client = client.context.http_client
 
     data = http_client.get("/api/v1/table/full/x", params={"format": "text/csv"})
@@ -193,16 +202,26 @@ def test_file_outside_readable_storage_is_not_served(client, layout, database, p
 
 
 @pytest.mark.parametrize("path", ["outside/z", "readable/linked/z"])
+@pytest.mark.parametrize(
+    "parameter", ["data_uri", None], ids=["passed-to-adapter", "supporting"]
+)
 def test_directory_outside_readable_storage_is_not_listed(
-    client, layout, database, path
+    client, layout, database, path, parameter
 ):
+    """Also for an asset that is not passed to the adapter: some adapters open
+    the first asset of a data source whatever its parameter."""
     register_zarr(client, "z", layout / "readable" / "z")
     http_client = client.context.http_client
     params = {"id": asset_id(client, "z")}
     manifest = http_client.get("/api/v1/asset/manifest/z", params=params)
     assert manifest.status_code == HTTP_200_OK
     assert "zarr.json" in manifest.json()["manifest"]
-    repoint_asset(database, layout / "readable" / "z", f"{layout}/{path}")
+    repoint_asset(
+        database,
+        layout / "readable" / "z",
+        f"file://localhost{layout}/{path}",
+        parameter,
+    )
 
     manifest = http_client.get("/api/v1/asset/manifest/z", params=params)
     raw = http_client.get(
@@ -215,8 +234,35 @@ def test_directory_outside_readable_storage_is_not_listed(
         client["z"].read()
 
 
+@pytest.mark.parametrize(
+    "data_uri, accepted",
+    [
+        ("http://storage.invalid/bucket/a/ok.csv", True),
+        ("http://storage.invalid/other/ok.csv", False),
+        ("http://elsewhere.invalid/bucket/ok.csv", False),
+        ("https://storage.invalid/bucket/ok.csv", False),
+    ],
+    ids=["in-bucket", "other-bucket", "other-host", "other-scheme"],
+)
+def test_asset_in_readable_object_storage(database, data_uri, accepted):
+    "An object storage URI is accepted in a readable bucket, and refused elsewhere."
+    bucket = {"provider": "s3", "uri": "http://storage.invalid/bucket"}
+    catalog = from_uri(
+        f"sqlite:///{database}", readable_storage=[bucket], init_if_not_exists=True
+    )
+    with Context.from_app(build_app(catalog)) as context:
+        client = from_context(context)
+
+        if accepted:
+            register_csv(client, "x", data_uri)
+        else:
+            with fail_with_status_code(HTTP_403_FORBIDDEN):
+                register_csv(client, "x", data_uri)
+        assert ("x" in client) is accepted
+
+
 def test_data_source_cannot_be_changed_to_file_outside_readable_storage(client, layout):
-    register_csv(client, "x", layout / "readable" / "ok.csv")
+    register_csv(client, "x", ensure_uri(layout / "readable" / "ok.csv"))
     http_client = client.context.http_client
     (data_source,) = http_client.get(
         "/api/v1/metadata/x", params={"include_data_sources": "true"}
@@ -248,8 +294,8 @@ def test_readable_storage_reached_through_a_link(tmp_path):
     )
     with Context.from_app(build_app(catalog)) as context:
         client = from_context(context)
-        register_csv(client, "by_link", link / "ok.csv")
-        register_csv(client, "by_real_path", real / "ok.csv")
+        register_csv(client, "by_link", ensure_uri(link / "ok.csv"))
+        register_csv(client, "by_real_path", ensure_uri(real / "ok.csv"))
 
         assert client["by_link"].read().equals(df)
         assert client["by_real_path"].read().equals(df)

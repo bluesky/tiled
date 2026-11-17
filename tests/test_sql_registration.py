@@ -6,13 +6,19 @@ one's rows are. A client cannot register a table in SQL storage.
 import json
 import sqlite3
 
+import numpy
 import pandas
 import pyarrow
 import pytest
-from starlette.status import HTTP_200_OK, HTTP_403_FORBIDDEN, HTTP_404_NOT_FOUND
+from starlette.status import (
+    HTTP_200_OK,
+    HTTP_403_FORBIDDEN,
+    HTTP_404_NOT_FOUND,
+)
 
 from tiled.catalog import from_uri
 from tiled.client import Context, from_context
+from tiled.client.register import register
 from tiled.server.app import build_app
 from tiled.structures.core import StructureFamily
 from tiled.structures.data_source import Asset, DataSource, Management
@@ -226,28 +232,35 @@ def test_file_cannot_be_registered_under_a_database_scheme(client, layout, schem
 
 
 @pytest.mark.parametrize("scheme", ["sqlite", "duckdb"])
-def test_file_under_a_database_scheme_already_in_catalog_is_not_read(
-    client, layout, scheme
+@pytest.mark.parametrize("kind", ["file", "sequence"])
+async def test_file_under_a_database_scheme_already_in_catalog_is_not_read(
+    client, layout, scheme, kind
 ):
-    client.new(
-        structure_family=StructureFamily.table,
-        data_sources=[csv_data_source(ensure_uri(layout / "readable" / "ok.csv"))],
-        key="x",
-    )
-    assert client["x"].read().equals(df)
+    "A sequence of files is read one file at a time, by a path of its own."
+    readable = layout / "readable"
+    if kind == "file":
+        client.new(
+            structure_family=StructureFamily.table,
+            data_sources=[csv_data_source(ensure_uri(readable / "ok.csv"))],
+            key="x",
+        )
+        assert client["x"].read().equals(df)
+        repointed, route = readable / "ok.csv", "table/full/x?format=text/csv"
+    else:
+        tifffile = pytest.importorskip("tifffile")
+        for i in range(2):
+            tifffile.imwrite(readable / f"image{i:05}.tif", numpy.full((2, 2), i, "u1"))
+        await register(client, readable)
+        assert client["image"].read().shape == (2, 2, 2)
+        repointed, route = readable / "image00001.tif", "array/block/image?block=1,0,0"
     with sqlite3.connect(layout / "catalog.db") as connection:
         cursor = connection.execute(
             "UPDATE assets SET data_uri = ? WHERE data_uri = ?",
-            (
-                f"{scheme}:///{layout / 'outside' / 'secret.csv'}",
-                ensure_uri(layout / "readable" / "ok.csv"),
-            ),
+            (f"{scheme}:///{layout / 'outside' / 'secret.csv'}", ensure_uri(repointed)),
         )
         assert cursor.rowcount == 1
 
-    response = client.context.http_client.get(
-        "/api/v1/table/full/x", params={"format": "text/csv"}
-    )
+    response = client.context.http_client.get(f"/api/v1/{route}")
 
     assert response.status_code == HTTP_403_FORBIDDEN
     assert b"7,8.0" not in response.content
