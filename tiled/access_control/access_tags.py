@@ -290,9 +290,9 @@ async def update_access_tags_tables(engine, tags, owners, public_tags):
                 retained_tag_ids.update(
                     (
                         await connection.execute(
-                            select(assignment_table.c.tag_id.distinct()).where(
-                                assignment_table.c.tag_id.in_(stale_tag_ids)
-                            )
+                            select(assignment_table.c.tag_id)
+                            .distinct()
+                            .where(assignment_table.c.tag_id.in_(stale_tag_ids))
                         )
                     ).scalars()
                 )

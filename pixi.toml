@@ -4,6 +4,14 @@ channels = ["conda-forge"]
 name = "tiled"
 platforms = ["linux-64", "linux-aarch64", "osx-arm64", "osx-64", "win-64"]
 version = "0.2.2"
+# Match the pixi version that .github/workflows/update-lockfiles.yml uses, so
+# that pixi.lock is written the same way locally and in CI.
+requires-pixi = ">=0.83.0"
+# Ignore packages published in the last 3 days, matching exclude-newer in
+# [tool.uv] in pyproject.toml, to reduce the risk of picking up a broken or
+# compromised release. To let a reviewed release through sooner, exempt it:
+#   pixi workspace exclude-newer exempt <package>==<version>
+exclude-newer = "3d"
 
 [tasks]
 
@@ -40,7 +48,7 @@ watchfiles = "*"
 websockets = "*"
 
 [feature.compression.dependencies]
-# python-blosc2 = "*"  # not available on Python < 3.11
+python-blosc2 = "*"
 lz4 = "*"
 zstandard = "*"
 
@@ -131,15 +139,15 @@ xarray = "*"
 
 [feature.py311.dependencies]
 python = "3.11.*"
-python-blosc2 = "*"
 
 [feature.py312.dependencies]
 python = "3.12.*"
-python-blosc2 = "*"
 
 [feature.py313.dependencies]
 python = "3.13.*"
-python-blosc2 = "*"
+
+[feature.py314.dependencies]
+python = "3.14.*"
 
 [environments]
 default = { solve-group = "default" }
@@ -151,3 +159,4 @@ server = { features = ["array", "awkward", "compression", "dataframe", "formats"
 py311 = { features = ["array", "awkward", "client", "compression", "dataframe", "formats", "dev", "server", "sparse", "xarray", "py311"] }
 py312 = { features = ["array", "awkward", "client", "compression", "dataframe", "formats", "dev", "server", "sparse", "xarray", "py312"] }
 py313 = { features = ["array", "awkward", "client", "compression", "dataframe", "formats", "dev", "server", "sparse", "xarray", "py313"] }
+py314 = { features = ["array", "awkward", "client", "compression", "dataframe", "formats", "dev", "server", "sparse", "xarray", "py314"] }

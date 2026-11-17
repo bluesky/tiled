@@ -8,9 +8,10 @@ import logging
 import time
 import uuid
 import warnings
+from collections.abc import Iterable
 from dataclasses import asdict
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Iterable, Optional, Union
+from typing import TYPE_CHECKING, Any
 from urllib.parse import parse_qs, urlparse
 
 import entrypoints
@@ -398,7 +399,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
 
     def delete_contents(
         self,
-        keys: Optional[Union[str, Iterable[str]]] = None,
+        keys: str | Iterable[str] | None = None,
         recursive: bool = False,
         external_only: bool = True,
     ) -> "Container":
@@ -1310,7 +1311,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         metadata=None,
         specs=None,
         access_tags=None,
-        table_name: Optional[str] = None,
+        table_name: str | None = None,
     ):
         """Initialize a table whose rows can be appended to a partition.
 
@@ -1366,7 +1367,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
 
     def write_table(
         self,
-        data: Union["pandas.DataFrame", dict[str, Any]],
+        data: "pandas.DataFrame | dict[str, Any]",
         *,
         key=None,
         metadata=None,
@@ -1453,7 +1454,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
 
     def subscribe(
         self,
-        executor: Optional[concurrent.futures.Executor] = None,
+        executor: concurrent.futures.Executor | None = None,
     ) -> "ContainerSubscription":
         """
         Subscribe to streaming updates about this container.
@@ -1480,14 +1481,14 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
 
     def register(
         self,
-        *uris: Union[str, Path],
-        key: Optional[str] = None,
-        structure: Optional[Any] = None,
-        mimetype: Optional[str] = None,
-        parameters: Optional[dict[str, Any]] = None,
-        metadata: Optional[dict[str, Any]] = None,
-        specs: Optional[list[Spec]] = None,
-        access_tags: Optional[list[str]] = None,
+        *uris: str | Path,
+        key: str | None = None,
+        structure: Any | None = None,
+        mimetype: str | None = None,
+        parameters: dict[str, Any] | None = None,
+        metadata: dict[str, Any] | None = None,
+        specs: list[Spec] | None = None,
+        access_tags: list[str] | None = None,
     ):
         """Register externally-managed file(s) as a single dataset in this Container.
 

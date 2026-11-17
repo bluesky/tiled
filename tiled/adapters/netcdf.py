@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any, List, Optional, Union
+from typing import Any
 
 import xarray
 
@@ -11,7 +11,7 @@ from ..utils import path_from_uri
 from .xarray import DatasetAdapter
 
 
-def read_netcdf(filepath: Union[str, List[str], Path]) -> DatasetAdapter:
+def read_netcdf(filepath: str | list[str] | Path) -> DatasetAdapter:
     """
 
     Parameters
@@ -33,7 +33,7 @@ class NetCDFAdapter(TableAdapter):
         data_source: DataSource[None],
         node: Node,
         /,
-        **kwargs: Optional[Any],
+        **kwargs: Any | None,
     ) -> "NetCDFAdapter":
         filepath = path_from_uri(data_source.assets[0].data_uri)
 

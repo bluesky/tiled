@@ -21,7 +21,7 @@ on the `conda-forge` channel, which pixi uses by default.
 :::{tab-item} pip
 :sync: pip
 
-You will need Python 3.10 or later. You can check your version of Python by
+You will need Python 3.11 or later. You can check your version of Python by
 typing into a terminal:
 
 ```sh

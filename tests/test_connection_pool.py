@@ -1,5 +1,3 @@
-from typing import Union
-
 import pytest
 from sqlalchemy.engine import URL, make_url
 
@@ -17,6 +15,6 @@ from tiled.server.connection_pool import is_memory_sqlite
         ("sqlite:////tmp/example.db", False),
     ],
 )
-def test_is_memory_sqlite(uri: Union[str, URL], expected: bool):
+def test_is_memory_sqlite(uri: str | URL, expected: bool):
     actual = is_memory_sqlite(uri)
     assert actual is expected
