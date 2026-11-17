@@ -750,7 +750,7 @@ class DirectoryContainer(Mapping[str, bytes]):
         Keys come from forms and uploads that a client supplies. Each one must
         name a file directly in the directory, and nothing else.
         """
-        # The comparison with the name also catches a Windows drive ("C:x").
+        # On Windows, the comparison with the name also catches a drive ("C:x").
         if not is_safe_path_segment(key) or PurePath(key).name != key:
             raise UnsafePath(
                 f"The buffer key {key!r} cannot be used as a file name. It must "

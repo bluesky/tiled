@@ -907,9 +907,8 @@ class CatalogNodeAdapter:
     def _delete_managed_asset(self, data_uri, **kwargs):
         """Remove data that this server stored, and nothing else.
 
-        A file or directory is removed only from writable storage. The catalog
-        may hold another location for an internally managed data source, from
-        a version that let a client register one.
+        A file or directory is removed only from writable storage. A catalog
+        may hold an internally managed data source at another location.
         """
         if urlparse(data_uri).scheme == "file":
             writable = [
@@ -1346,8 +1345,8 @@ class CatalogNodeAdapter:
             self._require_external_is_not_in_sql_storage(data_source)
         child_path = list(await self.path_segments()) + [key]
         # Keys become URL path segments and, for writable data, directory
-        # names under the storage root. The ancestors are checked too, in case
-        # the catalog already holds a key that would not be accepted now.
+        # names under the storage root. The ancestors are checked too: a
+        # catalog may hold such a key.
         for segment in child_path:
             if not is_safe_path_segment(segment):
                 raise UnsafePath(

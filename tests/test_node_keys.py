@@ -105,7 +105,7 @@ async def test_unsafe_key_is_refused_by_catalog(layout, key):
 def test_node_under_container_with_unsafe_key(layout, client, kind):
     """Storage is not created outside of the writable storage directory.
 
-    A catalog made by an earlier version may hold a container named "..".
+    A catalog may hold a container named "..".
     """
     _catalog, database, storage = layout
     client.write_table(pandas.DataFrame({"x": [1, 2, 3]}), key="table")

@@ -370,7 +370,7 @@ def test_max_replay_setting():
 @pytest.mark.asyncio
 @pytest.mark.parametrize("start", [0, -1])
 async def test_replay_from_as_far_back_as_available(start):
-    "0 asks for everything available. -1 has always done the same."
+    "0 and -1 both ask for everything available."
     datastore = await filled_datastore("node", 20)
     sent, _, _ = await replay(datastore, "node", start)
     assert sent == list(range(1, 21))

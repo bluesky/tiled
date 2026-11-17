@@ -198,8 +198,8 @@ def test_data_source_of_another_node_cannot_be_updated(client, layout):
 def test_node_is_removed_without_removing_what_is_outside_writable_storage(
     client, layout
 ):
-    """A catalog may hold a location that an earlier version let a client
-    register as managed by the server. Removing the node leaves the file."""
+    """A catalog may hold a location outside of writable storage that is marked
+    as managed by the server. Removing the node leaves the file."""
     path = layout / "readable" / "one.csv"
     client.write_array(numpy.arange(3), key="x")
     (internal,) = client["x"].include_data_sources().data_sources()[0].assets

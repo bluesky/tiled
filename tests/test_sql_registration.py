@@ -153,7 +153,7 @@ def test_external_table_already_in_catalog_is_not_read_or_emptied(
     client, tables, layout
 ):
     """A catalog may hold an external table in SQL storage that names the rows
-    of another table, registered when the server allowed that."""
+    of another table."""
     mine, theirs = (
         stored_data_source(client, "mine"),
         stored_data_source(client, "theirs"),
