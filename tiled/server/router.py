@@ -2506,6 +2506,18 @@ def get_router(
         data = await ensure_awaitable(
             deserializer, body, structure.form, structure.length
         )
+        # The body comes from the client, and its keys are used as file names.
+        # Accept only the buffers that the form of this node names.
+        expected_keys = set(structure.awkward_form.expected_from_buffers())
+        unexpected_keys = sorted(set(data) - expected_keys)
+        if unexpected_keys:
+            raise HTTPException(
+                status_code=HTTP_400_BAD_REQUEST,
+                detail=(
+                    "The request body contains buffers that are not part of "
+                    f"this array: {unexpected_keys}"
+                ),
+            )
         await ensure_awaitable(entry.write, data)
         return json_or_msgpack(request, None)
 

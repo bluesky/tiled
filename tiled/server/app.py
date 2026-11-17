@@ -493,6 +493,13 @@ def build_app(
             content={"detail": exc.args[0]},
         )
 
+    @app.exception_handler(UnsafePath)
+    async def unsafe_path_exception_handler(request: Request, exc: UnsafePath):
+        return JSONResponse(
+            status_code=HTTP_422_UNPROCESSABLE_CONTENT,
+            content={"detail": exc.args[0]},
+        )
+
     # This list will be mutated when settings are processed at app startup.
     app.state.allow_origins = []
     app.add_middleware(

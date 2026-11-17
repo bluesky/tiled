@@ -208,6 +208,12 @@ Write the date in place of the "Unreleased" in the case a new version is release
   now require `read:data`, and `read:metadata` for the metadata documents, like
   the routes under `/api/v1`. Servers that allow anonymous access are
   unaffected.
+- Uploading an awkward array as a zip archive wrote files outside of the
+  node's directory when a member name contained `..` or was absolute, and an
+  awkward form with such a `form_key` read files outside of it. Buffer keys are
+  now used only if they are plain file names. An upload may hold only the
+  buffers that the node's form names (HTTP 400 otherwise), and a form with
+  unusable keys is refused when the node is created (HTTP 422).
 
 ### Maintenance
 
