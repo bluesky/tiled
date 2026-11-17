@@ -17,6 +17,10 @@ import pytest
 
 from tiled.queries import Key
 
+# The app fixture is shared per module, so every test must use the
+# module-scoped event loop (see conftest).
+pytestmark = pytest.mark.asyncio(loop_scope="module")
+
 rng = numpy.random.default_rng(42)
 
 FLAVORS = ["sync", "aio"]
@@ -54,7 +58,6 @@ def client(flavor, sync_client, aclient):
     return {"sync": sync_client, "aio": aclient}[flavor]
 
 
-@pytest.mark.asyncio
 async def test_round_trip_array(flavor, client):
     expected = rng.random((3, 4))
     node = await call(
@@ -72,7 +75,6 @@ async def test_round_trip_array(flavor, client):
     numpy.testing.assert_array_equal(await call(again.read), expected + 1)
 
 
-@pytest.mark.asyncio
 async def test_round_trip_table(flavor, client):
     expected = pandas.DataFrame({"a": [1, 2, 3], "b": [4.0, 5.0, 6.0]})
     node = await call(client.write_table, expected, key=f"table-{flavor}")
@@ -85,7 +87,6 @@ async def test_round_trip_table(flavor, client):
         await call(node.read_partition, 99)
 
 
-@pytest.mark.asyncio
 async def test_round_trip_appendable_table(flavor, client):
     import pyarrow
 
@@ -104,7 +105,6 @@ async def test_round_trip_appendable_table(flavor, client):
     )
 
 
-@pytest.mark.asyncio
 async def test_round_trip_sparse(flavor, client):
     import sparse
 
@@ -124,7 +124,6 @@ async def test_round_trip_sparse(flavor, client):
     assert node.shape == (10,)
 
 
-@pytest.mark.asyncio
 async def test_round_trip_awkward(flavor, client):
     import awkward
 
@@ -136,7 +135,6 @@ async def test_round_trip_awkward(flavor, client):
     assert sliced.tolist() == [1, 2, 3]
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("max_partition_bytes", [None, 64])
 async def test_round_trip_ragged(flavor, client, max_partition_bytes):
     # With a tiny max_partition_bytes the upload is split into blocks
@@ -156,7 +154,6 @@ async def test_round_trip_ragged(flavor, client, max_partition_bytes):
     assert node.shape[0] == 5
 
 
-@pytest.mark.asyncio
 async def test_round_trip_container(flavor, client):
     parent = await call(
         client.create_container, f"cont-{flavor}", metadata={"title": "parent"}
@@ -190,7 +187,6 @@ async def test_round_trip_container(flavor, client):
     assert await to_list(parent.keys()) == ["b"]
 
 
-@pytest.mark.asyncio
 async def test_round_trip_search_deep(flavor, client):
     parent = await call(client.create_container, f"deep-{flavor}")
     inner = await call(parent.create_container, "inner")

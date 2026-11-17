@@ -17,10 +17,13 @@ from tiled.client.aio.constructors import from_context as aio_from_context
 from tiled.client.utils import ClientError
 from tiled.utils import Conflicts
 
+# The app fixture is shared per module, so every test must use the
+# module-scoped event loop (see conftest).
+pytestmark = pytest.mark.asyncio(loop_scope="module")
+
 rng = numpy.random.default_rng(12345)
 
 
-@pytest.mark.asyncio
 async def test_connect_and_server_info(app):
     context = await AsyncContext.from_app(app)
     async with context:
@@ -28,7 +31,6 @@ async def test_connect_and_server_info(app):
         assert context.server_info.library_version
 
 
-@pytest.mark.asyncio
 async def test_context_not_picklable(aclient):
     import pickle
 
@@ -36,7 +38,6 @@ async def test_context_not_picklable(aclient):
         pickle.dumps(aclient.context)
 
 
-@pytest.mark.asyncio
 async def test_array_round_trip(aclient, sync_client):
     expected = rng.random((3, 4))
     sync_client.write_array(expected, key="round_trip")
@@ -52,7 +53,6 @@ async def test_array_round_trip(aclient, sync_client):
     )
 
 
-@pytest.mark.asyncio
 async def test_array_write_and_patch(aclient, sync_client):
     sync_client.write_array(numpy.zeros((2, 2)), key="writable")
     ac = await aclient.lookup("writable")
@@ -72,7 +72,6 @@ async def test_array_write_and_patch(aclient, sync_client):
         await ac.patch(numpy.ones((1, 2), dtype="int32"), offset=(3,), extend=True)
 
 
-@pytest.mark.asyncio
 async def test_array_split_read_is_concurrent(aclient, sync_client, monkeypatch):
     from tiled.client.aio.array import AsyncArrayClient
 
@@ -85,7 +84,6 @@ async def test_array_split_read_is_concurrent(aclient, sync_client, monkeypatch)
     numpy.testing.assert_array_equal(actual, expected)
 
 
-@pytest.mark.asyncio
 async def test_zero_size_read_makes_no_request(aclient, sync_client, monkeypatch):
     # NB: a zero-size array cannot currently be *created* on zarr-backed
     # storage (zarr >= 3.3 rejects zero-size chunks), so one is produced
@@ -106,7 +104,6 @@ async def test_zero_size_read_makes_no_request(aclient, sync_client, monkeypatch
     assert sent == []  # the empty result was constructed locally
 
 
-@pytest.mark.asyncio
 async def test_container_iteration_and_len(aclient, sync_client):
     container = sync_client.create_container("contents")
     for i in range(3):
@@ -130,14 +127,12 @@ async def test_container_iteration_and_len(aclient, sync_client):
     assert [key async for key in inner] == ["x0", "x1", "x2"]
 
 
-@pytest.mark.asyncio
 async def test_lookup_missing_key_raises_keyerror(aclient):
     with pytest.raises(KeyError):
         await aclient.lookup("does-not-exist")
     assert await aclient.get("does-not-exist") is None
 
 
-@pytest.mark.asyncio
 async def test_metadata_round_trip(aclient, sync_client):
     sync_client.write_array(numpy.arange(3), key="md", metadata={"color": "blue"})
     node = await aclient.lookup("md")
@@ -152,7 +147,6 @@ async def test_metadata_round_trip(aclient, sync_client):
     assert dict(node.metadata) == {"only": "this"}
 
 
-@pytest.mark.asyncio
 async def test_delete(aclient, sync_client):
     sync_client.write_array(numpy.arange(3), key="doomed")
     node = await aclient.lookup("doomed")
@@ -161,7 +155,6 @@ async def test_delete(aclient, sync_client):
         await aclient.lookup("doomed")
 
 
-@pytest.mark.asyncio
 async def test_concurrent_reads(aclient, sync_client):
     expected = rng.random((4, 4))
     for i in range(5):
@@ -172,7 +165,6 @@ async def test_concurrent_reads(aclient, sync_client):
         numpy.testing.assert_array_equal(actual, expected + i)
 
 
-@pytest.mark.asyncio
 async def test_container_new_variation_preserves_search_state(aclient, sync_client):
     sync_client.create_container("variation")
     node = await aclient.lookup("variation")
@@ -187,7 +179,6 @@ async def test_container_new_variation_preserves_search_state(aclient, sync_clie
     assert refreshed._sorting == [("color", -1)]
 
 
-@pytest.mark.asyncio
 async def test_queried_container(aclient, sync_client):
     from tiled.queries import Key
 
@@ -211,7 +202,6 @@ async def test_queried_container(aclient, sync_client):
     assert await reds.get("b") is None
 
 
-@pytest.mark.asyncio
 async def test_data_sources_and_asset_manifest(aclient, sync_client):
     sync_client.write_array(numpy.arange(3), key="sourced")
     node = await aclient.lookup("sourced")
@@ -229,7 +219,6 @@ async def test_data_sources_and_asset_manifest(aclient, sync_client):
         assert manifest[asset.id] is None
 
 
-@pytest.mark.asyncio
 async def test_create_and_write(aclient):
     container = await aclient.create_container("written", metadata={"purpose": "tests"})
     assert container.item["id"] == "written"
@@ -252,7 +241,6 @@ async def test_create_and_write(aclient):
     numpy.testing.assert_array_equal(await coerced.read(), numpy.array([1, 2, 3]))
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("shape", [(1000,), (40, 30)])
 async def test_write_array_chunked_fan_out(aclient, monkeypatch, shape):
     from tiled.client.aio.container import AsyncContainer
@@ -266,7 +254,6 @@ async def test_write_array_chunked_fan_out(aclient, monkeypatch, shape):
     numpy.testing.assert_array_equal(await ac.read(), expected)
 
 
-@pytest.mark.asyncio
 async def test_create_conflict_adoption(aclient, monkeypatch):
     """A 409 on a retried create adopts the matching node made by the lost attempt."""
     real_send = aclient.context.send
@@ -301,104 +288,3 @@ async def test_create_conflict_adoption(aclient, monkeypatch):
     finally:
         stamina.set_testing(False)
         stamina.set_active(False)
-
-
-# --- Surface parity between the sync and async twins -------------------------
-
-# Deliberate divergences of the first async version. If one of these gains an
-# async counterpart, remove it here.
-CUT_FROM_ASYNC = {
-    "login",  # API-key auth only
-    "logout",
-    "metadata_revisions",
-    "parent",
-    "export",  # exporting (and progress bars)
-    "raw_export",
-    "subscribe",  # websockets
-    "register",  # file-registration tooling; revisit if needed
-}
-# Not yet implemented in the async client. Implementing one of these (the
-# plan is to implement them all) must remove it here.
-PENDING_IN_ASYNC = {
-    "array": set(),
-    "container": set(),
-    "dataframe": set(),
-    "sparse": set(),
-    "awkward": set(),
-    "ragged": set(),
-    "bytes": set(),
-}
-SYNC_ONLY = {
-    # dask: the sync non-dask ArrayClient inherits (and overrides with eager
-    # versions) the dask client's surface. The public block methods exist to
-    # support dask, so the async clients omit them; chunked uploads use the
-    # private `_write_block` internally.
-    "array": {"compute", "read_block", "write_block"},
-    # The async container is not a Mapping: no indexer views; the entry-point
-    # registry is module-level (aio.dispatch), not class-level; and the
-    # deprecated `write_dataframe` alias is deliberately not carried over
-    # (use `write_table`).
-    "container": {
-        "STRUCTURE_CLIENTS_FROM_ENTRYPOINTS",
-        "discover_clients_from_entrypoints",
-        "items_indexer",
-        "keys_indexer",
-        "values_indexer",
-        "write_dataframe",
-    },
-    "dataframe": set(),
-    "sparse": {"read_block", "write_block"},
-    "awkward": set(),
-    "ragged": {"write_block"},
-    "bytes": set(),
-}
-ASYNC_ONLY = {
-    "array": set(),
-    # Explicit coroutines replacing the Mapping dunders.
-    "container": {"len", "lookup"},
-    "dataframe": set(),
-    "sparse": set(),
-    "awkward": set(),
-    "ragged": set(),
-    "bytes": set(),
-}
-
-
-def public_surface(cls):
-    return {name for name in dir(cls) if not name.startswith("_")}
-
-
-@pytest.mark.parametrize(
-    "family",
-    ["array", "container", "dataframe", "sparse", "awkward", "ragged", "bytes"],
-)
-def test_surface_parity(family):
-    """The async twins track the sync surface, minus documented divergences.
-
-    This test is the ledger of those divergences: adding a method to one
-    twin (or implementing a pending async counterpart) must update it.
-    """
-    import importlib
-
-    sync_class_names = {
-        "array": "ArrayClient",
-        "container": "Container",
-        "dataframe": "DataFrameClient",
-        "sparse": "SparseClient",
-        "awkward": "AwkwardClient",
-        "ragged": "RaggedClient",
-        "bytes": "BytesClient",
-    }
-    sync_cls = getattr(
-        importlib.import_module(f"tiled.client.{family}"), sync_class_names[family]
-    )
-    async_cls = getattr(
-        importlib.import_module(f"tiled.client.aio.{family}"),
-        f"Async{sync_class_names[family]}",
-    )
-    sync_surface = public_surface(sync_cls)
-    async_surface = public_surface(async_cls)
-    expected_sync_only = (CUT_FROM_ASYNC | PENDING_IN_ASYNC[family]) & sync_surface
-    expected_sync_only |= SYNC_ONLY[family]
-    assert sync_surface - async_surface == expected_sync_only
-    assert async_surface - sync_surface == ASYNC_ONLY[family]

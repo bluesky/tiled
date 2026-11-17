@@ -110,7 +110,7 @@ The following synchronous-client features are deliberately absent for now, but m
   target process instead);
 - `register` (file-registration tooling).
 
-The test `tests/client/test_aio.py::test_surface_parity` is the
+The test `tests/client/test_surface_parity.py` is the
 authoritative, per-family ledger of these divergences.
 
 ## Registering a custom async client
