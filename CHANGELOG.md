@@ -222,6 +222,13 @@ Write the date in place of the "Unreleased" in the case a new version is release
   directory if the server sent a file name or a manifest entry that contained
   `..` or was absolute. It now raises `UnsafePath` for such a manifest entry
   and does not write a file with such a name.
+- A WebSocket subscription with a `start` far below the current sequence made
+  the server look up every sequence in between without giving up the event
+  loop. With the in-memory streaming cache, one such request stopped the
+  server from answering anything else, and it kept running after the client
+  had disconnected. A `start` below -1 is now refused, the replay stops when
+  the client disconnects, and it covers at most the most recent `max_replay`
+  messages. `max_replay` is a new `streaming_cache` setting, 1000 by default.
 
 ### Maintenance
 

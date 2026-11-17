@@ -932,7 +932,9 @@ def get_router(
         websocket: WebSocket,
         path: str,
         envelope_format: schemas.EnvelopeFormat = schemas.EnvelopeFormat.json,
-        start: int | None = None,
+        # 0 means "as far back as available". -1 was never documented, but it
+        # has always had the same effect, so it is still accepted.
+        start: int | None = Query(None, ge=-1),
         principal: schemas.Principal | None = Depends(get_current_principal_websocket),
         authn_access_tags: AccessTags | None = Depends(
             get_current_access_tags_websocket
