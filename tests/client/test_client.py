@@ -22,7 +22,7 @@ from tiled.profiles import load_profiles, paths
 from tiled.queries import Key
 from tiled.server.app import build_app
 
-from .utils import fail_with_status_code
+from ..utils import fail_with_status_code
 
 tree = MapAdapter({})
 
