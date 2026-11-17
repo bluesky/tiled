@@ -25,19 +25,23 @@ from .utils import fail_with_status_code
 df = pandas.DataFrame({"a": [1, 2, 3], "b": [4.0, 5.0, 6.0]})
 SECRET = b"a,b\n7,8.0\n"
 
-# Asset URIs that are not in readable storage, with `{layout}` for the test
+# Asset URIs that are not in readable storage, as functions of the test
 # directory. A `file://` path is judged by where it leads. Without a scheme,
 # some adapters read a URI as a path; with a scheme that this server has no
 # storage for, some would fetch it from the network.
 OUTSIDE_URIS = {
-    "outside": "file://localhost{layout}/outside/secret.csv",
-    "dot-dot": "file://localhost{layout}/readable/../outside/secret.csv",
-    "link-to-file": "file://localhost{layout}/readable/link.csv",
-    "link-to-directory": "file://localhost{layout}/readable/linked/secret.csv",
-    "no-scheme": "{layout}/readable/ok.csv",
-    "http": "http://example.invalid/bucket/ok.csv",
-    "ftp": "ftp://example.invalid/secret.csv",
-    "s3": "s3://bucket/secret.csv",
+    "outside": lambda layout: ensure_uri(layout / "outside" / "secret.csv"),
+    "dot-dot": lambda layout: ensure_uri(
+        layout / "readable" / ".." / "outside" / "secret.csv"
+    ),
+    "link-to-file": lambda layout: ensure_uri(layout / "readable" / "link.csv"),
+    "link-to-directory": lambda layout: ensure_uri(
+        layout / "readable" / "linked" / "secret.csv"
+    ),
+    "no-scheme": lambda layout: str(layout / "readable" / "ok.csv"),
+    "http": lambda layout: "http://example.invalid/bucket/ok.csv",
+    "ftp": lambda layout: "ftp://example.invalid/secret.csv",
+    "s3": lambda layout: "s3://bucket/secret.csv",
 }
 
 
@@ -170,7 +174,7 @@ def test_file_in_readable_storage_is_served(client, layout):
 @pytest.mark.parametrize("data_uri", OUTSIDE_URIS.values(), ids=OUTSIDE_URIS)
 def test_asset_outside_readable_storage_cannot_be_registered(client, layout, data_uri):
     with fail_with_status_code(HTTP_403_FORBIDDEN):
-        register_csv(client, "x", data_uri.format(layout=layout))
+        register_csv(client, "x", data_uri(layout))
 
     assert "x" not in client
 
@@ -184,7 +188,7 @@ def test_asset_outside_readable_storage_is_not_served(
     repoint_asset(
         database,
         layout / "readable" / "ok.csv",
-        data_uri.format(layout=layout),
+        data_uri(layout),
         parameter="data_uris",
     )
     http_client = client.context.http_client
@@ -217,10 +221,7 @@ def test_directory_outside_readable_storage_is_not_listed(
     assert manifest.status_code == HTTP_200_OK
     assert "zarr.json" in manifest.json()["manifest"]
     repoint_asset(
-        database,
-        layout / "readable" / "z",
-        f"file://localhost{layout}/{path}",
-        parameter,
+        database, layout / "readable" / "z", ensure_uri(layout / path), parameter
     )
 
     manifest = http_client.get("/api/v1/asset/manifest/z", params=params)
@@ -307,7 +308,7 @@ def test_file_uris_outside_directories(layout):
     for name in ("a.csv", "b.csv"):
         (readable / name).write_text("x\n1\n")
     names = ["a.csv", "link.csv", "b.csv", "missing.csv", "linked/secret.csv"]
-    uris = [f"file://localhost{readable}/{name}" for name in names]
+    uris = [ensure_uri(readable / name) for name in names]
     uris.append("s3://bucket/key")  # Not a path. Never reported.
 
     outside = file_uris_outside_directories(uris, [readable])

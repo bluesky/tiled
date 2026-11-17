@@ -6,6 +6,7 @@ A server follows such references only into its readable storage.
 """
 
 import os
+import sys
 from unittest import mock
 
 import h5py
@@ -180,25 +181,30 @@ def build(layout, name):
             (readable / "sub").mkdir()
             os.symlink(outside / "secret.h5", readable / "sub" / "leaf.h5")
             add_virtual(file, "x", "leaf.h5")
-            os.rename(path, readable / "sub" / "real.h5")
-            os.symlink(readable / "sub" / "real.h5", path)
         elif name == "virtual-next-to-master-through-link-and-dot-dot":
             # HDF5 looks next to the master file by the name it was opened
             # with. Normalized, the name below is readable/master.h5. HDF5
             # follows readable/a to readable/b/c, so it opens
             # readable/b/master.h5 and looks for leaf.h5 in readable/b.
+            if sys.platform == "win32":
+                pytest.skip("Windows removes '..' from a path before following links.")
             (readable / "b" / "c").mkdir(parents=True)
             os.symlink(readable / "b" / "c", readable / "a")
             os.symlink(outside / "secret.h5", readable / "b" / "leaf.h5")
             add_virtual(file, "x", "leaf.h5")
-            os.rename(path, readable / "b" / "master.h5")
-            uri = f"file://localhost{readable}/a/../master.h5"
+            uri = ensure_uri(readable / "a" / ".." / "master.h5")
         elif name == "virtual-nested-inside":
             with h5py.File(readable / "mid.h5", "w") as mid:
                 add_virtual(mid, "data", "inside.h5")
             add_virtual(file, "x", "mid.h5")
         else:
             raise ValueError(name)
+    # The file is closed; it can be moved.
+    if name == "virtual-next-to-link-target":
+        os.rename(path, readable / "sub" / "real.h5")
+        os.symlink(readable / "sub" / "real.h5", path)
+    elif name == "virtual-next-to-master-through-link-and-dot-dot":
+        os.rename(path, readable / "b" / "master.h5")
     return uri
 
 
@@ -341,6 +347,8 @@ def test_virtual_sources_are_checked_once_until_a_file_changes(layout, name, cha
     its inode, size and modification time kept, and a missing source that
     appears.
     """
+    if change == "rewrite-in-place" and sys.platform == "win32":
+        pytest.skip("On Windows, st_ctime is the creation time, which does not change.")
     uri = build(layout, name)
     readable, outside = layout / "readable", layout / "outside"
     source = readable / ("no-such-file.h5" if change == "appear" else "inside.h5")

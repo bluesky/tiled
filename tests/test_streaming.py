@@ -14,6 +14,7 @@ from tiled.server.app import build_app
 from tiled.structures.bytes import BytesStructure
 from tiled.structures.core import StructureFamily
 from tiled.structures.data_source import Asset, DataSource, Management
+from tiled.utils import ensure_uri
 
 
 def test_register_datastore_lowercases_name():
@@ -198,7 +199,7 @@ def test_put_data_source_on_non_array_with_streaming_cache(tmpdir):
             mimetype="application/octet-stream",
             assets=[
                 Asset(
-                    data_uri=f"file://{blob}",
+                    data_uri=ensure_uri(blob),
                     is_directory=False,
                     size=len(payload),
                     parameter="data_uris",
