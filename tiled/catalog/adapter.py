@@ -147,6 +147,47 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+
+def file_uris_outside_directories(data_uris, directories):
+    """Return the `file://` URIs that do not lead into one of the directories.
+
+    Paths are compared after resolving ``..`` and symbolic links, in the URIs
+    and in the directories alike. This reads the filesystem.
+    """
+    resolved_directories = []
+    for directory in directories:
+        try:
+            resolved_directories.append(Path(directory).resolve())
+        except (OSError, RuntimeError):
+            continue
+    resolved_parents = {}
+    outside = []
+    for data_uri in data_uris:
+        if urlparse(data_uri).scheme != "file":
+            continue  # not a path
+        try:
+            path = path_from_uri(data_uri)
+            if path.name in ("", ".", ".."):
+                resolved = path.resolve()
+            else:
+                # The files of one data source tend to share a directory.
+                # Resolve it once, then look at each file only for a link.
+                if path.parent not in resolved_parents:
+                    resolved_parents[path.parent] = path.parent.resolve()
+                resolved = resolved_parents[path.parent] / path.name
+                if resolved.is_symlink():
+                    resolved = resolved.resolve()
+        except (OSError, RuntimeError, ValueError):
+            # For example a loop of symbolic links, or a null byte.
+            outside.append(data_uri)
+            continue
+        if not any(
+            resolved.is_relative_to(directory) for directory in resolved_directories
+        ):
+            outside.append(data_uri)
+    return outside
+
+
 # When a read fails because the catalog structure shape is ahead of the data
 # actually present in storage, treat it as a transient "not ready"
 # condition (rather than a permanent error) only if the backing file was
@@ -586,6 +627,8 @@ class CatalogNodeAdapter:
             asset = (await db.execute(statement)).scalar()
         if asset is None:
             return None  # no match
+        # The caller serves the bytes of the asset, or lists its contents.
+        await self._require_readable([asset.data_uri])
         return Asset.from_orm(asset)
 
     def structure(self):
@@ -738,26 +781,41 @@ class CatalogNodeAdapter:
 
         return STRUCTURES[node.structure_family](self.context, node)
 
-    def _ensure_uri_within_readable_storage(self, data_uri):
-        """Raise if a `file://` data URI lies outside every readable storage area.
+    async def _require_readable(self, data_uris):
+        """Respond with 403 unless every `file://` URI is in readable storage.
 
-        Protects against misbehaving clients (or registrations) that would read
-        from unintended parts of the filesystem: a ``file`` URI is served only
-        when it resolves under one of the server's readable `FileStorage` roots.
-        Non-`file` schemes are not path-scoped and pass through unchecked.
+        External files are served only from the directories that the server is
+        configured to read. A path is judged by where it leads, with ``..`` and
+        symbolic links resolved, so that a path written to look as if it were
+        inside a readable directory is not accepted. URIs with other schemes
+        are not paths and pass through unchecked.
         """
-        if urlparse(data_uri).scheme != "file":
+        data_uris = [uri for uri in data_uris if urlparse(uri).scheme == "file"]
+        if not data_uris:
             return
-        asset_path = path_from_uri(data_uri)
-        for storage in self.context.readable_storage.values():
-            if not isinstance(storage, FileStorage):
-                continue
-            if Path(os.path.commonpath([storage.path, asset_path])) == storage.path:
-                return
-        raise RuntimeError(
-            f"Refusing to serve {data_uri} because it is outside "
-            "the readable storage area for this server."
+        roots = [
+            storage.path
+            for storage in self.context.readable_storage.values()
+            if isinstance(storage, FileStorage)
+        ]
+        # Resolving paths reads the filesystem.
+        outside = await anyio.to_thread.run_sync(
+            file_uris_outside_directories, data_uris, roots
         )
+        if outside:
+            for data_uri in outside:
+                logger.warning(
+                    "Refusing %s because it is outside the readable storage "
+                    "of this server.",
+                    data_uri,
+                )
+            raise HTTPException(
+                status_code=HTTP_403_FORBIDDEN,
+                detail=(
+                    "This server is not configured to read from the location "
+                    "of this data."
+                ),
+            )
 
     async def get_adapter(self):
         (data_source,) = await self.data_sources(include_assets=True)
@@ -767,10 +825,11 @@ class CatalogNodeAdapter:
             raise RuntimeError(
                 f"Server configuration has no adapter for mimetype {data_source.mimetype!r}"
             )
-        for asset in data_source.assets:
-            if asset.parameter is None:
-                continue
-            self._ensure_uri_within_readable_storage(asset.data_uri)
+        await self._require_readable(
+            asset.data_uri
+            for asset in data_source.assets
+            if asset.parameter is not None
+        )
         adapter = await anyio.to_thread.run_sync(
             partial(
                 adapter_cls.from_catalog,
@@ -916,9 +975,9 @@ class CatalogNodeAdapter:
         # Build a fixed-length URI list populated with only the assets this read needs
         # (the rest left as None). Stacking rank == num - offset (contiguous run,
         # guaranteed by the precheck above), so it indexes directly into the list.
+        await self._require_readable(data_uri for _, data_uri in uri_rows)
         data_uris = [None] * n
         for num, data_uri in uri_rows:
-            self._ensure_uri_within_readable_storage(data_uri)
             data_uris[num - offset] = data_uri
 
         # One entry point for both eager and lazy: pass the partially-populated
@@ -1330,6 +1389,8 @@ class CatalogNodeAdapter:
             return type(self)(self.context, refreshed_node)
 
     async def _put_asset(self, db: AsyncSession, asset):
+        # The location comes from the client when it registers external data.
+        await self._require_readable([asset.data_uri])
         # Find an asset_id if it exists, otherwise create a new one.
         statement = select(orm.Asset.id, orm.Asset.size).where(
             orm.Asset.data_uri == asset.data_uri

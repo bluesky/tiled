@@ -229,6 +229,16 @@ Write the date in place of the "Unreleased" in the case a new version is release
   had disconnected. A `start` below -1 is now refused, the replay stops when
   the client disconnects, and it covers at most the most recent `max_replay`
   messages. `max_replay` is a new `streaming_cache` setting, 1000 by default.
+- External files are served only from readable storage. The check compared
+  paths as text, so a registered path that left a readable directory through
+  `..` or a symbolic link was served, and `/asset/bytes` and `/asset/manifest`
+  did not check at all. Paths are now compared after resolving `..` and
+  symbolic links, and the check is made when a file is registered and whenever
+  it is read or downloaded, with HTTP 403 on refusal. Registering a file
+  outside of readable storage, which used to succeed and then fail on read, is
+  refused. A file reached through a symbolic link that leads out of readable
+  storage is no longer served unless the link's target is readable storage
+  too.
 
 ### Maintenance
 

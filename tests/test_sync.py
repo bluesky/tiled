@@ -148,7 +148,7 @@ def test_copy_error_conflict():
 
 def test_copy_external(tmp_path):
     with client_factory(readable_storage=[tmp_path]) as dest:
-        with client_factory() as source:
+        with client_factory(readable_storage=[tmp_path]) as source:
             populate_external(source, tmp_path)
             copy(source, dest)
             assert list(source) == list(dest)

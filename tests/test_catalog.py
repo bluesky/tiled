@@ -1424,9 +1424,16 @@ async def test_delete_shared_external_asset(tmpdir):
     ],
 )
 @pytest.mark.asyncio
-async def test_constraints_on_parameter_and_num(a, assets):
+async def test_constraints_on_parameter_and_num(a, assets, tmpdir):
     "Test constraints enforced by database on 'parameter' and 'num'."
     arr_adapter = ArrayAdapter.from_array([1, 2, 3])
+    # The files need not exist, but they must be where the catalog may read.
+    assets = [
+        asset.model_copy(
+            update={"data_uri": ensure_uri(tmpdir / Path(asset.data_uri).name)}
+        )
+        for asset in assets
+    ]
     with pytest.raises(
         (
             sqlalchemy.exc.IntegrityError,  # SQLite
