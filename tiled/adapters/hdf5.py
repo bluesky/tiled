@@ -47,9 +47,10 @@ MIN_CHUNK_SIZE = 1  # Minimum chunk size along the concatenation axis
 MAX_VIRTUAL_DEPTH = 16
 MAX_VIRTUAL_SOURCES = 10_000
 # Virtual datasets whose sources were checked, with the state of every file
-# that the result depends on.
+# that the result depends on, as it was when the file was looked at.
+FileState = tuple[int, int, int, int] | None
 _CHECKED_VIRTUAL: cachetools.LRUCache[
-    tuple[str, str, tuple[Path, ...]], tuple[list[str], tuple[Any, ...]]
+    tuple[str, str, tuple[Path, ...]], list[tuple[str, FileState]]
 ] = cachetools.LRUCache(maxsize=1024)
 _CHECKED_VIRTUAL_LOCK = threading.Lock()
 
@@ -73,17 +74,21 @@ def _in_directories(path: str | bytes | Path, directories: tuple[Path, ...]) -> 
     return any(resolved.is_relative_to(directory) for directory in directories)
 
 
-def _file_state(paths: Sequence[str]) -> tuple[Any, ...]:
-    "What identifies the current content of each file, or None where there is no file."
-    state: list[tuple[int, int, int] | None] = []
-    for path in paths:
-        try:
-            stat = os.stat(path)
-        except OSError:
-            state.append(None)
-        else:
-            state.append((stat.st_ino, stat.st_size, stat.st_mtime_ns))
-    return tuple(state)
+def _file_state(path: str) -> FileState:
+    """What identifies the current content of a file, or None where there is none.
+
+    The change time is included because, unlike the modification time, it
+    cannot be set to an earlier value.
+    """
+    try:
+        stat = os.stat(path)
+    except OSError:
+        return None
+    return (stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns)
+
+
+def _files_unchanged(states: Sequence[tuple[str, FileState]]) -> bool:
+    return all(_file_state(path) == state for path, state in states)
 
 
 def _printf_name(name: str, block: int) -> str:
@@ -149,7 +154,15 @@ class ReferenceGuard:
         follow_virtual: bool,
         depth: int,
         budget: list[int],
+        states: list[tuple[str, FileState]] | None = None,
     ) -> None:
+        """Check one object.
+
+        states, when given, belongs to the virtual dataset through which this
+        object was reached. Every file that the result for this object depends
+        on is added to it, so that the outer result is re-checked when any
+        file below it changes.
+        """
         # An external link was followed if the object is in another file than
         # the one that was opened. HDF5 reports the name of the file it found.
         home = os.fsdecode(obj.file.filename)
@@ -173,25 +186,28 @@ class ReferenceGuard:
             key = (os.path.realpath(home), obj.name, self.directories)
             with _CHECKED_VIRTUAL_LOCK:
                 checked = _CHECKED_VIRTUAL.get(key)
-            if checked is not None:
-                paths, state = checked
-                if _file_state(paths) == state:
-                    return
-            paths = []
-            self._check_virtual_sources(obj, paths, depth, budget)
-            with _CHECKED_VIRTUAL_LOCK:
-                _CHECKED_VIRTUAL[key] = (paths, _file_state(paths))
+            if checked is None or not _files_unchanged(checked):
+                checked = []
+                self._check_virtual_sources(obj, checked, depth, budget)
+                with _CHECKED_VIRTUAL_LOCK:
+                    _CHECKED_VIRTUAL[key] = checked
+            if states is not None:
+                states.extend(checked)
 
     def _check_virtual_sources(
-        self, dataset: h5py.Dataset, paths: list[str], depth: int, budget: list[int]
+        self,
+        dataset: h5py.Dataset,
+        states: list[tuple[str, FileState]],
+        depth: int,
+        budget: list[int],
     ) -> None:
         "Check every source of a virtual dataset. Record the files looked at."
         if depth >= MAX_VIRTUAL_DEPTH:
             raise BrokenLink(
                 f"The virtual dataset {dataset.name} is nested too deeply to check."
             )
-        home = os.path.abspath(os.fsdecode(dataset.file.filename))
-        paths.append(home)
+        home = os.path.join(os.getcwd(), os.fsdecode(dataset.file.filename))
+        states.append((home, _file_state(home)))
         for source in dataset.virtual_sources():
             printf_style = "%b" in source.file_name or "%b" in source.dset_name
             # A printf-style source stands for blocks 0, 1, 2, ... up to the
@@ -208,7 +224,7 @@ class ReferenceGuard:
                     home,
                     _printf_name(source.file_name, block),
                     _printf_name(source.dset_name, block),
-                    paths,
+                    states,
                     depth,
                     budget,
                 )
@@ -221,7 +237,7 @@ class ReferenceGuard:
         home: str,
         file_name: str,
         dataset_name: str,
-        paths: list[str],
+        states: list[tuple[str, FileState]],
         depth: int,
         budget: list[int],
     ) -> bool:
@@ -232,16 +248,16 @@ class ReferenceGuard:
                 source = dataset.file[dataset_name]
             except KeyError:
                 return False
-            self._check(source, home, True, depth + 1, budget)
+            self._check(source, home, True, depth + 1, budget, states)
             return True
         # HDF5 looks for the source file in several places and reads the first
-        # one it finds. Rather than rely on the order, require that every place
-        # where a file exists is acceptable.
+        # one it finds. Every place where a file exists must be acceptable.
         found = False
         for path in _virtual_source_candidates(home, file_name):
             # The result depends on this file, also on its being absent.
-            paths.append(path)
-            if not os.path.exists(path):
+            state = _file_state(path)
+            states.append((path, state))
+            if state is None:
                 continue
             found = True
             if not _in_directories(path, self.directories):
@@ -261,31 +277,43 @@ class ReferenceGuard:
                     source = file[dataset_name]
                 except KeyError:
                     continue
-                self._check(source, path, True, depth + 1, budget)
+                self._check(source, path, True, depth + 1, budget, states)
         return found  # If False, HDF5 uses the fill value.
 
 
 def _virtual_source_candidates(home: str, file_name: str) -> list[str]:
     """The paths where HDF5 may look for a source file of a virtual dataset.
 
-    Given the file that holds the virtual dataset and the name of the source
-    file as stored in it. HDF5 tries an absolute name as it is. Otherwise, and
-    also if there is no file by the absolute name, it looks for the name, or
-    the last part of the absolute name, under the prefix in HDF5_VDS_PREFIX,
-    next to the file that holds the virtual dataset, and in the working
-    directory of the process.
+    Given the name of the file that holds the virtual dataset, as it was
+    opened, and the name of the source file as stored in it. HDF5 tries an
+    absolute name as it is. Otherwise, and also if there is no file by the
+    absolute name, it looks for the name, or the last part of the absolute
+    name, under each prefix in HDF5_VDS_PREFIX, next to the file that holds
+    the virtual dataset, in the working directory of the process, and next to
+    the file that the name of the holding file leads to, if that name is a
+    symbolic link.
+
+    Paths are not normalized here: a `..` is resolved by the filesystem when
+    a candidate is looked up, as HDF5 resolves it, so that a link on the way
+    is followed the same.
     """
-    home_directory = os.path.dirname(home)
+    cwd = os.getcwd()
+    # Where HDF5 looks for a relative name: the directory part of the name of
+    # the holding file, which it makes absolute without resolving anything.
+    home_directory = os.path.dirname(os.path.join(cwd, home))
     candidates = []
     if os.path.isabs(file_name):
         candidates.append(file_name)
         file_name = os.path.basename(file_name)
-    prefix = os.environ.get("HDF5_VDS_PREFIX")
-    if prefix:
-        prefix = prefix.replace("${ORIGIN}", home_directory)
+    for prefix in os.environ.get("HDF5_VDS_PREFIX", "").split(os.pathsep):
+        if not prefix:
+            continue
+        if prefix.startswith("${ORIGIN}"):
+            prefix = home_directory + prefix[len("${ORIGIN}") :]
         candidates.append(os.path.join(prefix, file_name))
     candidates.append(os.path.join(home_directory, file_name))
-    candidates.append(os.path.abspath(file_name))
+    candidates.append(os.path.join(cwd, file_name))
+    candidates.append(os.path.join(os.path.dirname(os.path.realpath(home)), file_name))
     return list(dict.fromkeys(candidates))
 
 
@@ -300,11 +328,13 @@ def require_self_contained(filename: str | Path) -> None:
     if not h5py.is_hdf5(filename):
         return
 
-    def visit(name: str, obj: h5py.Group | h5py.Dataset) -> str | None:
+    def visit(name: str, obj: Any) -> str | None:
         if isinstance(obj, h5py.Dataset):
             if obj.external or obj.is_virtual:
                 return str(obj.name)
             return None
+        if not isinstance(obj, h5py.Group):
+            return None  # A committed datatype refers to no file.
         for key in obj:
             if isinstance(obj.get(key, getlink=True), h5py.ExternalLink):
                 return f"{obj.name.rstrip('/')}/{key}"
@@ -488,9 +518,6 @@ class h5open(h5py.File):  # type: ignore
 
 
 class HDF5ArrayAdapter(ArrayAdapter):
-    # The catalog passes the directories of its readable storage to
-    # from_catalog as `readable_directories`.
-    accepts_readable_directories = True
     """Adapter for array-type data stored in HDF5 files
 
     This adapter lazily loads array data from HDF5 files using Dask. Supports reading from datasets spanning
@@ -502,6 +529,9 @@ class HDF5ArrayAdapter(ArrayAdapter):
         The target of the soft link this dataset is reached through, relative to the
         group that holds the link. False by default, so an export writes the data.
     """
+
+    # The catalog passes the directories of its readable storage to from_catalog as `readable_directories`.
+    accepts_readable_directories = True
 
     def __init__(
         self,
@@ -833,8 +863,7 @@ class HDF5Adapter(ContainerAdapter["HDF5Adapter | HDF5ArrayAdapter"], IndexersMi
 
     """
 
-    # The catalog passes the directories of its readable storage to
-    # from_catalog as `readable_directories`.
+    # The catalog passes the directories of its readable storage to from_catalog as `readable_directories`.
     accepts_readable_directories = True
 
     def __init__(

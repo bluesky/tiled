@@ -99,9 +99,10 @@ def layout(tmp_path, monkeypatch):
 
 
 def build(layout, name):
-    "Write readable/master.h5 with one entry, `x`. Return its URI."
+    "Write readable/master.h5 with one entry, `x`. Return the URI to open it by."
     readable, outside = layout / "readable", layout / "outside"
     path = readable / "master.h5"
+    uri = ensure_uri(path)
     with h5py.File(path, "w", libver="latest") as file:
         if name == "plain":
             file["x"] = numpy.full(3, INSIDE)
@@ -174,9 +175,31 @@ def build(layout, name):
         elif name == "virtual-of-link-through-readable-symlink":
             os.symlink(outside / "secret.h5", readable / "disguised.h5")
             add_virtual(file, "x", "disguised.h5")
+        elif name == "virtual-next-to-link-target":
+            # HDF5 also looks next to the file that master.h5 links to.
+            (readable / "sub").mkdir()
+            os.symlink(outside / "secret.h5", readable / "sub" / "leaf.h5")
+            add_virtual(file, "x", "leaf.h5")
+            os.rename(path, readable / "sub" / "real.h5")
+            os.symlink(readable / "sub" / "real.h5", path)
+        elif name == "virtual-next-to-master-through-link-and-dot-dot":
+            # HDF5 looks next to the master file by the name it was opened
+            # with. Normalized, the name below is readable/master.h5. HDF5
+            # follows readable/a to readable/b/c, so it opens
+            # readable/b/master.h5 and looks for leaf.h5 in readable/b.
+            (readable / "b" / "c").mkdir(parents=True)
+            os.symlink(readable / "b" / "c", readable / "a")
+            os.symlink(outside / "secret.h5", readable / "b" / "leaf.h5")
+            add_virtual(file, "x", "leaf.h5")
+            os.rename(path, readable / "b" / "master.h5")
+            uri = f"file://localhost{readable}/a/../master.h5"
+        elif name == "virtual-nested-inside":
+            with h5py.File(readable / "mid.h5", "w") as mid:
+                add_virtual(mid, "data", "inside.h5")
+            add_virtual(file, "x", "mid.h5")
         else:
             raise ValueError(name)
-    return ensure_uri(path)
+    return uri
 
 
 ALLOWED = [
@@ -189,6 +212,7 @@ ALLOWED = [
     "virtual-same-file",
     "virtual-printf-inside",
     "virtual-missing-absolute-found-next-to-master",
+    "virtual-nested-inside",
 ]
 
 REFUSED = [
@@ -213,6 +237,8 @@ REFUSED = [
     "virtual-of-relay-virtual",
     "virtual-of-link-through-readable-symlink",
     "virtual-printf-block-outside",
+    "virtual-next-to-link-target",
+    "virtual-next-to-master-through-link-and-dot-dot",
 ]
 
 
@@ -266,11 +292,18 @@ def test_adapter_used_directly_is_not_restricted(layout, name):
     assert data.shape[-1] in (3, len(SECRET))
 
 
-def test_virtual_source_prefix_from_environment_is_considered(layout, monkeypatch):
-    "HDF5_VDS_PREFIX makes HDF5 look for sources somewhere else first."
+@pytest.mark.parametrize("empty_prefix_first", [False, True])
+def test_virtual_source_prefix_from_environment_is_considered(
+    layout, monkeypatch, empty_prefix_first
+):
+    "HDF5_VDS_PREFIX makes HDF5 look elsewhere first. It may list several places."
     uri = build(layout, "virtual-inside")
     write_dataset(layout / "outside" / "inside.h5", OUTSIDE)
-    monkeypatch.setenv("HDF5_VDS_PREFIX", str(layout / "outside"))
+    prefixes = [str(layout / "outside")]
+    if empty_prefix_first:
+        (layout / "empty").mkdir()
+        prefixes.insert(0, str(layout / "empty"))
+    monkeypatch.setenv("HDF5_VDS_PREFIX", os.pathsep.join(prefixes))
 
     with pytest.raises(BrokenLink):
         read(uri, [layout / "readable"])
@@ -286,37 +319,63 @@ def test_group_reached_through_refused_link_is_not_listed(layout):
         tree["g"]
 
 
-def test_virtual_sources_are_checked_once_until_a_file_changes(layout):
-    uri = build(layout, "virtual-inside")
-    readable = layout / "readable"
+@pytest.mark.parametrize(
+    "name, change",
+    [
+        ("virtual-inside", "replace"),
+        ("virtual-nested-inside", "replace"),
+        ("virtual-inside", "rewrite-in-place"),
+        ("virtual-missing-source", "appear"),
+    ],
+    ids=[
+        "source-replaced",
+        "source-of-source-replaced",
+        "source-rewritten-in-place",
+        "missing-source-appears",
+    ],
+)
+def test_virtual_sources_are_checked_once_until_a_file_changes(layout, name, change):
+    """A virtual dataset is checked again when any file it depends on changes.
+
+    That includes the sources of its sources, a file rewritten in place with
+    its inode, size and modification time kept, and a missing source that
+    appears.
+    """
+    uri = build(layout, name)
+    readable, outside = layout / "readable", layout / "outside"
+    source = readable / ("no-such-file.h5" if change == "appear" else "inside.h5")
+    if change == "rewrite-in-place":
+        # Make the benign source larger than its replacement will be.
+        with h5py.File(source, "a") as file:
+            file.attrs["padding"] = numpy.zeros(4096, dtype="u1")
+    expected = -1 if change == "appear" else INSIDE
 
     with mock.patch(
         "tiled.adapters.hdf5._open_source", wraps=tiled.adapters.hdf5._open_source
     ) as open_source:
-        read(uri, [readable])
-        assert open_source.call_count == 1
-        read(uri, [readable])
-        assert open_source.call_count == 1
+        assert (read(uri, [readable]) == expected).all()
+        opened = open_source.call_count
+        assert (read(uri, [readable]) == expected).all()
+        assert open_source.call_count == opened  # The check was not repeated.
 
-        # The source is replaced by a file that passes on outside data.
-        os.remove(readable / "inside.h5")
-        with h5py.File(readable / "inside.h5", "w") as file:
-            add_virtual(file, "data", str(layout / "outside" / "secret.h5"))
+        # The source now passes on outside data.
+        if change == "rewrite-in-place":
+            stat = os.stat(source)
+            replacement = outside / "replacement.h5"
+            with h5py.File(replacement, "w") as file:
+                add_virtual(file, "data", str(outside / "secret.h5"))
+            content = replacement.read_bytes()
+            content += bytes(stat.st_size - len(content))
+            with open(source, "r+b") as file:  # The same inode.
+                file.write(content)
+            os.utime(source, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+            assert os.stat(source)[:9] == stat[:9]  # Only the change time differs.
+        else:
+            if change == "replace":
+                os.remove(source)
+            os.symlink(outside / "secret.h5", source)
         with pytest.raises(BrokenLink):
             read(uri, [readable])
-        assert open_source.call_count == 2
-
-
-def test_virtual_source_appearing_later_is_checked(layout):
-    "A missing source is not trusted to stay missing."
-    uri = build(layout, "virtual-missing-source")
-    readable = layout / "readable"
-    assert (read(uri, [readable]) == -1).all()
-
-    os.symlink(layout / "outside" / "secret.h5", readable / "no-such-file.h5")
-
-    with pytest.raises(BrokenLink):
-        read(uri, [readable])
 
 
 @pytest.fixture
@@ -400,6 +459,9 @@ def netcdf_file(layout):
     xarray.Dataset({"t": ("x", numpy.full(3, INSIDE))}).to_netcdf(
         path, engine="h5netcdf"
     )
+    # NetCDF stores user-defined types as committed datatypes.
+    with h5py.File(path, "a") as file:
+        file["compound_type"] = numpy.dtype([("a", "i4"), ("b", "f8")])
     return path
 
 
