@@ -17,6 +17,7 @@ from .orm import APIKey, Identity, PendingSession, Principal, Role, Session
 
 # This is list of all valid alembic revisions (from current to oldest).
 ALL_REVISIONS = [
+    "967cde08e8a1",
     "0a017b76d0d0",
     "2d1b550e12e0",
     "d829476bc173",

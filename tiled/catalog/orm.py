@@ -811,7 +811,9 @@ class DataSource(Timestamped, Base):
     # it to access and arrange the data in the file correctly.
     parameters: Mapped[Any | None] = mapped_column(JSONVariant, nullable=True)
     # These are additional properties describing the data source (e.g. array chunks).
-    properties: Mapped[Any | None] = mapped_column(JSONVariant, nullable=True)
+    properties: Mapped[Any] = mapped_column(
+        JSONVariant, nullable=False, server_default="{}"
+    )
     # This relates to the mutability of the data.
     management: Mapped[Management] = mapped_column(Enum(Management))
     structure_family: Mapped[StructureFamily] = mapped_column(Enum(StructureFamily))

@@ -98,7 +98,7 @@ def downgrade():
             op.add_column(
                 table,
                 sa.Column(
-                    f"{column}_naive", sa.DateTime(timezone=False), nullable=False
+                    f"{column}_naive", sa.DateTime(timezone=False), nullable=True
                 ),
             )
 
