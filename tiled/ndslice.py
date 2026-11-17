@@ -293,7 +293,11 @@ def _slc_with_slc(slc1: builtins.slice, slc2: builtins.slice) -> builtins.slice:
     # Compose the two normalized slices
     new_start = start1 + step1 * start2
     new_step = step1 * step2
-    new_stop = start1 + step1 * stop2
+    new_stop: int | None = start1 + step1 * stop2
+    if new_stop < 0:
+        # The stop lies before the first element. A negative number would
+        # count from the end instead, so leave the stop open.
+        new_stop = None
 
     return builtins.slice(new_start, new_stop, new_step)
 

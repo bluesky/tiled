@@ -204,6 +204,9 @@ wherever it is used.
 
 ### Fixed
 
+- Composing a slice with a negative step with a second slice gave an empty
+  result when the composed stop lay before the first element: the stop was a
+  negative number, which Python counts from the end. Such a stop is now open.
 - Search requests (`/search`, `/search-deep`, `/distinct`) whose filter
   parameters for one query type were given different numbers of times, for
   example a query given twice with one of its parameters given only once, now
