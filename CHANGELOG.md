@@ -239,6 +239,15 @@ Write the date in place of the "Unreleased" in the case a new version is release
   refused. A file reached through a symbolic link that leads out of readable
   storage is no longer served unless the link's target is readable storage
   too.
+- A registered HDF5 file could make the server read other files: through an
+  external link, through the sources of a virtual dataset, and through a
+  dataset whose raw data is stored in an external file, which can be any file
+  at all. The server now follows external links and virtual dataset sources
+  only into readable storage, and does not read a dataset with external raw
+  storage. An entry that is refused is reported like a broken link (HTTP 410).
+  A NetCDF file, which is an HDF5 file read by another library, is served only
+  if it refers to no other file. Adapters used directly, outside of a server,
+  are not restricted unless `readable_directories` is passed.
 
 ### Maintenance
 

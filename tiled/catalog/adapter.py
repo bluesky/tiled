@@ -817,6 +817,23 @@ class CatalogNodeAdapter:
                 ),
             )
 
+    def _adapter_parameters(self, adapter_cls, data_source):
+        """The keyword arguments for building an adapter from a data source.
+
+        The parameters of the data source come from whoever registered it. An
+        adapter for a format in which a file can refer to other files is also
+        told which directories this server reads, so that it follows such
+        references no further. That value is set here and never by a client.
+        """
+        parameters = dict(data_source.parameters)
+        if getattr(adapter_cls, "accepts_readable_directories", False):
+            parameters["readable_directories"] = [
+                storage.path
+                for storage in self.context.readable_storage.values()
+                if isinstance(storage, FileStorage)
+            ]
+        return parameters
+
     async def get_adapter(self):
         (data_source,) = await self.data_sources(include_assets=True)
         try:
@@ -835,7 +852,7 @@ class CatalogNodeAdapter:
                 adapter_cls.from_catalog,
                 data_source,
                 self.node,
-                **data_source.parameters,
+                **self._adapter_parameters(adapter_cls, data_source),
             ),
         )
         for query in self.queries:
@@ -983,7 +1000,12 @@ class CatalogNodeAdapter:
         # One entry point for both eager and lazy: pass the partially-populated
         # URI list as the `data_uris` kwarg. `from_catalog` derives metadata/specs.
         return adapter_cls.from_catalog(
-            data_source, self.node, **{**data_source.parameters, "data_uris": data_uris}
+            data_source,
+            self.node,
+            **{
+                **self._adapter_parameters(adapter_cls, data_source),
+                "data_uris": data_uris,
+            },
         )
 
     def new_variation(
