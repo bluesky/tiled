@@ -270,6 +270,8 @@ Write the date in place of the "Unreleased" in the case a new version is release
   storage be read), is refused with HTTP 403. Such a data source already in a
   catalog is not read, and deleting its node no longer deletes rows. Tables
   written through the server are unaffected.
+- `/asset/bytes` responds with HTTP 404, not 500, when `relative_path` names
+  no file in the asset.
 
 ### Maintenance
 

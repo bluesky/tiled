@@ -138,6 +138,20 @@ def test_asset_bytes_refuses_path_outside_asset(client, relative_path):
         response.raise_for_status()
 
 
+@pytest.mark.parametrize("relative_path", ["no-such-file", "c", "c/0/no-such-file"])
+def test_asset_bytes_of_missing_file(client, relative_path):
+    "A path in the asset that is not a file is not found."
+    asset_id, directory = directory_asset(client)
+    assert (directory / "c").is_dir()
+
+    response = client.context.http_client.get(
+        "/api/v1/asset/bytes/x",
+        params={"id": asset_id, "relative_path": relative_path},
+    )
+
+    assert response.status_code == HTTP_404_NOT_FOUND
+
+
 def test_asset_bytes_refuses_symlink_leaving_asset(client):
     "A symbolic link in the asset is not followed out of the asset."
     asset_id, directory = directory_asset(client)

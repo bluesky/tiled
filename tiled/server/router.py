@@ -2,6 +2,7 @@ import collections
 import dataclasses
 import inspect
 import os
+import stat
 import warnings
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
@@ -2922,7 +2923,15 @@ def get_router(
         else:
             full_path = path
             filename = path.name
-        stat_result = await anyio.to_thread.run_sync(os.stat, full_path)
+        try:
+            stat_result = await anyio.to_thread.run_sync(os.stat, full_path)
+        except (FileNotFoundError, NotADirectoryError):
+            stat_result = None
+        if stat_result is None or not stat.S_ISREG(stat_result.st_mode):
+            raise HTTPException(
+                status_code=HTTP_404_NOT_FOUND,
+                detail="This asset has no such file.",
+            )
         return FileResponse(
             full_path,
             stat_result=stat_result,
