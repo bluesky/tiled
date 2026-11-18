@@ -1,5 +1,7 @@
 import io
 
+import numpy
+
 from ..media_type_registration import default_serialization_registry
 from ..structures.core import StructureFamily
 from ..utils import (
@@ -32,7 +34,7 @@ async def walk(node, filter_for_access, pre=None):
                     yield d
         elif node.structure_family == StructureFamily.table:
             for key in node.structure().columns:
-                yield (pre + [key], filtered)
+                yield (pre + [key], await ensure_awaitable(filtered.get, key))
         else:
             for key, value in filtered.items():
                 async for d in walk(value, filter_for_access, pre + [key]):
@@ -83,7 +85,15 @@ if modules_available("h5py"):
                     group[key_path[-1]] = h5py.SoftLink(soft_link)
                     continue
                 data = await ensure_awaitable(array_adapter.read)
-                dataset = group.create_dataset(key_path[-1], data=data)
+                if getattr(data, "dtype", numpy.dtype("f8")).kind in ("O", "U"):
+                    # Strings, as from a table column. HDF5 has no fixed-width
+                    # Unicode type.
+                    data = numpy.array([str(v) for v in data], dtype=object)
+                    dataset = group.create_dataset(
+                        key_path[-1], data=data, dtype=h5py.string_dtype()
+                    )
+                else:
+                    dataset = group.create_dataset(key_path[-1], data=data)
                 for k, v in array_adapter.metadata().items():
                     dataset.attrs.create(k, v)
         return buffer.getbuffer()

@@ -224,6 +224,8 @@ wherever it is used.
   (previously every request using it got HTTP 500).
 - Exporting a sparse array as CSV, Parquet, XLSX or HTML works (previously
   HTTP 500).
+- Exporting a container to HDF5 writes each column of a table it holds as its
+  own dataset, string columns included. Every column held the whole table.
 - Composing a slice with a negative step with a second slice gave an empty
   result when the composed stop lay before the first element: the stop was a
   negative number, which Python counts from the end. Such a stop is now open.
