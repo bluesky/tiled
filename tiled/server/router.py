@@ -2485,10 +2485,10 @@ def get_router(
             None,
             getattr(request.app.state, "access_policy", None),
         )
-        if not hasattr(entry, "write_partition"):
+        if not hasattr(entry, "append_partition"):
             raise HTTPException(
                 status_code=HTTP_405_METHOD_NOT_ALLOWED,
-                detail="This node does not supporting writing a partition.",
+                detail="This node does not support appending to a partition.",
             )
         body = await request.body()
         media_type, deserializer = body_deserializer(

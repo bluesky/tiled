@@ -31,6 +31,7 @@ from pandas.testing import assert_frame_equal
 from starlette.status import (
     HTTP_200_OK,
     HTTP_404_NOT_FOUND,
+    HTTP_405_METHOD_NOT_ALLOWED,
     HTTP_409_CONFLICT,
     HTTP_415_UNSUPPORTED_MEDIA_TYPE,
     HTTP_422_UNPROCESSABLE_CONTENT,
@@ -1084,6 +1085,18 @@ def test_write_with_specified_mimetype(tree):
                     ),
                 ],
             )
+
+
+def test_append_partition_to_table_whose_storage_cannot_append(tree):
+    "The default table storage holds whole partitions; appending gets 405."
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        df = pandas.DataFrame({"a": [1, 2]})
+        node = client.write_table(df, key="x")
+
+        with fail_with_status_code(HTTP_405_METHOD_NOT_ALLOWED):
+            node.append_partition(0, df)
+        assert node.read().equals(df)
 
 
 @pytest.mark.parametrize(

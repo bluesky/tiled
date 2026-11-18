@@ -2782,12 +2782,19 @@ class CatalogTableAdapter(CatalogNodeAdapter):
 
     async def append_partition(self, media_type, deserializer, entry, body, partition):
         self._require_managed_data()
+        adapter = await self.get_adapter()
+        if not hasattr(adapter, "append_partition"):
+            raise HTTPException(
+                status_code=HTTP_405_METHOD_NOT_ALLOWED,
+                detail=(
+                    "The storage of this table does not support appending to a "
+                    "partition."
+                ),
+            )
         if self.context.streaming_cache:
             await self._stream(media_type, entry, body, partition, True)
         data = await ensure_awaitable(deserializer, body)
-        return await ensure_awaitable(
-            (await self.get_adapter()).append_partition, partition, data
-        )
+        return await ensure_awaitable(adapter.append_partition, partition, data)
 
 
 def delete_physical_asset(

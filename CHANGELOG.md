@@ -216,6 +216,8 @@ wherever it is used.
   as a charset, are ignored in the lookup.
 - `POST /metadata` with a data source that has assets responds with HTTP 400
   pointing to `POST /register` (previously HTTP 500).
+- `PATCH /table/partition` on a table whose storage cannot append, such as the
+  default Parquet storage, responds with HTTP 405 (previously HTTP 500).
 - Composing a slice with a negative step with a second slice gave an empty
   result when the composed stop lay before the first element: the stop was a
   negative number, which Python counts from the end. Such a stop is now open.
