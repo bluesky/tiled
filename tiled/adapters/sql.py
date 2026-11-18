@@ -206,15 +206,6 @@ class SQLAdapter(Adapter[TableStructure]):
                     f"primary_key column '{key}' has type {arrow_type} which is not suitable "
                     f"as a primary key (nested types and floating-point types are not allowed)"
                 )
-            if arg["direction"] not in ("asc", "desc"):
-                raise ValueError(
-                    f"order_by direction must be 'asc' or 'desc', got '{arg['direction']}'"
-                )
-        for key in self.primary_key:
-            if key not in self.structure().columns:
-                raise ValueError(
-                    f"primary_key column '{key}' is not in the structure columns"
-                )
 
         super().__init__(structure, metadata=metadata, specs=specs)
 

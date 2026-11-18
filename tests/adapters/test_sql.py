@@ -1046,14 +1046,16 @@ def test_no_order_by_does_not_crash(
     request: pytest.FixtureRequest,
 ) -> None:
     """Without order_by_args, no ORDER BY clause is added — the adapter should
-    initialise and read data without errors, and order_by_args should be empty."""
+    initialise and read data without errors, and order_by_args should be empty.
+    A primary_key on its own is validated without order_by_args."""
     data_source = data_source_from_init_storage(
         request.getfixturevalue(data_uri),
         1,
         _ts_value_schema.empty_table(),
     )
-    adapter = adapter_from_data_source(data_source)
+    adapter = adapter_from_data_source(data_source, primary_key=["ts"])
     assert adapter.order_by_args == []
+    assert adapter.primary_key == ["ts"]
 
     adapter.append_partition(0, pa.table({"ts": [10, 20], "value": [1.0, 2.0]}))
     result = adapter.read()
