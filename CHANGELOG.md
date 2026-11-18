@@ -7,6 +7,9 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Security
 
+- The WebSocket route `/stream/single` requires the `read:data` and
+  `read:metadata` scopes, like the HTTP routes that serve the same data. A
+  credential without them was accepted when the server had no access policy.
 - The webhook URL check also refuses IPv6 addresses that stand for a blocked
   IPv4 address (IPv4-mapped, IPv4-compatible, 6to4 and Teredo), and the
   unspecified address `::`.

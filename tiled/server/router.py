@@ -31,6 +31,7 @@ from jsonpatch import apply_patch as apply_json_patch
 from starlette.requests import URL
 from starlette.status import (
     HTTP_400_BAD_REQUEST,
+    HTTP_401_UNAUTHORIZED,
     HTTP_403_FORBIDDEN,
     HTTP_404_NOT_FOUND,
     HTTP_405_METHOD_NOT_ALLOWED,
@@ -1011,9 +1012,18 @@ def get_router(
                 await websocket.close(code=4003, reason="Authentication failed")
                 return
 
+        # Authorization is enforced per route, as for the HTTP routes.
+        required_scopes = ["read:data", "read:metadata"]
+        if not set(required_scopes).issubset(authn_scopes):
+            detail = f"Not enough permissions. Requires scopes {required_scopes}."
+            if needs_first_message_auth:
+                await websocket.close(code=4003, reason=detail)
+                return
+            raise HTTPException(status_code=HTTP_401_UNAUTHORIZED, detail=detail)
+
         entry = await get_entry(
             path,
-            ["read:data", "read:metadata"],
+            required_scopes,
             principal,
             authn_access_tags,
             authn_scopes,
