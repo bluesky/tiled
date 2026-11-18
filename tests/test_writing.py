@@ -50,6 +50,7 @@ from tiled.structures.table import TableStructure
 from tiled.utils import (
     APACHE_ARROW_FILE_MIME_TYPE,
     Conflicts,
+    ensure_uri,
     patch_mimetypes,
     sanitize_uri,
 )
@@ -114,7 +115,7 @@ def tree(tmpdir, tmp_s3_bucket):
             }
         )
 
-    writable_storage.append(f"file://localhost{str(tmpdir / 'data')}")
+    writable_storage.append(ensure_uri(tmpdir / "data"))
 
     return in_memory(writable_storage=writable_storage)
 

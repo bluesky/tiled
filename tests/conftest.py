@@ -20,7 +20,7 @@ from tiled.client.base import BaseClient
 from tiled.config import Authentication
 from tiled.server.app import build_app
 from tiled.server.settings import get_settings
-from tiled.utils import ensure_specified_sql_driver
+from tiled.utils import ensure_specified_sql_driver, ensure_uri
 
 from .utils import enter_username_password as utils_enter_uname_passwd
 from .utils import temp_postgres, temp_postgres_sync
@@ -451,7 +451,7 @@ def build_test_app(tmpdir, redis_uri, redis_key_prefix, public=False):
     tree = from_uri(
         "sqlite:///:memory:",
         writable_storage=[
-            f"file://localhost{str(tmpdir / 'data')}",
+            ensure_uri(tmpdir / "data"),
             f"duckdb:///{tmpdir / 'data.duckdb'}",
         ],
         readable_storage=[Path(tempfile.gettempdir()).resolve()],

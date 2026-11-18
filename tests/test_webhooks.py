@@ -44,6 +44,7 @@ from tiled.server.webhooks import (
     _sign,
     check_url_ssrf_safety,
 )
+from tiled.utils import ensure_uri
 
 from .conftest import TOY_AUTHENTICATION
 from .utils import enter_username_password
@@ -83,7 +84,7 @@ def _capturing_mock() -> list[dict[str, Any]]:
 @pytest.fixture(scope="module")
 def app(tmpdir_module: Any) -> FastAPI:
     tree = in_memory(
-        writable_storage=[f"file://localhost{tmpdir_module / 'data'}"],
+        writable_storage=[ensure_uri(tmpdir_module / "data")],
         # Streaming cache on, as in production, to catch payload regressions.
         cache_config={"uri": "memory://", "data_ttl": 60, "seq_ttl": 60},
     )
