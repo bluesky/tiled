@@ -5,11 +5,13 @@ from pathlib import Path
 import numpy
 import pandas
 import pytest
+import sparse
 import xarray
 
 from tiled.adapters.array import ArrayAdapter
 from tiled.adapters.dataframe import DataFrameAdapter
 from tiled.adapters.mapping import MapAdapter
+from tiled.adapters.sparse import COOAdapter
 from tiled.adapters.xarray import DatasetAdapter
 from tiled.client import Context, from_context
 from tiled.client.utils import ClientError
@@ -42,6 +44,9 @@ tree = MapAdapter(
         ),
         "single_row_many_columns": DataFrameAdapter.from_pandas(
             pandas.DataFrame({f"column_{i}": [i] for i in range(100)}), npartitions=1
+        ),
+        "sparse": COOAdapter.from_coo(
+            sparse.COO(coords=[[0, 1], [2, 3]], data=[1.0, 2.0], shape=(4, 4))
         ),
         "structured_data": MapAdapter(
             {
@@ -98,9 +103,13 @@ def test_export_2d_array(client, filename, tmpdir):
     client["A"].export(Path(tmpdir, filename))
 
 
-@pytest.mark.parametrize("filename", ["numbers.csv", "spreadsheet.xlsx"])
-def test_export_table(client, filename, tmpdir):
-    client["C"].export(Path(tmpdir, filename))
+@pytest.mark.parametrize("key", ["C", "sparse"])
+@pytest.mark.parametrize(
+    "filename", ["numbers.csv", "spreadsheet.xlsx", "table.parquet", "table.html"]
+)
+def test_export_table(client, key, filename, tmpdir):
+    "A sparse array exports to the table formats as its coordinates and data."
+    client[key].export(Path(tmpdir, filename))
 
 
 @pytest.mark.parametrize("filename", ["numbers.csv"])

@@ -222,6 +222,8 @@ wherever it is used.
   responds with HTTP 400 (previously HTTP 500).
 - The `csrf` query parameter, an alternative to the `x-csrf` header, works
   (previously every request using it got HTTP 500).
+- Exporting a sparse array as CSV, Parquet, XLSX or HTML works (previously
+  HTTP 500).
 - Composing a slice with a negative step with a second slice gave an empty
   result when the composed stop lay before the first element: the stop was a
   negative number, which Python counts from the end. Such a stop is now open.
