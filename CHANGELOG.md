@@ -5,6 +5,32 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## Unreleased
 
+### Added
+
+- `streaming_cache.key_prefix`, prepended to every Redis key and pub/sub
+  channel the streaming cache uses. These are named by node ID alone, so
+  separate Tiled deployments sharing one Redis server received each other's
+  streamed data; giving each deployment its own prefix keeps them apart. Tests
+  that use Redis each get a unique prefix, which fixes intermittent failures
+  when they ran at the same time on different pytest-xdist workers.
+
+### Fixed
+
+- Appending to a table matches the appended columns by name, in SQL storage
+  and in CSV files. SQL storage refused columns given in another order; a CSV
+  file took them positionally. Columns that are not the table's are refused
+  with HTTP 422. The first append to a CSV partition writes the header, which
+  it left out, so the first row of data was read back as the header.
+- A full write to a table in Arrow storage raised after truncating the file,
+  so the table read back empty.
+- A table in SQL storage created with a `primary_key` but without
+  `order_by_args` raised `UnboundLocalError` on every access.
+- Reading a subset of a table's columns from SQL storage returns them in the
+  requested order (previously in an arbitrary order), and an unknown column is
+  refused with HTTP 400 (previously dropped without notice).
+
+## v0.2.22 (2026-11-18)
+
 ### Security
 
 This release addresses security issues identified by a frontier AI model. One
@@ -104,12 +130,6 @@ wherever it is used.
 
 ### Added
 
-- `streaming_cache.key_prefix`, prepended to every Redis key and pub/sub
-  channel the streaming cache uses. These are named by node ID alone, so
-  separate Tiled deployments sharing one Redis server received each other's
-  streamed data; giving each deployment its own prefix keeps them apart. Tests
-  that use Redis each get a unique prefix, which fixes intermittent failures
-  when they ran at the same time on different pytest-xdist workers.
 - Documentation page listing the Alembic revisions of the catalog and
   authentication databases required by each Tiled release, generated from the
   git tags when the documentation is built.
@@ -210,18 +230,6 @@ wherever it is used.
 
 ### Fixed
 
-- Appending to a table matches the appended columns by name, in SQL storage
-  and in CSV files. SQL storage refused columns given in another order; a CSV
-  file took them positionally. Columns that are not the table's are refused
-  with HTTP 422. The first append to a CSV partition writes the header, which
-  it left out, so the first row of data was read back as the header.
-- A full write to a table in Arrow storage raised after truncating the file,
-  so the table read back empty.
-- A table in SQL storage created with a `primary_key` but without
-  `order_by_args` raised `UnboundLocalError` on every access.
-- Reading a subset of a table's columns from SQL storage returns them in the
-  requested order (previously in an arbitrary order), and an unknown column is
-  refused with HTTP 400 (previously dropped without notice).
 - Composing a slice with a negative step with a second slice gave an empty
   result when the composed stop lay before the first element: the stop was a
   negative number, which Python counts from the end. Such a stop is now open.
