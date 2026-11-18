@@ -63,6 +63,10 @@ mapping["specs_foo_bar"] = ArrayAdapter.from_array(numpy.ones(10), specs=["foo",
 mapping["specs_foo_bar_baz"] = ArrayAdapter.from_array(
     numpy.ones(10), specs=["foo", "bar", "baz"]
 )
+# Spec names that are patterns, quoted, or differ only in case.
+mapping["specs_odd"] = ArrayAdapter.from_array(
+    numpy.ones(10), specs=["f%o", "b_r", 'q"uote', "FOO"]
+)
 nested_metadata = {
     "nested": {"nested-key-1": "nested-value-1", "nested-key-2": "nested-value-2"}
 }
@@ -420,6 +424,21 @@ def test_specs(client, include_values, exclude_values):
     ) == ["specs_foo_bar"]
 
 
+@pytest.mark.parametrize(
+    "include, expected",
+    [
+        (["f%o"], ["specs_odd"]),  # Not a wildcard: "foo" does not match.
+        (["b_r"], ["specs_odd"]),
+        (['q"uote'], ["specs_odd"]),
+        (["FOO"], ["specs_odd"]),  # Case matters.
+        (["fo%"], []),
+        (["Foo"], []),
+    ],
+)
+def test_specs_match_names_literally(client, include, expected):
+    assert list(client.search(SpecsQuery(include=include))) == expected
+
+
 def test_structure_families(client):
     with pytest.raises(ValueError):
         StructureFamilyQuery("foo")
@@ -458,6 +477,7 @@ def test_key_present(client):
         "full_text_test_case_urple",
         "specs_foo_bar",
         "specs_foo_bar_baz",
+        "specs_odd",
         "nested_key_test",
     ]
 

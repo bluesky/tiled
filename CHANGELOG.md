@@ -27,6 +27,8 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Fixed
 
+- Searching by spec on a SQLite catalog matches the spec name exactly. `%`
+  and `_` in a name were wildcards, and matching ignored case.
 - Write routes respond with HTTP 415, naming the supported media types, when
   the request has no `Content-Type` or one that cannot be deserialized for the
   structure family (previously HTTP 500). Parameters of the media type, such

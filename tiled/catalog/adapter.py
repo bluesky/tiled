@@ -3,6 +3,7 @@ import copy
 import dataclasses
 import importlib
 import itertools as it
+import json
 import logging
 import operator
 import os
@@ -3006,14 +3007,18 @@ def specs(query, tree):
     conditions = []
     attr = orm.Node.specs
     if dialect_name == "sqlite":
-        # SQLite stores JSON as text; match the serialized spec by pattern.
+        # SQLite stores JSON as text. Look for the serialized spec in it, as
+        # text: instr knows no wildcards and is case-sensitive.
         text_attr = type_coerce(attr, Text)
-        # Construct the conditions for includes
-        for i, name in enumerate(query.include):
-            conditions.append(text_attr.like(f'%{{"name":"{name}",%'))
-        # Construct the conditions for excludes
-        for i, name in enumerate(query.exclude):
-            conditions.append(not_(text_attr.like(f'%{{"name":"{name}",%')))
+
+        def has_spec(name):
+            serialized = json.dumps(name, separators=(",", ":"))
+            return func.instr(text_attr, f'{{"name":{serialized},') > 0
+
+        for name in query.include:
+            conditions.append(has_spec(name))
+        for name in query.exclude:
+            conditions.append(not_(has_spec(name)))
     elif dialect_name == "postgresql":
 
         def contains(specs):
