@@ -210,6 +210,10 @@ wherever it is used.
 
 ### Fixed
 
+- Write routes respond with HTTP 415, naming the supported media types, when
+  the request has no `Content-Type` or one that cannot be deserialized for the
+  structure family (previously HTTP 500). Parameters of the media type, such
+  as a charset, are ignored in the lookup.
 - Composing a slice with a negative step with a second slice gave an empty
   result when the composed stop lay before the first element: the stop was a
   negative number, which Python counts from the end. Such a stop is now open.

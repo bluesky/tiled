@@ -36,6 +36,7 @@ from starlette.status import (
     HTTP_405_METHOD_NOT_ALLOWED,
     HTTP_406_NOT_ACCEPTABLE,
     HTTP_410_GONE,
+    HTTP_415_UNSUPPORTED_MEDIA_TYPE,
     HTTP_422_UNPROCESSABLE_CONTENT,
     HTTP_500_INTERNAL_SERVER_ERROR,
     HTTP_503_SERVICE_UNAVAILABLE,
@@ -206,6 +207,32 @@ def _patch_route_signature(
         return route_with_sig
 
     return inner
+
+
+def body_deserializer(
+    request: Request,
+    structure_family: str,
+    deserialization_registry: SerializationRegistry,
+):
+    """The media type of the request body, and the deserializer for it.
+
+    Parameters of the media type, such as a charset, take no part in the
+    lookup. Respond with 415 if the request names no media type, or one that
+    cannot be deserialized to this structure family.
+    """
+    media_type = request.headers.get("content-type", "").split(";", 1)[0].strip()
+    try:
+        deserializer = deserialization_registry.dispatch(structure_family, media_type)
+    except ValueError:
+        supported = ", ".join(deserialization_registry.media_types(structure_family))
+        raise HTTPException(
+            status_code=HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail=(
+                f"The Content-Type {media_type!r} is not supported for "
+                f"{structure_family}. Supported: {supported}"
+            ),
+        )
+    return media_type, deserializer
 
 
 def get_router(
@@ -1113,8 +1140,9 @@ def get_router(
                 detail="This node cannot accept array data.",
             )
 
-        media_type = request.headers["content-type"]
-        deserializer = deserialization_registry.dispatch("ragged", media_type)
+        media_type, deserializer = body_deserializer(
+            request, "ragged", deserialization_registry
+        )
 
         body = await request.body()
         await ensure_awaitable(
@@ -1154,8 +1182,9 @@ def get_router(
                 detail="This node cannot accept blocks of ragged array data.",
             )
 
-        media_type = request.headers["content-type"]
-        deserializer = deserialization_registry.dispatch("ragged", media_type)
+        media_type, deserializer = body_deserializer(
+            request, "ragged", deserialization_registry
+        )
 
         body = await request.body()
         await ensure_awaitable(
@@ -1209,8 +1238,9 @@ def get_router(
             )
 
         body = await request.body()
-        media_type = request.headers["content-type"]
-        deserializer = deserialization_registry.dispatch("ragged", media_type)
+        media_type, deserializer = body_deserializer(
+            request, "ragged", deserialization_registry
+        )
         structure = await ensure_awaitable(
             entry.patch,
             shape,
@@ -2243,13 +2273,11 @@ def get_router(
                 status_code=HTTP_405_METHOD_NOT_ALLOWED,
                 detail="This node cannot accept array data.",
             )
-        media_type = request.headers["content-type"]
-        if entry.structure_family == "array":
-            deserializer = deserialization_registry.dispatch("array", media_type)
-        elif entry.structure_family == "sparse":
-            deserializer = deserialization_registry.dispatch("sparse", media_type)
-        else:
+        if entry.structure_family not in ("array", "sparse"):
             raise NotImplementedError(entry.structure_family)
+        media_type, deserializer = body_deserializer(
+            request, entry.structure_family, deserialization_registry
+        )
         await ensure_awaitable(
             entry.write, media_type, deserializer, entry, body, persist
         )
@@ -2287,9 +2315,8 @@ def get_router(
             )
 
         body = await request.body()
-        media_type = request.headers["content-type"]
-        deserializer = deserialization_registry.dispatch(
-            entry.structure_family, media_type
+        media_type, deserializer = body_deserializer(
+            request, entry.structure_family, deserialization_registry
         )
         await ensure_awaitable(
             entry.write_block, block, media_type, deserializer, entry, body, persist
@@ -2341,8 +2368,9 @@ def get_router(
             )
 
         body = await request.body()
-        media_type = request.headers["content-type"]
-        deserializer = deserialization_registry.dispatch("array", media_type)
+        media_type, deserializer = body_deserializer(
+            request, "array", deserialization_registry
+        )
         structure = await ensure_awaitable(
             entry.patch,
             shape,
@@ -2386,9 +2414,8 @@ def get_router(
                 detail="This node does not support writing.",
             )
         body = await request.body()
-        media_type = request.headers["content-type"]
-        deserializer = deserialization_registry.dispatch(
-            StructureFamily.table, media_type
+        media_type, deserializer = body_deserializer(
+            request, StructureFamily.table, deserialization_registry
         )
         await ensure_awaitable(entry.write, media_type, deserializer, entry, body)
         return json_or_msgpack(request, None)
@@ -2423,9 +2450,8 @@ def get_router(
                 detail="This node does not supporting writing a partition.",
             )
         body = await request.body()
-        media_type = request.headers["content-type"]
-        deserializer = deserialization_registry.dispatch(
-            StructureFamily.table, media_type
+        media_type, deserializer = body_deserializer(
+            request, StructureFamily.table, deserialization_registry
         )
         await ensure_awaitable(
             entry.write_partition, media_type, deserializer, entry, body, partition
@@ -2462,9 +2488,8 @@ def get_router(
                 detail="This node does not supporting writing a partition.",
             )
         body = await request.body()
-        media_type = request.headers["content-type"]
-        deserializer = deserialization_registry.dispatch(
-            StructureFamily.table, media_type
+        media_type, deserializer = body_deserializer(
+            request, StructureFamily.table, deserialization_registry
         )
         await ensure_awaitable(
             entry.append_partition, media_type, deserializer, entry, body, partition
@@ -2500,9 +2525,8 @@ def get_router(
                 status_code=HTTP_405_METHOD_NOT_ALLOWED,
                 detail="This node cannot be written to.",
             )
-        media_type = request.headers["content-type"]
-        deserializer = deserialization_registry.dispatch(
-            StructureFamily.awkward, media_type
+        media_type, deserializer = body_deserializer(
+            request, StructureFamily.awkward, deserialization_registry
         )
         structure = entry.structure()
         data = await ensure_awaitable(

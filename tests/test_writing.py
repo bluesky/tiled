@@ -29,6 +29,7 @@ import stamina
 from botocore.exceptions import ClientError as BotoClientError
 from pandas.testing import assert_frame_equal
 from starlette.status import (
+    HTTP_200_OK,
     HTTP_404_NOT_FOUND,
     HTTP_409_CONFLICT,
     HTTP_415_UNSUPPORTED_MEDIA_TYPE,
@@ -994,6 +995,55 @@ def test_table_bytes_column_json_export(tree, buffer, media_type):
             json.loads(record) for record in payload.split("\x1e") if record.strip()
         ]
         assert [row["label"] for row in rows] == expected
+
+
+@pytest.mark.parametrize(
+    "method, route",
+    [
+        ("put", "array/full/{array}"),
+        ("put", "array/block/{array}?block=0"),
+        ("patch", "array/full/{array}?offset=0&shape=3"),
+        ("put", "table/full/{table}"),
+        ("put", "table/partition/{table}?partition=0"),
+        ("patch", "table/partition/{table}?partition=0"),
+    ],
+)
+@pytest.mark.parametrize(
+    "content_type", [None, "application/x-does-not-exist"], ids=["missing", "unknown"]
+)
+def test_write_with_unsupported_content_type(tree, method, route, content_type):
+    "A body of a media type that cannot be deserialized gets 415, not 500."
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        client.write_array([1, 2, 3], key="array")
+        client.write_table(pandas.DataFrame({"a": [1]}), key="table")
+        url = "/api/v1/" + route.format(array="array", table="table")
+        headers = {} if content_type is None else {"Content-Type": content_type}
+
+        response = client.context.http_client.request(
+            method, url, content=b"x", headers=headers
+        )
+
+        assert response.status_code == HTTP_415_UNSUPPORTED_MEDIA_TYPE
+        detail = response.json()["detail"]
+        assert "application/octet-stream" in detail or "text/csv" in detail
+
+
+def test_write_with_content_type_parameters(tree):
+    "Parameters of the media type, such as a charset, do not matter."
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        node = client.write_array(numpy.zeros(3, dtype="i8"), key="x")
+        array = numpy.arange(3, dtype="i8")
+
+        response = client.context.http_client.put(
+            "/api/v1/array/full/x",
+            content=array.tobytes(),
+            headers={"Content-Type": "application/octet-stream; charset=binary"},
+        )
+
+        assert response.status_code == HTTP_200_OK
+        numpy.testing.assert_array_equal(node.read(), array)
 
 
 def test_write_with_specified_mimetype(tree):
