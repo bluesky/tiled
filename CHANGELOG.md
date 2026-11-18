@@ -5,6 +5,24 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## Unreleased
 
+### Added
+
+- `streaming_cache.key_prefix`, prepended to every Redis key and pub/sub
+  channel the streaming cache uses. These are named by node ID alone, so
+  separate Tiled deployments sharing one Redis server received each other's
+  streamed data; giving each deployment its own prefix keeps them apart. Tests
+  that use Redis each get a unique prefix, which fixes intermittent failures
+  when they ran at the same time on different pytest-xdist workers.
+
+### Fixed
+
+- Node keys are percent-encoded wherever they become a segment of a URL path,
+  in the links the server returns and in the URLs the Python client builds.
+  A key with `#`, `?`, a space or `+` addressed another node or failed: writing
+  `run#1` wrote to `run`.
+
+## v0.2.22 (2026-11-18)
+
 ### Security
 
 This release addresses security issues identified by a frontier AI model. One
@@ -104,12 +122,6 @@ wherever it is used.
 
 ### Added
 
-- `streaming_cache.key_prefix`, prepended to every Redis key and pub/sub
-  channel the streaming cache uses. These are named by node ID alone, so
-  separate Tiled deployments sharing one Redis server received each other's
-  streamed data; giving each deployment its own prefix keeps them apart. Tests
-  that use Redis each get a unique prefix, which fixes intermittent failures
-  when they ran at the same time on different pytest-xdist workers.
 - Documentation page listing the Alembic revisions of the catalog and
   authentication databases required by each Tiled release, generated from the
   git tags when the documentation is built.

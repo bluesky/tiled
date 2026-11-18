@@ -9,6 +9,7 @@ import time
 import weakref
 from collections.abc import Callable
 from typing import Any, Generic, Self, TypeVar
+from urllib.parse import quote
 
 import anyio
 import httpx2 as httpx
@@ -333,7 +334,9 @@ class Subscription(abc.ABC):
         )
         params = {"envelope_format": "msgpack"}
         scheme = "wss" if context.api_uri.scheme == "https" else "ws"
-        self._node_path = "/".join(f"/{segment}" for segment in segments)
+        self._node_path = "/".join(
+            f"/{quote(segment, safe='')}" for segment in segments
+        )
         uri_path = "/api/v1/stream/single" + self._node_path
         self._uri = httpx.URL(
             str(context.api_uri.copy_with(scheme=scheme, path=uri_path)),
