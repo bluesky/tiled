@@ -2002,8 +2002,11 @@ def get_router(
         for data_source in body.data_sources:
             if data_source.assets:
                 raise HTTPException(
-                    "Externally-managed assets cannot be registered "
-                    "using POST /metadata/{path}. Use POST /register/{path} instead."
+                    status_code=HTTP_400_BAD_REQUEST,
+                    detail=(
+                        "Externally-managed assets cannot be registered using "
+                        "POST /metadata/{path}. Use POST /register/{path} instead."
+                    ),
                 )
         if body.data_sources and not getattr(entry, "writable", False):
             raise HTTPException(
