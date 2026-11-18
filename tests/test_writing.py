@@ -1018,7 +1018,9 @@ def test_write_with_specified_mimetype(tree):
                 ],
             )
             x.write_partition(0, df)
-            x.read()
+            assert_frame_equal(x.read(), df, check_dtype=False)
+            x.write(df + 1)
+            assert_frame_equal(x.read(), df + 1, check_dtype=False)
             x.refresh()
             assert x.data_sources()[0].mimetype == mimetype
 
