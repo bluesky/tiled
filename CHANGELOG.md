@@ -219,6 +219,9 @@ wherever it is used.
   so the table read back empty.
 - A table in SQL storage created with a `primary_key` but without
   `order_by_args` raised `UnboundLocalError` on every access.
+- Reading a subset of a table's columns from SQL storage returns them in the
+  requested order (previously in an arbitrary order), and an unknown column is
+  refused with HTTP 400 (previously dropped without notice).
 - Composing a slice with a negative step with a second slice gave an empty
   result when the composed stop lay before the first element: the stop was a
   negative number, which Python counts from the end. Such a stop is now open.

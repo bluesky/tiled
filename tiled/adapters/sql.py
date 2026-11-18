@@ -571,7 +571,12 @@ class SQLAdapter(Adapter[TableStructure]):
 
         # Make sure that requested columns exist and safe to put in SQL query.
         schema = self.structure().arrow_schema_decoded
-        req_cols = set(schema.names).intersection(fields) if fields else schema.names
+        if fields:
+            if unknown := [field for field in fields if field not in schema.names]:
+                raise KeyError(f"Unknown columns: {unknown}")
+            req_cols = list(fields)
+        else:
+            req_cols = schema.names
 
         query = (
             "SELECT " + ", ".join([f'"{c.lower()}"' for c in req_cols]) + " "

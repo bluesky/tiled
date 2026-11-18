@@ -1037,6 +1037,11 @@ def test_order_by_subset_fields_read(
 
     assert adapter.read(fields=["a"])["a"].tolist() == [1, 2, 3]
     assert adapter.read(fields=["b"])["b"].tolist() == [1.0, 2.0, 3.0]
+    # Columns come back in the requested order; an unknown column is an error.
+    assert list(adapter.read(fields=["b", "a"]).columns) == ["b", "a"]
+    assert list(adapter.read_partition(0, fields=["b", "ts"]).columns) == ["b", "ts"]
+    with pytest.raises(KeyError, match="unknown"):
+        adapter.read(fields=["a", "unknown"])
 
 
 @pytest.mark.parametrize("data_uri", ["sqlite_uri", "duckdb_uri", "postgres_uri"])
