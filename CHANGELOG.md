@@ -51,6 +51,10 @@ Write the date in place of the "Unreleased" in the case a new version is release
   (previously every request using it got HTTP 500).
 - Exporting a sparse array as CSV, Parquet, XLSX or HTML works (previously
   HTTP 500).
+- Parquet is also served as `application/vnd.apache.parquet`, the registered
+  media type, which the system mime database of some platforms gives for the
+  `.parquet` extension; exporting to a `.parquet` file name failed there with
+  HTTP 406.
 - Exporting a container to HDF5 writes each column of a table it holds as its
   own dataset, string columns included. Every column held the whole table.
 

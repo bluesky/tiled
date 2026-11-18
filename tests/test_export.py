@@ -112,6 +112,19 @@ def test_export_table(client, key, filename, tmpdir):
     client[key].export(Path(tmpdir, filename))
 
 
+@pytest.mark.parametrize("key", ["C", "sparse"])
+@pytest.mark.parametrize(
+    "format", ["application/x-parquet", "application/vnd.apache.parquet"]
+)
+def test_export_parquet_media_types(client, key, format, tmpdir):
+    "Both the registered Parquet media type and the older one are served."
+    import pyarrow.parquet
+
+    path = Path(tmpdir, "table.parquet")
+    client[key].export(path, format=format)
+    assert pyarrow.parquet.read_table(path).num_rows > 0
+
+
 @pytest.mark.parametrize("filename", ["numbers.csv"])
 def test_csv_mimetype_opt_params(client, filename, tmpdir):
     client["C"].export(Path(tmpdir, filename), format="text/csv;header=absent")

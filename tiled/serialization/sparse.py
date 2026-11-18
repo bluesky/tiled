@@ -31,6 +31,7 @@ if modules_available("pandas", "pyarrow"):
 
     from .table import (
         APACHE_ARROW_FILE_MIME_TYPE,
+        PARQUET_MIME_TYPES,
         XLSX_MIME_TYPE,
         deserialize_arrow,
         serialize_arrow,
@@ -71,7 +72,7 @@ if modules_available("pandas", "pyarrow"):
     )
     default_serialization_registry.register(
         "sparse",
-        "application/x-parquet",
+        PARQUET_MIME_TYPES,
         lambda mimetype, sparse_arr, metadata: serialize_parquet(
             mimetype, to_dataframe(sparse_arr), metadata, preserve_index=False
         ),
