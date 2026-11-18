@@ -6,12 +6,16 @@ import numpy
 import pytest
 import uvicorn
 from fastapi import APIRouter
-from starlette.status import HTTP_500_INTERNAL_SERVER_ERROR
+from starlette.status import (
+    HTTP_200_OK,
+    HTTP_403_FORBIDDEN,
+    HTTP_500_INTERNAL_SERVER_ERROR,
+)
 
 from tiled.adapters.array import ArrayAdapter
 from tiled.adapters.mapping import MapAdapter
 from tiled.catalog import in_memory
-from tiled.client import from_uri
+from tiled.client import Context, from_uri
 from tiled.client.utils import DEFAULT_TIMEOUT_PARAMS
 from tiled.config import Authentication, Database
 from tiled.server.app import build_app, build_app_from_config
@@ -110,6 +114,31 @@ def test_writing_integration(server):
     client = from_uri(server, api_key=API_KEY)
     x = client.write_array([1, 2, 3], key="array")
     x[:]
+
+
+@pytest.mark.parametrize("carrier", ["header", "query"])
+def test_csrf_token_in_header_or_query(tmpdir, carrier):
+    "A request that carries the API key in a cookie needs the CSRF token too."
+    catalog = in_memory(writable_storage=str(tmpdir))
+    app = build_app(catalog, Authentication(single_user_api_key=API_KEY))
+    body = {"id": "x", "structure_family": "container", "metadata": {}, "specs": []}
+    cookies = {"tiled_api_key": API_KEY, "tiled_csrf": "token"}
+    with Context.from_app(app) as context:
+        http_client = context.http_client
+        if carrier == "header":
+            kwargs = {"headers": {"x-csrf": "token"}}
+        else:
+            kwargs = {"params": {"csrf": "token"}}
+
+        accepted = http_client.post(
+            "/api/v1/metadata/", json=body, cookies=cookies, **kwargs
+        )
+        refused = http_client.post(
+            "/api/v1/metadata/", json=body, cookies=cookies, params={"csrf": "other"}
+        )
+
+        assert accepted.status_code == HTTP_200_OK
+        assert refused.status_code == HTTP_403_FORBIDDEN
 
 
 def test_public_server(public_server):

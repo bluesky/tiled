@@ -220,6 +220,8 @@ wherever it is used.
   default Parquet storage, responds with HTTP 405 (previously HTTP 500).
 - `page[cursor]` on a tree without cursor pagination, such as a `MapAdapter`,
   responds with HTTP 400 (previously HTTP 500).
+- The `csrf` query parameter, an alternative to the `x-csrf` header, works
+  (previously every request using it got HTTP 500).
 - Composing a slice with a negative step with a second slice gave an empty
   result when the composed stop lay before the first element: the stop was a
   negative number, which Python counts from the end. Such a stop is now open.

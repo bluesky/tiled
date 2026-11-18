@@ -6,7 +6,6 @@ import logging
 import os
 import secrets
 import sys
-import urllib.parse
 import warnings
 from contextlib import asynccontextmanager
 from functools import cache, partial
@@ -1002,8 +1001,7 @@ def build_app(
             # Get the token from the Header or (if not there) the query parameter.
             csrf_token = request.headers.get(CSRF_HEADER_NAME)
             if csrf_token is None:
-                parsed_query = urllib.parse.parse_qs(request.url.query)
-                csrf_token = parsed_query.get(CSRF_QUERY_PARAMETER)
+                csrf_token = request.query_params.get(CSRF_QUERY_PARAMETER)
             if not csrf_token:
                 return Response(
                     status_code=HTTP_403_FORBIDDEN,
