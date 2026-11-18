@@ -301,6 +301,12 @@ async def construct_entries_response(
         tree, exact=(schemas.EntryFields.count in fields), threshold=exact_count_limit
     )
 
+    if page.cursor is not None and not hasattr(tree, "keys_page"):
+        raise HTTPException(
+            status_code=HTTP_400_BAD_REQUEST,
+            detail="This Tree does not support cursor pagination.",
+        )
+
     next_cursor = None
     if fields == [schemas.EntryFields.none]:
         # Pull a page of just the keys, which is cheaper.

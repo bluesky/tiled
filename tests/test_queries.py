@@ -291,6 +291,18 @@ def test_same_query_type_given_twice(client):
     assert response.json()["data"] == []
 
 
+def test_page_cursor(client):
+    "A cursor pages through a catalog. A tree without cursors refuses it, with 400."
+    response = _search_http(client, {"page[cursor]": "0", "page[limit]": "1"})
+
+    if client.metadata["backend"] == "map":
+        assert response.status_code == HTTP_400_BAD_REQUEST
+        assert "cursor" in response.json()["detail"]
+    else:
+        response.raise_for_status()
+        assert len(response.json()["data"]) == 1
+
+
 def test_filter_parameters_given_different_numbers_of_times(client):
     "Values that cannot be paired up are rejected, not dropped or misapplied."
     response = _search_http(
