@@ -20,6 +20,12 @@ Write the date in place of the "Unreleased" in the case a new version is release
   in the links the server returns and in the URLs the Python client builds.
   A key with `#`, `?`, a space or `+` addressed another node or failed: writing
   `run#1` wrote to `run`.
+- `ArrayClient.write` and `write_block` check the data against the array's
+  dtype and size before uploading. The server reads the bytes by the
+  structure, so data of another dtype was stored as other values (integers
+  written to a float array read back as denormal floats). Data that can be
+  cast within its kind, such as a list of integers for a float array, is cast;
+  other data raises `ValueError`.
 
 ## v0.2.22 (2026-11-18)
 

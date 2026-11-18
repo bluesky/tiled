@@ -228,6 +228,39 @@ def test_write_array_chunked(tree, shape, chunks):
         assert result.specs == specs
 
 
+@pytest.mark.parametrize(
+    "data, outcome",
+    [
+        ([0, 1, 2, 3], "cast"),  # int64 within the same kind as float64
+        (numpy.arange(4, dtype="float32"), "cast"),
+        (numpy.array(["a", "b", "c", "d"]), "dtype"),
+        (numpy.ones(3), "elements"),
+        (numpy.ones((2, 3)), "elements"),
+    ],
+    ids=["ints", "float32", "strings", "too-few", "too-many"],
+)
+def test_write_checks_dtype_and_shape(tree, data, outcome):
+    "The server reads the bytes by the structure, so the data must fit it."
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        x = client.write_array(numpy.zeros(4, dtype="float64"), key="x")
+        y = client.write_array(
+            dask.array.zeros((2, 4), dtype="float64", chunks=(1, 4)), key="y"
+        )
+
+        if outcome == "cast":
+            x.write(data)
+            numpy.testing.assert_array_equal(x.read(), numpy.asarray(data))
+            y.write_block(data, block=(1, 0))  # Four elements fit the (1, 4) block.
+            numpy.testing.assert_array_equal(y.read()[1], numpy.asarray(data))
+        else:
+            with pytest.raises(ValueError, match=outcome):
+                x.write(data)
+            with pytest.raises(ValueError, match=outcome):
+                y.write_block(data, block=(1, 0))
+            numpy.testing.assert_array_equal(x.read(), numpy.zeros(4))
+
+
 def test_extend_array(tree):
     "Extend an array with additional data, expanding its shape."
     with Context.from_app(
