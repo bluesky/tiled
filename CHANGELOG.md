@@ -14,6 +14,11 @@ Write the date in place of the "Unreleased" in the case a new version is release
   that use Redis each get a unique prefix, which fixes intermittent failures
   when they ran at the same time on different pytest-xdist workers.
 
+### Changed
+
+- The `tiled_csrf` and `tiled_api_key` cookies carry the `Secure` attribute
+  when they are set over HTTPS.
+
 ### Fixed
 
 - Write routes respond with HTTP 415, naming the supported media types, when

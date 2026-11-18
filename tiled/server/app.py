@@ -1021,6 +1021,7 @@ def build_app(
                 value=secrets.token_urlsafe(32),
                 httponly=True,
                 samesite="lax",
+                secure=request.url.scheme == "https",
             )
         return response
 
@@ -1066,6 +1067,8 @@ def build_app(
         for params in request.state.cookies_to_set:
             params.setdefault("httponly", True)
             params.setdefault("samesite", "lax")
+            # Over HTTPS, a cookie is sent back over HTTPS only.
+            params.setdefault("secure", request.url.scheme == "https")
             response.set_cookie(**params)
         return response
 

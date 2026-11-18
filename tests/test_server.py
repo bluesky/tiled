@@ -141,6 +141,25 @@ def test_csrf_token_in_header_or_query(tmpdir, carrier):
         assert refused.status_code == HTTP_403_FORBIDDEN
 
 
+@pytest.mark.parametrize("scheme", ["http", "https"])
+def test_cookies_are_secure_over_https(tmpdir, scheme):
+    "The CSRF and API key cookies carry the Secure attribute when set over HTTPS."
+    catalog = in_memory(writable_storage=str(tmpdir))
+    app = build_app(catalog, Authentication(single_user_api_key=API_KEY))
+    uri = f"{scheme}://local-tiled-app/api/v1"
+    with Context.from_app(app, uri=uri) as context:
+        context.http_client.cookies.clear()
+        response = context.http_client.get(
+            f"{uri}/metadata/", params={"api_key": API_KEY}
+        )
+
+    cookies = response.headers.get_list("set-cookie")
+    assert {c.split("=", 1)[0] for c in cookies} == {"tiled_csrf", "tiled_api_key"}
+    for cookie in cookies:
+        assert ("Secure" in cookie) is (scheme == "https"), cookie
+        assert "HttpOnly" in cookie
+
+
 def test_public_server(public_server):
     from_uri(public_server)
 
