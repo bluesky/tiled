@@ -104,6 +104,12 @@ wherever it is used.
 
 ### Added
 
+- `streaming_cache.key_prefix`, prepended to every Redis key and pub/sub
+  channel the streaming cache uses. These are named by node ID alone, so
+  separate Tiled deployments sharing one Redis server received each other's
+  streamed data; giving each deployment its own prefix keeps them apart. Tests
+  that use Redis each get a unique prefix, which fixes intermittent failures
+  when they ran at the same time on different pytest-xdist workers.
 - Documentation page listing the Alembic revisions of the catalog and
   authentication databases required by each Tiled release, generated from the
   git tags when the documentation is built.

@@ -145,6 +145,14 @@ properties:
           same default as the standalone `rediss://` path. Defaults to `false`.
           (For a single-node deployment, use the `rediss://` scheme in `uri`
           instead.)
+      key_prefix:
+        type: string
+        description: |
+          Prepended to every Redis key and pub/sub channel. Keys and channels
+          are otherwise named by node ID alone, so separate Tiled deployments
+          that share one Redis server must use different prefixes, or each
+          will receive the other's streamed data. Replicas of one deployment
+          must use the same prefix. Defaults to "" (no prefix).
       data_ttl:
         type: number
         description: Max retention time for streaming data (seconds)
