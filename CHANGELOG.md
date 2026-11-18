@@ -27,6 +27,9 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 - The `tiled_csrf` and `tiled_api_key` cookies carry the `Secure` attribute
   when they are set over HTTPS.
+- `GET /array/full` and `GET /array/block` compare the size of the requested
+  data, known from the structure, with `response_bytesize_limit` before any
+  data is read. A slice out of range for the array responds with HTTP 400.
 - A zip archive uploaded to `PUT /awkward/full` has its member names checked
   against the form before any member is decompressed.
 

@@ -1,6 +1,7 @@
 import collections
 import dataclasses
 import inspect
+import math
 import os
 import stat
 import warnings
@@ -235,6 +236,18 @@ def body_deserializer(
             ),
         )
     return media_type, deserializer
+
+
+def require_within_bytesize_limit(nbytes: int, settings: Settings) -> None:
+    "Respond with 400 if a response of `nbytes` would exceed the configured limit."
+    if nbytes > settings.response_bytesize_limit:
+        raise HTTPException(
+            status_code=HTTP_400_BAD_REQUEST,
+            detail=(
+                f"Response would exceed {settings.response_bytesize_limit}. "
+                "Use slicing ('?slice=...') to request smaller chunks."
+            ),
+        )
 
 
 def get_router(
@@ -787,6 +800,12 @@ def get_router(
                     f"{resulting_shape} that would result from the requested block and slice."
                 ),
             )
+        if entry.structure_family == StructureFamily.array:
+            # The size is known from the structure; check it before reading.
+            itemsize = entry.structure().data_type.to_numpy_dtype().itemsize
+            require_within_bytesize_limit(
+                math.prod(resulting_shape) * itemsize, settings
+            )
 
         if ndim == 0:
             # Handle special case of numpy scalar.
@@ -818,14 +837,7 @@ def get_router(
                     detail=f"The shape expected from the structure {expected_shape} "
                     f"does not match the actual data shape {array.shape}",
                 )
-        if array.nbytes > settings.response_bytesize_limit:
-            raise HTTPException(
-                status_code=HTTP_400_BAD_REQUEST,
-                detail=(
-                    f"Response would exceed {settings.response_bytesize_limit}. "
-                    "Use slicing ('?slice=...') to request smaller chunks."
-                ),
-            )
+        require_within_bytesize_limit(array.nbytes, settings)
         try:
             with record_timing(request.state.metrics, "pack"):
                 return await construct_data_response(
@@ -876,6 +888,18 @@ def get_router(
             getattr(request.app.state, "access_policy", None),
         )
         structure_family = entry.structure_family
+        if structure_family == StructureFamily.array:
+            # The size is known from the structure; check it before reading.
+            structure = entry.structure()
+            try:
+                shape = slice.shape_after_slice(structure.shape)
+            except IndexError:
+                raise HTTPException(
+                    status_code=HTTP_400_BAD_REQUEST,
+                    detail=f"Slice {slice} is out of range for shape {structure.shape}",
+                )
+            itemsize = structure.data_type.to_numpy_dtype().itemsize
+            require_within_bytesize_limit(math.prod(shape) * itemsize, settings)
         # Deferred import because this is not a required dependency of the server
         # for some use cases.
         import numpy
@@ -908,14 +932,7 @@ def get_router(
                 detail=f"The shape expected from the structure {expected_shape} "
                 f"does not match the actual data shape {array.shape}",
             )
-        if array.nbytes > settings.response_bytesize_limit:
-            raise HTTPException(
-                status_code=HTTP_400_BAD_REQUEST,
-                detail=(
-                    f"Response would exceed {settings.response_bytesize_limit}. "
-                    "Use slicing ('?slice=...') to request smaller chunks."
-                ),
-            )
+        require_within_bytesize_limit(array.nbytes, settings)
         try:
             with record_timing(request.state.metrics, "pack"):
                 return await construct_data_response(
@@ -1095,14 +1112,7 @@ def get_router(
                 ),
             ) from err
 
-        if array._impl.nbytes > settings.response_bytesize_limit:
-            raise HTTPException(
-                status_code=HTTP_400_BAD_REQUEST,
-                detail=(
-                    f"Response would exceed {settings.response_bytesize_limit}. "
-                    "Use slicing ('?slice=...') to request smaller chunks."
-                ),
-            )
+        require_within_bytesize_limit(array._impl.nbytes, settings)
         try:
             with record_timing(request.state.metrics, "pack"):
                 return await construct_data_response(
@@ -1960,14 +1970,7 @@ def get_router(
         with record_timing(request.state.metrics, "read"):
             array = await ensure_awaitable(entry.read)
 
-        if array.nbytes > settings.response_bytesize_limit:
-            raise HTTPException(
-                status_code=HTTP_400_BAD_REQUEST,
-                detail=(
-                    f"Response would exceed {settings.response_bytesize_limit}. "
-                    "Use slicing ('?slice=...') to request smaller chunks."
-                ),
-            )
+        require_within_bytesize_limit(array.nbytes, settings)
         try:
             components = awkward.to_buffers(array)
             with record_timing(request.state.metrics, "pack"):
