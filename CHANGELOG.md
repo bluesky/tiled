@@ -210,6 +210,11 @@ wherever it is used.
 
 ### Fixed
 
+- Appending to a table matches the appended columns by name, in SQL storage
+  and in CSV files. SQL storage refused columns given in another order; a CSV
+  file took them positionally. Columns that are not the table's are refused
+  with HTTP 422. The first append to a CSV partition writes the header, which
+  it left out, so the first row of data was read back as the header.
 - Composing a slice with a negative step with a second slice gave an empty
   result when the composed stop lay before the first element: the stop was a
   negative number, which Python counts from the end. Such a stop is now open.

@@ -45,6 +45,7 @@ from ..structures.data_source import Asset, DataSource
 from ..structures.table import TableStructure
 from ..type_aliases import JSON
 from .array import ArrayAdapter
+from .utils import ColumnMismatchError
 
 try:
     from opentelemetry import trace as _otel_trace
@@ -503,8 +504,14 @@ class SQLAdapter(Adapter[TableStructure]):
             else:
                 batches = data
             table = pyarrow.Table.from_batches(batches)
-        # Explicitly cast the table to the structure's schema
-        table = table.cast(self.structure().arrow_schema_decoded)
+        # Put the columns in the order of the structure's schema, and cast.
+        schema = self.structure().arrow_schema_decoded
+        if set(table.column_names) != set(schema.names):
+            raise ColumnMismatchError(
+                f"The columns {table.column_names} do not match the columns of "
+                f"this table, {schema.names}."
+            )
+        table = table.select(schema.names).cast(schema)
         # Prepend columns for internal dataset_id and partition number.
         dataset_id_column = self.dataset_id * numpy.ones(len(table), dtype=numpy.int32)
         partition_id_column = partition * numpy.ones(len(table), dtype=numpy.int16)

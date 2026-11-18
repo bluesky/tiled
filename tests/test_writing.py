@@ -1059,21 +1059,44 @@ def test_write_with_specified_mimetype(tree):
         ),
     ],
 )
+@pytest.mark.parametrize("storage", ["sql", "csv"])
 def test_append_partition(
     tree: CatalogContainerAdapter,
     orig_file: dict,
     file_to_append: dict,
     expected_file: dict,
+    storage: str,
 ):
+    "Rows are appended by column name, to a table in SQL storage or in a CSV file."
     with Context.from_app(build_app(tree)) as context:
         client = from_context(context, include_data_sources=True)
         orig_table = pyarrow.Table.from_pydict(orig_file)
         table_to_append = pyarrow.Table.from_pydict(file_to_append)
 
-        x = client.create_appendable_table(orig_table.schema, key="x")
+        if storage == "sql":
+            x = client.create_appendable_table(orig_table.schema, key="x")
+        else:
+            x = client.new(
+                "table",
+                [
+                    DataSource(
+                        structure_family=StructureFamily.table,
+                        structure=TableStructure.from_pandas(orig_table.to_pandas()),
+                        mimetype="text/csv",
+                    )
+                ],
+                key="x",
+            )
         x.append_partition(0, orig_table)
-        x.append_partition(0, table_to_append)
+        # The columns of the appended rows come in another order.
+        x.append_partition(
+            0, table_to_append.select(reversed(table_to_append.column_names))
+        )
         assert_frame_equal(x.read(), pandas.DataFrame(expected_file), check_dtype=False)
+        # Other columns are refused.
+        other = pyarrow.Table.from_pydict({"other": [1]})
+        with fail_with_status_code(HTTP_422_UNPROCESSABLE_CONTENT):
+            x.append_partition(0, other)
 
 
 @pytest.mark.parametrize(
