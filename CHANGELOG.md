@@ -5,6 +5,36 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## Unreleased
 
+### Added
+
+- `streaming_cache.key_prefix`, prepended to every Redis key and pub/sub
+  channel the streaming cache uses. These are named by node ID alone, so
+  separate Tiled deployments sharing one Redis server received each other's
+  streamed data; giving each deployment its own prefix keeps them apart. Tests
+  that use Redis each get a unique prefix, which fixes intermittent failures
+  when they ran at the same time on different pytest-xdist workers.
+
+### Fixed
+
+- Write routes respond with HTTP 415, naming the supported media types, when
+  the request has no `Content-Type` or one that cannot be deserialized for the
+  structure family (previously HTTP 500). Parameters of the media type, such
+  as a charset, are ignored in the lookup.
+- `POST /metadata` with a data source that has assets responds with HTTP 400
+  pointing to `POST /register` (previously HTTP 500).
+- `PATCH /table/partition` on a table whose storage cannot append, such as the
+  default Parquet storage, responds with HTTP 405 (previously HTTP 500).
+- `page[cursor]` on a tree without cursor pagination, such as a `MapAdapter`,
+  responds with HTTP 400 (previously HTTP 500).
+- The `csrf` query parameter, an alternative to the `x-csrf` header, works
+  (previously every request using it got HTTP 500).
+- Exporting a sparse array as CSV, Parquet, XLSX or HTML works (previously
+  HTTP 500).
+- Exporting a container to HDF5 writes each column of a table it holds as its
+  own dataset, string columns included. Every column held the whole table.
+
+## v0.2.22 (2026-11-18)
+
 ### Security
 
 This release addresses security issues identified by a frontier AI model. One
@@ -24,8 +54,7 @@ Updating promptly is recommended.
 - The `/zarr/v2` and `/zarr/v3` routes did not check scopes, so a server that
   requires authentication answered requests that carried no credentials. They
   now require `read:data`, and `read:metadata` for the metadata documents, like
-  the routes under `/api/v1`. Servers that allow anonymous access are
-  unaffected.
+  the routes under `/api/v1`. Servers that allow anonymous access are unaffected.
 - Uploading an awkward array as a zip archive wrote files outside of the
   node's directory when a member name contained `..` or was absolute, and an
   awkward form with such a `form_key` read files outside of it. Buffer keys are
@@ -104,12 +133,6 @@ wherever it is used.
 
 ### Added
 
-- `streaming_cache.key_prefix`, prepended to every Redis key and pub/sub
-  channel the streaming cache uses. These are named by node ID alone, so
-  separate Tiled deployments sharing one Redis server received each other's
-  streamed data; giving each deployment its own prefix keeps them apart. Tests
-  that use Redis each get a unique prefix, which fixes intermittent failures
-  when they ran at the same time on different pytest-xdist workers.
 - Documentation page listing the Alembic revisions of the catalog and
   authentication databases required by each Tiled release, generated from the
   git tags when the documentation is built.
@@ -210,22 +233,6 @@ wherever it is used.
 
 ### Fixed
 
-- Write routes respond with HTTP 415, naming the supported media types, when
-  the request has no `Content-Type` or one that cannot be deserialized for the
-  structure family (previously HTTP 500). Parameters of the media type, such
-  as a charset, are ignored in the lookup.
-- `POST /metadata` with a data source that has assets responds with HTTP 400
-  pointing to `POST /register` (previously HTTP 500).
-- `PATCH /table/partition` on a table whose storage cannot append, such as the
-  default Parquet storage, responds with HTTP 405 (previously HTTP 500).
-- `page[cursor]` on a tree without cursor pagination, such as a `MapAdapter`,
-  responds with HTTP 400 (previously HTTP 500).
-- The `csrf` query parameter, an alternative to the `x-csrf` header, works
-  (previously every request using it got HTTP 500).
-- Exporting a sparse array as CSV, Parquet, XLSX or HTML works (previously
-  HTTP 500).
-- Exporting a container to HDF5 writes each column of a table it holds as its
-  own dataset, string columns included. Every column held the whole table.
 - Composing a slice with a negative step with a second slice gave an empty
   result when the composed stop lay before the first element: the stop was a
   negative number, which Python counts from the end. Such a stop is now open.
