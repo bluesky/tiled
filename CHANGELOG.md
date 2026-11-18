@@ -5,6 +5,12 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## Unreleased
 
+### Security
+
+- The webhook URL check also refuses IPv6 addresses that stand for a blocked
+  IPv4 address (IPv4-mapped, IPv4-compatible, 6to4 and Teredo), and the
+  unspecified address `::`.
+
 ### Added
 
 - `streaming_cache.key_prefix`, prepended to every Redis key and pub/sub
