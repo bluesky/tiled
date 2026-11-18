@@ -30,6 +30,9 @@ Write the date in place of the "Unreleased" in the case a new version is release
   follows the retry policy of appending rows: a request that may have reached
   the server is not retried. It was retried like any other request, so a
   lost response appended a list element twice.
+- `Subscription.start_in_thread` raises the error when the connection is
+  refused, for example for a node that does not exist or a credential that is
+  not accepted. It waited forever.
 
 ## v0.2.22 (2026-11-18)
 
