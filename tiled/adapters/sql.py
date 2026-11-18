@@ -3,9 +3,10 @@ from __future__ import annotations
 import copy
 import hashlib
 import logging
+import os
 import re
 from collections.abc import Callable, Iterator, Sequence, Set
-from contextlib import closing
+from contextlib import AbstractContextManager, closing, nullcontext
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -13,6 +14,7 @@ from typing import (
     TypedDict,
     cast,
 )
+from urllib.parse import urlparse
 
 from tiled.utils import UnsafeIdentifier
 
@@ -44,8 +46,17 @@ from ..structures.table import TableStructure
 from ..type_aliases import JSON
 from .array import ArrayAdapter
 
+try:
+    from opentelemetry import trace as _otel_trace
+
+    _STORAGE_TRACER = _otel_trace.get_tracer("tiled.storage")
+except ImportError:  # OpenTelemetry is an optional dependency.
+    _STORAGE_TRACER = None
+
 DIALECTS = Literal["postgresql", "sqlite", "duckdb"]
 TABLE_NAME_PATTERN = re.compile(r"^[a-z][a-z0-9_]*$")
+# What a table name read back from a catalog must look like.
+STORED_TABLE_NAME_PATTERN = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
 COLUMN_NAME_PATTERN = re.compile(r"^[a-zA-Z_].*$")
 FORBIDDEN_CHARACTERS = re.compile(
     r"""
@@ -154,6 +165,13 @@ class SQLAdapter(Adapter[TableStructure]):
         self._metadata = metadata or {}
         self._structure = structure
         self.specs = list(specs or [])
+        # Both go into SQL statements as text. The server chooses them for the
+        # data sources it creates, but a catalog may hold other values. A
+        # stored table name may have capitals, so only the characters that a
+        # quoted identifier cannot hold safely are refused.
+        is_safe_identifier(table_name, STORED_TABLE_NAME_PATTERN)
+        if not isinstance(dataset_id, int) or isinstance(dataset_id, bool):
+            raise UnsafeIdentifier(f"The dataset id {dataset_id!r} is not an integer.")
         self.table_name = table_name
         self.dataset_id = dataset_id
 
@@ -504,8 +522,35 @@ class SQLAdapter(Adapter[TableStructure]):
 
         with closing(self.storage.connect()) as conn:
             with conn.cursor() as cursor:
-                cursor.adbc_ingest(self.table_name, table, mode="append")
+                with self._adbc_ingest_span():
+                    cursor.adbc_ingest(self.table_name, table, mode="append")
             conn.commit()
+
+    def _adbc_ingest_span(self) -> AbstractContextManager[Any]:
+        """OpenTelemetry tracing span for the bulk `adbc_ingest` write.
+
+        `adbc_ingest` bypasses the DBAPI `execute()` path, so the generic
+        dbapi instrumentation does not trace it; emit a span explicitly with the
+        same db attributes as the other storage spans. A no-op if OpenTelemetry
+        is not installed or tracing is not configured.
+        """
+        if _STORAGE_TRACER is None or not os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT"):
+            return nullcontext()
+        attributes = {
+            "db.system": self.storage.dialect,
+            "db.sql.table": self.table_name,
+        }
+        db_name = urlparse(self.storage.uri).path.lstrip("/")
+        if db_name:
+            attributes["db.name"] = db_name
+        return cast(
+            AbstractContextManager[Any],
+            _STORAGE_TRACER.start_as_current_span(
+                "adbc_ingest",
+                kind=_otel_trace.SpanKind.CLIENT,
+                attributes=attributes,
+            ),
+        )
 
     def _read_full_table_or_partition(
         self, fields: list[str] | None = None, partition: int | None = None

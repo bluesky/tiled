@@ -5,7 +5,7 @@ import re
 import numcodecs
 import orjson
 import pydantic_settings
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Security
 from starlette.responses import Response
 from starlette.status import (
     HTTP_400_BAD_REQUEST,
@@ -19,6 +19,7 @@ from ..structures.core import StructureFamily
 from ..type_aliases import AccessTags, Scopes
 from ..utils import ensure_awaitable
 from .authentication import (
+    check_scopes,
     get_current_access_tags,
     get_current_principal,
     get_current_scopes,
@@ -71,6 +72,7 @@ def get_zarr_router_v2() -> APIRouter:
         authn_scopes: Scopes = Depends(get_current_scopes),
         root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
+        _=Security(check_scopes, scopes=["read:data", "read:metadata"]),
     ):
         "Return entry.metadata as Zarr attributes metadata (.zattrs)"
         entry = await get_entry(
@@ -107,6 +109,7 @@ def get_zarr_router_v2() -> APIRouter:
         authn_scopes: Scopes = Depends(get_current_scopes),
         root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
+        _=Security(check_scopes, scopes=["read:data", "read:metadata"]),
     ):
         await get_entry(
             path,
@@ -135,6 +138,7 @@ def get_zarr_router_v2() -> APIRouter:
         authn_scopes: Scopes = Depends(get_current_scopes),
         root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
+        _=Security(check_scopes, scopes=["read:data", "read:metadata"]),
     ):
         entry = await get_entry(
             path,
@@ -179,6 +183,7 @@ def get_zarr_router_v2() -> APIRouter:
         authn_scopes: Scopes = Depends(get_current_scopes),
         root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
+        _=Security(check_scopes, scopes=["read:data"]),
     ):
         # If a zarr block is requested, e.g. http://localhost:8000/zarr/v2/array/0.1.2.3,
         # extract it from last part of the path; use the remaining path to get the entry.
@@ -308,6 +313,7 @@ def get_zarr_router_v3() -> APIRouter:
         authn_scopes: Scopes = Depends(get_current_scopes),
         root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
+        _=Security(check_scopes, scopes=["read:data", "read:metadata"]),
     ):
         from zarr.dtype import parse_data_type
 
@@ -400,6 +406,7 @@ def get_zarr_router_v3() -> APIRouter:
         authn_scopes: Scopes = Depends(get_current_scopes),
         root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
+        _=Security(check_scopes, scopes=["read:data"]),
     ):
         entry = await get_entry(
             path,
@@ -491,6 +498,7 @@ def get_zarr_router_v3() -> APIRouter:
         authn_scopes: Scopes = Depends(get_current_scopes),
         root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
+        _=Security(check_scopes, scopes=["read:data"]),
     ):
         entry = await get_entry(
             path,

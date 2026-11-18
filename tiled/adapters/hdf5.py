@@ -1,13 +1,17 @@
 import builtins
 import copy
+import functools
 import itertools
 import os
+import posixpath
 import sys
+import threading
 import warnings
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator, Sequence
 from pathlib import Path
 from typing import Any
 
+import cachetools
 import dask
 import dask.array
 import h5py
@@ -39,9 +43,318 @@ HDF5_DATASET = Sentinel("HDF5_DATASET")
 HDF5_BROKEN_LINK = Sentinel("HDF5_BROKEN_LINK")
 MIN_CHUNK_SIZE = 1  # Minimum chunk size along the concatenation axis
 
+# Limits on following a virtual dataset through its sources.
+MAX_VIRTUAL_DEPTH = 16
+MAX_VIRTUAL_SOURCES = 10_000
+# Virtual datasets whose sources were checked, with the state of every file
+# that the result depends on, as it was when the file was looked at.
+FileState = tuple[int, int, int, int] | None
+_CHECKED_VIRTUAL: cachetools.LRUCache[
+    tuple[str, str, tuple[Path, ...]], list[tuple[str, FileState]]
+] = cachetools.LRUCache(maxsize=1024)
+_CHECKED_VIRTUAL_LOCK = threading.Lock()
+
+
+def _resolve_directories(directories: Sequence[str | Path]) -> tuple[Path, ...]:
+    resolved = []
+    for directory in directories:
+        try:
+            resolved.append(Path(directory).resolve())
+        except (OSError, RuntimeError):
+            continue
+    return tuple(resolved)
+
+
+def _in_directories(path: str | bytes | Path, directories: tuple[Path, ...]) -> bool:
+    "Tell whether a path, with '..' and symbolic links resolved, is in a directory."
+    try:
+        resolved = Path(os.fsdecode(path)).resolve()
+    except (OSError, RuntimeError, ValueError):
+        return False
+    return any(resolved.is_relative_to(directory) for directory in directories)
+
+
+def _file_state(path: str) -> FileState:
+    """What identifies the current content of a file, or None where there is none.
+
+    The change time is included because, unlike the modification time, it
+    cannot be set to an earlier value.
+    """
+    try:
+        stat = os.stat(path)
+    except OSError:
+        return None
+    return (stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns)
+
+
+def _files_unchanged(states: Sequence[tuple[str, FileState]]) -> bool:
+    return all(_file_state(path) == state for path, state in states)
+
+
+def _printf_name(name: str, block: int) -> str:
+    "Fill in the block number in a printf-style name of a virtual dataset source."
+    return name.replace("%%", "\0").replace("%b", str(block)).replace("\0", "%")
+
+
+def _open_source(path: str, **kwargs: Any) -> h5py.File:
+    "Open a source file of a virtual dataset, to look at what it refers to in turn."
+    return h5py.File(path, mode="r", **kwargs)
+
+
+class ReferenceGuard:
+    """Refuse HDF5 objects whose data is, or may be, outside of given directories.
+
+    An HDF5 file can make the library read other files: an external link names
+    an object in another file, a virtual dataset maps onto datasets in other
+    files, and a dataset can keep its raw data in any other file. A server that
+    serves a file it did not write follows these only into the directories it
+    is configured to read, and does not follow the last kind at all.
+
+    Parameters
+    ----------
+    filename :
+        The file that was opened.
+    directories :
+        The directories that may be read. None lifts every restriction, for
+        use on one's own files.
+    open_kwargs :
+        Passed to h5py.File when a source of a virtual dataset is opened.
+    """
+
+    def __init__(
+        self,
+        filename: str | Path,
+        directories: Sequence[str | Path] | None,
+        open_kwargs: dict[str, Any] | None = None,
+    ) -> None:
+        self.filename = os.fspath(filename)
+        self.restricted = directories is not None
+        self._directories = directories
+        self.open_kwargs = open_kwargs or {}
+
+    @functools.cached_property
+    def directories(self) -> tuple[Path, ...]:
+        # Resolved only if a file refers to another one. Most do not.
+        return _resolve_directories(self._directories or ())
+
+    def check(self, obj: Any, follow_virtual: bool = True) -> None:
+        """Raise BrokenLink unless the object may be read.
+
+        With follow_virtual=False the sources of a virtual dataset are not
+        looked at. That leaves the costly part for when the dataset is opened.
+        """
+        if not self.restricted or not isinstance(obj, (h5py.Group, h5py.Dataset)):
+            return
+        self._check(obj, self.filename, follow_virtual, depth=0, budget=[0])
+
+    def _check(
+        self,
+        obj: h5py.Group | h5py.Dataset,
+        opened: str,
+        follow_virtual: bool,
+        depth: int,
+        budget: list[int],
+        states: list[tuple[str, FileState]] | None = None,
+    ) -> None:
+        """Check one object.
+
+        states, when given, belongs to the virtual dataset through which this
+        object was reached. Every file that the result for this object depends
+        on is added to it, so that the outer result is re-checked when any
+        file below it changes.
+        """
+        # An external link was followed if the object is in another file than
+        # the one that was opened. HDF5 reports the name of the file it found.
+        home = os.fsdecode(obj.file.filename)
+        if (
+            home != opened
+            and os.path.realpath(home) != os.path.realpath(opened)
+            and not _in_directories(home, self.directories)
+        ):
+            raise BrokenLink(
+                f"{obj.name} is reached through a link to a file outside of the "
+                "storage that this server reads."
+            )
+        if not isinstance(obj, h5py.Dataset):
+            return
+        if obj.external:
+            raise BrokenLink(
+                f"The data of {obj.name} is stored in an external file, which "
+                "this server does not read."
+            )
+        if obj.is_virtual and follow_virtual:
+            key = (os.path.realpath(home), obj.name, self.directories)
+            with _CHECKED_VIRTUAL_LOCK:
+                checked = _CHECKED_VIRTUAL.get(key)
+            if checked is None or not _files_unchanged(checked):
+                checked = []
+                self._check_virtual_sources(obj, checked, depth, budget)
+                with _CHECKED_VIRTUAL_LOCK:
+                    _CHECKED_VIRTUAL[key] = checked
+            if states is not None:
+                states.extend(checked)
+
+    def _check_virtual_sources(
+        self,
+        dataset: h5py.Dataset,
+        states: list[tuple[str, FileState]],
+        depth: int,
+        budget: list[int],
+    ) -> None:
+        "Check every source of a virtual dataset. Record the files looked at."
+        if depth >= MAX_VIRTUAL_DEPTH:
+            raise BrokenLink(
+                f"The virtual dataset {dataset.name} is nested too deeply to check."
+            )
+        home = os.path.join(os.getcwd(), os.fsdecode(dataset.file.filename))
+        states.append((home, _file_state(home)))
+        for source in dataset.virtual_sources():
+            printf_style = "%b" in source.file_name or "%b" in source.dset_name
+            # A printf-style source stands for blocks 0, 1, 2, ... up to the
+            # first one that does not exist.
+            for block in itertools.count():
+                budget[0] += 1
+                if budget[0] > MAX_VIRTUAL_SOURCES:
+                    raise BrokenLink(
+                        f"The virtual dataset {dataset.name} has too many "
+                        "sources to check."
+                    )
+                found = self._check_virtual_source(
+                    dataset,
+                    home,
+                    _printf_name(source.file_name, block),
+                    _printf_name(source.dset_name, block),
+                    states,
+                    depth,
+                    budget,
+                )
+                if not (printf_style and found):
+                    break
+
+    def _check_virtual_source(
+        self,
+        dataset: h5py.Dataset,
+        home: str,
+        file_name: str,
+        dataset_name: str,
+        states: list[tuple[str, FileState]],
+        depth: int,
+        budget: list[int],
+    ) -> bool:
+        "Check one source dataset. Return False if it does not exist."
+        if file_name == ".":
+            # The source is in the same file as the virtual dataset.
+            try:
+                source = dataset.file[dataset_name]
+            except KeyError:
+                return False
+            self._check(source, home, True, depth + 1, budget, states)
+            return True
+        # HDF5 looks for the source file in several places and reads the first
+        # one it finds. Every place where a file exists must be acceptable.
+        found = False
+        for path in _virtual_source_candidates(home, file_name):
+            # The result depends on this file, also on its being absent.
+            state = _file_state(path)
+            states.append((path, state))
+            if state is None:
+                continue
+            found = True
+            if not _in_directories(path, self.directories):
+                raise BrokenLink(
+                    f"The virtual dataset {dataset.name} has a source file "
+                    "outside of the storage that this server reads."
+                )
+            try:
+                file = _open_source(path, **self.open_kwargs)
+            except OSError as err:
+                raise BrokenLink(
+                    f"A source file of the virtual dataset {dataset.name} cannot "
+                    "be opened to check it."
+                ) from err
+            with file:
+                try:
+                    source = file[dataset_name]
+                except KeyError:
+                    continue
+                self._check(source, path, True, depth + 1, budget, states)
+        return found  # If False, HDF5 uses the fill value.
+
+
+def _virtual_source_candidates(home: str, file_name: str) -> list[str]:
+    """The paths where HDF5 may look for a source file of a virtual dataset.
+
+    Given the name of the file that holds the virtual dataset, as it was
+    opened, and the name of the source file as stored in it. HDF5 tries an
+    absolute name as it is. Otherwise, and also if there is no file by the
+    absolute name, it looks for the name, or the last part of the absolute
+    name, under each prefix in HDF5_VDS_PREFIX, next to the file that holds
+    the virtual dataset, in the working directory of the process, and next to
+    the file that the name of the holding file leads to, if that name is a
+    symbolic link.
+
+    Paths are not normalized here: a `..` is resolved by the filesystem when
+    a candidate is looked up, as HDF5 resolves it, so that a link on the way
+    is followed the same.
+    """
+    cwd = os.getcwd()
+    # Where HDF5 looks for a relative name: the directory part of the name of
+    # the holding file, which it makes absolute without resolving anything.
+    home_directory = os.path.dirname(os.path.join(cwd, home))
+    candidates = []
+    if os.path.isabs(file_name) or file_name[:1] in ("/", "\\"):
+        # HDF5 counts a name that starts at a root as absolute, also on
+        # Windows, where Python requires a drive as well.
+        candidates.append(file_name)
+        file_name = os.path.basename(file_name)
+    for prefix in os.environ.get("HDF5_VDS_PREFIX", "").split(os.pathsep):
+        if not prefix:
+            continue
+        if prefix.startswith("${ORIGIN}"):
+            prefix = home_directory + prefix[len("${ORIGIN}") :]
+        candidates.append(os.path.join(prefix, file_name))
+    candidates.append(os.path.join(home_directory, file_name))
+    candidates.append(os.path.join(cwd, file_name))
+    candidates.append(os.path.join(os.path.dirname(os.path.realpath(home)), file_name))
+    return list(dict.fromkeys(candidates))
+
+
+def require_self_contained(filename: str | Path) -> None:
+    """Raise BrokenLink if an HDF5 file refers to any other file.
+
+    This is for files that another library reads, such as NetCDF-4 files,
+    where each object cannot be checked as it is opened. Such files have no
+    use for external links, virtual datasets or external raw storage. A file
+    that is not in the HDF5 format is passed.
+    """
+    if not h5py.is_hdf5(filename):
+        return
+
+    def visit(name: str, obj: Any) -> str | None:
+        if isinstance(obj, h5py.Dataset):
+            if obj.external or obj.is_virtual:
+                return str(obj.name)
+            return None
+        if not isinstance(obj, h5py.Group):
+            return None  # A committed datatype refers to no file.
+        for key in obj:
+            if isinstance(obj.get(key, getlink=True), h5py.ExternalLink):
+                return f"{obj.name.rstrip('/')}/{key}"
+        return None
+
+    with h5py.File(filename, mode="r") as file:
+        # visititems does not call the function on the root group.
+        found = visit("/", file) or file.visititems(visit)
+    if found is not None:
+        raise BrokenLink(
+            f"{found} refers to another file, which this server does not read "
+            "for this format."
+        )
+
 
 def parse_hdf5_tree(
     tree: h5py.File | h5py.Group | h5py.Dataset,
+    check: Callable[..., None] | None = None,
 ) -> dict[str, Any | Sentinel] | Sentinel:
     """Parse an HDF5 file or group into a nested dictionary structure
 
@@ -51,6 +364,9 @@ def parse_hdf5_tree(
     ----------
     tree : h5py.File or h5py.Group
         The file or group to parse
+    check : callable, optional
+        Called with each object and follow_virtual=False. An object for which it
+        raises BrokenLink is recorded as a broken link. See ReferenceGuard.
 
     Returns
     -------
@@ -63,7 +379,12 @@ def parse_hdf5_tree(
         return HDF5_DATASET
 
     for key, val in tree.items():
-        res[key] = HDF5_BROKEN_LINK if val is None else parse_hdf5_tree(val)
+        if val is not None and check is not None:
+            try:
+                check(val, follow_virtual=False)
+            except BrokenLink:
+                val = None
+        res[key] = HDF5_BROKEN_LINK if val is None else parse_hdf5_tree(val, check)
 
     return res
 
@@ -74,12 +395,47 @@ def get_hdf5_attrs(
     swmr: bool = SWMR_DEFAULT,
     libver: str = "latest",
     locking: bool | str | None = None,
+    readable_directories: Sequence[str | Path] | None = None,
 ) -> JSON:
     """Get attributes of an HDF5 dataset"""
+    d, _ = get_hdf5_attrs_and_soft_link(
+        file_uri,
+        dataset,
+        swmr=swmr,
+        libver=libver,
+        locking=locking,
+        readable_directories=readable_directories,
+    )
+    return d
+
+
+def get_hdf5_attrs_and_soft_link(
+    file_uri: str,
+    dataset: str | None = None,
+    swmr: bool = SWMR_DEFAULT,
+    libver: str = "latest",
+    locking: bool | str | None = None,
+    readable_directories: Sequence[str | Path] | None = None,
+) -> tuple[JSON, str | None]:
+    """Get attributes of an HDF5 dataset and the target of the soft link it is reached through
+
+    The target is returned relative to the group containing the link, so that it
+    still resolves when the tree is written out to a different location, e.g. by
+    an export. Soft links that are already relative are returned unchanged.
+    """
     file_path = path_from_uri(file_uri)
-    with h5open(
-        file_path, dataset=dataset, swmr=swmr, libver=libver, locking=locking
-    ) as node:
+    key = dataset.strip("/") if dataset else ""
+    opened = h5open(
+        file_path,
+        swmr=swmr,
+        libver=libver,
+        locking=locking,
+        readable_directories=readable_directories,
+    )
+    with opened as file:
+        link = file.get(key, getlink=True) if key else None
+        node = file[dataset] if dataset else file
+        opened.guard.check(node)
         d = dict(getattr(node, "attrs", {}))
         for k, v in d.items():
             if isinstance(v, h5py.Empty):
@@ -96,7 +452,12 @@ def get_hdf5_attrs(
                         break
                     except UnicodeDecodeError:
                         pass
-    return d
+    if not isinstance(link, h5py.SoftLink):
+        return d, None
+    if not link.path.startswith("/"):
+        return d, link.path
+    parent = posixpath.dirname("/" + key)
+    return d, posixpath.relpath(link.path, parent)
 
 
 class h5open(h5py.File):  # type: ignore
@@ -115,18 +476,28 @@ class h5open(h5py.File):  # type: ignore
     It also raises BrokenLink if the requested dataset does not exist in the file at all (e.g. a registered
     dataset was never written or has been removed), in which case h5py raises:
     KeyError: "Unable to synchronously open object (object 'y' doesn't exist)"
+
+    If `readable_directories` is given, it raises BrokenLink as well when the object refers to data in a file
+    outside of those directories, or keeps its raw data in an external file. See ReferenceGuard.
     """
 
     def __init__(
-        self, filename: str | Path, dataset: str | None = None, **kwargs: Any
+        self,
+        filename: str | Path,
+        dataset: str | None = None,
+        readable_directories: Sequence[str | Path] | None = None,
+        **kwargs: Any,
     ) -> None:
         super().__init__(filename, mode="r", **kwargs)
         self.dataset = dataset
+        self.guard = ReferenceGuard(filename, readable_directories, kwargs)
 
     def __enter__(self) -> h5py.File | h5py.Group | h5py.Dataset:
         super().__enter__()
         try:
-            return self[self.dataset] if self.dataset else self
+            obj = self[self.dataset] if self.dataset else self
+            self.guard.check(obj)
+            return obj
         except Exception:
             self.__exit__(*sys.exc_info())
             raise
@@ -153,7 +524,28 @@ class HDF5ArrayAdapter(ArrayAdapter):
 
     This adapter lazily loads array data from HDF5 files using Dask. Supports reading from datasets spanning
     multiple files.
+
+    Parameters
+    ----------
+    soft_link : str or bool, optional
+        The target of the soft link this dataset is reached through, relative to the
+        group that holds the link. False by default, so an export writes the data.
     """
+
+    # The catalog passes the directories of its readable storage to from_catalog as `readable_directories`.
+    accepts_readable_directories = True
+
+    def __init__(
+        self,
+        array: NDArray[Any],
+        structure: ArrayStructure,
+        *,
+        metadata: JSON | None = None,
+        specs: list[Spec] | None = None,
+        soft_link: str | bool = False,
+    ) -> None:
+        self.soft_link = soft_link
+        super().__init__(array, structure, metadata=metadata, specs=specs)
 
     @staticmethod
     def lazy_load_hdf5_array(
@@ -162,6 +554,7 @@ class HDF5ArrayAdapter(ArrayAdapter):
         swmr: bool = SWMR_DEFAULT,
         libver: str = "latest",
         locking: bool | str | None = None,
+        readable_directories: Sequence[str | Path] | None = None,
     ) -> dask.array.Array:
         """Lazily load arrays from possibly multiple HDF5 files and concatenate them along the first axis
 
@@ -179,23 +572,28 @@ class HDF5ArrayAdapter(ArrayAdapter):
             The HDF5 library version to use
         locking : bool
             Whether to use file locking when accessing the files
+        readable_directories : list, optional
+            If given, data that the files refer to in other files is read
+            only from these directories. See ReferenceGuard.
         """
+        open_kwargs: dict[str, Any] = dict(
+            swmr=swmr,
+            libver=libver,
+            locking=locking,
+            readable_directories=readable_directories,
+        )
 
         # Define helper functions for reading and getting specs of HDF5 arrays
         def _read_hdf5_array(
             fpath: str | Path, slice: tuple[builtins.slice, ...]
         ) -> NDArray:
-            with h5open(
-                fpath, dataset, swmr=swmr, libver=libver, locking=locking
-            ) as ds:
+            with h5open(fpath, dataset, **open_kwargs) as ds:
                 return ds[slice]
 
         def _get_hdf5_specs(
             fpath: str | Path,
         ) -> tuple[tuple[int, ...], tuple[int, ...], numpy.dtype]:
-            with h5open(
-                fpath, dataset, swmr=swmr, libver=libver, locking=locking
-            ) as ds:
+            with h5open(fpath, dataset, **open_kwargs) as ds:
                 result = ds.shape, ds.chunks or ds.shape, ds.dtype
             return result
 
@@ -228,9 +626,7 @@ class HDF5ArrayAdapter(ArrayAdapter):
             is_vlen_string = h5py.check_string_dtype(dtype) is not None
 
             def _read_as_bytes(fpath: str | Path) -> NDArray:
-                with h5open(
-                    fpath, dataset, swmr=swmr, libver=libver, locking=locking
-                ) as ds:
+                with h5open(fpath, dataset, **open_kwargs) as ds:
                     if is_vlen_string:
                         # Coerce vlen-string object array to fixed-length bytes
                         return numpy.asarray(ds[()], dtype=bytes)
@@ -336,6 +732,7 @@ class HDF5ArrayAdapter(ArrayAdapter):
         swmr: bool = SWMR_DEFAULT,
         libver: str = "latest",
         locking: bool | str | None = None,
+        readable_directories: Sequence[str | Path] | None = None,
     ) -> "HDF5ArrayAdapter":
         structure = data_source.structure
         assets = data_source.assets
@@ -345,7 +742,12 @@ class HDF5ArrayAdapter(ArrayAdapter):
         file_paths = [path_from_uri(uri) for uri in data_uris]
 
         array = cls.lazy_load_hdf5_array(
-            *file_paths, dataset=dataset, swmr=swmr, libver=libver, locking=locking
+            *file_paths,
+            dataset=dataset,
+            swmr=swmr,
+            libver=libver,
+            locking=locking,
+            readable_directories=readable_directories,
         )
 
         if slice:
@@ -365,18 +767,23 @@ class HDF5ArrayAdapter(ArrayAdapter):
         # array = dask.array.rechunk(array, chunks=structure.chunks)
 
         # Pull additional metadata from the file attributes
-        metadata = copy.deepcopy(node.metadata_)
-        metadata.update(
-            get_hdf5_attrs(
-                data_uris[0], dataset, swmr=swmr, libver=libver, locking=locking
-            )
+        attrs, soft_link = get_hdf5_attrs_and_soft_link(
+            data_uris[0],
+            dataset,
+            swmr=swmr,
+            libver=libver,
+            locking=locking,
+            readable_directories=readable_directories,
         )
+        metadata = copy.deepcopy(node.metadata_)
+        metadata.update(attrs)
 
         return cls(
             array,
             structure,
             metadata=metadata,
             specs=node.specs,
+            soft_link=soft_link or False,
         )
 
     @classmethod
@@ -389,11 +796,17 @@ class HDF5ArrayAdapter(ArrayAdapter):
         swmr: bool = SWMR_DEFAULT,
         libver: str = "latest",
         locking: bool | str | None = None,
+        readable_directories: Sequence[str | Path] | None = None,
     ) -> "HDF5ArrayAdapter":
         file_paths = [path_from_uri(uri) for uri in data_uris]
 
         array = cls.lazy_load_hdf5_array(
-            *file_paths, dataset=dataset, swmr=swmr, libver=libver, locking=locking
+            *file_paths,
+            dataset=dataset,
+            swmr=swmr,
+            libver=libver,
+            locking=locking,
+            readable_directories=readable_directories,
         )
 
         # Apply slice and squeeze operations, if specified
@@ -406,11 +819,16 @@ class HDF5ArrayAdapter(ArrayAdapter):
 
         # Construct the structure and pull additional metadata from the file attributes
         structure = ArrayStructure.from_array(array)
-        metadata = get_hdf5_attrs(
-            data_uris[0], dataset, swmr=swmr, libver=libver, locking=locking
+        attrs, soft_link = get_hdf5_attrs_and_soft_link(
+            data_uris[0],
+            dataset,
+            swmr=swmr,
+            libver=libver,
+            locking=locking,
+            readable_directories=readable_directories,
         )
 
-        return cls(array, structure, metadata=metadata)
+        return cls(array, structure, metadata=attrs, soft_link=soft_link or False)
 
 
 class HDF5Adapter(ContainerAdapter["HDF5Adapter | HDF5ArrayAdapter"], IndexersMixin):
@@ -446,6 +864,9 @@ class HDF5Adapter(ContainerAdapter["HDF5Adapter | HDF5ArrayAdapter"], IndexersMi
     >>> HDF5Adapter.from_uri("file://localhost/path/to/file.h5")
 
     """
+
+    # The catalog passes the directories of its readable storage to from_catalog as `readable_directories`.
+    accepts_readable_directories = True
 
     def __init__(
         self,
@@ -483,6 +904,7 @@ class HDF5Adapter(ContainerAdapter["HDF5Adapter | HDF5ArrayAdapter"], IndexersMi
         swmr: bool = SWMR_DEFAULT,
         libver: str = "latest",
         locking: bool | str | None = None,
+        readable_directories: Sequence[str | Path] | None = None,
         **kwargs: Any,  # Optional kwargs for HDF5ArrayAdapter
     ) -> "HDF5Adapter | HDF5ArrayAdapter":
         if not isinstance(dataset, str):
@@ -497,6 +919,7 @@ class HDF5Adapter(ContainerAdapter["HDF5Adapter | HDF5ArrayAdapter"], IndexersMi
                 swmr=swmr,
                 libver=libver,
                 locking=locking,
+                readable_directories=readable_directories,
                 **kwargs,
             )
 
@@ -509,10 +932,16 @@ class HDF5Adapter(ContainerAdapter["HDF5Adapter | HDF5ArrayAdapter"], IndexersMi
             ast.data_uri for ast in assets if ast.parameter == "data_uris"
         ] or [assets[0].data_uri]
         file_path = path_from_uri(data_uris[0])
-        with h5open(
-            file_path, dataset, swmr=swmr, libver=libver, locking=locking
-        ) as file:
-            tree = parse_hdf5_tree(file)
+        opened = h5open(
+            file_path,
+            dataset,
+            swmr=swmr,
+            libver=libver,
+            locking=locking,
+            readable_directories=readable_directories,
+        )
+        with opened as file:
+            tree = parse_hdf5_tree(file, opened.guard.check)
 
         if tree == HDF5_DATASET:
             raise ValueError(
@@ -529,6 +958,7 @@ class HDF5Adapter(ContainerAdapter["HDF5Adapter | HDF5ArrayAdapter"], IndexersMi
             swmr=swmr,
             libver=libver,
             locking=locking,
+            readable_directories=readable_directories,
         )
 
     @classmethod
@@ -539,11 +969,20 @@ class HDF5Adapter(ContainerAdapter["HDF5Adapter | HDF5ArrayAdapter"], IndexersMi
         swmr: bool = SWMR_DEFAULT,
         libver: str = "latest",
         locking: bool | str | None = None,
+        readable_directories: Sequence[str | Path] | None = None,
         **kwargs: Any,  # Optional kwargs for HDF5ArrayAdapter
     ) -> "HDF5Adapter | HDF5ArrayAdapter":
         fpath = path_from_uri(data_uris[0])
-        with h5open(fpath, dataset, swmr=swmr, libver=libver, locking=locking) as file:
-            tree = parse_hdf5_tree(file)
+        opened = h5open(
+            fpath,
+            dataset,
+            swmr=swmr,
+            libver=libver,
+            locking=locking,
+            readable_directories=readable_directories,
+        )
+        with opened as file:
+            tree = parse_hdf5_tree(file, opened.guard.check)
 
         if tree == HDF5_DATASET:
             return HDF5ArrayAdapter.from_uris(
@@ -552,18 +991,29 @@ class HDF5Adapter(ContainerAdapter["HDF5Adapter | HDF5ArrayAdapter"], IndexersMi
                 swmr=swmr,
                 libver=libver,
                 locking=locking,
+                readable_directories=readable_directories,
                 **kwargs,
             )
 
         return cls(
-            tree, *data_uris, dataset=dataset, swmr=swmr, libver=libver, locking=locking
+            tree,
+            *data_uris,
+            dataset=dataset,
+            swmr=swmr,
+            libver=libver,
+            locking=locking,
+            readable_directories=readable_directories,
         )
 
     def __repr__(self) -> str:
         return node_repr(self, list(self))
 
     def metadata(self) -> JSON:
-        d = get_hdf5_attrs(self.uris[0], self.dataset)
+        d = get_hdf5_attrs(
+            self.uris[0],
+            self.dataset,
+            readable_directories=self._kwargs.get("readable_directories"),
+        )
         return {**d, **super().metadata()}
 
     def __iter__(self) -> Iterator[Any]:

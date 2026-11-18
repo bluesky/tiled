@@ -4,7 +4,7 @@ import os
 from abc import abstractmethod
 from collections import defaultdict
 from collections.abc import Iterator, Mapping
-from pathlib import Path
+from pathlib import Path, PurePath
 from typing import (
     TYPE_CHECKING,
     Literal,
@@ -14,7 +14,13 @@ from urllib.parse import quote, unquote, urlparse, urlunparse
 
 import sqlalchemy.pool
 
-from .utils import ensure_uri, path_from_uri, sanitize_uri
+from .utils import (
+    UnsafePath,
+    ensure_uri,
+    is_safe_path_segment,
+    path_from_uri,
+    sanitize_uri,
+)
 
 if TYPE_CHECKING:
     import adbc_driver_manager.dbapi
@@ -41,6 +47,10 @@ __all__ = [
 SUPPORTED_OBJECT_URI_SCHEMES = {"http", "https"}  # TODO: Add "s3", "gs", "azure", "az"
 
 POSTGRESQL_SCHEMES = frozenset({"postgresql", "postgres"})
+
+# URI schemes of tabular storage databases. The Asset of a data source stored
+# in one is the database itself, shared by every such data source.
+SQL_STORAGE_SCHEMES = frozenset({"postgresql", "sqlite", "duckdb"})
 
 # libpq connection parameters that determine *which* server and database a
 # connection reaches. Any other query parameter (connect_timeout, sslmode,
@@ -336,7 +346,7 @@ class SQLStorage(Storage):
     def _connection_pool(self) -> "sqlalchemy.pool.QueuePool":
         from .server.metrics import monitor_db_pool
 
-        creator = self._adbc_connection.adbc_clone
+        creator = self._instrument_adbc_creator(self._adbc_connection.adbc_clone)
         if (self.dialect == "duckdb") or (":memory:" in self.uri):
             pool = sqlalchemy.pool.StaticPool(creator)
         else:
@@ -346,6 +356,45 @@ class SQLStorage(Storage):
             monitor_db_pool(pool, self.uri)
 
         return pool
+
+    def _instrument_adbc_creator(self, creator):
+        """Wrap the ADBC connection factory to emit OpenTelemetry spans for its queries.
+
+        The storage database is accessed via ADBC, which the asyncpg instrumentation does
+        not cover, so its queries would otherwise be invisible in traces. A no-op if tracing
+        is off or the optional dbapi instrumentation is not installed.
+        """
+        if not os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT"):
+            return creator
+        try:
+            from opentelemetry.instrumentation.dbapi import instrument_connection
+        except ImportError:
+            return creator
+
+        dialect = self.dialect
+        # Report the database name as `db.name`, so the storage database appears as
+        # its own node in the service graph. ADBC follows the SQL standard naming,
+        # where a "catalog" is a database (and a "schema" is a namespace inside it),
+        # so on Postgres `adbc_current_catalog` is e.g. "tiled_storage". This has
+        # nothing to do with Tiled's catalog. Not every driver implements it (DuckDB
+        # raises), and the instrumentation only tolerates a missing attribute, not
+        # an error, so check once and leave `db.name` unset if it fails.
+        try:
+            self._adbc_connection.adbc_current_catalog
+        except Exception:
+            connection_attributes = {}
+        else:
+            connection_attributes = {"database": "adbc_current_catalog"}
+
+        def instrumented_creator():
+            return instrument_connection(
+                "tiled.storage",
+                creator(),
+                dialect,
+                connection_attributes=connection_attributes,
+            )
+
+        return instrumented_creator
 
     def connect(self) -> "adbc_driver_manager.dbapi.Connection":
         "Get a connection from the pool."
@@ -486,7 +535,7 @@ def _parse_storage(
             result = RemoteSQLStorage(
                 item, pool_size=pool_size, max_overflow=max_overflow
             )
-        elif scheme in {"sqlite", "duckdb"}:
+        elif scheme in SQL_STORAGE_SCHEMES:
             result = EmbeddedSQLStorage(
                 item, pool_size=pool_size, max_overflow=max_overflow
             )
@@ -693,16 +742,35 @@ class DirectoryContainer(Mapping[str, bytes]):
     def __init__(self, directory: Path):
         self.directory = directory
 
+    @staticmethod
+    def validate_key(key: str) -> None:
+        """
+        Raise UnsafePath unless the key can be the name of a file.
+
+        Keys come from forms and uploads that a client supplies. Each one must
+        name a file directly in the directory, and nothing else.
+        """
+        # On Windows, the comparison with the name also catches a drive ("C:x").
+        if not is_safe_path_segment(key) or PurePath(key).name != key:
+            raise UnsafePath(
+                f"The buffer key {key!r} cannot be used as a file name. It must "
+                "not be '.' or '..' or contain a path separator."
+            )
+
+    def _path(self, key: str) -> Path:
+        self.validate_key(key)
+        return self.directory / key
+
     def __getitem__(self, key: str) -> bytes:
-        with open(self.directory / key, "rb") as file:
+        with open(self._path(key), "rb") as file:
             return file.read()
 
     def __setitem__(self, key: str, value: bytes) -> None:
-        with open(self.directory / key, "wb") as file:
+        with open(self._path(key), "wb") as file:
             file.write(value)
 
     def __delitem__(self, key: str) -> None:
-        (self.directory / key).unlink(missing_ok=True)
+        self._path(key).unlink(missing_ok=True)
 
     def __iter__(self) -> Iterator[str]:
         yield from (p.name for p in self.directory.iterdir())

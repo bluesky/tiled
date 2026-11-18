@@ -26,6 +26,8 @@ import anyio
 from fastapi import HTTPException
 from sqlalchemy import (
     Integer,
+    Text,
+    and_,
     any_,
     delete,
     exists,
@@ -50,6 +52,7 @@ from sqlalchemy.sql.sqltypes import MatchType
 from starlette.status import (
     HTTP_403_FORBIDDEN,
     HTTP_404_NOT_FOUND,
+    HTTP_405_METHOD_NOT_ALLOWED,
     HTTP_415_UNSUPPORTED_MEDIA_TYPE,
 )
 
@@ -60,6 +63,7 @@ from tiled.queries import (
     Eq,
     FullText,
     In,
+    KeyLike,
     KeyPresent,
     KeysFilter,
     Like,
@@ -102,6 +106,7 @@ from ..server.settings import DatabaseSettings
 from ..server.streaming import StreamingCache
 from ..server.webhooks import WebhookDispatcher
 from ..storage import (
+    SQL_STORAGE_SCHEMES,
     SUPPORTED_OBJECT_URI_SCHEMES,
     FileStorage,
     ObjectStorage,
@@ -112,16 +117,19 @@ from ..storage import (
     parse_storage,
     register_storage,
     release_storage,
+    storage_registry_key,
 )
 from ..structures.core import Spec, StructureFamily
 from ..utils import (
     UNCHANGED,
     Conflicts,
     OneShotCachedMap,
+    UnsafePath,
     UnsupportedQueryType,
     ensure_awaitable,
     ensure_specified_sql_driver,
     import_object,
+    is_safe_key,
     path_from_uri,
 )
 from . import orm
@@ -129,7 +137,7 @@ from .core import (
     check_catalog_database,
     initialize_catalog_database,
     initialize_database,
-    register_principal_tag_rows,
+    register_tag_rows,
     resolve_access_tag_ids,
 )
 from .explain import ExplainAsyncSession
@@ -140,6 +148,47 @@ if TYPE_CHECKING:
     from ..ndslice import NDBlock
 
 logger = logging.getLogger(__name__)
+
+
+def file_uris_outside_directories(data_uris, directories):
+    """Return the `file://` URIs that do not lead into one of the directories.
+
+    Paths are compared after resolving `..` and symbolic links, in the URIs
+    and in the directories alike. This reads the filesystem.
+    """
+    resolved_directories = []
+    for directory in directories:
+        try:
+            resolved_directories.append(Path(directory).resolve())
+        except (OSError, RuntimeError):
+            continue
+    resolved_parents = {}
+    outside = []
+    for data_uri in data_uris:
+        if urlparse(data_uri).scheme != "file":
+            continue  # not a path
+        try:
+            path = path_from_uri(data_uri)
+            if path.name in ("", ".", ".."):
+                resolved = path.resolve()
+            else:
+                # The files of one data source tend to share a directory.
+                # Resolve it once, then look at each file only for a link.
+                if path.parent not in resolved_parents:
+                    resolved_parents[path.parent] = path.parent.resolve()
+                resolved = resolved_parents[path.parent] / path.name
+                if resolved.is_symlink():
+                    resolved = resolved.resolve()
+        except (OSError, RuntimeError, ValueError):
+            # For example a loop of symbolic links, or a null byte.
+            outside.append(data_uri)
+            continue
+        if not any(
+            resolved.is_relative_to(directory) for directory in resolved_directories
+        ):
+            outside.append(data_uri)
+    return outside
+
 
 # When a read fails because the catalog structure shape is ahead of the data
 # actually present in storage, treat it as a transient "not ready"
@@ -239,7 +288,7 @@ async def _resolve_access_tags(db, access_tag_names):
     Principal tags are slightly different: these need to exist at write,
     possibly before the access tags compiler has been able to create them.
     """
-    await register_principal_tag_rows(await db.connection(), access_tag_names)
+    await register_tag_rows(await db.connection(), access_tag_names)
     tag_rows = (
         (
             await db.execute(
@@ -580,6 +629,8 @@ class CatalogNodeAdapter:
             asset = (await db.execute(statement)).scalar()
         if asset is None:
             return None  # no match
+        # The caller serves the bytes of the asset, or lists its contents.
+        await self._require_readable([asset.data_uri])
         return Asset.from_orm(asset)
 
     def structure(self):
@@ -732,26 +783,164 @@ class CatalogNodeAdapter:
 
         return STRUCTURES[node.structure_family](self.context, node)
 
-    def _ensure_uri_within_readable_storage(self, data_uri):
-        """Raise if a `file://` data URI lies outside every readable storage area.
+    async def _require_readable(self, data_uris):
+        """Respond with 403 unless every URI is in readable storage.
 
-        Protects against misbehaving clients (or registrations) that would read
-        from unintended parts of the filesystem: a ``file`` URI is served only
-        when it resolves under one of the server's readable `FileStorage` roots.
-        Non-`file` schemes are not path-scoped and pass through unchecked.
+        External data is served only from the storage that the server is
+        configured to read. A `file://` path is judged by where it leads, with
+        `..` and symbolic links resolved, so that a path written to look as if
+        it were inside a readable directory is not accepted. An object storage
+        URI must be in a bucket of the readable object storage, and a database
+        URI must name a database of the readable SQL storage. A URI with any
+        other scheme, or with none, is refused: an adapter would read it as a
+        path or fetch it from the network.
         """
-        if urlparse(data_uri).scheme != "file":
-            return
-        asset_path = path_from_uri(data_uri)
+        file_uris = []
+        outside = []
+        buckets = set()
+        databases = set()
         for storage in self.context.readable_storage.values():
-            if not isinstance(storage, FileStorage):
-                continue
-            if Path(os.path.commonpath([storage.path, asset_path])) == storage.path:
-                return
-        raise RuntimeError(
-            f"Refusing to serve {data_uri} because it is outside "
-            "the readable storage area for this server."
+            if isinstance(storage, ObjectStorage):
+                buckets.add(storage.uri)
+            elif isinstance(storage, SQLStorage):
+                databases.add(storage_registry_key(storage.uri))
+        for data_uri in data_uris:
+            scheme = urlparse(data_uri).scheme
+            if scheme == "file":
+                file_uris.append(data_uri)
+            elif scheme in SUPPORTED_OBJECT_URI_SCHEMES:
+                if ObjectStorage.parse_blob_uri(data_uri)[0] not in buckets:
+                    outside.append(data_uri)
+            elif scheme in SQL_STORAGE_SCHEMES:
+                if storage_registry_key(data_uri) not in databases:
+                    outside.append(data_uri)
+            else:
+                outside.append(data_uri)
+        if file_uris:
+            roots = [
+                storage.path
+                for storage in self.context.readable_storage.values()
+                if isinstance(storage, FileStorage)
+            ]
+            # Resolving paths reads the filesystem.
+            outside.extend(
+                await anyio.to_thread.run_sync(
+                    file_uris_outside_directories, file_uris, roots
+                )
+            )
+        if outside:
+            for data_uri in outside:
+                logger.warning(
+                    "Refusing %s because it is outside the readable storage "
+                    "of this server.",
+                    data_uri,
+                )
+            raise HTTPException(
+                status_code=HTTP_403_FORBIDDEN,
+                detail=(
+                    "This server is not configured to read from the location "
+                    "of this data."
+                ),
+            )
+
+    def _require_managed_data(self):
+        """Respond with 405 if the data of this node is externally managed.
+
+        External data is registered to be read. This server did not write it,
+        may not be the only one that reads it, and does not change it.
+        """
+        for data_source in self.node.data_sources or []:
+            if data_source.management == Management.external:
+                raise HTTPException(
+                    status_code=HTTP_405_METHOD_NOT_ALLOWED,
+                    detail=(
+                        "The data of this node is externally managed. It cannot "
+                        "be written through this server."
+                    ),
+                )
+
+    def _require_location_is_external(self, data_source):
+        """Respond with 403 if a client names the location of managed data.
+
+        A client that registers data says where the data is. The server only
+        reads such a location: it does not write there, and it does not remove
+        what is there when the node is deleted. That holds as long as every
+        data source that was given a location is externally managed.
+        """
+        if data_source.assets and data_source.management != Management.external:
+            raise HTTPException(
+                status_code=HTTP_403_FORBIDDEN,
+                detail=(
+                    "A data source that names the location of its data must be "
+                    "externally managed."
+                ),
+            )
+
+    def _require_external_is_not_in_sql_storage(self, data_source):
+        """Respond with 403 for externally managed data in SQL storage.
+
+        The server writes the tables in SQL storage, many to a database, and
+        records for each one which rows are its own. If a client could register
+        a table there, it would choose those rows itself. For the same reason
+        an external asset cannot be a database: its URI also names a path, and
+        would let a file be read from outside of readable storage.
+        """
+        if data_source.management != Management.external:
+            return
+        adapter_cls = self.context.adapters_by_mimetype.get(data_source.mimetype)
+        in_sql_storage = adapter_cls is not None and any(
+            issubclass(storage_cls, SQLStorage)
+            for storage_cls in getattr(adapter_cls, "supported_storage", set)()
         )
+        if in_sql_storage or any(
+            urlparse(asset.data_uri).scheme in SQL_STORAGE_SCHEMES
+            for asset in data_source.assets
+        ):
+            raise HTTPException(
+                status_code=HTTP_403_FORBIDDEN,
+                detail=(
+                    "Data in SQL storage is managed by this server. It cannot "
+                    "be registered or read as externally managed data."
+                ),
+            )
+
+    def _delete_managed_asset(self, data_uri, **kwargs):
+        """Remove data that this server stored, and nothing else.
+
+        A file or directory is removed only from writable storage. A catalog
+        may hold an internally managed data source at another location.
+        """
+        if urlparse(data_uri).scheme == "file":
+            writable = [
+                storage.path
+                for storage in self.context.writable_storage.values()
+                if isinstance(storage, FileStorage)
+            ]
+            if file_uris_outside_directories([data_uri], writable):
+                logger.warning(
+                    "Not removing %s because it is outside the writable storage "
+                    "of this server.",
+                    data_uri,
+                )
+                return
+        delete_physical_asset(data_uri, **kwargs)
+
+    def _adapter_parameters(self, adapter_cls, data_source):
+        """The keyword arguments for building an adapter from a data source.
+
+        The parameters of the data source come from whoever registered it. An
+        adapter for a format in which a file can refer to other files is also
+        told which directories this server reads, so that it follows such
+        references no further. That value is set here and never by a client.
+        """
+        parameters = dict(data_source.parameters)
+        if getattr(adapter_cls, "accepts_readable_directories", False):
+            parameters["readable_directories"] = [
+                storage.path
+                for storage in self.context.readable_storage.values()
+                if isinstance(storage, FileStorage)
+            ]
+        return parameters
 
     async def get_adapter(self):
         (data_source,) = await self.data_sources(include_assets=True)
@@ -761,16 +950,16 @@ class CatalogNodeAdapter:
             raise RuntimeError(
                 f"Server configuration has no adapter for mimetype {data_source.mimetype!r}"
             )
-        for asset in data_source.assets:
-            if asset.parameter is None:
-                continue
-            self._ensure_uri_within_readable_storage(asset.data_uri)
+        self._require_external_is_not_in_sql_storage(data_source)
+        # Every asset, also those not passed to the adapter: some adapters open
+        # the first asset of the data source whatever its parameter.
+        await self._require_readable(asset.data_uri for asset in data_source.assets)
         adapter = await anyio.to_thread.run_sync(
             partial(
                 adapter_cls.from_catalog,
                 data_source,
                 self.node,
-                **data_source.parameters,
+                **self._adapter_parameters(adapter_cls, data_source),
             ),
         )
         for query in self.queries:
@@ -831,6 +1020,7 @@ class CatalogNodeAdapter:
         # Data source meta only (no assets); the structure is enough (with the
         # file count) to compute the file geometry.
         data_source = DataSource.from_orm(ds, include_assets=False)
+        self._require_external_is_not_in_sql_storage(data_source)
         structure = data_source.structure
 
         # A block read's file selection depends ONLY on the block: read_block
@@ -910,15 +1100,20 @@ class CatalogNodeAdapter:
         # Build a fixed-length URI list populated with only the assets this read needs
         # (the rest left as None). Stacking rank == num - offset (contiguous run,
         # guaranteed by the precheck above), so it indexes directly into the list.
+        await self._require_readable(data_uri for _, data_uri in uri_rows)
         data_uris = [None] * n
         for num, data_uri in uri_rows:
-            self._ensure_uri_within_readable_storage(data_uri)
             data_uris[num - offset] = data_uri
 
         # One entry point for both eager and lazy: pass the partially-populated
         # URI list as the `data_uris` kwarg. `from_catalog` derives metadata/specs.
         return adapter_cls.from_catalog(
-            data_source, self.node, **{**data_source.parameters, "data_uris": data_uris}
+            data_source,
+            self.node,
+            **{
+                **self._adapter_parameters(adapter_cls, data_source),
+                "data_uris": data_uris,
+            },
         )
 
     def new_variation(
@@ -1145,7 +1340,20 @@ class CatalogNodeAdapter:
         access_tags = normalize_access_tags(access_tags or [])
         key = key or self.context.key_maker()
         data_sources = data_sources or []
+        for data_source in data_sources:
+            self._require_location_is_external(data_source)
+            self._require_external_is_not_in_sql_storage(data_source)
         child_path = list(await self.path_segments()) + [key]
+        # Keys become URL path segments and, for writable data, URL-quoted
+        # directory names under the storage root. The ancestors are checked
+        # too: a catalog may hold such a key.
+        for segment in child_path:
+            if not is_safe_key(segment):
+                raise UnsafePath(
+                    f"The key {segment!r} in the path /{'/'.join(child_path)} "
+                    "cannot be used. A key must not be '.' or '..' or contain "
+                    "'/'."
+                )
 
         node = orm.Node(
             key=key,
@@ -1283,7 +1491,7 @@ class CatalogNodeAdapter:
 
                 # Notify subscribers of the *parent* node about the new child.
                 sequence = await self.context.streaming_cache.incr_seq(self.node.id)
-                metadata = {
+                message = {
                     "type": "container-child-created",
                     "sequence": sequence,
                     "timestamp": datetime.now().isoformat(),
@@ -1298,7 +1506,7 @@ class CatalogNodeAdapter:
 
                 # Cache data in Redis with a TTL, and publish
                 # a notification about it.
-                await self.context.streaming_cache.set(self.node.id, sequence, metadata)
+                await self.context.streaming_cache.set(self.node.id, sequence, message)
             if self.context.webhook_dispatcher:
                 await self.context.webhook_dispatcher.dispatch(
                     ContainerChildCreatedEvent(
@@ -1314,6 +1522,8 @@ class CatalogNodeAdapter:
             return type(self)(self.context, refreshed_node)
 
     async def _put_asset(self, db: AsyncSession, asset):
+        # The location comes from the client when it registers external data.
+        await self._require_readable([asset.data_uri])
         # Find an asset_id if it exists, otherwise create a new one.
         statement = select(orm.Asset.id, orm.Asset.size).where(
             orm.Asset.data_uri == asset.data_uri
@@ -1346,6 +1556,14 @@ class CatalogNodeAdapter:
         return asset_id
 
     async def put_data_source(self, data_source, patch):
+        # The location and parameters of a data source that this server
+        # manages are its own. A client can change only what it registered.
+        if data_source.management != Management.external:
+            raise HTTPException(
+                status_code=HTTP_403_FORBIDDEN,
+                detail="Only an externally managed data source can be updated.",
+            )
+        self._require_external_is_not_in_sql_storage(data_source)
         # Obtain and hash the canonical (RFC 8785) representation of
         # the JSON structure.
         structure = _prepare_structure(
@@ -1371,12 +1589,19 @@ class CatalogNodeAdapter:
             result = await db.execute(
                 update(orm.DataSource)
                 .where(orm.DataSource.id == data_source.id)
+                # The id comes from the client. It must be a data source of
+                # this node, which is the node the client may change.
+                .where(orm.DataSource.node_id == self.node.id)
+                .where(orm.DataSource.management == Management.external)
                 .values(**values)
             )
             if result.rowcount == 0:
                 raise HTTPException(
                     status_code=404,
-                    detail=f"No data_source {data_source.id} on this node.",
+                    detail=(
+                        f"No externally managed data_source {data_source.id} "
+                        "on this node."
+                    ),
                 )
             # Add assets and associate them with the data_source
             for asset in data_source.assets:
@@ -1562,12 +1787,16 @@ class CatalogNodeAdapter:
                     orm.Asset.id == orm.DataSourceAssetAssociation.asset_id,
                 )
                 .where(orm.NodesClosure.ancestor == self.node.id)
+                # The rows of a table are the server's to remove only if the
+                # server wrote them.
+                .where(orm.DataSource.management != Management.external)
                 # Select only data sources related to storage DBs
                 .where(
                     or_(
-                        orm.Asset.data_uri.startswith("postgresql"),
-                        orm.Asset.data_uri.startswith("sqlite"),
-                        orm.Asset.data_uri.startswith("duckdb"),
+                        *(
+                            orm.Asset.data_uri.startswith(scheme)
+                            for scheme in SQL_STORAGE_SCHEMES
+                        )
                     )
                 )
                 .distinct()
@@ -1680,10 +1909,10 @@ class CatalogNodeAdapter:
         # Delete assets backed by files and blobs written by Tiled
         for asset_id, data_uri, is_directory, management in deleted_asset_records:
             if management != Management.external:
-                delete_physical_asset(data_uri, is_directory=is_directory)
+                self._delete_managed_asset(data_uri, is_directory=is_directory)
         # Delete storage database entries (management == writable, always)
         for asset_id, data_uri, table_name, dataset_id in deleted_from_storage:
-            delete_physical_asset(
+            self._delete_managed_asset(
                 data_uri, table_name=table_name, dataset_id=dataset_id
             )
 
@@ -1696,13 +1925,17 @@ class CatalogNodeAdapter:
         the given `asset_id` are removed. If, afterward, the Asset is no longer
         referenced by any DataSource (belonging to any Node), the Asset record
         is deleted; and, if it is internally managed, the underlying data (file,
-        directory, object, or storage-database rows) is deleted as well.
+        directory, or object) is deleted as well.
 
         If the Asset is still referenced by other Nodes/DataSources, only the
         association with this Node is removed; the Asset record and its
         underlying data are retained.
 
         Externally managed Assets are never physically deleted, even if unreferenced.
+
+        The Asset of an SQL-backed table is the storage database itself, shared by all
+        such tables; it cannot be deleted for one node (raises `Conflicts`).
+        Delete the node to remove its rows.
 
         Parameters
         ----------
@@ -1724,14 +1957,15 @@ class CatalogNodeAdapter:
                 select(
                     orm.DataSourceAssetAssociation.data_source_id,
                     orm.DataSource.management,
-                    # keep only table_name and dataset_id from parameters
-                    orm.DataSource.parameters["table_name"].label("table_name"),
-                    orm.DataSource.parameters["dataset_id"].label("dataset_id"),
+                    orm.Asset.data_uri,
                 )
                 .select_from(orm.DataSourceAssetAssociation)
                 .join(
                     orm.DataSource,
                     orm.DataSource.id == orm.DataSourceAssetAssociation.data_source_id,
+                )
+                .join(
+                    orm.Asset, orm.Asset.id == orm.DataSourceAssetAssociation.asset_id
                 )
                 .where(orm.DataSource.node_id == self.node.id)
                 .where(orm.DataSourceAssetAssociation.asset_id == asset_id)
@@ -1739,7 +1973,19 @@ class CatalogNodeAdapter:
             rows = (await db.execute(info_stmt)).all()
             if not rows:
                 return None  # This Node has no such Asset.
-            table_name, dataset_id = rows[0].table_name, rows[0].dataset_id
+
+            # For a SQL-backed table, the Asset is the storage database, shared
+            # by every such table on this server, and the node's data are rows
+            # in one of its tables. Dissociating the node from the database is
+            # not a meaningful operation: the Asset stays (other nodes use it),
+            # and the rows would be left behind with nothing referring to them.
+            # Deleting the node removes the rows, instead.
+            if urlparse(rows[0].data_uri).scheme in SQL_STORAGE_SCHEMES:
+                raise Conflicts(
+                    "This asset is the storage database shared by all SQL-backed "
+                    "tables on this server, so it cannot be deleted for one node. "
+                    "Delete the node instead to remove its data."
+                )
 
             # Safety check: refuse to delete internally-managed data unless the
             # caller explicitly opts in. Treat the Asset as internally managed
@@ -1791,13 +2037,7 @@ class CatalogNodeAdapter:
         if asset_deleted and is_internal:
             data_uri, is_directory = deleted
             await anyio.to_thread.run_sync(
-                partial(
-                    delete_physical_asset,
-                    data_uri,
-                    is_directory=is_directory,
-                    table_name=table_name,
-                    dataset_id=dataset_id,
-                )
+                partial(self._delete_managed_asset, data_uri, is_directory=is_directory)
             )
             data_deleted = True
 
@@ -1881,7 +2121,7 @@ class CatalogNodeAdapter:
             # Upon successful update, inform websocket subscribers through redis
             if self.context.streaming_cache:
                 sequence = await self.context.streaming_cache.incr_seq(self.node.parent)
-                metadata = {
+                message = {
                     "type": "container-child-metadata-updated",
                     "key": self.node.key,
                     "sequence": sequence,
@@ -1890,9 +2130,9 @@ class CatalogNodeAdapter:
                     "metadata": metadata,
                 }
                 if not drop_revision:
-                    metadata["revision_number"] = next_revision_number
+                    message["revision_number"] = next_revision_number
                 await self.context.streaming_cache.set(
-                    self.node.parent, sequence, metadata
+                    self.node.parent, sequence, message
                 )
             if self.context.webhook_dispatcher:
                 segments = list(await self.path_segments())
@@ -2295,6 +2535,8 @@ class CatalogArrayAdapter(CatalogNodeAdapter):
         }
 
     async def write(self, media_type, deserializer, entry, body, persist=True):
+        if persist:
+            self._require_managed_data()
         shape = entry.structure().shape
         if self.context.streaming_cache:
             await self._stream(media_type, entry, body, shape)
@@ -2314,6 +2556,8 @@ class CatalogArrayAdapter(CatalogNodeAdapter):
     async def write_block(
         self, block, media_type, deserializer, entry, body, persist=True
     ):
+        if persist:
+            self._require_managed_data()
         shape = block.shape_from_chunks(entry.structure().chunks)
         if self.context.streaming_cache:
             await self._stream(media_type, entry, body, shape, block=block)
@@ -2333,6 +2577,8 @@ class CatalogArrayAdapter(CatalogNodeAdapter):
     async def patch(
         self, shape, offset, extend, media_type, deserializer, entry, body, persist=True
     ):
+        if persist:
+            self._require_managed_data()
         if self.context.streaming_cache:
             await self._stream(media_type, entry, body, shape, offset=offset)
         if not persist:
@@ -2380,6 +2626,7 @@ class CatalogAwkwardAdapter(CatalogNodeAdapter):
         )
 
     async def write(self, *args, **kwargs):
+        self._require_managed_data()
         return await ensure_awaitable((await self.get_adapter()).write, *args, **kwargs)
 
 
@@ -2417,6 +2664,8 @@ class CatalogRaggedAdapter(CatalogArrayAdapter):
     async def write_block(
         self, block, media_type, deserializer, entry, body, persist=True
     ):
+        if persist:
+            self._require_managed_data()
         # Unlike regular arrays, ragged structures have variable-length
         # dimensions (None) so we cannot compute a per-block shape via
         # block.shape_from_chunks(). Stream the full structure shape instead.
@@ -2434,6 +2683,8 @@ class CatalogRaggedAdapter(CatalogArrayAdapter):
     async def patch(
         self, shape, offset, extend, media_type, deserializer, entry, body, persist=True
     ):
+        if persist:
+            self._require_managed_data()
         if self.context.streaming_cache:
             await self._stream(media_type, entry, body, shape, offset=offset)
         if not persist:
@@ -2509,6 +2760,7 @@ class CatalogTableAdapter(CatalogNodeAdapter):
         return await ensure_awaitable((await self.get_adapter()).read, *args, **kwargs)
 
     async def write(self, media_type, deserializer, entry, body):
+        self._require_managed_data()
         if self.context.streaming_cache:
             await self._stream(media_type, entry, body, None, False)
         data = await ensure_awaitable(deserializer, body)
@@ -2520,6 +2772,7 @@ class CatalogTableAdapter(CatalogNodeAdapter):
         )
 
     async def write_partition(self, media_type, deserializer, entry, body, partition):
+        self._require_managed_data()
         if self.context.streaming_cache:
             await self._stream(media_type, entry, body, partition, False)
         data = await ensure_awaitable(deserializer, body)
@@ -2528,6 +2781,7 @@ class CatalogTableAdapter(CatalogNodeAdapter):
         )
 
     async def append_partition(self, media_type, deserializer, entry, body, partition):
+        self._require_managed_data()
         if self.context.streaming_cache:
             await self._stream(media_type, entry, body, partition, True)
         data = await ensure_awaitable(deserializer, body)
@@ -2546,7 +2800,7 @@ def delete_physical_asset(
             shutil.rmtree(path)
         else:
             Path(path).unlink()
-    elif url.scheme in {"duckdb", "sqlite", "postgresql"}:
+    elif url.scheme in SQL_STORAGE_SCHEMES:
         if (table_name is not None) and (dataset_id is not None):
             storage = cast(SQLStorage, get_storage(data_uri))
             with closing(storage.connect()) as conn:
@@ -2655,6 +2909,18 @@ def _get_value(value, type):
     return getattr(value, _TYPE_CONVERSION_MAP[type])()
 
 
+def _sqlite_json_value(attr):
+    """The JSON value at a path, as SQLite's JSON_EXTRACT returns it.
+
+    JSON_EXTRACT returns SQL values of the JSON value's own type, so comparing
+    them with a query value matches on type as well (0 does not equal '0').
+    The as_*() accessors cannot be used for this: from SQLAlchemy 2.1 they
+    render CAST(JSON_EXTRACT(...) AS <type>) on SQLite, which converts the
+    stored value to the query value's type before comparing.
+    """
+    return func.json_extract(attr.left, attr.right)
+
+
 def _prepare_structure(structure_family, structure):
     "Convert from pydantic model to dict."
     if structure is None:
@@ -2669,7 +2935,12 @@ def binary_op(query, tree, operation):
     keys = query.key.split(".")
     attr = orm.Node.metadata_[keys]
     if dialect_name == "sqlite":
-        condition = operation(_get_value(attr, type(query.value)), query.value)
+        if query.value is None and operation in (operator.eq, operator.ne):
+            # JSON_EXTRACT gives SQL NULL both for a JSON null and for a missing
+            # key; JSON_TYPE tells them apart ('null' vs SQL NULL).
+            condition = operation(func.json_type(attr.left, attr.right), "null")
+        else:
+            condition = operation(_sqlite_json_value(attr), query.value)
     # specific case where GIN optomized index can be used to speed up POSTGRES equals queries
     elif (dialect_name == "postgresql") and (operation == operator.eq):
         condition = orm.Node.metadata_.op("@>")(
@@ -2709,7 +2980,8 @@ def contains(query, tree):
 def full_text(query, tree):
     dialect_name = tree.context.engine.url.get_dialect().name
     if dialect_name == "sqlite":
-        condition = orm.metadata_fts5.c.metadata.match(query.text)
+        # The FTS5 column is typed JSON; MATCH is a text operator.
+        condition = type_coerce(orm.metadata_fts5.c.metadata, Text).match(query.text)
     elif dialect_name == "postgresql":
         tsvector = func.jsonb_to_tsvector(
             sql_cast("simple", REGCONFIG),
@@ -2727,17 +2999,23 @@ def specs(query, tree):
     conditions = []
     attr = orm.Node.specs
     if dialect_name == "sqlite":
+        # SQLite stores JSON as text; match the serialized spec by pattern.
+        text_attr = type_coerce(attr, Text)
         # Construct the conditions for includes
         for i, name in enumerate(query.include):
-            conditions.append(attr.like(f'%{{"name":"{name}",%'))
+            conditions.append(text_attr.like(f'%{{"name":"{name}",%'))
         # Construct the conditions for excludes
         for i, name in enumerate(query.exclude):
-            conditions.append(not_(attr.like(f'%{{"name":"{name}",%')))
+            conditions.append(not_(text_attr.like(f'%{{"name":"{name}",%')))
     elif dialect_name == "postgresql":
+
+        def contains(specs):
+            return attr.op("@>", is_comparison=True)(specs_array_to_json(specs))
+
         if query.include:
-            conditions.append(attr.op("@>")(specs_array_to_json(query.include)))
+            conditions.append(contains(query.include))
         if query.exclude:
-            conditions.append(not_(attr.op("@>")(specs_array_to_json(query.exclude))))
+            conditions.append(not_(contains(query.exclude)))
     else:
         raise UnsupportedQueryType("specs")
     return tree.new_variation(conditions=tree.conditions + conditions)
@@ -2817,8 +3095,23 @@ def in_or_not_in_sqlite(query, tree, method):
         else:  # method == "not_in"
             # All results are always "not in" an empty list.
             condition = true()
+    elif None in query.value:
+        # SQL NULL never compares equal in IN / NOT IN, and JSON_EXTRACT gives
+        # it both for a JSON null and for a missing key, so match a JSON null
+        # with JSON_TYPE as Eq/NotEq do.
+        values = [value for value in query.value if value is not None]
+        json_type = func.json_type(attr.left, attr.right)
+        if method == "in_":
+            condition = json_type == "null"
+            if values:
+                condition = or_(condition, _sqlite_json_value(attr).in_(values))
+        else:  # method == "not_in"
+            # A missing key is excluded, as in a NotIn without None.
+            condition = json_type != "null"
+            if values:
+                condition = and_(condition, _sqlite_json_value(attr).not_in(values))
     else:
-        condition = getattr(_get_value(attr, type(query.value[0])), method)(query.value)
+        condition = getattr(_sqlite_json_value(attr), method)(query.value)
     return tree.new_variation(conditions=tree.conditions + [condition])
 
 
@@ -2882,6 +3175,31 @@ def keys_filter(query, tree):
     return tree.new_variation(conditions=tree.conditions + [condition])
 
 
+def key_like(query, tree):
+    # Case-sensitive on every backend. SQLAlchemy's startswith/endswith/contains
+    # compile to LIKE, which SQLite evaluates case-insensitively, so SQLite gets
+    # substr/instr instead. Neither form treats any character as a wildcard.
+    dialect_name = tree.context.engine.url.get_dialect().name
+    key = orm.Node.key
+    if dialect_name == "sqlite":
+        if query.before and query.after:
+            condition = func.instr(key, query.key) > 0
+        elif query.after:
+            condition = func.substr(key, 1, len(query.key)) == query.key
+        else:
+            condition = func.substr(key, -len(query.key)) == query.key
+    elif dialect_name == "postgresql":
+        if query.before and query.after:
+            condition = key.contains(query.key, autoescape=True)
+        elif query.after:
+            condition = key.startswith(query.key, autoescape=True)
+        else:
+            condition = key.endswith(query.key, autoescape=True)
+    else:
+        raise UnsupportedQueryType("key_like")
+    return tree.new_variation(conditions=tree.conditions + [condition])
+
+
 def structure_family(query, tree):
     condition = orm.Node.structure_family == query.value
     return tree.new_variation(conditions=tree.conditions + [condition])
@@ -2895,6 +3213,7 @@ CatalogNodeAdapter.register_query(In, partial(in_or_not_in, method="in_"))
 CatalogNodeAdapter.register_query(NotIn, partial(in_or_not_in, method="not_in"))
 CatalogNodeAdapter.register_query(KeyPresent, key_present)
 CatalogNodeAdapter.register_query(KeysFilter, keys_filter)
+CatalogNodeAdapter.register_query(KeyLike, key_like)
 CatalogNodeAdapter.register_query(StructureFamilyQuery, structure_family)
 CatalogNodeAdapter.register_query(SpecsQuery, specs)
 CatalogNodeAdapter.register_query(AccessTagsFilter, access_tags_filter)

@@ -77,6 +77,8 @@ class MetadataRevisions:
                             },
                         )
                     ).json()
+            if not content["data"]:
+                raise IndexError(f"revision index {offset} out of range")
             (result,) = content["data"]
             return result
 
@@ -107,6 +109,11 @@ class MetadataRevisions:
                 next_page_url = content["links"]["next"]
 
             return result["data"]
+
+    def __iter__(self):
+        # Fetch all the revisions, one page at a time, rather than one request
+        # per revision as iteration over `__getitem__` would.
+        return iter(self[:])
 
     def delete_revision(self, n):
         for attempt in retry_context():
@@ -447,6 +454,7 @@ class BaseClient:
             ATTACHMENT_FILENAME_PLACEHOLDER,
             STREAMING_ACCEPT_ENCODING,
             download,
+            require_relative_path,
         )
 
         urls = []
@@ -473,6 +481,10 @@ class BaseClient:
                     )
                 if asset.is_directory:
                     relative_paths = asset_manifest[asset.id]
+                    # These come from the server and become the paths of the
+                    # downloaded files.
+                    for relative_path in relative_paths:
+                        require_relative_path(relative_path)
                     urls.extend(
                         [
                             URL(

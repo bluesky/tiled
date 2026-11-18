@@ -652,6 +652,71 @@ class UnsafeIdentifier(ValueError):
     pass
 
 
+class UnsafePath(ValueError):
+    "A path built from untrusted input would leave the directory it must stay in."
+
+    pass
+
+
+def contained_path(root: str | Path, untrusted: str | Path) -> Path:
+    """
+    Join an untrusted relative path onto a trusted root directory.
+
+    Return the joined path with `..` components and symbolic links resolved.
+    Raise UnsafePath unless that path is the root itself or inside it.
+
+    An absolute `untrusted` path replaces the root when joined, so it is
+    rejected by the same check unless it happens to point inside the root.
+    """
+    if "\x00" in str(untrusted):
+        # Not every platform refuses a null byte when a path is resolved.
+        raise UnsafePath(f"The path {str(untrusted)!r} cannot be resolved.")
+    try:
+        resolved_root = Path(root).resolve()
+        candidate = (resolved_root / untrusted).resolve()
+    except (OSError, RuntimeError, ValueError) as err:
+        # For example a loop of symbolic links.
+        raise UnsafePath(f"The path {str(untrusted)!r} cannot be resolved.") from err
+    if not candidate.is_relative_to(resolved_root):
+        raise UnsafePath(
+            f"The path {str(untrusted)!r} is outside of the directory it is "
+            "relative to."
+        )
+    return candidate
+
+
+def is_safe_path_segment(segment: str) -> bool:
+    """
+    Tell whether a string can be used as one segment of a path.
+
+    A segment that is empty, is `.` or `..`, or contains a path separator
+    or a null byte would address something other than a direct child.
+    """
+    # "/" separates segments in URLs on every platform.
+    forbidden = {"/", "\x00", os.sep, os.altsep} - {None}
+    return (
+        isinstance(segment, str)
+        and segment not in ("", ".", "..")
+        and not any(character in segment for character in forbidden)
+    )
+
+
+def is_safe_key(key: str) -> bool:
+    """
+    Tell whether a string can be the key of a node.
+
+    A key is one segment of a URL path, so it cannot be empty, `.` or `..`,
+    or contain `/` or a null byte. Any other character is allowed: where a
+    key becomes a directory name, it is URL-quoted first.
+    """
+    return (
+        isinstance(key, str)
+        and key not in ("", ".", "..")
+        and "/" not in key
+        and "\x00" not in key
+    )
+
+
 # Arrow obtained an official MIME type 2021-06-23.
 # https://www.iana.org/assignments/media-types/application/vnd.apache.arrow.file
 APACHE_ARROW_FILE_MIME_TYPE = "application/vnd.apache.arrow.file"

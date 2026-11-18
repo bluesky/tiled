@@ -1,8 +1,11 @@
 import abc
+import base64
 import concurrent.futures
 import inspect
+import json
 import logging
 import threading
+import time
 import weakref
 from collections.abc import Callable
 from typing import Any, Generic, Self, TypeVar
@@ -14,6 +17,8 @@ import stamina
 import websockets.exceptions
 from pydantic import ConfigDict
 from websockets.sync.client import connect
+
+from tiled.client.auth import TiledAuth
 
 from ..client.base import BaseClient
 from ..links import links_for_node
@@ -46,11 +51,53 @@ Callback = Callable[[T], None]
 
 API_KEY_LIFETIME = TILED_RETRY_TIMEOUT + 15  # seconds
 RECEIVE_TIMEOUT = 0.1  # seconds
+# A WebSocket handshake cannot answer 401 to prompt a refresh, so the client
+# refreshes an access token itself when it is this close to expiring.
+ACCESS_TOKEN_EXPIRY_MARGIN = 60  # seconds
 
 
 logger = logging.getLogger(__name__)
 
 __all__ = ["Subscription"]
+
+
+def _expires_soon(token: str, margin: float = ACCESS_TOKEN_EXPIRY_MARGIN) -> bool:
+    """Read a JWT's 'exp' claim without verifying it; the server verifies.
+
+    A token that is not a JWT with an 'exp' claim is treated as fresh: the
+    server is the authority on it, and refreshing before every connection
+    would hammer the refresh endpoint.
+    """
+    try:
+        payload = token.split(".")[1]
+        payload += "=" * (-len(payload) % 4)
+        return (
+            json.loads(base64.urlsafe_b64decode(payload))["exp"] - time.time() < margin
+        )
+    except (IndexError, ValueError, KeyError, TypeError):
+        return False
+
+
+def _auth_header(context: Context) -> tuple[str | None, dict | None]:
+    """Return (Authorization header, key_info of an API key minted for it).
+
+    key_info is None unless a short-lived API key was minted, which the caller
+    must revoke.
+    """
+    if not context.authenticated:
+        return None, None
+    if context.api_key is not None:
+        return f"Apikey {context.api_key}", None
+    if isinstance(context.http_client.auth, TiledAuth):
+        access_token = context.http_client.auth.sync_get_token(
+            "access_token", reload_from_disk=True
+        )
+        if access_token is None or _expires_soon(access_token):
+            access_token = context.force_auth_refresh()["access_token"]
+        return f"Bearer {access_token}", None
+    # Request a short-lived API key to use for authenticating the WS connection.
+    key_info = context.create_api_key(expires_in=API_KEY_LIFETIME, note="websocket")
+    return f"Apikey {key_info['secret']}", key_info
 
 
 class _TestClientWebsocketWrapper:
@@ -64,15 +111,15 @@ class _TestClientWebsocketWrapper:
 
     def connect(
         self,
-        api_key: str | None,
+        auth_header: str | None,
         start: int | None = None,
         max_size: int = 1_000_000,
     ):
         """Connect to the websocket."""
         params = self._uri.params
         headers = {}
-        if api_key:
-            headers["Authorization"] = f"Apikey {api_key}"
+        if auth_header:
+            headers["Authorization"] = auth_header
         if start is not None:
             params = params.set("start", start)
         # Note: max_size is ignored for test client websockets
@@ -87,11 +134,16 @@ class _TestClientWebsocketWrapper:
         """Receive data from websocket with consistent interface."""
         # Hide this import because it is only used for ASGI (tests)
         # we do not want a server dependency in the client.
+        import anyio
         import starlette.websockets
 
         try:
             return self._websocket.receive_bytes()
         except starlette.websockets.WebSocketDisconnect:
+            return None
+        except anyio.ClosedResourceError:
+            # starlette >=1.0 raises this when receiving on a session that has been
+            # closed (e.g. the test session was torn down); treat it the same as a disconnect.
             return None
 
     def close(self):
@@ -111,22 +163,28 @@ class _RegularWebsocketWrapper:
 
     def connect(
         self,
-        api_key: str | None,
+        auth_header: str | None,
         start: int | None = None,
         max_size: int = 1_000_000,
     ):
         """Connect to the websocket."""
         params = self._uri.params
         headers = {}
-        if api_key:
-            headers["Authorization"] = f"Apikey {api_key}"
+        if auth_header:
+            headers["Authorization"] = auth_header
         if start is not None:
             params = params.set("start", start)
-        self._websocket = connect(
+        websocket = connect(
             str(self._uri.copy_with(params=params)),
             additional_headers=headers,
             max_size=max_size,
         )
+        # The connection outlives this call, so it cannot be used in a `with`
+        # block; enter it by hand instead (close() releases it). Calling
+        # connect() without entering it is deprecated in websockets 17.1, and
+        # its replacement, connect(..., legacy=True), fails on releases
+        # before 17.1, which have no `legacy` parameter.
+        self._websocket = websocket.__enter__()
 
     def recv(self, timeout=None):
         """Receive data from websocket with consistent interface."""
@@ -369,27 +427,17 @@ class Subscription(abc.ABC):
 
         # Reset schema so first message on new connection is parsed as schema
         self._schema = None
-
-        needs_api_key = self.context.server_info.authentication.providers
-        if needs_api_key:
-            # Request a short-lived API key to use for authenticating the WS connection.
-            key_info = self.context.create_api_key(
-                expires_in=API_KEY_LIFETIME, note="websocket"
-            )
-            api_key = key_info["secret"]
-        else:
-            # Use single-user API key or None (if unauthenticated).
-            api_key = self.context.api_key
-
-        # Connect using the websocket wrapper
-        self._websocket.connect(api_key, start, max_size=max_size)
+        auth_header, key_info = _auth_header(self.context)
+        try:
+            self._websocket.connect(auth_header, start, max_size=max_size)
+        finally:
+            if key_info is not None:
+                # Connected or not, this attempt is done with the API key; a
+                # retry mints its own.
+                # TODO: Implement single-use API keys so that revoking is not
+                # necessary.
+                self.context.revoke_api_key(key_info["first_eight"])
         self._connected_event.set()
-
-        if needs_api_key:
-            # The connection is made, so we no longer need the API key.
-            # TODO: Implement single-use API keys so that revoking is not
-            # necessary.
-            self.context.revoke_api_key(key_info["first_eight"])
 
     def _receive(self) -> None:
         """Receive and process websocket messages."""
@@ -435,7 +483,9 @@ class Subscription(abc.ABC):
             parameter to replay from some earlier update. Use 1 to start from
             the first item, 0 to start from as far back as available (which may
             be later than the first item), or any positive integer to start
-            from a specific point in the sequence.
+            from a specific point in the sequence. The server replays a
+            limited number of past updates (1000 unless it is configured
+            otherwise), so a replay may begin later than requested.
         max_size : int, optional
             Maximum size in bytes for incoming WebSocket messages. Default is 1 MB.
             Increase this if you expect to receive large messages.
@@ -471,7 +521,9 @@ class Subscription(abc.ABC):
             parameter to replay from some earlier update. Use 1 to start from
             the first item, 0 to start from as far back as available (which may
             be later than the first item), or any positive integer to start
-            from a specific point in the sequence.
+            from a specific point in the sequence. The server replays a
+            limited number of past updates (1000 unless it is configured
+            otherwise), so a replay may begin later than requested.
         max_size : int, optional
             Maximum size in bytes for incoming WebSocket messages. Default is 1 MB.
             Increase this if you expect to receive large messages.
