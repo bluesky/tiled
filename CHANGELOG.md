@@ -24,6 +24,8 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 - The `tiled_csrf` and `tiled_api_key` cookies carry the `Secure` attribute
   when they are set over HTTPS.
+- A zip archive uploaded to `PUT /awkward/full` has its member names checked
+  against the form before any member is decompressed.
 
 ### Fixed
 

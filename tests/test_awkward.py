@@ -2,6 +2,7 @@ import io
 import json
 import zipfile
 from pathlib import Path
+from unittest import mock
 
 import awkward
 import numpy
@@ -289,13 +290,15 @@ def test_zip_upload_refuses_unexpected_member(client, tmpdir, member):
     members = {key: numpy.asarray(value).tobytes() for key, value in container.items()}
     members[member.format(tmpdir=tmpdir)] = b"UNEXPECTED"
 
-    response = client.context.http_client.put(
-        "/api/v1/awkward/full/x",
-        content=zip_of(members),
-        headers={"Content-Type": "application/zip"},
-    )
+    with mock.patch.object(zipfile.ZipFile, "read", autospec=True) as read:
+        response = client.context.http_client.put(
+            "/api/v1/awkward/full/x",
+            content=zip_of(members),
+            headers={"Content-Type": "application/zip"},
+        )
 
     assert response.status_code == HTTP_400_BAD_REQUEST
+    assert not read.called  # Nothing is decompressed before the names are checked.
     written = [
         path
         for path in Path(tmpdir).rglob("*")

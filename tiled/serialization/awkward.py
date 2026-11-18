@@ -25,6 +25,12 @@ def to_zipped_buffers(mimetype, components, metadata):
     return file.getbuffer()
 
 
+def zipped_buffer_names(buffer):
+    "The names of the buffers in a zip archive, without decompressing any."
+    with zipfile.ZipFile(io.BytesIO(buffer), "r") as zip:
+        return zip.namelist()
+
+
 @default_deserialization_registry.register(StructureFamily.awkward, "application/zip")
 def from_zipped_buffers(buffer, form, length):
     file = io.BytesIO(buffer)

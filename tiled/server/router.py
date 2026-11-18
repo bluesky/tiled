@@ -55,6 +55,7 @@ from .. import __version__
 from ..access_control.protocols import ApprovedAccessTags, normalize_access_tags
 from ..links import links_for_node
 from ..ndslice import NDBlock, NDSlice
+from ..serialization.awkward import zipped_buffer_names
 from ..stream_messages import ArrayPatch
 from ..structures.core import Spec, StructureFamily
 from ..type_aliases import AccessTags, Scopes
@@ -2532,21 +2533,27 @@ def get_router(
             request, StructureFamily.awkward, deserialization_registry
         )
         structure = entry.structure()
-        data = await ensure_awaitable(
-            deserializer, body, structure.form, structure.length
-        )
         # The body comes from the client, and its keys are used as file names.
         # Accept only the buffers that the form of this node names.
         expected_keys = set(structure.awkward_form.expected_from_buffers())
-        unexpected_keys = sorted(set(data) - expected_keys)
-        if unexpected_keys:
-            raise HTTPException(
-                status_code=HTTP_400_BAD_REQUEST,
-                detail=(
-                    "The request body contains buffers that are not part of "
-                    f"this array: {unexpected_keys}"
-                ),
-            )
+
+        def require_expected(keys):
+            if unexpected_keys := sorted(set(keys) - expected_keys):
+                raise HTTPException(
+                    status_code=HTTP_400_BAD_REQUEST,
+                    detail=(
+                        "The request body contains buffers that are not part of "
+                        f"this array: {unexpected_keys}"
+                    ),
+                )
+
+        if media_type == "application/zip":
+            # The names are checked before any member is decompressed.
+            require_expected(zipped_buffer_names(body))
+        data = await ensure_awaitable(
+            deserializer, body, structure.form, structure.length
+        )
+        require_expected(data)
         await ensure_awaitable(entry.write, data)
         return json_or_msgpack(request, None)
 
