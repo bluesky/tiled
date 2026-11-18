@@ -1325,6 +1325,41 @@ def test_retried_create_conflict_not_adopted(
     [(LoseResponseOnce, True), (FailBeforeSendOnce, False)],
     ids=["maybe-processed-raises", "unsent-retried"],
 )
+def test_json_patch_metadata_retry_policy(
+    tree, retries_enabled, transport_cls, expect_raise
+):
+    """A JSON Patch may append to a list, which is not idempotent, so it follows
+    the same policy as appending rows: a request that may have been processed
+    raises, one that was never sent is retried. Either way the element is
+    appended exactly once."""
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        ac = client.write_array([1, 2, 3], metadata={"items": [1]}, key="x")
+
+        transport = _wrap_transport(
+            client, transport_cls, method="PATCH", url_substring="/metadata/x"
+        )
+        patch = [{"op": "add", "path": "/items/-", "value": 2}]
+
+        if expect_raise:
+            with pytest.raises(httpx.ReadTimeout):
+                ac.patch_metadata(
+                    metadata_patch=patch, content_type=patch_mimetypes.JSON_PATCH
+                )
+        else:
+            ac.patch_metadata(
+                metadata_patch=patch, content_type=patch_mimetypes.JSON_PATCH
+            )
+        assert transport.tripped
+
+        assert client["x"].metadata["items"] == [1, 2]
+
+
+@pytest.mark.parametrize(
+    "transport_cls, expect_raise",
+    [(LoseResponseOnce, True), (FailBeforeSendOnce, False)],
+    ids=["maybe-processed-raises", "unsent-retried"],
+)
 def test_append_partition_retry_policy(
     tree, retries_enabled, transport_cls, expect_raise
 ):

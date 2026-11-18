@@ -26,6 +26,10 @@ Write the date in place of the "Unreleased" in the case a new version is release
   written to a float array read back as denormal floats). Data that can be
   cast within its kind, such as a list of integers for a float array, is cast;
   other data raises `ValueError`.
+- `patch_metadata` with a JSON Patch, whose operations may not be idempotent,
+  follows the retry policy of appending rows: a request that may have reached
+  the server is not retried. It was retried like any other request, so a
+  lost response appended a list element twice.
 
 ## v0.2.22 (2026-11-18)
 
