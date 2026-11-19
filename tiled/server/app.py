@@ -87,6 +87,7 @@ from .utils import (
     get_trace_id,
     normalize_root_path,
     record_timing,
+    request_is_https,
     request_trace_id,
 )
 from .webhook_router import UrlValidator, get_webhook_router
@@ -1021,7 +1022,7 @@ def build_app(
                 value=secrets.token_urlsafe(32),
                 httponly=True,
                 samesite="lax",
-                secure=request.url.scheme == "https",
+                secure=request_is_https(request),
             )
         return response
 
@@ -1068,7 +1069,7 @@ def build_app(
             params.setdefault("httponly", True)
             params.setdefault("samesite", "lax")
             # Over HTTPS, a cookie is sent back over HTTPS only.
-            params.setdefault("secure", request.url.scheme == "https")
+            params.setdefault("secure", request_is_https(request))
             response.set_cookie(**params)
         return response
 

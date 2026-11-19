@@ -141,22 +141,32 @@ def test_csrf_token_in_header_or_query(tmpdir, carrier):
         assert refused.status_code == HTTP_403_FORBIDDEN
 
 
-@pytest.mark.parametrize("scheme", ["http", "https"])
-def test_cookies_are_secure_over_https(tmpdir, scheme):
-    "The CSRF and API key cookies carry the Secure attribute when set over HTTPS."
+@pytest.mark.parametrize(
+    "scheme, forwarded_proto, secure",
+    [
+        ("http", None, False),
+        ("https", None, True),
+        ("http", "https", True),  # TLS terminated by a proxy
+        ("https", "http", False),
+    ],
+)
+def test_cookies_are_secure_over_https(tmpdir, scheme, forwarded_proto, secure):
+    """The CSRF and API key cookies carry the Secure attribute when the client
+    reached the server over HTTPS, directly or through a proxy."""
     catalog = in_memory(writable_storage=str(tmpdir))
     app = build_app(catalog, Authentication(single_user_api_key=API_KEY))
     uri = f"{scheme}://local-tiled-app/api/v1"
+    headers = {} if forwarded_proto is None else {"x-forwarded-proto": forwarded_proto}
     with Context.from_app(app, uri=uri) as context:
         context.http_client.cookies.clear()
         response = context.http_client.get(
-            f"{uri}/metadata/", params={"api_key": API_KEY}
+            f"{uri}/metadata/", params={"api_key": API_KEY}, headers=headers
         )
 
     cookies = response.headers.get_list("set-cookie")
     assert {c.split("=", 1)[0] for c in cookies} == {"tiled_csrf", "tiled_api_key"}
     for cookie in cookies:
-        assert ("Secure" in cookie) is (scheme == "https"), cookie
+        assert ("Secure" in cookie) is secure, cookie
         assert "HttpOnly" in cookie
 
 
