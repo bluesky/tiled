@@ -349,6 +349,15 @@ def test_append_single_partition(
     result_read_partition["f3"] = result_read_partition["f3"].astype("boolean")
     assert table == pa.Table.from_pandas(result_read_partition)
 
+    # Columns are matched by name: appending them in another order gives the
+    # same rows. (The DuckDB driver ingests by position, so this depends on
+    # the adapter putting them in the table's order.)
+    reversed_columns = table.select(list(reversed(table.column_names)))
+    adapter.append_partition(1, reversed_columns)
+    result_reversed = adapter.read_partition(1)
+    result_reversed["f3"] = result_reversed["f3"].astype("boolean")
+    assert table == pa.Table.from_pandas(result_reversed)
+
 
 @pytest.mark.parametrize(
     "adapter",
