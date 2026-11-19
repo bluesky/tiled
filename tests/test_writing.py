@@ -1100,6 +1100,14 @@ def test_append_partition(
         other = pyarrow.Table.from_pydict({"other": [1]})
         with fail_with_status_code(HTTP_422_UNPROCESSABLE_CONTENT):
             x.append_partition(0, other)
+        if storage == "sql":
+            # So are values that the columns' types cannot hold.
+            nested = pyarrow.Table.from_pydict(
+                {name: [[1, 2]] for name in orig_table.column_names}
+            )
+            with fail_with_status_code(HTTP_422_UNPROCESSABLE_CONTENT):
+                x.append_partition(0, nested)
+        assert_frame_equal(x.read(), pandas.DataFrame(expected_file), check_dtype=False)
 
 
 @pytest.mark.parametrize(

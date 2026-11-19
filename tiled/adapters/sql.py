@@ -502,7 +502,15 @@ class SQLAdapter(Adapter[TableStructure]):
                 f"The columns {table.column_names} do not match the columns of "
                 f"this table, {schema.names}."
             )
-        table = table.select(schema.names).cast(schema)
+        try:
+            table = table.select(schema.names).cast(schema)
+        except (pyarrow.ArrowInvalid, pyarrow.ArrowNotImplementedError) as err:
+            # A value cannot be represented in the column's type (a float with
+            # a fraction in an integer column, text that is not a number), or
+            # there is no cast between the types at all (a list into a number).
+            raise ColumnMismatchError(
+                f"The data cannot be cast to the types of this table: {err}"
+            ) from err
         # Prepend columns for internal dataset_id and partition number.
         dataset_id_column = self.dataset_id * numpy.ones(len(table), dtype=numpy.int32)
         partition_id_column = partition * numpy.ones(len(table), dtype=numpy.int16)

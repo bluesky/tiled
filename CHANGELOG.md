@@ -19,8 +19,9 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - Appending to a table matches the appended columns by name, in SQL storage
   and in CSV files. SQL storage refused columns given in another order; a CSV
   file took them positionally. Columns that are not the table's are refused
-  with HTTP 422. The first append to a CSV partition writes the header, which
-  it left out, so the first row of data was read back as the header.
+  with HTTP 422, as are values that the columns' types cannot hold (previously
+  HTTP 500). The first append to a CSV partition writes the header, which it
+  left out, so the first row of data was read back as the header.
 - A full write to a table in Arrow storage raised after truncating the file,
   so the table read back empty.
 - A table in SQL storage created with a `primary_key` but without
