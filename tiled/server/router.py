@@ -5,7 +5,7 @@ import math
 import os
 import stat
 import warnings
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from datetime import UTC, datetime, timedelta
 from functools import cache, partial
 from pathlib import Path
@@ -246,6 +246,18 @@ def require_within_bytesize_limit(nbytes: int, settings: Settings) -> None:
             detail=(
                 f"Response would exceed {settings.response_bytesize_limit}. "
                 "Use slicing ('?slice=...') to request smaller chunks."
+            ),
+        )
+
+
+def require_expected_buffers(keys: Iterable[str], expected_keys: set[str]) -> None:
+    "Respond with 400 if an uploaded awkward buffer is not one that the form names."
+    if unexpected_keys := sorted(set(keys) - expected_keys):
+        raise HTTPException(
+            status_code=HTTP_400_BAD_REQUEST,
+            detail=(
+                "The request body contains buffers that are not part of "
+                f"this array: {unexpected_keys}"
             ),
         )
 
@@ -2549,24 +2561,13 @@ def get_router(
         # The body comes from the client, and its keys are used as file names.
         # Accept only the buffers that the form of this node names.
         expected_keys = set(structure.awkward_form.expected_from_buffers())
-
-        def require_expected(keys):
-            if unexpected_keys := sorted(set(keys) - expected_keys):
-                raise HTTPException(
-                    status_code=HTTP_400_BAD_REQUEST,
-                    detail=(
-                        "The request body contains buffers that are not part of "
-                        f"this array: {unexpected_keys}"
-                    ),
-                )
-
         if media_type == "application/zip":
             # The names are checked before any member is decompressed.
-            require_expected(zipped_buffer_names(body))
+            require_expected_buffers(zipped_buffer_names(body), expected_keys)
         data = await ensure_awaitable(
             deserializer, body, structure.form, structure.length
         )
-        require_expected(data)
+        require_expected_buffers(data, expected_keys)
         await ensure_awaitable(entry.write, data)
         return json_or_msgpack(request, None)
 

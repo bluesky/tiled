@@ -9,12 +9,14 @@ import numpy
 import pyarrow.feather
 import pyarrow.parquet
 import pytest
+from fastapi import HTTPException
 from starlette.status import HTTP_400_BAD_REQUEST, HTTP_422_UNPROCESSABLE_CONTENT
 
 from tiled.adapters.awkward import AwkwardBuffersAdapter
 from tiled.catalog import in_memory
 from tiled.client import Context, from_context, record_history
 from tiled.server.app import build_app
+from tiled.server.router import require_expected_buffers
 from tiled.storage import DirectoryContainer
 from tiled.structures.awkward import AwkwardStructure
 from tiled.utils import APACHE_ARROW_FILE_MIME_TYPE, UnsafePath, path_from_uri
@@ -307,6 +309,15 @@ def test_zip_upload_refuses_unexpected_member(client, tmpdir, member):
     assert not written
     assert sorted(path.name for path in directory.iterdir()) == files_before
     assert awkward.almost_equal(client["x"].read(), array)
+
+
+def test_require_expected_buffers():
+    expected = {"node0-offsets", "node1-data"}
+    require_expected_buffers(["node1-data"], expected)  # A subset is fine.
+    with pytest.raises(HTTPException) as info:
+        require_expected_buffers(["node1-data", "../x", "node9-data"], expected)
+    assert info.value.status_code == HTTP_400_BAD_REQUEST
+    assert "['../x', 'node9-data']" in info.value.detail
 
 
 @pytest.mark.parametrize(
