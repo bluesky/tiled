@@ -12,6 +12,7 @@ import os
 import pathlib
 import threading
 import uuid
+from dataclasses import asdict
 from datetime import datetime
 from urllib.parse import urljoin, urlparse
 
@@ -44,7 +45,7 @@ from tiled.client.utils import ClientError
 from tiled.mimetypes import PARQUET_MIMETYPE
 from tiled.queries import Key
 from tiled.server.app import build_app
-from tiled.structures.array import BuiltinDtype
+from tiled.structures.array import ArrayStructure, BuiltinDtype
 from tiled.structures.core import Spec, StructureFamily
 from tiled.structures.data_source import DataSource
 from tiled.structures.sparse import COOStructure
@@ -146,6 +147,54 @@ def test_created_node_links_have_no_double_slash(tree):
             for url in node.item["links"].values():
                 assert "//" not in urlparse(url).path
         assert all("//" not in r.url.path for r in history.requests)
+
+
+@pytest.mark.parametrize(
+    "dt_units, kind, accepted",
+    [
+        ("[ns]", "M", True),
+        ("[10m]", "m", True),
+        ("[ns]", "i", False),  # Not a datetime or timedelta.
+        ("[ns]|O", "M", False),  # Not a unit; would change the dtype.
+    ],
+)
+def test_structure_dt_units_are_validated(tree, dt_units, kind, accepted):
+    "The dtype string is built from the structure, which a client may supply."
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        structure = ArrayStructure.from_array(numpy.zeros(3, dtype="int64"))
+        body = {
+            "id": "x",
+            "structure_family": "array",
+            "metadata": {},
+            "specs": [],
+            "data_sources": [
+                {
+                    "structure_family": "array",
+                    "structure": {
+                        **asdict(structure),
+                        "data_type": {
+                            "endianness": "little",
+                            "kind": kind,
+                            "itemsize": 8,
+                            "dt_units": dt_units,
+                        },
+                    },
+                    "management": "writable",
+                    "assets": [],
+                    "parameters": {},
+                }
+            ],
+        }
+
+        response = client.context.http_client.post("/api/v1/metadata/", json=body)
+
+        if accepted:
+            assert response.status_code == HTTP_200_OK
+            assert client["x"].dtype == numpy.dtype(f"<{kind}8{dt_units}")
+        else:
+            assert response.status_code == HTTP_422_UNPROCESSABLE_CONTENT
+            assert "x" not in client
 
 
 def test_write_array_full(tree):
