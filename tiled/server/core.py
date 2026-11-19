@@ -293,7 +293,7 @@ async def construct_entries_response(
         if not hasattr(tree, "sort"):
             raise HTTPException(
                 status_code=HTTP_400_BAD_REQUEST,
-                detail="This Tree does not support sorting.",
+                detail="This container does not support sorting.",
             )
         tree = tree.sort(sorting)
 
@@ -304,7 +304,7 @@ async def construct_entries_response(
     if page.cursor is not None and not hasattr(tree, "keys_page"):
         raise HTTPException(
             status_code=HTTP_400_BAD_REQUEST,
-            detail="This Tree does not support cursor pagination.",
+            detail="This container does not support cursor pagination.",
         )
 
     next_cursor = None
