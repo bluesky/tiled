@@ -639,6 +639,9 @@ def test_metadata_revisions_count(tree):
         # Revisions are returned ordered by revision number.
         revision_numbers = [r["revision_number"] for r in ac.metadata_revisions[:]]
         assert revision_numbers == [1, 2, 3]
+        # A bounded slice stops where it says; the server offers a next page.
+        assert [r["revision_number"] for r in ac.metadata_revisions[0:2]] == [1, 2]
+        assert [r["revision_number"] for r in ac.metadata_revisions[1:]] == [2, 3]
 
 
 def test_metadata_revisions_count_empty(tree):

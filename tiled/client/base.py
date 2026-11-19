@@ -93,6 +93,7 @@ class MetadataRevisions:
             if offset is None:
                 offset = 0
             if item_.stop is None:
+                limit = None
                 params = f"?page[offset]={offset}"
             else:
                 limit = item_.stop - offset
@@ -112,9 +113,12 @@ class MetadataRevisions:
                     result = content.copy()
                 else:
                     result["data"].extend(content["data"])
+                if limit is not None and len(result["data"]) >= limit:
+                    # The limit caps only the first page, so stop here.
+                    break
                 next_page_url = content["links"]["next"]
 
-            return result["data"]
+            return result["data"][:limit]
 
     def __iter__(self):
         # Fetch all the revisions, one page at a time, rather than one request
