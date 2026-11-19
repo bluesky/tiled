@@ -280,6 +280,39 @@ def test_write_array_chunked(tree, shape, chunks):
         assert result.specs == specs
 
 
+@pytest.mark.parametrize(
+    "data, outcome",
+    [
+        ([0, 1, 2, 3], "cast"),  # int64 within the same kind as float64
+        (numpy.arange(4, dtype="float32"), "cast"),
+        (numpy.array(["a", "b", "c", "d"]), "dtype"),
+        (numpy.ones(3), "elements"),
+        (numpy.ones((2, 3)), "elements"),
+    ],
+    ids=["ints", "float32", "strings", "too-few", "too-many"],
+)
+def test_write_checks_dtype_and_shape(tree, data, outcome):
+    "The server reads the bytes by the structure, so the data must fit it."
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        x = client.write_array(numpy.zeros(4, dtype="float64"), key="x")
+        y = client.write_array(
+            dask.array.zeros((2, 4), dtype="float64", chunks=(1, 4)), key="y"
+        )
+
+        if outcome == "cast":
+            x.write(data)
+            numpy.testing.assert_array_equal(x.read(), numpy.asarray(data))
+            y.write_block(data, block=(1, 0))  # Four elements fit the (1, 4) block.
+            numpy.testing.assert_array_equal(y.read()[1], numpy.asarray(data))
+        else:
+            with pytest.raises(ValueError, match=outcome):
+                x.write(data)
+            with pytest.raises(ValueError, match=outcome):
+                y.write_block(data, block=(1, 0))
+            numpy.testing.assert_array_equal(x.read(), numpy.zeros(4))
+
+
 def test_extend_array(tree):
     "Extend an array with additional data, expanding its shape."
     with Context.from_app(
@@ -658,6 +691,9 @@ def test_metadata_revisions_count(tree):
         # Revisions are returned ordered by revision number.
         revision_numbers = [r["revision_number"] for r in ac.metadata_revisions[:]]
         assert revision_numbers == [1, 2, 3]
+        # A bounded slice stops where it says; the server offers a next page.
+        assert [r["revision_number"] for r in ac.metadata_revisions[0:2]] == [1, 2]
+        assert [r["revision_number"] for r in ac.metadata_revisions[1:]] == [2, 3]
 
 
 def test_metadata_revisions_count_empty(tree):
@@ -1431,6 +1467,41 @@ def test_retried_create_conflict_not_adopted(
         with pytest.raises(ClientError) as info:
             client.create_container(key="x", **attempt_kwargs)
         assert info.value.response.status_code == httpx.codes.CONFLICT
+
+
+@pytest.mark.parametrize(
+    "transport_cls, expect_raise",
+    [(LoseResponseOnce, True), (FailBeforeSendOnce, False)],
+    ids=["maybe-processed-raises", "unsent-retried"],
+)
+def test_json_patch_metadata_retry_policy(
+    tree, retries_enabled, transport_cls, expect_raise
+):
+    """A JSON Patch may append to a list, which is not idempotent, so it follows
+    the same policy as appending rows: a request that may have been processed
+    raises, one that was never sent is retried. Either way the element is
+    appended exactly once."""
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        ac = client.write_array([1, 2, 3], metadata={"items": [1]}, key="x")
+
+        transport = _wrap_transport(
+            client, transport_cls, method="PATCH", url_substring="/metadata/x"
+        )
+        patch = [{"op": "add", "path": "/items/-", "value": 2}]
+
+        if expect_raise:
+            with pytest.raises(httpx.ReadTimeout):
+                ac.patch_metadata(
+                    metadata_patch=patch, content_type=patch_mimetypes.JSON_PATCH
+                )
+        else:
+            ac.patch_metadata(
+                metadata_patch=patch, content_type=patch_mimetypes.JSON_PATCH
+            )
+        assert transport.tripped
+
+        assert client["x"].metadata["items"] == [1, 2]
 
 
 @pytest.mark.parametrize(

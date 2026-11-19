@@ -297,9 +297,31 @@ class _DaskArrayClient(BaseClient):
         )
         return dask_array
 
+    def _as_bytes(self, array, shape):
+        """The bytes of `array`, as the server reads them: `shape`, in this dtype.
+
+        The server interprets the bytes it receives by the dtype and shape of
+        the structure, so the data has to be in that dtype and hold as many
+        elements as that shape. A value that can be cast within its kind, such
+        as a list of integers for a float array, is cast.
+        """
+        array = numpy.asarray(array)
+        if array.dtype != self.dtype:
+            if not numpy.can_cast(array.dtype, self.dtype, casting="same_kind"):
+                raise ValueError(
+                    f"Data has dtype {array.dtype}, which cannot be cast to the "
+                    f"dtype of this array, {self.dtype}."
+                )
+            array = array.astype(self.dtype)
+        if array.size != math.prod(shape):
+            raise ValueError(
+                f"Data has {array.size} elements; this write expects "
+                f"{math.prod(shape)}, for the shape {tuple(shape)}."
+            )
+        return numpy.ascontiguousarray(array).tobytes()
+
     def write(self, array, persist=True):
-        if not (hasattr(array, "shape") and hasattr(array, "dtype")):
-            array = numpy.asarray(array)
+        content = self._as_bytes(array, self.shape)
 
         params = {}
         if persist is False:
@@ -310,15 +332,15 @@ class _DaskArrayClient(BaseClient):
                 handle_error(
                     self.context.http_client.put(
                         self.item["links"]["full"],
-                        content=array.tobytes(),
+                        content=content,
                         headers={"Content-Type": "application/octet-stream"},
                         params=params,
                     )
                 )
 
     def write_block(self, array, block, slice=..., persist=True):
-        if not (hasattr(array, "shape") and hasattr(array, "dtype")):
-            array = numpy.asarray(array)
+        block_shape = NDBlock(block).shape_from_chunks(self.chunks)
+        content = self._as_bytes(array, NDSlice(slice).shape_after_slice(block_shape))
 
         url_path = self.item["links"]["block"].format(*block)
         params = {
@@ -333,7 +355,7 @@ class _DaskArrayClient(BaseClient):
                 handle_error(
                     self.context.http_client.put(
                         url_path,
-                        content=array.tobytes(),
+                        content=content,
                         headers={"Content-Type": "application/octet-stream"},
                         params=params,
                     )

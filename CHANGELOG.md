@@ -16,6 +16,26 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Fixed
 
+- Node keys are percent-encoded wherever they become a segment of a URL path,
+  in the links the server returns and in the URLs the Python client builds.
+  A key with `#`, `?`, a space or `+` addressed another node or failed: writing
+  `run#1` wrote to `run`.
+- `ArrayClient.write` and `write_block` check the data against the array's
+  dtype and size before uploading. The server reads the bytes by the
+  structure, so data of another dtype was stored as other values (integers
+  written to a float array read back as denormal floats). Data that can be
+  cast within its kind, such as a list of integers for a float array, is cast;
+  other data raises `ValueError`.
+- `patch_metadata` with a JSON Patch, whose operations may not be idempotent,
+  follows the retry policy of appending rows: a request that may have reached
+  the server is not retried. It was retried like any other request, so a
+  lost response appended a list element twice.
+- `Subscription.start_in_thread` raises the error when the connection is
+  refused, for example for a node that does not exist or a credential that is
+  not accepted. It waited forever.
+- A bounded slice of `metadata_revisions`, such as `[0:2]`, returns that many
+  revisions. The bound applied to the first page only, and every later page
+  was appended.
 - Appending to a table matches the appended columns by name, in SQL storage
   and in CSV files. SQL storage refused columns given in another order; a CSV
   file took them positionally. Columns that are not the table's are refused

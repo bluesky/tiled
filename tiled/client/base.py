@@ -17,7 +17,13 @@ from ..structures.core import STRUCTURE_TYPES, Spec, StructureFamily
 from ..structures.data_source import DataSource
 from ..utils import UNCHANGED, DictView, ListView, patch_mimetypes, safe_json_dump
 from .metadata_update import apply_update_patch
-from .utils import MSGPACK_MIME_TYPE, handle_error, normalize_specs, retry_context
+from .utils import (
+    MSGPACK_MIME_TYPE,
+    handle_error,
+    normalize_specs,
+    retry_context,
+    should_retry_if_unprocessed,
+)
 
 # TODO: Duplicated from  tiled.type_aliases to prevent importing numpy
 # After #1407 replace AnyAdapter with the BaseClass and remove this redefinition
@@ -87,6 +93,7 @@ class MetadataRevisions:
             if offset is None:
                 offset = 0
             if item_.stop is None:
+                limit = None
                 params = f"?page[offset]={offset}"
             else:
                 limit = item_.stop - offset
@@ -106,9 +113,12 @@ class MetadataRevisions:
                     result = content.copy()
                 else:
                     result["data"].extend(content["data"])
+                if limit is not None and len(result["data"]) >= limit:
+                    # The limit caps only the first page, so stop here.
+                    break
                 next_page_url = content["links"]["next"]
 
-            return result["data"]
+            return result["data"][:limit]
 
     def __iter__(self):
         # Fetch all the revisions, one page at a time, rather than one request
@@ -839,7 +849,14 @@ class BaseClient:
         if drop_revision:
             params["drop_revision"] = True
 
-        for attempt in retry_context():
+        # A JSON Patch may hold operations that are not idempotent, such as
+        # appending to a list, so it is retried only when the server cannot
+        # have processed it. A merge patch sets values, so it can be repeated.
+        if content_type == patch_mimetypes.JSON_PATCH:
+            attempts = retry_context(on=should_retry_if_unprocessed)
+        else:
+            attempts = retry_context()
+        for attempt in attempts:
             with attempt:
                 content = handle_error(
                     self.context.http_client.patch(

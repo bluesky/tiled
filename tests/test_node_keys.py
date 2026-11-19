@@ -81,7 +81,7 @@ def test_unsafe_key_is_refused(client, key):
 
 
 @pytest.mark.parametrize(
-    "key", ["a", "a.b", "..a", "a..", "a b", "run#1", "é", "a%2Fb", "a\\b"]
+    "key", ["a", "a.b", "..a", "a..", "a b", "run#1", "é", "a%2Fb", "a\\b", "a?b=c"]
 )
 def test_ordinary_key_is_accepted(client, key):
     body = {"id": key, "structure_family": "container", "metadata": {}, "specs": []}
@@ -90,6 +90,29 @@ def test_ordinary_key_is_accepted(client, key):
 
     assert response.status_code == HTTP_200_OK
     assert list(client) == [key]
+
+
+# A key with "%" is not among these: Starlette's TestClient decodes the path
+# twice, so it cannot deliver one to the server as it was sent.
+@pytest.mark.parametrize("key", ["a b", "run#1", "é", "a?b=c", "a+b"])
+def test_key_with_special_characters_addresses_its_own_node(client, key):
+    "The key is one URL path segment wherever the client or the server puts it in a URL."
+    other = client.write_array([0], key="run", metadata={"which": "other"})
+    node = client.write_array([1, 2], key=key, metadata={"which": "this"})
+    assert node.item["id"] == key
+
+    assert list(client[key].read()) == [1, 2]
+    assert client[key].metadata["which"] == "this"
+    client[key].update_metadata({"which": "updated"})
+    assert client[key].metadata["which"] == "updated"
+    assert other.metadata["which"] == "other"
+    assert list(client["run"].read()) == [0]
+    table = client.write_dataframe(pandas.DataFrame({"x#y": [1]}), key=f"t-{key}")
+    assert list(table["x#y"].read()) == [1]
+
+    client.delete_contents(key, external_only=False)
+    assert key not in client
+    assert "run" in client
 
 
 @pytest.mark.asyncio

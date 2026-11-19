@@ -10,6 +10,7 @@ from datetime import UTC, datetime, timedelta
 from functools import cache, partial
 from pathlib import Path
 from typing import Literal, TypeVar
+from urllib.parse import quote
 
 import anyio
 import packaging
@@ -1074,7 +1075,7 @@ def get_router(
         base_websocket_url = URL(get_base_url_websocket(websocket))
         scheme = "https" if base_websocket_url.scheme == "wss" else "http"
         path_parts = [segment for segment in path.split("/") if segment]
-        path_str = "/".join(path_parts)
+        path_str = "/".join(quote(part, safe="") for part in path_parts)
         uri = f"{base_websocket_url.replace(scheme=scheme)}/array/full/{path_str}"
         handler = entry.make_ws_handler(websocket, formatter, uri)
         await handler(start, already_accepted=needs_first_message_auth)
@@ -2160,7 +2161,11 @@ def get_router(
             structure_family,
             structure,
             get_base_url(request),
-            "/".join(filter(None, [path.strip("/"), node.key])),
+            "/".join(
+                quote(part, safe="")
+                for part in [*path.strip("/").split("/"), node.key]
+                if part
+            ),
         )
         data_sources_dump = [
             ds.model_dump() for ds in await node.data_sources(include_assets=True)

@@ -9,6 +9,7 @@ import time
 import weakref
 from collections.abc import Callable
 from typing import Any, Generic, Self, TypeVar
+from urllib.parse import quote
 
 import anyio
 import httpx2 as httpx
@@ -333,7 +334,9 @@ class Subscription(abc.ABC):
         )
         params = {"envelope_format": "msgpack"}
         scheme = "wss" if context.api_uri.scheme == "https" else "ws"
-        self._node_path = "/".join(f"/{segment}" for segment in segments)
+        self._node_path = "/".join(
+            f"/{quote(segment, safe='')}" for segment in segments
+        )
         uri_path = "/api/v1/stream/single" + self._node_path
         self._uri = httpx.URL(
             str(context.api_uri.copy_with(scheme=scheme, path=uri_path)),
@@ -344,6 +347,7 @@ class Subscription(abc.ABC):
         self._disconnect_lock = threading.Lock()
         self._disconnect_event = threading.Event()
         self._thread = None
+        self._error: BaseException | None = None  # What ended the thread, if anything
         self._last_received_sequence = None  # Track last sequence for reconnection
         if getattr(self.context.http_client, "app", None):
             self._websocket = _TestClientWebsocketWrapper(
@@ -375,6 +379,16 @@ class Subscription(abc.ABC):
 
     def _run(self, start: int | None = None, max_size: int = 1_000_000) -> None:
         """Outer loop - runs for the lifecycle of the Subscription."""
+        try:
+            self._run_until_disconnected(start, max_size)
+        except BaseException as exc:
+            self._error = exc
+            raise
+        finally:
+            # Whether connected, failed or finished, nothing is waited for.
+            self._connected_event.set()
+
+    def _run_until_disconnected(self, start: int | None, max_size: int) -> None:
         if self._disconnect_event.is_set():
             raise RuntimeError("Cannot be restarted once stopped.")
 
@@ -553,7 +567,10 @@ class Subscription(abc.ABC):
             name=name,
         )
         self._thread.start()
-        self._connected_event.wait()  # Wait until the connection is established
+        # Wait until the connection is established, or the attempt has failed.
+        self._connected_event.wait()
+        if self._error is not None:
+            raise self._error
         return self
 
     def _disconnect(self, wait=True) -> None:
