@@ -41,9 +41,12 @@ def deserialize_arrow(buffer):
     return pyarrow.ipc.open_file(buffer).read_pandas()
 
 
-# There seems to be no official Parquet MIME type.
-# https://issues.apache.org/jira/browse/PARQUET-1889
-@default_serialization_registry.register(StructureFamily.table, "application/x-parquet")
+# application/vnd.apache.parquet is the registered media type, and what the
+# system mime database of some platforms gives for the .parquet extension.
+PARQUET_MIME_TYPES = ["application/x-parquet", "application/vnd.apache.parquet"]
+
+
+@default_serialization_registry.register(StructureFamily.table, PARQUET_MIME_TYPES)
 def serialize_parquet(mimetype, df, metadata, preserve_index=True):
     import pyarrow.parquet
 

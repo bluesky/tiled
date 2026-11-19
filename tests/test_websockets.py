@@ -11,9 +11,11 @@ import pandas as pd
 import pyarrow as pa
 import pytest
 from starlette.testclient import WebSocketDenialResponse
+from starlette.websockets import WebSocketDisconnect
 
 from tiled.client import from_context
 from tiled.config import parse_configs
+from tiled.utils import ensure_uri
 
 from .conftest import TOY_SECRET_KEY
 
@@ -755,7 +757,7 @@ trees:
    args:
      uri: "sqlite:///:memory:"
      writable_storage:
-        - "file://localhost{str(tmp_path / "data")}"
+        - "{ensure_uri(tmp_path / "data")}"
         - "duckdb:///{tmp_path / "data.duckdb"}"
      init_if_not_exists: true
 streaming_cache:
@@ -792,7 +794,7 @@ trees:
    args:
      uri: "sqlite:///:memory:"
      writable_storage:
-        - "file://localhost{str(tmp_path / "data")}"
+        - "{ensure_uri(tmp_path / "data")}"
      init_if_not_exists: true
 streaming_cache:
   sentinels:
@@ -855,6 +857,33 @@ def test_first_message_auth_with_api_key_multiuser(
         ) as websocket:
             websocket.send_json({"type": "auth", "api_key": key_info["secret"]})
             _receive_schema(websocket, envelope_format)
+
+
+@pytest.mark.parametrize("carrier", ["header", "first-message"])
+def test_api_key_without_read_data_scope_multiuser(
+    tiled_websocket_context_multiuser, carrier
+):
+    "The route requires read:data and read:metadata, like /array/full."
+    context = tiled_websocket_context_multiuser
+    client = from_context(context)
+    key_info = context.create_api_key(scopes=["read:metadata"])
+    client.write_array(np.arange(10), key="test_scopes_multiuser")
+    url = "/api/v1/stream/single/test_scopes_multiuser"
+
+    with _unauthenticated(context) as test_client:
+        if carrier == "header":
+            with pytest.raises(WebSocketDenialResponse) as exc_info:
+                with test_client.websocket_connect(
+                    url, headers={"Authorization": f"Apikey {key_info['secret']}"}
+                ):
+                    pass
+            assert exc_info.value.status_code == 401
+        else:
+            with test_client.websocket_connect(url) as websocket:
+                websocket.send_json({"type": "auth", "api_key": key_info["secret"]})
+                with pytest.raises(WebSocketDisconnect) as exc_info:
+                    websocket.receive_text()
+            assert exc_info.value.code == 4003
 
 
 @pytest.mark.parametrize("envelope_format", (["msgpack", "json"]))

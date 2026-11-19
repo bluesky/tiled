@@ -36,6 +36,80 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - A bounded slice of `metadata_revisions`, such as `[0:2]`, returns that many
   revisions. The bound applied to the first page only, and every later page
   was appended.
+- Appending to a table matches the appended columns by name, in SQL storage
+  and in CSV files. SQL storage refused columns given in another order; a CSV
+  file took them positionally. Columns that are not the table's are refused
+  with HTTP 422, as are values that the columns' types cannot hold (previously
+  HTTP 500). The first append to a CSV partition writes the header, which it
+  left out, so the first row of data was read back as the header.
+- A full write to a table in Arrow storage raised after truncating the file,
+  so the table read back empty.
+- A table in SQL storage created with a `primary_key` but without
+  `order_by_args` raised `UnboundLocalError` on every access.
+- Reading a subset of a table's columns from SQL storage returns them in the
+  requested order (previously in an arbitrary order), and an unknown column is
+  refused with HTTP 400 (previously dropped without notice).
+
+## v0.2.22 (2026-11-18)
+
+### Security
+
+- The WebSocket route `/stream/single` requires the `read:data` and
+  `read:metadata` scopes, like the HTTP routes that serve the same data. A
+  credential without them was accepted when the server had no access policy.
+- The webhook URL check also refuses IPv6 addresses that stand for a blocked
+  IPv4 address (IPv4-mapped, IPv4-compatible, 6to4 and Teredo), and the
+  unspecified address `::`.
+
+### Added
+
+- `streaming_cache.key_prefix`, prepended to every Redis key and pub/sub
+  channel the streaming cache uses. These are named by node ID alone, so
+  separate Tiled deployments sharing one Redis server received each other's
+  streamed data; giving each deployment its own prefix keeps them apart. Tests
+  that use Redis each get a unique prefix, which fixes intermittent failures
+  when they ran at the same time on different pytest-xdist workers.
+
+### Changed
+
+- The `tiled_csrf` and `tiled_api_key` cookies carry the `Secure` attribute
+  when they are set over HTTPS.
+- `GET /array/full` and `GET /array/block` compare the size of the requested
+  data, known from the structure, with `response_bytesize_limit` before any
+  data is read. A slice out of range for the array responds with HTTP 400.
+- A zip archive uploaded to `PUT /awkward/full` has its member names checked
+  against the form before any member is decompressed.
+
+### Fixed
+
+- Creating a node responds with HTTP 409 only when its key exists. Every
+  integrity error of the catalog database, such as a violated foreign key,
+  was reported as a key collision.
+- The `dt_units` of an array structure must be a datetime unit, such as
+  `[ns]`, on a datetime or timedelta dtype (HTTP 422 otherwise). It was put
+  into the numpy dtype string as given.
+- Searching by spec on a SQLite catalog matches the spec name exactly. `%`
+  and `_` in a name were wildcards, and matching ignored case.
+- Write routes respond with HTTP 415, naming the supported media types, when
+  the request has no `Content-Type` or one that cannot be deserialized for the
+  structure family (previously HTTP 500). Parameters of the media type, such
+  as a charset, are ignored in the lookup.
+- `POST /metadata` with a data source that has assets responds with HTTP 400
+  pointing to `POST /register` (previously HTTP 500).
+- `PATCH /table/partition` on a table whose storage cannot append, such as the
+  default Parquet storage, responds with HTTP 405 (previously HTTP 500).
+- `page[cursor]` on a tree without cursor pagination, such as a `MapAdapter`,
+  responds with HTTP 400 (previously HTTP 500).
+- The `csrf` query parameter, an alternative to the `x-csrf` header, works
+  (previously every request using it got HTTP 500).
+- Exporting a sparse array as CSV, Parquet, XLSX or HTML works (previously
+  HTTP 500).
+- Parquet is also served as `application/vnd.apache.parquet`, the registered
+  media type, which the system mime database of some platforms gives for the
+  `.parquet` extension; exporting to a `.parquet` file name failed there with
+  HTTP 406.
+- Exporting a container to HDF5 writes each column of a table it holds as its
+  own dataset, string columns included. Every column held the whole table.
 
 ## v0.2.22 (2026-11-18)
 
@@ -58,8 +132,7 @@ Updating promptly is recommended.
 - The `/zarr/v2` and `/zarr/v3` routes did not check scopes, so a server that
   requires authentication answered requests that carried no credentials. They
   now require `read:data`, and `read:metadata` for the metadata documents, like
-  the routes under `/api/v1`. Servers that allow anonymous access are
-  unaffected.
+  the routes under `/api/v1`. Servers that allow anonymous access are unaffected.
 - Uploading an awkward array as a zip archive wrote files outside of the
   node's directory when a member name contained `..` or was absolute, and an
   awkward form with such a `form_key` read files outside of it. Buffer keys are

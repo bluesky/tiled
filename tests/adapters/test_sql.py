@@ -349,6 +349,15 @@ def test_append_single_partition(
     result_read_partition["f3"] = result_read_partition["f3"].astype("boolean")
     assert table == pa.Table.from_pandas(result_read_partition)
 
+    # Columns are matched by name: appending them in another order gives the
+    # same rows. (The DuckDB driver ingests by position, so this depends on
+    # the adapter putting them in the table's order.)
+    reversed_columns = table.select(list(reversed(table.column_names)))
+    adapter.append_partition(1, reversed_columns)
+    result_reversed = adapter.read_partition(1)
+    result_reversed["f3"] = result_reversed["f3"].astype("boolean")
+    assert table == pa.Table.from_pandas(result_reversed)
+
 
 @pytest.mark.parametrize(
     "adapter",
@@ -1037,6 +1046,11 @@ def test_order_by_subset_fields_read(
 
     assert adapter.read(fields=["a"])["a"].tolist() == [1, 2, 3]
     assert adapter.read(fields=["b"])["b"].tolist() == [1.0, 2.0, 3.0]
+    # Columns come back in the requested order; an unknown column is an error.
+    assert list(adapter.read(fields=["b", "a"]).columns) == ["b", "a"]
+    assert list(adapter.read_partition(0, fields=["b", "ts"]).columns) == ["b", "ts"]
+    with pytest.raises(KeyError, match="unknown"):
+        adapter.read(fields=["a", "unknown"])
 
 
 @pytest.mark.parametrize("data_uri", ["sqlite_uri", "duckdb_uri", "postgres_uri"])
@@ -1046,14 +1060,16 @@ def test_no_order_by_does_not_crash(
     request: pytest.FixtureRequest,
 ) -> None:
     """Without order_by_args, no ORDER BY clause is added — the adapter should
-    initialise and read data without errors, and order_by_args should be empty."""
+    initialise and read data without errors, and order_by_args should be empty.
+    A primary_key on its own is validated without order_by_args."""
     data_source = data_source_from_init_storage(
         request.getfixturevalue(data_uri),
         1,
         _ts_value_schema.empty_table(),
     )
-    adapter = adapter_from_data_source(data_source)
+    adapter = adapter_from_data_source(data_source, primary_key=["ts"])
     assert adapter.order_by_args == []
+    assert adapter.primary_key == ["ts"]
 
     adapter.append_partition(0, pa.table({"ts": [10, 20], "value": [1.0, 2.0]}))
     result = adapter.read()

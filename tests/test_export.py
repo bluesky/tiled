@@ -5,11 +5,13 @@ from pathlib import Path
 import numpy
 import pandas
 import pytest
+import sparse
 import xarray
 
 from tiled.adapters.array import ArrayAdapter
 from tiled.adapters.dataframe import DataFrameAdapter
 from tiled.adapters.mapping import MapAdapter
+from tiled.adapters.sparse import COOAdapter
 from tiled.adapters.xarray import DatasetAdapter
 from tiled.client import Context, from_context
 from tiled.client.utils import ClientError
@@ -42,6 +44,9 @@ tree = MapAdapter(
         ),
         "single_row_many_columns": DataFrameAdapter.from_pandas(
             pandas.DataFrame({f"column_{i}": [i] for i in range(100)}), npartitions=1
+        ),
+        "sparse": COOAdapter.from_coo(
+            sparse.COO(coords=[[0, 1], [2, 3]], data=[1.0, 2.0], shape=(4, 4))
         ),
         "structured_data": MapAdapter(
             {
@@ -98,9 +103,26 @@ def test_export_2d_array(client, filename, tmpdir):
     client["A"].export(Path(tmpdir, filename))
 
 
-@pytest.mark.parametrize("filename", ["numbers.csv", "spreadsheet.xlsx"])
-def test_export_table(client, filename, tmpdir):
-    client["C"].export(Path(tmpdir, filename))
+@pytest.mark.parametrize("key", ["C", "sparse"])
+@pytest.mark.parametrize(
+    "filename", ["numbers.csv", "spreadsheet.xlsx", "table.parquet", "table.html"]
+)
+def test_export_table(client, key, filename, tmpdir):
+    "A sparse array exports to the table formats as its coordinates and data."
+    client[key].export(Path(tmpdir, filename))
+
+
+@pytest.mark.parametrize("key", ["C", "sparse"])
+@pytest.mark.parametrize(
+    "format", ["application/x-parquet", "application/vnd.apache.parquet"]
+)
+def test_export_parquet_media_types(client, key, format, tmpdir):
+    "Both the registered Parquet media type and the older one are served."
+    import pyarrow.parquet
+
+    path = Path(tmpdir, "table.parquet")
+    client[key].export(path, format=format)
+    assert pyarrow.parquet.read_table(path).num_rows > 0
 
 
 @pytest.mark.parametrize("filename", ["numbers.csv"])
@@ -212,6 +234,9 @@ def test_export_table_hdf5(tmpdir):
         client = from_context(context)
         filepath = Path(tmpdir, "table.h5")
         client["t"].export(str(filepath), format="application/x-hdf5")
+        # Exported as part of its container, the table is a group of columns.
+        container_filepath = Path(tmpdir, "container.h5")
+        client.export(str(container_filepath), format="application/x-hdf5")
     with h5py.File(filepath, "r") as file:
         assert set(file) == {"i", "x", "label"}
         numpy.testing.assert_array_equal(file["i"][()], df["i"].to_numpy())
@@ -219,6 +244,12 @@ def test_export_table_hdf5(tmpdir):
         assert [v.decode() for v in file["label"][()]] == ["a", "bb", "ccc"]
         assert file.attrs["sample"] == "Si"
         assert file.attrs["temperature"] == 300
+    with h5py.File(container_filepath, "r") as file:
+        assert set(file["t"]) == {"i", "x", "label"}
+        numpy.testing.assert_array_equal(file["t"]["i"][()], df["i"].to_numpy())
+        numpy.testing.assert_array_equal(file["t"]["x"][()], df["x"].to_numpy())
+        assert [v.decode() for v in file["t"]["label"][()]] == ["a", "bb", "ccc"]
+        assert file["t"].attrs["sample"] == "Si"
 
 
 def test_export_table_hdf5_bad_metadata():

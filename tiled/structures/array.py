@@ -1,6 +1,7 @@
 import enum
 import math
 import os
+import re
 import sys
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -81,12 +82,29 @@ class Kind(enum.StrEnum):
             )
 
 
+# The unit of a datetime or timedelta dtype, as numpy writes it: an optional
+# count and a unit code in brackets, such as "[ns]" or "[10m]".
+DT_UNITS_PATTERN = re.compile(r"^\[\d*(Y|M|W|D|h|m|s|ms|us|ns|ps|fs|as)\]$")
+
+
 @dataclass
 class BuiltinDtype:
     endianness: Endianness
     kind: Kind
     itemsize: int
     dt_units: str | None = None
+
+    def __post_init__(self) -> None:
+        # dt_units goes into the dtype string, which can also come from a
+        # client, so it is held to what numpy writes there.
+        if self.dt_units is not None:
+            if self.kind not in (Kind.datetime, Kind.timedelta):
+                raise ValueError(
+                    f"dt_units is only valid for datetime and timedelta kinds, "
+                    f"not {self.kind.value!r}."
+                )
+            if not DT_UNITS_PATTERN.match(self.dt_units):
+                raise ValueError(f"Invalid dt_units {self.dt_units!r}.")
 
     _endianness_map: ClassVar[Mapping[str, str]] = {
         ">": "big",

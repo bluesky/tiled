@@ -3,6 +3,7 @@ import copy
 import dataclasses
 import importlib
 import itertools as it
+import json
 import logging
 import operator
 import os
@@ -148,6 +149,18 @@ if TYPE_CHECKING:
     from ..ndslice import NDBlock
 
 logger = logging.getLogger(__name__)
+
+
+def is_unique_violation(exc: IntegrityError) -> bool:
+    """Tell whether an IntegrityError is a violated UNIQUE constraint.
+
+    SQLAlchemy gives every IntegrityError the same code, so the driver's
+    error is looked at: the SQLSTATE on PostgreSQL, the message on SQLite.
+    """
+    orig = exc.orig
+    if getattr(orig, "sqlstate", None) == "23505":  # PostgreSQL unique_violation
+        return True
+    return "UNIQUE constraint failed" in str(orig)  # SQLite
 
 
 def file_uris_outside_directories(data_uris, directories):
@@ -1374,8 +1387,7 @@ class CatalogNodeAdapter:
                 db.add(node)
                 await db.flush()
             except IntegrityError as exc:
-                UNIQUE_CONSTRAINT_FAILED = "gkpj"
-                if exc.code == UNIQUE_CONSTRAINT_FAILED:
+                if is_unique_violation(exc):
                     await db.rollback()
                     raise Collision(f"/{'/'.join(child_path)}")
                 raise
@@ -2782,12 +2794,19 @@ class CatalogTableAdapter(CatalogNodeAdapter):
 
     async def append_partition(self, media_type, deserializer, entry, body, partition):
         self._require_managed_data()
+        adapter = await self.get_adapter()
+        if not hasattr(adapter, "append_partition"):
+            raise HTTPException(
+                status_code=HTTP_405_METHOD_NOT_ALLOWED,
+                detail=(
+                    "The storage of this table does not support appending to a "
+                    "partition."
+                ),
+            )
         if self.context.streaming_cache:
             await self._stream(media_type, entry, body, partition, True)
         data = await ensure_awaitable(deserializer, body)
-        return await ensure_awaitable(
-            (await self.get_adapter()).append_partition, partition, data
-        )
+        return await ensure_awaitable(adapter.append_partition, partition, data)
 
 
 def delete_physical_asset(
@@ -2999,14 +3018,18 @@ def specs(query, tree):
     conditions = []
     attr = orm.Node.specs
     if dialect_name == "sqlite":
-        # SQLite stores JSON as text; match the serialized spec by pattern.
+        # SQLite stores JSON as text. Look for the serialized spec in it, as
+        # text: instr knows no wildcards and is case-sensitive.
         text_attr = type_coerce(attr, Text)
-        # Construct the conditions for includes
-        for i, name in enumerate(query.include):
-            conditions.append(text_attr.like(f'%{{"name":"{name}",%'))
-        # Construct the conditions for excludes
-        for i, name in enumerate(query.exclude):
-            conditions.append(not_(text_attr.like(f'%{{"name":"{name}",%')))
+
+        def has_spec(name):
+            serialized = json.dumps(name, separators=(",", ":"))
+            return func.instr(text_attr, f'{{"name":{serialized},') > 0
+
+        for name in query.include:
+            conditions.append(has_spec(name))
+        for name in query.exclude:
+            conditions.append(not_(has_spec(name)))
     elif dialect_name == "postgresql":
 
         def contains(specs):
