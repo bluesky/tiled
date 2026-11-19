@@ -35,6 +35,9 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Fixed
 
+- Creating a node responds with HTTP 409 only when its key exists. Every
+  integrity error of the catalog database, such as a violated foreign key,
+  was reported as a key collision.
 - Searching by spec on a SQLite catalog matches the spec name exactly. `%`
   and `_` in a name were wildcards, and matching ignored case.
 - Write routes respond with HTTP 415, naming the supported media types, when

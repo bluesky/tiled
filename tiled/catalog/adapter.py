@@ -151,6 +151,18 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def is_unique_violation(exc: IntegrityError) -> bool:
+    """Tell whether an IntegrityError is a violated UNIQUE constraint.
+
+    SQLAlchemy gives every IntegrityError the same code, so the driver's
+    error is looked at: the SQLSTATE on PostgreSQL, the message on SQLite.
+    """
+    orig = exc.orig
+    if getattr(orig, "sqlstate", None) == "23505":  # PostgreSQL unique_violation
+        return True
+    return "UNIQUE constraint failed" in str(orig)  # SQLite
+
+
 def file_uris_outside_directories(data_uris, directories):
     """Return the `file://` URIs that do not lead into one of the directories.
 
@@ -1375,8 +1387,7 @@ class CatalogNodeAdapter:
                 db.add(node)
                 await db.flush()
             except IntegrityError as exc:
-                UNIQUE_CONSTRAINT_FAILED = "gkpj"
-                if exc.code == UNIQUE_CONSTRAINT_FAILED:
+                if is_unique_violation(exc):
                     await db.rollback()
                     raise Collision(f"/{'/'.join(child_path)}")
                 raise

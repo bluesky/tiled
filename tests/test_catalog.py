@@ -40,6 +40,7 @@ from tiled.catalog.adapter import (
     CatalogContainerAdapter,
     WouldDeleteData,
     _access_tags_predicate,
+    is_unique_violation,
 )
 from tiled.catalog.explain import record_explanations
 from tiled.client import Context, from_context
@@ -159,6 +160,34 @@ async def test_known_access_tags_no_insert(a: CatalogContainerAdapter) -> None:
     await a.create_node(StructureFamily.container, {}, key="y", access_tags=approved)
     await x.replace_metadata(access_tags=approved)
     assert not [s for s in statements if s.startswith("INSERT INTO access_tags")]
+
+
+@pytest.mark.asyncio
+async def test_is_unique_violation(a):
+    "Only a violated UNIQUE constraint is a collision; other integrity errors are not."
+    engine = a.context.engine
+    async with engine.begin() as connection:
+        if engine.dialect.name == "sqlite":
+            await connection.execute(text("PRAGMA foreign_keys=ON"))
+        failures = {}
+        for label, statement in [
+            (
+                "unique",
+                "INSERT INTO access_tags (name, is_public) VALUES ('t', false), ('t', false)",
+            ),
+            (
+                "foreign-key",
+                "INSERT INTO node_access_tags_association (node_id, tag_id) "
+                "VALUES (999999, 999999)",
+            ),
+        ]:
+            savepoint = await connection.begin_nested()
+            with pytest.raises(sqlalchemy.exc.IntegrityError) as info:
+                await connection.execute(text(statement))
+            await savepoint.rollback()
+            failures[label] = info.value
+    assert is_unique_violation(failures["unique"])
+    assert not is_unique_violation(failures["foreign-key"])
 
 
 @pytest.mark.asyncio
