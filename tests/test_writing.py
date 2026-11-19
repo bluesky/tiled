@@ -53,6 +53,7 @@ from tiled.structures.table import TableStructure
 from tiled.utils import (
     APACHE_ARROW_FILE_MIME_TYPE,
     Conflicts,
+    ensure_uri,
     patch_mimetypes,
     sanitize_uri,
 )
@@ -117,7 +118,7 @@ def tree(tmpdir, tmp_s3_bucket):
             }
         )
 
-    writable_storage.append(f"file://localhost{str(tmpdir / 'data')}")
+    writable_storage.append(ensure_uri(tmpdir / "data"))
 
     return in_memory(writable_storage=writable_storage)
 
@@ -1118,7 +1119,9 @@ def test_write_with_specified_mimetype(tree):
                 ],
             )
             x.write_partition(0, df)
-            x.read()
+            assert_frame_equal(x.read(), df, check_dtype=False)
+            x.write(df + 1)
+            assert_frame_equal(x.read(), df + 1, check_dtype=False)
             x.refresh()
             assert x.data_sources()[0].mimetype == mimetype
 
@@ -1171,20 +1174,51 @@ def test_append_partition_to_table_whose_storage_cannot_append(tree):
         ),
     ],
 )
+@pytest.mark.parametrize("storage", ["sql", "csv"])
 def test_append_partition(
     tree: CatalogContainerAdapter,
     orig_file: dict,
     file_to_append: dict,
     expected_file: dict,
+    storage: str,
 ):
+    "Rows are appended by column name, to a table in SQL storage or in a CSV file."
     with Context.from_app(build_app(tree)) as context:
         client = from_context(context, include_data_sources=True)
         orig_table = pyarrow.Table.from_pydict(orig_file)
         table_to_append = pyarrow.Table.from_pydict(file_to_append)
 
-        x = client.create_appendable_table(orig_table.schema, key="x")
+        if storage == "sql":
+            x = client.create_appendable_table(orig_table.schema, key="x")
+        else:
+            x = client.new(
+                "table",
+                [
+                    DataSource(
+                        structure_family=StructureFamily.table,
+                        structure=TableStructure.from_pandas(orig_table.to_pandas()),
+                        mimetype="text/csv",
+                    )
+                ],
+                key="x",
+            )
         x.append_partition(0, orig_table)
-        x.append_partition(0, table_to_append)
+        # The columns of the appended rows come in another order.
+        x.append_partition(
+            0, table_to_append.select(reversed(table_to_append.column_names))
+        )
+        assert_frame_equal(x.read(), pandas.DataFrame(expected_file), check_dtype=False)
+        # Other columns are refused.
+        other = pyarrow.Table.from_pydict({"other": [1]})
+        with fail_with_status_code(HTTP_422_UNPROCESSABLE_CONTENT):
+            x.append_partition(0, other)
+        if storage == "sql":
+            # So are values that the columns' types cannot hold.
+            nested = pyarrow.Table.from_pydict(
+                {name: [[1, 2]] for name in orig_table.column_names}
+            )
+            with fail_with_status_code(HTTP_422_UNPROCESSABLE_CONTENT):
+                x.append_partition(0, nested)
         assert_frame_equal(x.read(), pandas.DataFrame(expected_file), check_dtype=False)
 
 

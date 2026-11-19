@@ -15,6 +15,7 @@ from starlette.websockets import WebSocketDisconnect
 
 from tiled.client import from_context
 from tiled.config import parse_configs
+from tiled.utils import ensure_uri
 
 from .conftest import TOY_SECRET_KEY
 
@@ -756,7 +757,7 @@ trees:
    args:
      uri: "sqlite:///:memory:"
      writable_storage:
-        - "file://localhost{str(tmp_path / "data")}"
+        - "{ensure_uri(tmp_path / "data")}"
         - "duckdb:///{tmp_path / "data.duckdb"}"
      init_if_not_exists: true
 streaming_cache:
@@ -793,7 +794,7 @@ trees:
    args:
      uri: "sqlite:///:memory:"
      writable_storage:
-        - "file://localhost{str(tmp_path / "data")}"
+        - "{ensure_uri(tmp_path / "data")}"
      init_if_not_exists: true
 streaming_cache:
   sentinels:

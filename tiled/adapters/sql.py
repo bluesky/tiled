@@ -45,6 +45,7 @@ from ..structures.data_source import Asset, DataSource
 from ..structures.table import TableStructure
 from ..type_aliases import JSON
 from .array import ArrayAdapter
+from .utils import ColumnMismatchError
 
 try:
     from opentelemetry import trace as _otel_trace
@@ -204,15 +205,6 @@ class SQLAdapter(Adapter[TableStructure]):
                 raise ValueError(
                     f"primary_key column '{key}' has type {arrow_type} which is not suitable "
                     f"as a primary key (nested types and floating-point types are not allowed)"
-                )
-            if arg["direction"] not in ("asc", "desc"):
-                raise ValueError(
-                    f"order_by direction must be 'asc' or 'desc', got '{arg['direction']}'"
-                )
-        for key in self.primary_key:
-            if key not in self.structure().columns:
-                raise ValueError(
-                    f"primary_key column '{key}' is not in the structure columns"
                 )
 
         super().__init__(structure, metadata=metadata, specs=specs)
@@ -503,8 +495,22 @@ class SQLAdapter(Adapter[TableStructure]):
             else:
                 batches = data
             table = pyarrow.Table.from_batches(batches)
-        # Explicitly cast the table to the structure's schema
-        table = table.cast(self.structure().arrow_schema_decoded)
+        # Put the columns in the order of the structure's schema, and cast.
+        schema = self.structure().arrow_schema_decoded
+        if set(table.column_names) != set(schema.names):
+            raise ColumnMismatchError(
+                f"The columns {table.column_names} do not match the columns of "
+                f"this table, {schema.names}."
+            )
+        try:
+            table = table.select(schema.names).cast(schema)
+        except (pyarrow.ArrowInvalid, pyarrow.ArrowNotImplementedError) as err:
+            # A value cannot be represented in the column's type (a float with
+            # a fraction in an integer column, text that is not a number), or
+            # there is no cast between the types at all (a list into a number).
+            raise ColumnMismatchError(
+                f"The data cannot be cast to the types of this table: {err}"
+            ) from err
         # Prepend columns for internal dataset_id and partition number.
         dataset_id_column = self.dataset_id * numpy.ones(len(table), dtype=numpy.int32)
         partition_id_column = partition * numpy.ones(len(table), dtype=numpy.int16)
@@ -573,7 +579,12 @@ class SQLAdapter(Adapter[TableStructure]):
 
         # Make sure that requested columns exist and safe to put in SQL query.
         schema = self.structure().arrow_schema_decoded
-        req_cols = set(schema.names).intersection(fields) if fields else schema.names
+        if fields:
+            if unknown := [field for field in fields if field not in schema.names]:
+                raise KeyError(f"Unknown columns: {unknown}")
+            req_cols = list(fields)
+        else:
+            req_cols = schema.names
 
         query = (
             "SELECT " + ", ".join([f'"{c.lower()}"' for c in req_cols]) + " "

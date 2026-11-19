@@ -43,6 +43,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from ..access_control.protocols import AccessPolicy
 from ..access_control.scopes import ScopeName
+from ..adapters.utils import ColumnMismatchError
 from ..authenticators import ProxiedOIDCAuthenticator
 from ..catalog.adapter import WouldDeleteData
 from ..config import (
@@ -495,6 +496,15 @@ def build_app(
 
     @app.exception_handler(UnsafePath)
     async def unsafe_path_exception_handler(request: Request, exc: UnsafePath):
+        return JSONResponse(
+            status_code=HTTP_422_UNPROCESSABLE_CONTENT,
+            content={"detail": exc.args[0]},
+        )
+
+    @app.exception_handler(ColumnMismatchError)
+    async def column_mismatch_exception_handler(
+        request: Request, exc: ColumnMismatchError
+    ):
         return JSONResponse(
             status_code=HTTP_422_UNPROCESSABLE_CONTENT,
             content={"detail": exc.args[0]},
