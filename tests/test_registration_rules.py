@@ -4,6 +4,7 @@ ever read: the data source is external, and stays external.
 """
 
 import sqlite3
+from dataclasses import asdict
 
 import numpy
 import pandas
@@ -11,6 +12,7 @@ import pytest
 import zarr
 from starlette.status import (
     HTTP_200_OK,
+    HTTP_400_BAD_REQUEST,
     HTTP_403_FORBIDDEN,
     HTTP_404_NOT_FOUND,
     HTTP_405_METHOD_NOT_ALLOWED,
@@ -99,6 +101,23 @@ def test_registered_data_is_external(client, layout):
 
     assert stored_data_source(client, "x")["management"] == "external"
     assert node.read().equals(df)
+
+
+def test_location_cannot_be_registered_through_metadata_route(client, layout):
+    "POST /metadata is for nodes whose data the server stores."
+    body = {
+        "id": "x",
+        "structure_family": "table",
+        "metadata": {},
+        "specs": [],
+        "data_sources": [asdict(csv_data_source(layout / "readable" / "one.csv"))],
+    }
+
+    response = client.context.http_client.post("/api/v1/metadata/", json=body)
+
+    assert response.status_code == HTTP_400_BAD_REQUEST
+    assert "/register" in response.json()["detail"]
+    assert "x" not in client
 
 
 @pytest.mark.parametrize("management", ["writable", "immutable", "locked"])

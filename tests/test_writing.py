@@ -12,6 +12,7 @@ import os
 import pathlib
 import threading
 import uuid
+from dataclasses import asdict
 from datetime import datetime
 from urllib.parse import urljoin, urlparse
 
@@ -29,7 +30,9 @@ import stamina
 from botocore.exceptions import ClientError as BotoClientError
 from pandas.testing import assert_frame_equal
 from starlette.status import (
+    HTTP_200_OK,
     HTTP_404_NOT_FOUND,
+    HTTP_405_METHOD_NOT_ALLOWED,
     HTTP_409_CONFLICT,
     HTTP_415_UNSUPPORTED_MEDIA_TYPE,
     HTTP_422_UNPROCESSABLE_CONTENT,
@@ -42,7 +45,7 @@ from tiled.client.utils import ClientError
 from tiled.mimetypes import PARQUET_MIMETYPE
 from tiled.queries import Key
 from tiled.server.app import build_app
-from tiled.structures.array import BuiltinDtype
+from tiled.structures.array import ArrayStructure, BuiltinDtype
 from tiled.structures.core import Spec, StructureFamily
 from tiled.structures.data_source import DataSource
 from tiled.structures.sparse import COOStructure
@@ -144,6 +147,54 @@ def test_created_node_links_have_no_double_slash(tree):
             for url in node.item["links"].values():
                 assert "//" not in urlparse(url).path
         assert all("//" not in r.url.path for r in history.requests)
+
+
+@pytest.mark.parametrize(
+    "dt_units, kind, accepted",
+    [
+        ("[ns]", "M", True),
+        ("[10m]", "m", True),
+        ("[ns]", "i", False),  # Not a datetime or timedelta.
+        ("[ns]|O", "M", False),  # Not a unit; would change the dtype.
+    ],
+)
+def test_structure_dt_units_are_validated(tree, dt_units, kind, accepted):
+    "The dtype string is built from the structure, which a client may supply."
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        structure = ArrayStructure.from_array(numpy.zeros(3, dtype="int64"))
+        body = {
+            "id": "x",
+            "structure_family": "array",
+            "metadata": {},
+            "specs": [],
+            "data_sources": [
+                {
+                    "structure_family": "array",
+                    "structure": {
+                        **asdict(structure),
+                        "data_type": {
+                            "endianness": "little",
+                            "kind": kind,
+                            "itemsize": 8,
+                            "dt_units": dt_units,
+                        },
+                    },
+                    "management": "writable",
+                    "assets": [],
+                    "parameters": {},
+                }
+            ],
+        }
+
+        response = client.context.http_client.post("/api/v1/metadata/", json=body)
+
+        if accepted:
+            assert response.status_code == HTTP_200_OK
+            assert client["x"].dtype == numpy.dtype(f"<{kind}8{dt_units}")
+        else:
+            assert response.status_code == HTTP_422_UNPROCESSABLE_CONTENT
+            assert "x" not in client
 
 
 def test_write_array_full(tree):
@@ -996,6 +1047,55 @@ def test_table_bytes_column_json_export(tree, buffer, media_type):
         assert [row["label"] for row in rows] == expected
 
 
+@pytest.mark.parametrize(
+    "method, route",
+    [
+        ("put", "array/full/{array}"),
+        ("put", "array/block/{array}?block=0"),
+        ("patch", "array/full/{array}?offset=0&shape=3"),
+        ("put", "table/full/{table}"),
+        ("put", "table/partition/{table}?partition=0"),
+        ("patch", "table/partition/{table}?partition=0"),
+    ],
+)
+@pytest.mark.parametrize(
+    "content_type", [None, "application/x-does-not-exist"], ids=["missing", "unknown"]
+)
+def test_write_with_unsupported_content_type(tree, method, route, content_type):
+    "A body of a media type that cannot be deserialized gets 415, not 500."
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        client.write_array([1, 2, 3], key="array")
+        client.write_table(pandas.DataFrame({"a": [1]}), key="table")
+        url = "/api/v1/" + route.format(array="array", table="table")
+        headers = {} if content_type is None else {"Content-Type": content_type}
+
+        response = client.context.http_client.request(
+            method, url, content=b"x", headers=headers
+        )
+
+        assert response.status_code == HTTP_415_UNSUPPORTED_MEDIA_TYPE
+        detail = response.json()["detail"]
+        assert "application/octet-stream" in detail or "text/csv" in detail
+
+
+def test_write_with_content_type_parameters(tree):
+    "Parameters of the media type, such as a charset, do not matter."
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        node = client.write_array(numpy.zeros(3, dtype="i8"), key="x")
+        array = numpy.arange(3, dtype="i8")
+
+        response = client.context.http_client.put(
+            "/api/v1/array/full/x",
+            content=array.tobytes(),
+            headers={"Content-Type": "application/octet-stream; charset=binary"},
+        )
+
+        assert response.status_code == HTTP_200_OK
+        numpy.testing.assert_array_equal(node.read(), array)
+
+
 def test_write_with_specified_mimetype(tree):
     with Context.from_app(build_app(tree)) as context:
         client = from_context(context, include_data_sources=True)
@@ -1034,6 +1134,18 @@ def test_write_with_specified_mimetype(tree):
                     ),
                 ],
             )
+
+
+def test_append_partition_to_table_whose_storage_cannot_append(tree):
+    "The default table storage holds whole partitions; appending gets 405."
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        df = pandas.DataFrame({"a": [1, 2]})
+        node = client.write_table(df, key="x")
+
+        with fail_with_status_code(HTTP_405_METHOD_NOT_ALLOWED):
+            node.append_partition(0, df)
+        assert node.read().equals(df)
 
 
 @pytest.mark.parametrize(

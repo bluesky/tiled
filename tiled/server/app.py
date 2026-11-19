@@ -6,7 +6,6 @@ import logging
 import os
 import secrets
 import sys
-import urllib.parse
 import warnings
 from contextlib import asynccontextmanager
 from functools import cache, partial
@@ -88,6 +87,7 @@ from .utils import (
     get_trace_id,
     normalize_root_path,
     record_timing,
+    request_is_https,
     request_trace_id,
 )
 from .webhook_router import UrlValidator, get_webhook_router
@@ -1002,8 +1002,7 @@ def build_app(
             # Get the token from the Header or (if not there) the query parameter.
             csrf_token = request.headers.get(CSRF_HEADER_NAME)
             if csrf_token is None:
-                parsed_query = urllib.parse.parse_qs(request.url.query)
-                csrf_token = parsed_query.get(CSRF_QUERY_PARAMETER)
+                csrf_token = request.query_params.get(CSRF_QUERY_PARAMETER)
             if not csrf_token:
                 return Response(
                     status_code=HTTP_403_FORBIDDEN,
@@ -1023,6 +1022,7 @@ def build_app(
                 value=secrets.token_urlsafe(32),
                 httponly=True,
                 samesite="lax",
+                secure=request_is_https(request),
             )
         return response
 
@@ -1068,6 +1068,8 @@ def build_app(
         for params in request.state.cookies_to_set:
             params.setdefault("httponly", True)
             params.setdefault("samesite", "lax")
+            # Over HTTPS, a cookie is sent back over HTTPS only.
+            params.setdefault("secure", request_is_https(request))
             response.set_cookie(**params)
         return response
 

@@ -23,10 +23,20 @@ assert tiny_array.nbytes < size_limit < small_array.nbytes
 assert tiny_df.memory_usage().sum() < size_limit < small_df.memory_usage().sum()
 
 
+class DeclaredOnlyArrayAdapter(ArrayAdapter):
+    "An array whose size is declared in its structure and whose data is never read."
+
+    def read(self, slice=...):
+        raise AssertionError("The data is read before its size is checked.")
+
+    read_block = read
+
+
 tree = MapAdapter(
     {
         "tiny_array": ArrayAdapter.from_array(tiny_array),
         "small_array": ArrayAdapter.from_array(small_array),
+        "declared_array": DeclaredOnlyArrayAdapter.from_array(small_array),
         "tiny_df": DataFrameAdapter.from_pandas(tiny_df, npartitions=1),
         "small_df": DataFrameAdapter.from_pandas(small_df, npartitions=2),
     }
@@ -69,6 +79,11 @@ def test_array(client, tmpdir):
             client["small_array"].read()  # too big
         with fail_with_status_code(HTTP_400_BAD_REQUEST):
             client["small_array"].export(path)  # too big
+        # The size is known from the structure, so nothing is read.
+        with fail_with_status_code(HTTP_400_BAD_REQUEST):
+            client["declared_array"].read()
+        with fail_with_status_code(HTTP_400_BAD_REQUEST):
+            client["declared_array"].read_block((0,))
 
 
 def test_dataframe(client, tmpdir):
