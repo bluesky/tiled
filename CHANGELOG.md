@@ -235,6 +235,7 @@ wherever it is used.
 - CI runs pre-commit with current actions in place of the unmaintained
   `pre-commit/action`, which ran on the deprecated Node.js 20, and the
   container builds the web UI on the builder's platform (`$BUILDPLATFORM`).
+- Reverse-ordered `MapAdapter` mappings without building an intermediate item list, while retaining support for generic mapping views.
 - OIDC authenticators now verify id_tokens (and their `at_hash`) at login via
   `verify_login`, while `decode_token` only decodes access tokens.
 - On PostgreSQL, the access-control filter passes the resolved tag ids as a

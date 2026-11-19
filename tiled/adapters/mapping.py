@@ -2,7 +2,7 @@ import copy
 import itertools
 import operator
 from collections import Counter
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from datetime import UTC, datetime, timedelta
 from typing import (
     TYPE_CHECKING,
@@ -402,7 +402,7 @@ class MapAdapter(Generic[A], ContainerAdapter[A], IndexersMixin):
 
         return data
 
-    def sort(self, sorting: SortingItem) -> "MapAdapter[A]":
+    def sort(self, sorting: Sequence[SortingItem | tuple[str, int]]) -> "MapAdapter[A]":
         """
 
         Parameters
@@ -414,7 +414,14 @@ class MapAdapter(Generic[A], ContainerAdapter[A], IndexersMixin):
 
         """
         mapping = copy.copy(self._mapping)
-        for key, direction in reversed(sorting):
+        for sorting_item in reversed(sorting):
+            key: str
+            direction: int
+            if isinstance(sorting_item, SortingItem):
+                key = sorting_item.key
+                direction = sorting_item.direction
+            else:
+                key, direction = sorting_item
             if key == "_":
                 # Special case to enable reversing the given/default ordering.
                 # Leave mapping as is, and possibly reserve it below.
@@ -428,13 +435,14 @@ class MapAdapter(Generic[A], ContainerAdapter[A], IndexersMixin):
                 )
 
             if direction < 0:
-                # TODO In Python 3.8 dict items should be reversible
-                # but I have seen errors in the wild that I could not
-                # quickly resolve so for now we convert to list in the middle.
-                to_reverse = list(mapping.items())
-                mapping = dict(reversed(to_reverse))
+                # Normalize generic Mapping views to a built-in dict_items view,
+                # which supports reversed() without an intermediate list.
+                mapping_items = dict(mapping.items()).items()
+                mapping = dict(reversed(mapping_items))
 
-        return self.new_variation(mapping=mapping, sorting=sorting)
+        return self.new_variation(
+            mapping=mapping, sorting=cast(list[SortingItem], list(sorting))
+        )
 
     # The following two methods are used by keys(), values(), items().
 
