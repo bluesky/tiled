@@ -217,6 +217,9 @@ _LIVE_SUBSCRIPTION_LOST = object()
 # waiting for data, so the handler can return and release the connection.
 _PEER_DISCONNECTED = object()
 
+# The most historical sequences replayed for one subscriber, unless configured.
+DEFAULT_MAX_REPLAY = 1000
+
 
 def _make_ws_handler_common(
     *,
@@ -230,6 +233,7 @@ def _make_ws_handler_common(
     live_sequence_source: Callable[
         [], Any
     ],  # returns (AsyncIterator[int], Optional[Callable[[], Awaitable[None]]])
+    max_replay: int = DEFAULT_MAX_REPLAY,
 ):
     """
     Create a websocket handler that implements the streaming protocol for a node.
@@ -254,6 +258,9 @@ def _make_ws_handler_common(
     live_sequence_source : Callable[[], Tuple[AsyncIterator[int], Optional[Callable[[], Awaitable[None]]]]]
         Function returning an async iterator of new sequence numbers as they become available,
         and optionally a cleanup callback to be awaited when the stream ends.
+    max_replay : int
+        The most historical sequences to replay for one subscriber. A subscriber that
+        asks for more gets the most recent ones.
 
     Returns
     -------
@@ -264,7 +271,8 @@ def _make_ws_handler_common(
     Protocol Flow
     -------------
     1. Sends the schema to the client to provide context for interpreting subsequent data.
-    2. If a starting sequence is provided, replays historical data from that sequence up to the current sequence.
+    2. If a starting sequence is provided, replays historical data from that sequence up to the current sequence,
+       limited to the most recent `max_replay` sequences.
     3. Streams new data live as it becomes available.
 
     Error Handling
@@ -369,8 +377,17 @@ def _make_ws_handler_common(
                 # If a sequence number is passed, replay old data
                 current_seq = last_sent = int(await current_sequence_getter())
                 logger.debug("Replaying old data...")
-                for s in range(sequence, current_seq + 1):
+                # The starting sequence comes from the client, and the counter
+                # outlives the data. Bound the work done for one subscriber.
+                first = max(sequence, current_seq - max_replay + 1)
+                for s in range(first, current_seq + 1):
+                    if disconnect_task.done():
+                        # The client is gone. The loop below reports it.
+                        break
                     await stream_data(s)
+                    # Looking up a sequence may not give up the event loop.
+                    # Let other requests run between sequences.
+                    await asyncio.sleep(0)
 
             while not end_stream.is_set():
                 live_seq = await stream_buffer.get()
@@ -430,6 +447,8 @@ class TTLCacheDatastore(StreamingDatastore):
               Defaults to 1000.
             - seq_ttl (float): Time-to-live (in seconds) for sequence counters.
             - data_ttl (float): Time-to-live (in seconds) for data entries.
+            - max_replay (int, optional): The most historical sequences to replay
+              for one subscriber. Defaults to 1000.
 
     Limitations:
         - Not suitable for multi-process or distributed deployments.
@@ -527,6 +546,7 @@ class TTLCacheDatastore(StreamingDatastore):
             get_func=self.get,
             current_sequence_getter=current_sequence_getter,
             live_sequence_source=live_sequence_source,
+            max_replay=self._settings.get("max_replay", DEFAULT_MAX_REPLAY),
         )
 
 
@@ -537,13 +557,19 @@ class RedisStreamingDatastore(StreamingDatastore):
         self._client = _build_redis_client(settings)
         self.data_ttl = self._settings["data_ttl"]
         self.seq_ttl = self._settings["seq_ttl"]
+        # Prepended to every key and pub/sub channel, so that separate Tiled
+        # deployments can share one Redis server.
+        self._key_prefix = self._settings.get("key_prefix", "")
+
+    def _key(self, name: str) -> str:
+        return self._key_prefix + name
 
     @property
     def client(self) -> redis.Redis:
         return self._client
 
     async def incr_seq(self, node_id: str) -> int:
-        return await self.client.incr(f"sequence:{node_id}")
+        return await self.client.incr(self._key(f"sequence:{node_id}"))
 
     async def set(self, node_id, sequence, metadata, payload=None):
         pipeline = self.client.pipeline()
@@ -553,11 +579,11 @@ class RedisStreamingDatastore(StreamingDatastore):
         }
         if payload:
             mapping["payload"] = payload
-        pipeline.hset(f"data:{node_id}:{sequence}", mapping=mapping)
-        pipeline.expire(f"data:{node_id}:{sequence}", self.data_ttl)
-        pipeline.publish(f"notify:{node_id}", sequence)
+        pipeline.hset(self._key(f"data:{node_id}:{sequence}"), mapping=mapping)
+        pipeline.expire(self._key(f"data:{node_id}:{sequence}"), self.data_ttl)
+        pipeline.publish(self._key(f"notify:{node_id}"), sequence)
         # Extend the lifetime of the sequence counter.
-        pipeline.expire(f"sequence:{node_id}", self.seq_ttl)
+        pipeline.expire(self._key(f"sequence:{node_id}"), self.seq_ttl)
         await pipeline.execute()
 
     async def close(self, node_id):
@@ -572,31 +598,31 @@ class RedisStreamingDatastore(StreamingDatastore):
 
         pipeline = self.client.pipeline()
         pipeline.hset(
-            f"data:{node_id}:{sequence}",
+            self._key(f"data:{node_id}:{sequence}"),
             mapping={
                 "sequence": sequence,
                 "metadata": safe_json_dump(metadata),
             },
         )
-        pipeline.expire(f"data:{node_id}:{sequence}", self.data_ttl)
+        pipeline.expire(self._key(f"data:{node_id}:{sequence}"), self.data_ttl)
         # Expire the sequence more aggressively.  It needs to outlive the last
         # piece of data for this sequence, but then it can be culled. Any
         # future writes will restart the sequence from 1.
-        pipeline.expire(f"sequence:{node_id}", 1 + self.data_ttl)
-        pipeline.publish(f"notify:{node_id}", sequence)
+        pipeline.expire(self._key(f"sequence:{node_id}"), 1 + self.data_ttl)
+        pipeline.publish(self._key(f"notify:{node_id}"), sequence)
         await pipeline.execute()
 
     async def get(self, key, *fields):
-        return await self.client.hmget(key, *fields)
+        return await self.client.hmget(self._key(key), *fields)
 
     def make_ws_handler(self, websocket, formatter, uri, node_id, schema):
         async def current_sequence_getter():
-            current_seq = await self.client.get(f"sequence:{node_id}")
+            current_seq = await self.client.get(self._key(f"sequence:{node_id}"))
             return int(current_seq) if current_seq is not None else 0
 
         async def live_sequence_source():
             pubsub = self.client.pubsub()
-            await pubsub.subscribe(f"notify:{node_id}")
+            await pubsub.subscribe(self._key(f"notify:{node_id}"))
 
             async def live_iter():
                 async for message in pubsub.listen():
@@ -607,7 +633,7 @@ class RedisStreamingDatastore(StreamingDatastore):
                             logger.exception(f"Error parsing live message: {e}")
 
             async def cleanup():
-                await pubsub.unsubscribe(f"notify:{node_id}")
+                await pubsub.unsubscribe(self._key(f"notify:{node_id}"))
                 await pubsub.aclose()
 
             return live_iter(), cleanup
@@ -621,4 +647,5 @@ class RedisStreamingDatastore(StreamingDatastore):
             get_func=self.get,
             current_sequence_getter=current_sequence_getter,
             live_sequence_source=live_sequence_source,
+            max_replay=self._settings.get("max_replay", DEFAULT_MAX_REPLAY),
         )

@@ -287,6 +287,32 @@ async def test_authentication(prefix, path, app):
         assert response.status_code == HTTP_401_UNAUTHORIZED
 
 
+@pytest.mark.parametrize(
+    "path",
+    [
+        "",
+        "/",
+        "/nested",
+        "/table/single",
+        "/nested/cube/tiny_cube",
+        "/table/single/x",
+    ],
+)
+@pytest.mark.parametrize(
+    "suffix", ["", "/.zarray", "/.zgroup", "/.zattrs", "/zarr.json", "/0", "/c/0"]
+)
+@pytest.mark.asyncio
+async def test_no_credentials(prefix, path, suffix, app):
+    "A request without credentials is refused, as it is under /api/v1."
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://test",
+        follow_redirects=True,
+    ) as client:
+        response = await client.get(prefix + path + suffix)
+        assert response.status_code == HTTP_401_UNAUTHORIZED
+
+
 def test_zarr_integration(server_url, fs, prefix):
     url = f"{server_url}{prefix}"
     grp = zarr.open(fs.get_mapper(url), mode="r")
@@ -317,6 +343,14 @@ def test_zarr_groups(prefix, path, suffix, slash, server_url, fs):
     assert numpy.array_equal(arr[...], expected)
 
 
+# Tiled serves these dtypes, but Zarr warns that their v3 encoding is not yet
+# standardized.
+ignore_unstable_zarr_dtype = pytest.mark.filterwarnings(
+    "ignore:The data type .* does not have a Zarr V3 specification"
+)
+
+
+@ignore_unstable_zarr_dtype
 @pytest.mark.parametrize("kind", list(array_cases.keys()))
 def test_array_dtypes(kind, prefix, server_url, fs):
     expected = array_cases[kind]
@@ -326,6 +360,7 @@ def test_array_dtypes(kind, prefix, server_url, fs):
     assert numpy.array_equal(actual, expected)
 
 
+@ignore_unstable_zarr_dtype
 @pytest.mark.parametrize("kind", list(scalar_cases))
 def test_scalar_dtypes(kind, prefix, server_url, fs):
     expected = scalar_cases[kind]

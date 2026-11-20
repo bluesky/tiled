@@ -7,6 +7,219 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Added
 
+- `streaming_cache.key_prefix`, prepended to every Redis key and pub/sub
+  channel the streaming cache uses. These are named by node ID alone, so
+  separate Tiled deployments sharing one Redis server received each other's
+  streamed data; giving each deployment its own prefix keeps them apart. Tests
+  that use Redis each get a unique prefix, which fixes intermittent failures
+  when they ran at the same time on different pytest-xdist workers.
+
+### Changed
+
+- Listing a container whose untagged children inherit the user's tags no
+  longer reads every tag assignment under the container. A new
+  `untagged_nodes` table, kept up to date by database triggers, lists the
+  nodes with no tags of its own, so the access filter reads only the rows it
+  returns. This requires a catalog database migration (`tiled catalog
+  upgrade-database`).
+
+### Fixed
+
+- Node keys are percent-encoded wherever they become a segment of a URL path,
+  in the links the server returns and in the URLs the Python client builds.
+  A key with `#`, `?`, a space or `+` addressed another node or failed: writing
+  `run#1` wrote to `run`.
+- `ArrayClient.write` and `write_block` check the data against the array's
+  dtype and size before uploading. The server reads the bytes by the
+  structure, so data of another dtype was stored as other values (integers
+  written to a float array read back as denormal floats). Data that can be
+  cast within its kind, such as a list of integers for a float array, is cast;
+  other data raises `ValueError`.
+- `patch_metadata` with a JSON Patch, whose operations may not be idempotent,
+  follows the retry policy of appending rows: a request that may have reached
+  the server is not retried. It was retried like any other request, so a
+  lost response appended a list element twice.
+- `Subscription.start_in_thread` raises the error when the connection is
+  refused, for example for a node that does not exist or a credential that is
+  not accepted. It waited forever.
+- A bounded slice of `metadata_revisions`, such as `[0:2]`, returns that many
+  revisions. The bound applied to the first page only, and every later page
+  was appended.
+- Appending to a table matches the appended columns by name, in SQL storage
+  and in CSV files. SQL storage refused columns given in another order; a CSV
+  file took them positionally. Columns that are not the table's are refused
+  with HTTP 422, as are values that the columns' types cannot hold (previously
+  HTTP 500). The first append to a CSV partition writes the header, which it
+  left out, so the first row of data was read back as the header.
+- A full write to a table in Arrow storage raised after truncating the file,
+  so the table read back empty.
+- A table in SQL storage created with a `primary_key` but without
+  `order_by_args` raised `UnboundLocalError` on every access.
+- Reading a subset of a table's columns from SQL storage returns them in the
+  requested order (previously in an arbitrary order), and an unknown column is
+  refused with HTTP 400 (previously dropped without notice).
+
+## v0.2.22 (2026-11-18)
+
+### Security
+
+- The WebSocket route `/stream/single` requires the `read:data` and
+  `read:metadata` scopes, like the HTTP routes that serve the same data. A
+  credential without them was accepted when the server had no access policy.
+- The webhook URL check also refuses IPv6 addresses that stand for a blocked
+  IPv4 address (IPv4-mapped, IPv4-compatible, 6to4 and Teredo), and the
+  unspecified address `::`.
+
+### Added
+
+- `streaming_cache.key_prefix`, prepended to every Redis key and pub/sub
+  channel the streaming cache uses. These are named by node ID alone, so
+  separate Tiled deployments sharing one Redis server received each other's
+  streamed data; giving each deployment its own prefix keeps them apart. Tests
+  that use Redis each get a unique prefix, which fixes intermittent failures
+  when they ran at the same time on different pytest-xdist workers.
+
+### Changed
+
+- The `tiled_csrf` and `tiled_api_key` cookies carry the `Secure` attribute
+  when they are set over HTTPS.
+- `GET /array/full` and `GET /array/block` compare the size of the requested
+  data, known from the structure, with `response_bytesize_limit` before any
+  data is read. A slice out of range for the array responds with HTTP 400.
+- A zip archive uploaded to `PUT /awkward/full` has its member names checked
+  against the form before any member is decompressed.
+
+### Fixed
+
+- Creating a node responds with HTTP 409 only when its key exists. Every
+  integrity error of the catalog database, such as a violated foreign key,
+  was reported as a key collision.
+- The `dt_units` of an array structure must be a datetime unit, such as
+  `[ns]`, on a datetime or timedelta dtype (HTTP 422 otherwise). It was put
+  into the numpy dtype string as given.
+- Searching by spec on a SQLite catalog matches the spec name exactly. `%`
+  and `_` in a name were wildcards, and matching ignored case.
+- Write routes respond with HTTP 415, naming the supported media types, when
+  the request has no `Content-Type` or one that cannot be deserialized for the
+  structure family (previously HTTP 500). Parameters of the media type, such
+  as a charset, are ignored in the lookup.
+- `POST /metadata` with a data source that has assets responds with HTTP 400
+  pointing to `POST /register` (previously HTTP 500).
+- `PATCH /table/partition` on a table whose storage cannot append, such as the
+  default Parquet storage, responds with HTTP 405 (previously HTTP 500).
+- `page[cursor]` on a tree without cursor pagination, such as a `MapAdapter`,
+  responds with HTTP 400 (previously HTTP 500).
+- The `csrf` query parameter, an alternative to the `x-csrf` header, works
+  (previously every request using it got HTTP 500).
+- Exporting a sparse array as CSV, Parquet, XLSX or HTML works (previously
+  HTTP 500).
+- Parquet is also served as `application/vnd.apache.parquet`, the registered
+  media type, which the system mime database of some platforms gives for the
+  `.parquet` extension; exporting to a `.parquet` file name failed there with
+  HTTP 406.
+- Exporting a container to HDF5 writes each column of a table it holds as its
+  own dataset, string columns included. Every column held the whole table.
+
+## v0.2.22 (2026-11-18)
+
+### Security
+
+This release addresses security issues identified by a frontier AI model. One
+was also responsibly disclosed by Santosh Kumar Puppala (@Santoshkumarpuppala).
+Some of them can be used without credentials, or by any user who can
+read data. Every release since v0.1.0a54 is affected by at least one of them.
+Updating promptly is recommended.
+
+- The web UI route (`/ui/...`) served any file that the server process could
+  read, without credentials, when the path contained `..` or was absolute. It
+  now serves only the files of the UI distribution and responds with HTTP 404
+  to anything else. True for /ui and /asset/bytes: This attack vector was
+  considered, but the measures in place were not effective.
+- `/asset/bytes` served files outside of a directory asset when
+  `relative_path` contained `..`. It now responds with HTTP 400, also for a
+  symbolic link that leads out of the asset's directory.
+- The `/zarr/v2` and `/zarr/v3` routes did not check scopes, so a server that
+  requires authentication answered requests that carried no credentials. They
+  now require `read:data`, and `read:metadata` for the metadata documents, like
+  the routes under `/api/v1`. Servers that allow anonymous access are unaffected.
+- Uploading an awkward array as a zip archive wrote files outside of the
+  node's directory when a member name contained `..` or was absolute, and an
+  awkward form with such a `form_key` read files outside of it. Buffer keys are
+  now used only if they are plain file names. An upload may hold only the
+  buffers that the node's form names (HTTP 400 otherwise), and a form with
+  unusable keys is refused when the node is created (HTTP 422).
+- A node cannot be created with the key `.` or `..`, or a key containing `/`
+  (HTTP 422). Below a container named `..`, the storage of new tables and
+  awkward arrays was created outside of the writable storage directory.
+  Creating a node below an existing container with such a key is refused too.
+- In the Python client, `raw_export` wrote outside of the destination
+  directory if the server sent a file name or a manifest entry that contained
+  `..` or was absolute. It now raises `UnsafePath` for such a manifest entry
+  and does not write a file with such a name.
+- A WebSocket subscription with a `start` far below the current sequence made
+  the server look up every sequence in between without giving up the event
+  loop. With the in-memory streaming cache, one such request stopped the
+  server from answering anything else, and it kept running after the client
+  had disconnected. A `start` below -1 is now refused, the replay stops when
+  the client disconnects, and it covers at most the most recent `max_replay`
+  messages. `max_replay` is a new `streaming_cache` setting, 1000 by default.
+- External files are served only from readable storage. The check compared
+  paths as text, so a registered path that left a readable directory through
+  `..` or a symbolic link was served, and `/asset/bytes` and `/asset/manifest`
+  did not check at all. Paths are now compared after resolving `..` and
+  symbolic links, and the check is made when a file is registered and whenever
+  it is read or downloaded, with HTTP 403 on refusal. Registering a file
+  outside of readable storage, which used to succeed and then fail on read, is
+  refused. A file reached through a symbolic link that leads out of readable
+  storage is no longer served unless the link's target is readable storage too.
+  The same holds for every asset of a data source, also one that is not passed
+  to the adapter. An asset URI without a scheme, which some adapters read as a
+  path, or with a scheme that no readable storage of the server has, which
+  some adapters would fetch from the network, is refused too; an object
+  storage URI must be in a readable bucket.
+- A registered HDF5 file could make the server read other files: through an
+  external link, through the sources of a virtual dataset, and through a
+  dataset whose raw data is stored in an external file, which can be any file
+  at all. The server now follows external links and virtual dataset sources
+  only into readable storage, and does not read a dataset with external raw
+  storage. An entry that is refused is reported like a broken link (HTTP 410).
+  A NetCDF file, which is an HDF5 file read by another library, is served only
+  if it refers to no other file. Adapters used directly, outside of a server,
+  are not restricted unless `readable_directories` is passed.
+
+For a server that cannot be updated right away, the reverse proxy in front of
+it can refuse the requests that the most exposed of these issues depend on.
+The measures below were tested with nginx against a server without the fixes.
+Apply each to the decoded and normalized path, as an nginx `location` does,
+so that `/%75i/` is treated as `/ui/`. If Tiled is served under a path prefix,
+the paths below come after the prefix.
+
+- Refuse any request whose path has a `..` segment, also when it is written
+  with `%2e`.
+- `/ui/`: block it. To keep the web UI, refuse requests under it whose path, as
+  the client sent it, contains `//`, `%2f`, `%2e` or `%5c`. A proxy that
+  forwards the path unchanged does not protect this route by itself.
+- `/zarr/`: block it. To keep Zarr access, require an `Authorization` header
+  made of `Apikey` or `Bearer` and a credential, which Tiled then checks. A
+  header with no credential after the scheme counts as no credentials. A key
+  given in the URL or in a cookie no longer works under this rule.
+- `/api/v1/asset/`: block it, or set `expose_raw_assets: false` in the Tiled
+  configuration, which has the same effect.
+- `/api/v1/awkward/`: block it. Awkward arrays can then be neither read nor
+  written.
+- `/api/v1/stream/`: block it. To keep streaming, accept the `start` query
+  parameter only if it is made of digits, and refuse a query string that
+  contains `%` or `+`. Refusing a leading `-` is not enough: Tiled reads `0-5`
+  and `+-5` as negative numbers too.
+
+These measures do not cover the files that a registered HDF5 file, or a
+symbolic link in readable storage, refers to. Until the server is updated,
+the directories that it reads should hold only files from trusted sources.
+The fix to `raw_export` is in the Python client, which has to be updated
+wherever it is used.
+
+### Added
+
 - Documentation page listing the Alembic revisions of the catalog and
   authentication databases required by each Tiled release, generated from the
   git tags when the documentation is built.
@@ -33,25 +246,31 @@ Write the date in place of the "Unreleased" in the case a new version is release
   external-service calls appear in traces. The example monitoring stack also
   generates a service graph viewable in Grafana, with Tiled's separate Postgres
   databases (catalog, storage, authn) and Redis shown as distinct nodes.
+- New `KeyLike` query (`key_like` over HTTP) matching entries whose key
+  contains, starts with, or ends with some text, selected by the `before`
+  and `after` parameters (both true by default). Matching is case-sensitive
+  and literal: no character acts as a wildcard. It is supported on SQLite and
+  PostgreSQL catalogs. An empty key, or `before` and `after` both false, is
+  rejected with HTTP 400 (and with `QueryValueError` when constructing the
+  query in Python).
 
 ### Changed
 
-- Listing a container whose untagged children inherit the user's tags no
-  longer reads every tag assignment under the container. A new
-  `untagged_nodes` table, kept up to date by database triggers, lists the
-  nodes with no tags of its own, so the access filter reads only the rows it
-  returns. This requires a catalog database migration (`tiled catalog
-  upgrade-database`).
-
+- The test suite runs without warnings: async fixtures declare their event loop
+  scope, test JWTs are signed with keys of the length RFC 7518 recommends, and
+  expected warnings are asserted or filtered where they are raised. The flaky
+  `test_internal_authentication_mode_with_password_clients` uses the client's
+  own timeouts, as other tests that start a server do.
+- CI runs pre-commit with current actions in place of the unmaintained
+  `pre-commit/action`, which ran on the deprecated Node.js 20, and the
+  container builds the web UI on the builder's platform (`$BUILDPLATFORM`).
 - OIDC authenticators now verify id_tokens (and their `at_hash`) at login via
   `verify_login`, while `decode_token` only decodes access tokens.
-
 - On PostgreSQL, the access-control filter passes the resolved tag ids as a
   single array parameter (`tag_id = ANY(...)`) instead of one bind parameter
   per tag. For principals with many tags this avoids huge, per-tag-count
   prepared statements, whose parameter-blind generic plans defeated the
   planner statistics.
-
 - Tiled now manages its connection pools to tabular storage more correctly.
   Also, it is now not allowed to use two storage databases with the same
   database on different hosts.
@@ -83,9 +302,43 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - Type annotations throughout use PEP 604 (`X | Y`) and built-in generics
   (`list[str]`) instead of `typing.Union`, `Optional`, `List`, etc., enforced
   by the ruff `UP` (pyupgrade) rules.
+- A table in SQL storage cannot be registered as external data, which was
+  never a supported use. The table name and dataset id of a registered table
+  came from the client, so a client with the `register` scope could read the
+  rows of any other table in the storage database, through the dataset id or
+  through SQL placed in it, and deleting the node deleted those rows.
+  Registering external data with a SQL storage format, or with an asset whose
+  URI has the scheme of a database (which also let a file outside of readable
+  storage be read), is refused with HTTP 403. Such a data source already in a
+  catalog is not read, and deleting its node no longer deletes rows. Tables
+  written through the server are unaffected. A table whose stored dataset id
+  is not an integer, or whose stored table name holds characters other than
+  letters, digits and underscores, is not read (HTTP 422).
+- `PUT /data_source` changes only an externally managed data source of the
+  node in the request, and keeps it externally managed. It used to accept the
+  id of a data source of any node.
 
 ### Fixed
 
+- Composing a slice with a negative step with a second slice gave an empty
+  result when the composed stop lay before the first element: the stop was a
+  negative number, which Python counts from the end. Such a stop is now open.
+- Search requests (`/search`, `/search-deep`, `/distinct`) whose filter
+  parameters for one query type were given different numbers of times, for
+  example a query given twice with one of its parameters given only once, now
+  get HTTP 400 with an explanation. Previously the server paired up values by
+  position and silently dropped or misapplied queries. A query missing a
+  required parameter now gets HTTP 400 instead of HTTP 500.
+- Close the response compressor on every path. The server opened one for each
+  compressible response but closed it only when it compressed the body, so
+  small responses (sent uncompressed) and streams that ended early leaked one.
+- Clear deprecation warnings raised by current releases of dependencies:
+  SQLAlchemy 2.1 (the `noload` loader strategy on `Webhook.node`, JSON-typed
+  operands of text and containment operators in full-text and specs queries,
+  and a column-level `distinct()`), Alembic (`path_separator` in the generated
+  `alembic.ini`), websockets 17.1 (the client's streaming connection is entered
+  as a context manager), and pydantic (serializing an entry point loaded from
+  a configuration string, such as `adapters_by_mimetype`).
 - Treat `anyio.ClosedResourceError` as a normal disconnect in the
   test-client websocket wrapper: starlette >=1.0 raises it when receiving
   on a closed session, which previously killed streaming subscription
@@ -110,6 +363,10 @@ Write the date in place of the "Unreleased" in the case a new version is release
   a 401, an access token within a minute of expiring is refreshed before
   connecting. Only a session with neither falls back to minting a short-lived
   API key per connection, and only a key minted this way is revoked afterwards.
+- Exporting a dataset reached through an HDF5 soft link writes the link
+  again instead of a copy of the data it points at. A link whose target
+  lies outside the node being exported keeps the link, so it does not
+  resolve in the new file, where the data was copied before.
 - Fixed `read_partition` on a table with a string column, which failed with
   a dtype mismatch (`object` in the structure, `string` in the data sent by
   the server). The eager client now fetches the partition directly, without
@@ -165,6 +422,28 @@ Write the date in place of the "Unreleased" in the case a new version is release
   and links. Since v0.2.19, a tag needs a row in the catalog database, and
   only `user:` and `service:` tags got one on write. Tags an access policy
   approved now get a row on first use.
+- Fix HTTP 500 error when exporting a table as HDF5 (`application/x-hdf5`).
+  Tables now use a dedicated HDF5 serializer instead of the one for containers.
+- `/asset/manifest` lists paths relative to the asset, as documented. It listed
+  absolute paths on the server, which `/asset/bytes` refuses, so `raw_export`
+  of a directory asset (a Zarr array, for example) wrote no files.
+- `/asset/bytes` responds with HTTP 404, not 500, when `relative_path` names
+  no file in the asset.
+- In the Python client, `raw_export` logged a failed download and returned as
+  if the export were complete, leaving files missing or cut short. It now
+  attempts every file, removes any that was written only in part, and raises
+  the first error.
+- Writing to a node whose data is externally managed changed the registered
+  files: a write or an append to a registered CSV file, Zarr array or directory
+  of awkward buffers went to the source data. These requests are now refused
+  with HTTP 405. An update that is only streamed (`persist=false`) is still
+  accepted, since it does not touch the data.
+- A location registered by a client is always externally managed. A client
+  with the `register` scope could register a location on a data source marked
+  as managed by the server, or change an external data source to managed with
+  `PUT /data_source`, and the server then removed the registered file or
+  directory when the node was deleted. Both are refused with HTTP 403. When a
+  node is deleted, files are removed only from writable storage.
 
 ### Maintenance
 

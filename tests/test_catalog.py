@@ -40,6 +40,7 @@ from tiled.catalog.adapter import (
     CatalogContainerAdapter,
     WouldDeleteData,
     _access_tags_predicate,
+    is_unique_violation,
 )
 from tiled.catalog.explain import record_explanations
 from tiled.client import Context, from_context
@@ -212,6 +213,34 @@ async def test_untagged_nodes_tracks_tags(a: CatalogContainerAdapter) -> None:
         "('x', 'y', 'untagged_child', 'tagged_child')"
     )
     assert remaining.scalar_one() == 0
+
+
+@pytest.mark.asyncio
+async def test_is_unique_violation(a):
+    "Only a violated UNIQUE constraint is a collision; other integrity errors are not."
+    engine = a.context.engine
+    async with engine.begin() as connection:
+        if engine.dialect.name == "sqlite":
+            await connection.execute(text("PRAGMA foreign_keys=ON"))
+        failures = {}
+        for label, statement in [
+            (
+                "unique",
+                "INSERT INTO access_tags (name, is_public) VALUES ('t', false), ('t', false)",
+            ),
+            (
+                "foreign-key",
+                "INSERT INTO node_access_tags_association (node_id, tag_id) "
+                "VALUES (999999, 999999)",
+            ),
+        ]:
+            savepoint = await connection.begin_nested()
+            with pytest.raises(sqlalchemy.exc.IntegrityError) as info:
+                await connection.execute(text(statement))
+            await savepoint.rollback()
+            failures[label] = info.value
+    assert is_unique_violation(failures["unique"])
+    assert not is_unique_violation(failures["foreign-key"])
 
 
 @pytest.mark.asyncio
@@ -1477,9 +1506,16 @@ async def test_delete_shared_external_asset(tmpdir):
     ],
 )
 @pytest.mark.asyncio
-async def test_constraints_on_parameter_and_num(a, assets):
+async def test_constraints_on_parameter_and_num(a, assets, tmpdir):
     "Test constraints enforced by database on 'parameter' and 'num'."
     arr_adapter = ArrayAdapter.from_array([1, 2, 3])
+    # The files need not exist, but they must be where the catalog may read.
+    assets = [
+        asset.model_copy(
+            update={"data_uri": ensure_uri(tmpdir / Path(asset.data_uri).name)}
+        )
+        for asset in assets
+    ]
     with pytest.raises(
         (
             sqlalchemy.exc.IntegrityError,  # SQLite

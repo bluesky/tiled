@@ -242,8 +242,15 @@ class StreamingCacheConfig(BaseSettings):
     # instead). Applies to both Sentinel discovery and data-node connections;
     # verification uses redis-py's default, matching ``rediss://``.
     ssl: bool = False
+    # Prepended to every Redis key and pub/sub channel. Give separate
+    # deployments that share one Redis server different prefixes; replicas of
+    # one deployment must use the same prefix.
+    key_prefix: str = ""
     data_ttl: int = 3600  # 1 hr
     seq_ttl: int = 2592000  # 30 days
+    # The most historical sequences replayed for one subscriber. A subscriber
+    # that asks for more gets the most recent ones.
+    max_replay: int = Field(default=1000, ge=1)
     socket_timeout: int = 86400  # 1 day
     socket_connect_timeout: int = 10
     # Interval (seconds) between health-check PINGs on idle connections, so

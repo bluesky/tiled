@@ -154,6 +154,7 @@ html_context = {
 myst_enable_extensions = [
     "colon_fence",
 ]
+myst_fence_as_directive = ["mermaid"]
 
 
 # Theme options are theme-specific and customize the look and feel of a theme
@@ -407,3 +408,7 @@ def setup(app):
 suppress_warnings = [
     "etoc.toctree",  # Suppress warnings about unexpected toctree entries
 ]
+
+# Cards use the card-header/card-footer directives; disable the deprecated
+# '^^^'/'+++' separator syntax (sphinx-design >= 0.8).
+sd_card_legacy_separators = False

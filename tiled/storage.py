@@ -4,7 +4,7 @@ import os
 from abc import abstractmethod
 from collections import defaultdict
 from collections.abc import Iterator, Mapping
-from pathlib import Path
+from pathlib import Path, PurePath
 from typing import (
     TYPE_CHECKING,
     Literal,
@@ -14,7 +14,13 @@ from urllib.parse import quote, unquote, urlparse, urlunparse
 
 import sqlalchemy.pool
 
-from .utils import ensure_uri, path_from_uri, sanitize_uri
+from .utils import (
+    UnsafePath,
+    ensure_uri,
+    is_safe_path_segment,
+    path_from_uri,
+    sanitize_uri,
+)
 
 if TYPE_CHECKING:
     import adbc_driver_manager.dbapi
@@ -736,16 +742,35 @@ class DirectoryContainer(Mapping[str, bytes]):
     def __init__(self, directory: Path):
         self.directory = directory
 
+    @staticmethod
+    def validate_key(key: str) -> None:
+        """
+        Raise UnsafePath unless the key can be the name of a file.
+
+        Keys come from forms and uploads that a client supplies. Each one must
+        name a file directly in the directory, and nothing else.
+        """
+        # On Windows, the comparison with the name also catches a drive ("C:x").
+        if not is_safe_path_segment(key) or PurePath(key).name != key:
+            raise UnsafePath(
+                f"The buffer key {key!r} cannot be used as a file name. It must "
+                "not be '.' or '..' or contain a path separator."
+            )
+
+    def _path(self, key: str) -> Path:
+        self.validate_key(key)
+        return self.directory / key
+
     def __getitem__(self, key: str) -> bytes:
-        with open(self.directory / key, "rb") as file:
+        with open(self._path(key), "rb") as file:
             return file.read()
 
     def __setitem__(self, key: str, value: bytes) -> None:
-        with open(self.directory / key, "wb") as file:
+        with open(self._path(key), "wb") as file:
             file.write(value)
 
     def __delitem__(self, key: str) -> None:
-        (self.directory / key).unlink(missing_ok=True)
+        self._path(key).unlink(missing_ok=True)
 
     def __iter__(self) -> Iterator[str]:
         yield from (p.name for p in self.directory.iterdir())

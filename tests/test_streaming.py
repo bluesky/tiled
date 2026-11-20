@@ -5,6 +5,7 @@ import msgpack
 import numpy as np
 import orjson
 import pytest
+from starlette.websockets import WebSocketDisconnect
 
 from tiled.catalog import in_memory
 from tiled.client import Context, from_context
@@ -13,6 +14,7 @@ from tiled.server.app import build_app
 from tiled.structures.bytes import BytesStructure
 from tiled.structures.core import StructureFamily
 from tiled.structures.data_source import Asset, DataSource, Management
+from tiled.utils import ensure_uri
 
 
 def test_register_datastore_lowercases_name():
@@ -197,7 +199,7 @@ def test_put_data_source_on_non_array_with_streaming_cache(tmpdir):
             mimetype="application/octet-stream",
             assets=[
                 Asset(
-                    data_uri=f"file://{blob}",
+                    data_uri=ensure_uri(blob),
                     is_directory=False,
                     size=len(payload),
                     parameter="data_uris",
@@ -227,3 +229,193 @@ def test_put_data_source_on_non_array_with_streaming_cache(tmpdir):
             json={"data_source": ds},
         )
         assert put_response.status_code == 200, put_response.text
+
+
+class FakeWebSocket:
+    "A websocket that stays connected until `disconnect` is set."
+
+    def __init__(self):
+        self.disconnect = asyncio.Event()
+
+    async def accept(self):
+        pass
+
+    async def receive(self):
+        await self.disconnect.wait()
+        return {"type": "websocket.disconnect", "code": 1000}
+
+    async def close(self, code=1000, reason=None):
+        pass
+
+
+async def replay(datastore, node_id, start, *, stop_after=None):
+    """Subscribe to a node from `start`, then disconnect.
+
+    The client disconnects once `stop_after` messages have been sent, or
+    otherwise when the replay is over. Return the sequences sent to the
+    client, the number of lookups made in the datastore, and the number of
+    times another task got to run before the client disconnected.
+    """
+    websocket = FakeWebSocket()
+    sent = []
+    lookups = 0
+    ticks = 0
+    ticks_at_disconnect = None
+    original_get = datastore.get
+
+    async def counting_get(key, *fields):
+        nonlocal lookups
+        lookups += 1
+        return await original_get(key, *fields)
+
+    datastore.get = counting_get
+
+    async def formatter(websocket_, metadata, payload):
+        nonlocal ticks_at_disconnect
+        if "sequence" in metadata:
+            sent.append(metadata["sequence"])
+        if stop_after is not None and len(sent) == stop_after:
+            ticks_at_disconnect = ticks
+            websocket.disconnect.set()
+
+    async def tick():
+        nonlocal ticks
+        while True:
+            ticks += 1
+            await asyncio.sleep(0)
+
+    handler = datastore.make_ws_handler(
+        websocket, formatter, "http://test/array/full/x", node_id, {"type": "schema"}
+    )
+    ticker = asyncio.create_task(tick())
+    task = asyncio.create_task(handler(start))
+    try:
+        if stop_after is None:
+            # The replay is over when the lookups stop.
+            previous = None
+            while lookups != previous:
+                previous = lookups
+                await asyncio.sleep(0.05)
+            websocket.disconnect.set()
+        await asyncio.wait_for(task, timeout=60)
+    finally:
+        ticker.cancel()
+        datastore.get = original_get
+    return sent, lookups, ticks_at_disconnect
+
+
+async def filled_datastore(node_id, count, **settings):
+    datastore = streaming.TTLCacheDatastore(
+        {"maxsize": 100_000, "seq_ttl": 60, "data_ttl": 60, **settings}
+    )
+    for _ in range(count):
+        sequence = await datastore.incr_seq(node_id)
+        await datastore.set(node_id, sequence, {"sequence": sequence, "shape": [1]})
+    return datastore
+
+
+@pytest.mark.asyncio
+async def test_replay_sends_requested_history():
+    datastore = await filled_datastore("node", 20)
+    sent, _, _ = await replay(datastore, "node", 15)
+    assert sent == [15, 16, 17, 18, 19, 20]
+
+
+@pytest.mark.asyncio
+async def test_replay_is_limited_to_max_replay():
+    "A subscriber far behind gets the most recent `max_replay` messages."
+    datastore = await filled_datastore("node", 20, max_replay=5)
+    sent, lookups, _ = await replay(datastore, "node", 0)
+    assert sent == [16, 17, 18, 19, 20]
+    assert lookups == 5
+
+
+@pytest.mark.asyncio
+async def test_replay_work_is_bounded_when_history_has_expired():
+    """The work done for one subscriber does not grow with the sequence counter.
+
+    The counter outlives the data, so most of the sequences may be gone.
+    """
+    datastore = await filled_datastore("node", 3)
+    datastore._seq_cache["node"] = 5_000_000
+    sent, lookups, _ = await replay(datastore, "node", 1)
+    assert sent == []
+    assert lookups == 1000  # the default max_replay
+
+
+@pytest.mark.asyncio
+async def test_replay_lets_other_requests_run():
+    "The replay gives up the event loop between messages."
+    datastore = await filled_datastore("node", 200)
+    sent, _, ticks = await replay(datastore, "node", 1, stop_after=200)
+    assert len(sent) == 200
+    assert ticks >= 199
+
+
+@pytest.mark.asyncio
+async def test_replay_stops_when_client_disconnects():
+    datastore = await filled_datastore("node", 500)
+    sent, lookups, _ = await replay(datastore, "node", 1, stop_after=3)
+    assert lookups < 20
+
+
+def test_max_replay_setting():
+    from tiled.config import StreamingCacheConfig
+
+    assert StreamingCacheConfig(uri="memory").max_replay == 1000
+    assert StreamingCacheConfig(uri="memory", max_replay=50).max_replay == 50
+    with pytest.raises(ValueError):
+        StreamingCacheConfig(uri="memory", max_replay=0)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("start", [0, -1])
+async def test_replay_from_as_far_back_as_available(start):
+    "0 and -1 both ask for everything available."
+    datastore = await filled_datastore("node", 20)
+    sent, _, _ = await replay(datastore, "node", start)
+    assert sent == list(range(1, 21))
+
+
+@pytest.mark.parametrize("start", [0, -1])
+def test_websocket_accepts_start_from_as_far_back_as_available(tmpdir, start):
+    catalog = in_memory(
+        writable_storage=str(tmpdir),
+        cache_config={"uri": "memory://", "data_ttl": 60, "seq_ttl": 60},
+    )
+    with Context.from_app(build_app(catalog)) as context:
+        client = from_context(context)
+        node = client.write_array(np.arange(3), key="x")
+        node.write(np.arange(3) + 1)
+        with context.http_client.websocket_connect(
+            f"/api/v1/stream/single/x?envelope_format=msgpack&start={start}",
+            headers=dict(context.http_client.headers),
+        ) as websocket:
+            schema, first, second = [
+                msgpack.unpackb(websocket.receive_bytes()) for _ in range(3)
+            ]
+        assert "payload" not in schema
+        np.testing.assert_array_equal(
+            np.frombuffer(first["payload"], dtype=np.int64), np.arange(3)
+        )
+        np.testing.assert_array_equal(
+            np.frombuffer(second["payload"], dtype=np.int64), np.arange(3) + 1
+        )
+
+
+@pytest.mark.parametrize("start", [-2, -5_000_000])
+def test_websocket_refuses_start_below_minus_one(tmpdir, start):
+    catalog = in_memory(
+        writable_storage=str(tmpdir),
+        cache_config={"uri": "memory://", "data_ttl": 60, "seq_ttl": 60},
+    )
+    with Context.from_app(build_app(catalog)) as context:
+        client = from_context(context)
+        client.write_array(np.arange(3), key="x")
+        with pytest.raises(WebSocketDisconnect) as exc_info:
+            with context.http_client.websocket_connect(
+                f"/api/v1/stream/single/x?start={start}",
+                headers=dict(context.http_client.headers),
+            ) as websocket:
+                websocket.receive_json()
+        assert exc_info.value.code == 1008

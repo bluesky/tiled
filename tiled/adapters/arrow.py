@@ -260,7 +260,7 @@ class ArrowAdapter(Adapter[TableStructure]):
         uri = self._partition_paths[0]
 
         with pyarrow.ipc.new_file(uri, schema) as file_writer:
-            for batch in data:
+            for batch in batches:
                 file_writer.write_batch(batch)
 
     def read(self, fields: str | list[str] | None = None) -> pandas.DataFrame:

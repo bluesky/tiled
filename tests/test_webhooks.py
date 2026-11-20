@@ -44,6 +44,7 @@ from tiled.server.webhooks import (
     _sign,
     check_url_ssrf_safety,
 )
+from tiled.utils import ensure_uri
 
 from .conftest import TOY_AUTHENTICATION
 from .utils import enter_username_password
@@ -83,7 +84,7 @@ def _capturing_mock() -> list[dict[str, Any]]:
 @pytest.fixture(scope="module")
 def app(tmpdir_module: Any) -> FastAPI:
     tree = in_memory(
-        writable_storage=[f"file://localhost{tmpdir_module / 'data'}"],
+        writable_storage=[ensure_uri(tmpdir_module / "data")],
         # Streaming cache on, as in production, to catch payload regressions.
         cache_config={"uri": "memory://", "data_ttl": 60, "seq_ttl": 60},
     )
@@ -683,6 +684,13 @@ def test_ssrf_private_ip_rejected(http: httpx.Client) -> None:
         ("https://dev/hook", "172.16.5.5"),
         ("https://local/hook", "192.168.1.1"),
         ("https://meta/hook", "169.254.169.254"),  # cloud metadata
+        ("https://v6/hook", "::1"),  # IPv6 loopback
+        ("https://v6/hook", "::"),  # IPv6 unspecified
+        ("https://v6/hook", "::ffff:127.0.0.1"),  # IPv4-mapped loopback
+        ("https://v6/hook", "::ffff:169.254.169.254"),  # IPv4-mapped metadata
+        ("https://v6/hook", "::a9fe:a9fe"),  # IPv4-compatible metadata
+        ("https://v6/hook", "2002:a9fe:a9fe::1"),  # 6to4 metadata
+        ("https://v6/hook", "2001:0:0:0:0:0:5601:5601"),  # Teredo, metadata
     ],
 )
 def test_ssrf_check_blocks_private_ips(url: str, blocked_ip: str) -> None:
@@ -691,7 +699,8 @@ def test_ssrf_check_blocks_private_ips(url: str, blocked_ip: str) -> None:
     def _fake(host, port, *args, **kwargs):
         parsed_host = url.split("//")[1].split("/")[0]
         if host == parsed_host:
-            return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (blocked_ip, 0))]
+            family = socket.AF_INET6 if ":" in blocked_ip else socket.AF_INET
+            return [(family, socket.SOCK_STREAM, 6, "", (blocked_ip, 0))]
         return original(host, port, *args, **kwargs)
 
     with patch("tiled.server.webhooks.socket.getaddrinfo", side_effect=_fake):
