@@ -999,7 +999,7 @@ def add_external_routes(
 
         redirect_uri = f"{get_base_url(request)}/auth/provider/{provider}/code"
 
-        scopes = {"openid", "offline_access"}
+        scopes = {"openid"}
         scopes.update(getattr(authenticator, "extra_scopes", []))
         params = {
             "client_id": authenticator.client_id,
