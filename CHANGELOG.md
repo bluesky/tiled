@@ -743,6 +743,11 @@ wherever it is used.
   `<asset_id>/<filename>` for multi-asset nodes). No filesystem I/O is performed in this mode.
 
 
+### Fixed
+
+- Reducing the exception message for when a principal doesn't have the specified identity from the provider within TagBasedAccessPolicy.
+
+
 ## v0.2.12 (2026-06-16)
 
 ### Added
