@@ -15,7 +15,11 @@ from tiled.utils import (
     DictView,
     ListView,
     OneShotCachedMap,
+    UnsafePath,
+    contained_path,
     ensure_specified_sql_driver,
+    is_safe_key,
+    is_safe_path_segment,
     parse_mimetype,
     parse_time_string,
     sanitize_uri,
@@ -661,3 +665,98 @@ def test_merge_slices(inputs, expected):
 )
 def test_dask_slices(slice_dict, shape, expected):
     assert slices_to_dask_chunks(slice_dict, shape) == expected
+
+
+@pytest.mark.parametrize(
+    "untrusted",
+    ["a.txt", "sub/b.txt", "sub/../a.txt", "./a.txt", "", "."],
+)
+def test_contained_path_accepts_paths_inside_root(tmp_path, untrusted):
+    root = tmp_path / "root"
+    (root / "sub").mkdir(parents=True)
+    result = contained_path(root, untrusted)
+    assert result.is_relative_to(root.resolve())
+
+
+@pytest.mark.parametrize(
+    "untrusted",
+    [
+        "..",
+        "../outside.txt",
+        "sub/../../outside.txt",
+        "../root_sibling/outside.txt",
+        "a\x00b",
+    ],
+)
+def test_contained_path_rejects_paths_outside_root(tmp_path, untrusted):
+    root = tmp_path / "root"
+    (root / "sub").mkdir(parents=True)
+    # A sibling whose name starts with the name of root must not pass a
+    # check that compares strings.
+    (tmp_path / "root_sibling").mkdir()
+    with pytest.raises(UnsafePath):
+        contained_path(root, untrusted)
+
+
+def test_contained_path_rejects_absolute_path(tmp_path):
+    root = tmp_path / "root"
+    root.mkdir()
+    outside = tmp_path / "outside.txt"
+    outside.write_text("outside")
+    with pytest.raises(UnsafePath):
+        contained_path(root, outside)
+    with pytest.raises(UnsafePath):
+        contained_path(root, str(outside))
+
+
+def test_contained_path_rejects_symlink_leaving_root(tmp_path):
+    root = tmp_path / "root"
+    root.mkdir()
+    outside = tmp_path / "outside.txt"
+    outside.write_text("outside")
+    try:
+        (root / "link.txt").symlink_to(outside)
+    except OSError:
+        pytest.skip("Cannot create symbolic links on this platform.")
+    (root / "inner.txt").write_text("inner")
+    (root / "inner_link.txt").symlink_to(root / "inner.txt")
+    with pytest.raises(UnsafePath):
+        contained_path(root, "link.txt")
+    # A link that stays inside the root is fine.
+    assert contained_path(root, "inner_link.txt") == (root / "inner.txt").resolve()
+
+
+def test_contained_path_resolves_root(tmp_path):
+    "The root may itself be reached through a symbolic link."
+    real = tmp_path / "real"
+    real.mkdir()
+    (real / "a.txt").write_text("a")
+    link = tmp_path / "link"
+    try:
+        link.symlink_to(real, target_is_directory=True)
+    except OSError:
+        pytest.skip("Cannot create symbolic links on this platform.")
+    assert contained_path(link, "a.txt") == (real / "a.txt").resolve()
+
+
+@pytest.mark.parametrize("segment", ["a", "a.b", "..a", "a..", "a b", "x%2Fy", "é"])
+def test_safe_path_segment(segment):
+    assert is_safe_path_segment(segment)
+
+
+@pytest.mark.parametrize("segment", ["", ".", "..", "a/b", "/a", "a/", "a\x00", None])
+def test_unsafe_path_segment(segment):
+    assert not is_safe_path_segment(segment)
+
+
+@pytest.mark.parametrize(
+    "key", ["a", "a.b", "..a", "a b", "run#1", "é", "a%2Fb", "a\\b"]
+)
+def test_safe_key(key):
+    "Any character but '/' and a null byte; a backslash is not a separator in a URL."
+    assert is_safe_key(key)
+
+
+@pytest.mark.parametrize("key", ["", ".", "..", "a/b", "/a", "a/", "a\x00b", None])
+def test_unsafe_key(key):
+    assert not is_safe_key(key)

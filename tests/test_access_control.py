@@ -1,5 +1,7 @@
 import asyncio
+import contextlib
 import json
+import warnings
 from collections.abc import Callable
 from copy import deepcopy
 
@@ -21,7 +23,7 @@ from tiled.server.connection_pool import close_database_connection_pool
 from tiled.server.settings import DatabaseSettings
 from tiled.utils import ensure_specified_sql_driver
 
-from .conftest import TILED_TEST_POSTGRESQL_URI
+from .conftest import TILED_TEST_POSTGRESQL_URI, TOY_SECRET_KEY
 from .utils import enter_username_password, fail_with_status_code, temp_postgres
 
 arr = numpy.ones((5, 5))
@@ -223,7 +225,7 @@ def _server_config(catalog_uri, authn_uri, tmp_path):
         "authentication": {
             "tiled_admins": [{"provider": "toy", "id": "admin"}],
             "allow_anonymous_access": True,
-            "secret_keys": ["SECRET"],
+            "secret_keys": [TOY_SECRET_KEY],
             "providers": [
                 {
                     "provider": "toy",
@@ -248,7 +250,9 @@ def _server_config(catalog_uri, authn_uri, tmp_path):
     }
 
 
-@pytest_asyncio.fixture(scope="module", params=["sqlite", "postgres"])
+@pytest_asyncio.fixture(
+    scope="module", loop_scope="module", params=["sqlite", "postgres"]
+)
 async def catalog_uri(request, tmp_path_factory):
     """
     A catalog-database URI on the requested backend, module-scoped so the
@@ -307,6 +311,23 @@ def _make_compiler(tag_config, catalog_uri):
     )
 
 
+@contextlib.contextmanager
+def _ignore_retained_tags_warning():
+    """
+    Silence the compiler's warning that it retained dropped tags still in use.
+
+    The module's catalog database is shared, so earlier tests leave nodes
+    assigned to tags (e.g. ``undefined_tag``) that a later compile drops from
+    its config; the compiler then warns, as intended, that it retains them.
+    test_in_use_tag_retained_on_recompile checks that warning itself.
+    """
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore", message="These tags were dropped", category=UserWarning
+        )
+        yield
+
+
 def _compile_with_principal_tags(tag_config, catalog_uri, authn_uri):
     """
     Build an AccessTagsCompiler wired to both the catalog and the authentication
@@ -341,7 +362,8 @@ def _compile_with_principal_tags(tag_config, catalog_uri, authn_uri):
             await catalog_engine.dispose()
             await authn_engine.dispose()
 
-    asyncio.run(_run())
+    with _ignore_retained_tags_warning():
+        asyncio.run(_run())
     return compiler
 
 
@@ -393,7 +415,8 @@ def compile_access_tags_tables_with_reset(compile_access_tags_tables):
     compiler.group_parser = group_parser
     compiler.clear_raw_tags()
     compiler.load_tag_config()
-    _compiler_run(compiler, catalog_uri, "recompile")
+    with _ignore_retained_tags_warning():
+        _compiler_run(compiler, catalog_uri, "recompile")
 
 
 @pytest.fixture(scope="module")
@@ -1789,6 +1812,11 @@ def test_in_use_tag_retained_on_recompile(
 # request for alice gets that restricted client and writes fail with 403.
 LEGACY_UA = {"user-agent": "python-tiled/0.2.18"}
 MODERN_UA = {"user-agent": "python-tiled/0.2.19"}
+# The server reads the deprecated field, which warns, each time a legacy
+# client sends it. test_access_blob_backcompat.py checks that warning.
+legacy_access_blob_warning_expected = pytest.mark.filterwarnings(
+    "ignore:Deprecated in favor of `access_tags`:DeprecationWarning"
+)
 
 
 def _post_node(client, parent, key, headers, **body):
@@ -1807,6 +1835,7 @@ def _post_node(client, parent, key, headers, **body):
 
 
 # BACK-COMPAT: remove with the access_blob helpers in tiled/server/_backcompat.py.
+@legacy_access_blob_warning_expected
 def test_legacy_access_blob_on_create(access_control_test_context_factory):
     """A pre-v0.2.19 client creating a node with `access_blob`."""
     alice_client = access_control_test_context_factory("alice", "alice")
@@ -1831,6 +1860,7 @@ def test_legacy_access_blob_on_create(access_control_test_context_factory):
 
 
 # BACK-COMPAT: remove with the access_blob helpers in tiled/server/_backcompat.py.
+@legacy_access_blob_warning_expected
 def test_legacy_access_blob_malformed_is_rejected(access_control_test_context_factory):
     """A failed translation reaches the client as the status the old server used.
 
@@ -1846,6 +1876,7 @@ def test_legacy_access_blob_malformed_is_rejected(access_control_test_context_fa
 
 
 # BACK-COMPAT: remove with the access_blob helpers in tiled/server/_backcompat.py.
+@legacy_access_blob_warning_expected
 def test_legacy_access_blob_in_responses(access_control_test_context_factory):
     """Old clients read `access_blob` unconditionally; new ones must not see it."""
     alice_client = access_control_test_context_factory("alice", "alice")
@@ -1865,6 +1896,7 @@ def test_legacy_access_blob_in_responses(access_control_test_context_factory):
 
 
 # BACK-COMPAT: remove with the access_blob helpers in tiled/server/_backcompat.py.
+@legacy_access_blob_warning_expected
 def test_legacy_access_blob_patch_of_user_owned_node(
     access_control_test_context_factory,
 ):
@@ -1897,6 +1929,7 @@ def test_legacy_access_blob_patch_of_user_owned_node(
 
 
 # BACK-COMPAT: remove with the access_blob helpers in tiled/server/_backcompat.py.
+@legacy_access_blob_warning_expected
 def test_legacy_access_blob_patch_replacing_tags(access_control_test_context_factory):
     """A patch that rewrites the tag list is applied to the blob, then translated."""
     sue_client = access_control_test_context_factory("sue", "sue")
@@ -1928,6 +1961,7 @@ def test_legacy_access_blob_patch_replacing_tags(access_control_test_context_fac
 
 
 # BACK-COMPAT: remove with the access_blob helpers in tiled/server/_backcompat.py.
+@legacy_access_blob_warning_expected
 def test_legacy_access_blob_put(access_control_test_context_factory):
     """PUT replaces the tag set wholesale, in the old dialect."""
     sue_client = access_control_test_context_factory("sue", "sue")
@@ -2040,7 +2074,8 @@ def test_service_principal_access_control(
     )
 
     access_tags_compiler.load_tag_config()
-    _compiler_run(access_tags_compiler, catalog_uri, "recompile")
+    with _ignore_retained_tags_warning():
+        _compiler_run(access_tags_compiler, catalog_uri, "recompile")
 
     top = "baz"
     for data in ["data_A"]:
