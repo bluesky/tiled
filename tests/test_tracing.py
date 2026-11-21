@@ -41,6 +41,7 @@ from tiled.server.app import build_app, build_app_from_config
 from tiled.server.logging_config import LOGGING_CONFIG, TraceIdFilter
 from tiled.server.schemas import WebhookRegistrationRequest
 from tiled.server.utils import request_trace_id
+from tiled.utils import ensure_uri
 
 from .utils import error_router
 
@@ -306,7 +307,9 @@ def test_sql_storage_write_emits_adbc_spans(
         assert any(s.attributes.get("db.name") for s in dbapi_spans)
 
 
-def test_streaming_emits_redis_spans(monkeypatch, span_exporter, redis_uri, tmp_path):
+def test_streaming_emits_redis_spans(
+    monkeypatch, span_exporter, redis_uri, redis_key_prefix, tmp_path
+):
     """Subscribing to a node's stream exercises the Redis streaming cache."""
     _enable_tracing(monkeypatch)
     config = {
@@ -324,6 +327,7 @@ def test_streaming_emits_redis_spans(monkeypatch, span_exporter, redis_uri, tmp_
         ],
         "streaming_cache": {
             "uri": redis_uri,
+            "key_prefix": redis_key_prefix,
             "data_ttl": 600,
             "seq_ttl": 600,
             "socket_timeout": 600,
@@ -355,7 +359,7 @@ def test_webhook_delivery_emits_httpx_span(monkeypatch, span_exporter, tmp_path)
     from httpx2 import Response
 
     _enable_tracing(monkeypatch)
-    tree = in_memory(writable_storage=[f"file://localhost{tmp_path / 'data'}"])
+    tree = in_memory(writable_storage=[ensure_uri(tmp_path / "data")])
     app = build_app(
         tree,
         authentication=Authentication(single_user_api_key=API_KEY),

@@ -83,6 +83,10 @@ class ShapeMismatchError(ValueError):
     """Array data cannot be served at the shape the structure advertises."""
 
 
+class ColumnMismatchError(ValueError):
+    """Table data does not have the columns that the structure advertises."""
+
+
 class DataNotReadyError(ShapeMismatchError):
     """Transient mismatch: the structure is ahead of the data.
 

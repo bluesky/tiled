@@ -1,6 +1,7 @@
 # Pickling is only supported when the Context is connected to a remote server
 # via actual HTTP/TCP, not to an internal app via ASGI.
 # We try connecting out to the demo deployment.
+import contextlib
 import pickle
 
 import httpx2 as httpx
@@ -35,7 +36,8 @@ def test_pickle_context(server_url):
     except Exception:
         raise pytest.skip(f"Could not connect to {server_url}")
     with Context.from_any_uri(server_url, api_key="secret")[0] as context:
-        pickle.loads(pickle.dumps(context))
+        with pickle.loads(pickle.dumps(context)):
+            pass
 
 
 def test_pickle_context_preserves_max_connections(server_url):
@@ -48,8 +50,8 @@ def test_pickle_context_preserves_max_connections(server_url):
         0
     ] as context:
         assert context.max_connections == 3
-        restored = pickle.loads(pickle.dumps(context))
-        assert restored.max_connections == 3
+        with pickle.loads(pickle.dumps(context)) as restored:
+            assert restored.max_connections == 3
 
 
 @pytest.mark.parametrize("structure_clients", ["numpy", "dask"])
@@ -59,9 +61,20 @@ def test_pickle_clients(server_url, structure_clients, tmpdir):
     except Exception:
         raise pytest.skip(f"Could not connect to {server_url}")
     cache = Cache(tmpdir / "http_response_cache.db")
-    with Context.from_any_uri(server_url, api_key="secret", cache=cache)[0] as context:
+    with (
+        Context.from_any_uri(server_url, api_key="secret", cache=cache)[0] as context,
+        contextlib.ExitStack() as stack,
+    ):
+
+        def roundtrip(client):
+            # Each unpickled client has its own Context, holding its own HTTP
+            # connections and cache database connection; close them.
+            client = pickle.loads(pickle.dumps(client))
+            stack.enter_context(client.context)
+            return client
+
         client = from_context(context, structure_clients)
-        pickle.loads(pickle.dumps(client))
+        roundtrip(client)
         for segments in [
             [],
             ["nested", "images", "small_image"],
@@ -70,8 +83,8 @@ def test_pickle_clients(server_url, structure_clients, tmpdir):
             original = client
             for segment in segments:
                 original = original[segment]
-            roundtripped = pickle.loads(pickle.dumps(original))
-            roundtripped_twice = pickle.loads(pickle.dumps(roundtripped))
+            roundtripped = roundtrip(original)
+            roundtripped_twice = roundtrip(roundtripped)
             assert roundtripped.uri == roundtripped_twice.uri == original.uri
 
 
@@ -79,9 +92,13 @@ def test_lock_round_trip(tmpdir):
     cache = Cache(tmpdir / "http_response_cache.db")
     cache_round_tripped = pickle.loads(pickle.dumps(cache))
     cache_round_tripped_twice = pickle.loads(pickle.dumps(cache_round_tripped))
-    # implementation detail!
-    assert (
-        cache._lock.lock
-        is cache_round_tripped._lock.lock
-        is cache_round_tripped_twice._lock.lock
-    )
+    try:
+        # implementation detail!
+        assert (
+            cache._lock.lock
+            is cache_round_tripped._lock.lock
+            is cache_round_tripped_twice._lock.lock
+        )
+    finally:
+        for c in [cache, cache_round_tripped, cache_round_tripped_twice]:
+            c.close()

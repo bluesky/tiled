@@ -849,7 +849,9 @@ def composite_with_bytes(tmp_path):
     """A fresh composite container with one array and one bytes child."""
     from tiled.structures.bytes import BytesStructure
 
-    catalog = in_memory(writable_storage=str(tmp_path / "store"))
+    catalog = in_memory(
+        writable_storage=str(tmp_path / "store"), readable_storage=[tmp_path]
+    )
     with Context.from_app(build_app(catalog)) as ctx:
         client = from_context(ctx)
         comp = client.create_container(key="c", specs=["composite"])

@@ -302,6 +302,22 @@ def ndslice_strategy(shape):
     return st.one_of(without_ellipsis(), with_ellipsis())
 
 
+@pytest.mark.parametrize(
+    "slc1, slc2",
+    [
+        # A reversed slice whose composed stop lies before the first element.
+        ((slice(3, 0, -2),), (slice(None, None, 2),)),
+        ((slice(5, 0, -3),), (slice(0, 2),)),
+    ],
+)
+def test_compose_slices_with_negative_step(slc1, slc2):
+    arr = np.arange(6)
+    slc1 = NDSlice(slc1).expand_for_shape(arr.shape)
+    slc2 = NDSlice(slc2)
+
+    np.testing.assert_array_equal(arr[slc1][slc2], arr[compose_slices(slc1, slc2)])
+
+
 @given(
     shape=st.lists(st.integers(1, 6), min_size=1, max_size=4),
     data=st.data(),

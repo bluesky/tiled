@@ -12,6 +12,7 @@ import os
 import pathlib
 import threading
 import uuid
+from dataclasses import asdict
 from datetime import datetime
 from urllib.parse import urljoin, urlparse
 
@@ -29,7 +30,9 @@ import stamina
 from botocore.exceptions import ClientError as BotoClientError
 from pandas.testing import assert_frame_equal
 from starlette.status import (
+    HTTP_200_OK,
     HTTP_404_NOT_FOUND,
+    HTTP_405_METHOD_NOT_ALLOWED,
     HTTP_409_CONFLICT,
     HTTP_415_UNSUPPORTED_MEDIA_TYPE,
     HTTP_422_UNPROCESSABLE_CONTENT,
@@ -42,7 +45,7 @@ from tiled.client.utils import ClientError
 from tiled.mimetypes import PARQUET_MIMETYPE
 from tiled.queries import Key
 from tiled.server.app import build_app
-from tiled.structures.array import BuiltinDtype
+from tiled.structures.array import ArrayStructure, BuiltinDtype
 from tiled.structures.core import Spec, StructureFamily
 from tiled.structures.data_source import DataSource
 from tiled.structures.sparse import COOStructure
@@ -50,6 +53,7 @@ from tiled.structures.table import TableStructure
 from tiled.utils import (
     APACHE_ARROW_FILE_MIME_TYPE,
     Conflicts,
+    ensure_uri,
     patch_mimetypes,
     sanitize_uri,
 )
@@ -114,7 +118,7 @@ def tree(tmpdir, tmp_s3_bucket):
             }
         )
 
-    writable_storage.append(f"file://localhost{str(tmpdir / 'data')}")
+    writable_storage.append(ensure_uri(tmpdir / "data"))
 
     return in_memory(writable_storage=writable_storage)
 
@@ -144,6 +148,54 @@ def test_created_node_links_have_no_double_slash(tree):
             for url in node.item["links"].values():
                 assert "//" not in urlparse(url).path
         assert all("//" not in r.url.path for r in history.requests)
+
+
+@pytest.mark.parametrize(
+    "dt_units, kind, accepted",
+    [
+        ("[ns]", "M", True),
+        ("[10m]", "m", True),
+        ("[ns]", "i", False),  # Not a datetime or timedelta.
+        ("[ns]|O", "M", False),  # Not a unit; would change the dtype.
+    ],
+)
+def test_structure_dt_units_are_validated(tree, dt_units, kind, accepted):
+    "The dtype string is built from the structure, which a client may supply."
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        structure = ArrayStructure.from_array(numpy.zeros(3, dtype="int64"))
+        body = {
+            "id": "x",
+            "structure_family": "array",
+            "metadata": {},
+            "specs": [],
+            "data_sources": [
+                {
+                    "structure_family": "array",
+                    "structure": {
+                        **asdict(structure),
+                        "data_type": {
+                            "endianness": "little",
+                            "kind": kind,
+                            "itemsize": 8,
+                            "dt_units": dt_units,
+                        },
+                    },
+                    "management": "writable",
+                    "assets": [],
+                    "parameters": {},
+                }
+            ],
+        }
+
+        response = client.context.http_client.post("/api/v1/metadata/", json=body)
+
+        if accepted:
+            assert response.status_code == HTTP_200_OK
+            assert client["x"].dtype == numpy.dtype(f"<{kind}8{dt_units}")
+        else:
+            assert response.status_code == HTTP_422_UNPROCESSABLE_CONTENT
+            assert "x" not in client
 
 
 def test_write_array_full(tree):
@@ -226,6 +278,39 @@ def test_write_array_chunked(tree, shape, chunks):
         numpy.testing.assert_equal(result_array, a.compute())
         assert result.metadata == metadata
         assert result.specs == specs
+
+
+@pytest.mark.parametrize(
+    "data, outcome",
+    [
+        ([0, 1, 2, 3], "cast"),  # int64 within the same kind as float64
+        (numpy.arange(4, dtype="float32"), "cast"),
+        (numpy.array(["a", "b", "c", "d"]), "dtype"),
+        (numpy.ones(3), "elements"),
+        (numpy.ones((2, 3)), "elements"),
+    ],
+    ids=["ints", "float32", "strings", "too-few", "too-many"],
+)
+def test_write_checks_dtype_and_shape(tree, data, outcome):
+    "The server reads the bytes by the structure, so the data must fit it."
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        x = client.write_array(numpy.zeros(4, dtype="float64"), key="x")
+        y = client.write_array(
+            dask.array.zeros((2, 4), dtype="float64", chunks=(1, 4)), key="y"
+        )
+
+        if outcome == "cast":
+            x.write(data)
+            numpy.testing.assert_array_equal(x.read(), numpy.asarray(data))
+            y.write_block(data, block=(1, 0))  # Four elements fit the (1, 4) block.
+            numpy.testing.assert_array_equal(y.read()[1], numpy.asarray(data))
+        else:
+            with pytest.raises(ValueError, match=outcome):
+                x.write(data)
+            with pytest.raises(ValueError, match=outcome):
+                y.write_block(data, block=(1, 0))
+            numpy.testing.assert_array_equal(x.read(), numpy.zeros(4))
 
 
 def test_extend_array(tree):
@@ -606,6 +691,9 @@ def test_metadata_revisions_count(tree):
         # Revisions are returned ordered by revision number.
         revision_numbers = [r["revision_number"] for r in ac.metadata_revisions[:]]
         assert revision_numbers == [1, 2, 3]
+        # A bounded slice stops where it says; the server offers a next page.
+        assert [r["revision_number"] for r in ac.metadata_revisions[0:2]] == [1, 2]
+        assert [r["revision_number"] for r in ac.metadata_revisions[1:]] == [2, 3]
 
 
 def test_metadata_revisions_count_empty(tree):
@@ -996,6 +1084,55 @@ def test_table_bytes_column_json_export(tree, buffer, media_type):
         assert [row["label"] for row in rows] == expected
 
 
+@pytest.mark.parametrize(
+    "method, route",
+    [
+        ("put", "array/full/{array}"),
+        ("put", "array/block/{array}?block=0"),
+        ("patch", "array/full/{array}?offset=0&shape=3"),
+        ("put", "table/full/{table}"),
+        ("put", "table/partition/{table}?partition=0"),
+        ("patch", "table/partition/{table}?partition=0"),
+    ],
+)
+@pytest.mark.parametrize(
+    "content_type", [None, "application/x-does-not-exist"], ids=["missing", "unknown"]
+)
+def test_write_with_unsupported_content_type(tree, method, route, content_type):
+    "A body of a media type that cannot be deserialized gets 415, not 500."
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        client.write_array([1, 2, 3], key="array")
+        client.write_table(pandas.DataFrame({"a": [1]}), key="table")
+        url = "/api/v1/" + route.format(array="array", table="table")
+        headers = {} if content_type is None else {"Content-Type": content_type}
+
+        response = client.context.http_client.request(
+            method, url, content=b"x", headers=headers
+        )
+
+        assert response.status_code == HTTP_415_UNSUPPORTED_MEDIA_TYPE
+        detail = response.json()["detail"]
+        assert "application/octet-stream" in detail or "text/csv" in detail
+
+
+def test_write_with_content_type_parameters(tree):
+    "Parameters of the media type, such as a charset, do not matter."
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        node = client.write_array(numpy.zeros(3, dtype="i8"), key="x")
+        array = numpy.arange(3, dtype="i8")
+
+        response = client.context.http_client.put(
+            "/api/v1/array/full/x",
+            content=array.tobytes(),
+            headers={"Content-Type": "application/octet-stream; charset=binary"},
+        )
+
+        assert response.status_code == HTTP_200_OK
+        numpy.testing.assert_array_equal(node.read(), array)
+
+
 def test_write_with_specified_mimetype(tree):
     with Context.from_app(build_app(tree)) as context:
         client = from_context(context, include_data_sources=True)
@@ -1018,7 +1155,9 @@ def test_write_with_specified_mimetype(tree):
                 ],
             )
             x.write_partition(0, df)
-            x.read()
+            assert_frame_equal(x.read(), df, check_dtype=False)
+            x.write(df + 1)
+            assert_frame_equal(x.read(), df + 1, check_dtype=False)
             x.refresh()
             assert x.data_sources()[0].mimetype == mimetype
 
@@ -1034,6 +1173,18 @@ def test_write_with_specified_mimetype(tree):
                     ),
                 ],
             )
+
+
+def test_append_partition_to_table_whose_storage_cannot_append(tree):
+    "The default table storage holds whole partitions; appending gets 405."
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        df = pandas.DataFrame({"a": [1, 2]})
+        node = client.write_table(df, key="x")
+
+        with fail_with_status_code(HTTP_405_METHOD_NOT_ALLOWED):
+            node.append_partition(0, df)
+        assert node.read().equals(df)
 
 
 @pytest.mark.parametrize(
@@ -1059,20 +1210,51 @@ def test_write_with_specified_mimetype(tree):
         ),
     ],
 )
+@pytest.mark.parametrize("storage", ["sql", "csv"])
 def test_append_partition(
     tree: CatalogContainerAdapter,
     orig_file: dict,
     file_to_append: dict,
     expected_file: dict,
+    storage: str,
 ):
+    "Rows are appended by column name, to a table in SQL storage or in a CSV file."
     with Context.from_app(build_app(tree)) as context:
         client = from_context(context, include_data_sources=True)
         orig_table = pyarrow.Table.from_pydict(orig_file)
         table_to_append = pyarrow.Table.from_pydict(file_to_append)
 
-        x = client.create_appendable_table(orig_table.schema, key="x")
+        if storage == "sql":
+            x = client.create_appendable_table(orig_table.schema, key="x")
+        else:
+            x = client.new(
+                "table",
+                [
+                    DataSource(
+                        structure_family=StructureFamily.table,
+                        structure=TableStructure.from_pandas(orig_table.to_pandas()),
+                        mimetype="text/csv",
+                    )
+                ],
+                key="x",
+            )
         x.append_partition(0, orig_table)
-        x.append_partition(0, table_to_append)
+        # The columns of the appended rows come in another order.
+        x.append_partition(
+            0, table_to_append.select(reversed(table_to_append.column_names))
+        )
+        assert_frame_equal(x.read(), pandas.DataFrame(expected_file), check_dtype=False)
+        # Other columns are refused.
+        other = pyarrow.Table.from_pydict({"other": [1]})
+        with fail_with_status_code(HTTP_422_UNPROCESSABLE_CONTENT):
+            x.append_partition(0, other)
+        if storage == "sql":
+            # So are values that the columns' types cannot hold.
+            nested = pyarrow.Table.from_pydict(
+                {name: [[1, 2]] for name in orig_table.column_names}
+            )
+            with fail_with_status_code(HTTP_422_UNPROCESSABLE_CONTENT):
+                x.append_partition(0, nested)
         assert_frame_equal(x.read(), pandas.DataFrame(expected_file), check_dtype=False)
 
 
@@ -1285,6 +1467,41 @@ def test_retried_create_conflict_not_adopted(
         with pytest.raises(ClientError) as info:
             client.create_container(key="x", **attempt_kwargs)
         assert info.value.response.status_code == httpx.codes.CONFLICT
+
+
+@pytest.mark.parametrize(
+    "transport_cls, expect_raise",
+    [(LoseResponseOnce, True), (FailBeforeSendOnce, False)],
+    ids=["maybe-processed-raises", "unsent-retried"],
+)
+def test_json_patch_metadata_retry_policy(
+    tree, retries_enabled, transport_cls, expect_raise
+):
+    """A JSON Patch may append to a list, which is not idempotent, so it follows
+    the same policy as appending rows: a request that may have been processed
+    raises, one that was never sent is retried. Either way the element is
+    appended exactly once."""
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        ac = client.write_array([1, 2, 3], metadata={"items": [1]}, key="x")
+
+        transport = _wrap_transport(
+            client, transport_cls, method="PATCH", url_substring="/metadata/x"
+        )
+        patch = [{"op": "add", "path": "/items/-", "value": 2}]
+
+        if expect_raise:
+            with pytest.raises(httpx.ReadTimeout):
+                ac.patch_metadata(
+                    metadata_patch=patch, content_type=patch_mimetypes.JSON_PATCH
+                )
+        else:
+            ac.patch_metadata(
+                metadata_patch=patch, content_type=patch_mimetypes.JSON_PATCH
+            )
+        assert transport.tripped
+
+        assert client["x"].metadata["items"] == [1, 2]
 
 
 @pytest.mark.parametrize(

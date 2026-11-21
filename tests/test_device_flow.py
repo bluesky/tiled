@@ -17,6 +17,8 @@ from tiled.client.constructors import from_context
 from tiled.client.context import device_code_grant, prompt_for_credentials
 from tiled.server.app import build_app_from_config
 
+from .conftest import TOY_SECRET_KEY
+
 tree = MapAdapter({})
 
 
@@ -29,7 +31,7 @@ def well_known_url() -> str:
 def oidc_config(well_known_url: str) -> dict[str, Any]:
     return {
         "authentication": {
-            "secret_keys": ["SECRET"],
+            "secret_keys": [TOY_SECRET_KEY],
             "providers": [
                 {
                     "provider": "keycloak_oidc",

@@ -348,6 +348,13 @@ version-file = "tiled/_version.py"
 "share/tiled/templates" = "share/tiled/templates"
 "share/tiled/ui" = "share/tiled/ui"
 
+[tool.uv]
+# Ignore packages published in the last 3 days when locking, matching
+# exclude-newer in pixi.toml, to reduce the risk of picking up a broken or
+# compromised release. uv.lock records the span, not a date, so the lockfile
+# does not go stale as time passes.
+exclude-newer = "3 days"
+
 [tool.ruff]
 line-length = 88
 force-exclude = true

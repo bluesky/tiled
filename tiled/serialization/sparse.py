@@ -31,6 +31,7 @@ if modules_available("pandas", "pyarrow"):
 
     from .table import (
         APACHE_ARROW_FILE_MIME_TYPE,
+        PARQUET_MIME_TYPES,
         XLSX_MIME_TYPE,
         deserialize_arrow,
         serialize_arrow,
@@ -46,7 +47,7 @@ if modules_available("pandas", "pyarrow"):
             "sparse",
             XLSX_MIME_TYPE,
             lambda mimetype, sparse_arr, metadata: serialize_excel(
-                to_dataframe(sparse_arr), metadata, preserve_index=False
+                mimetype, to_dataframe(sparse_arr), metadata, preserve_index=False
             ),
         )
 
@@ -71,30 +72,30 @@ if modules_available("pandas", "pyarrow"):
     )
     default_serialization_registry.register(
         "sparse",
-        "application/x-parquet",
+        PARQUET_MIME_TYPES,
         lambda mimetype, sparse_arr, metadata: serialize_parquet(
-            to_dataframe(sparse_arr), metadata, preserve_index=False
+            mimetype, to_dataframe(sparse_arr), metadata, preserve_index=False
         ),
     )
     default_serialization_registry.register(
         "sparse",
         "text/csv",
         lambda mimetype, sparse_arr, metadata: serialize_csv(
-            to_dataframe(sparse_arr), metadata, preserve_index=False
+            mimetype, to_dataframe(sparse_arr), metadata, preserve_index=False
         ),
     )
     default_serialization_registry.register(
         "sparse",
         "text/plain",
         lambda mimetype, sparse_arr, metadata: serialize_csv(
-            to_dataframe(sparse_arr), metadata, preserve_index=False
+            mimetype, to_dataframe(sparse_arr), metadata, preserve_index=False
         ),
     )
     default_serialization_registry.register(
         "sparse",
         "text/html",
         lambda mimetype, sparse_arr, metadata: serialize_html(
-            to_dataframe(sparse_arr), metadata, preserve_index=False
+            mimetype, to_dataframe(sparse_arr), metadata, preserve_index=False
         ),
     )
     if modules_available("orjson"):

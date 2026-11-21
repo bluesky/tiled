@@ -12,7 +12,7 @@ from collections.abc import Iterable
 from dataclasses import asdict
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, quote, urlparse
 
 import entrypoints
 import httpx2 as httpx
@@ -365,7 +365,9 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                         params = {}
                         if self._include_data_sources:
                             params["include_data_sources"] = True
-                        link = self_link + "".join(f"/{key}" for key in keys[i:])
+                        link = self_link + "".join(
+                            f"/{quote(key, safe='')}" for key in keys[i:]
+                        )
                         for attempt in retry_context():
                             with attempt:
                                 content = handle_error(
@@ -426,7 +428,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                 with attempt:
                     handle_error(
                         self.context.http_client.delete(
-                            f"{self.uri}/{key}",
+                            f"{self.uri}/{quote(key, safe='')}",
                             params={
                                 "recursive": recursive,
                                 "external_only": external_only,

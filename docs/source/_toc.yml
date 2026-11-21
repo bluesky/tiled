@@ -83,3 +83,4 @@ subtrees:
             - file: reference/service-configuration
             - file: reference/client-profiles
             - file: reference/min-versions
+            - file: reference/database-revisions

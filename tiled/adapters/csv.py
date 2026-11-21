@@ -20,7 +20,7 @@ from ..structures.table import TableStructure
 from ..type_aliases import JSON
 from ..utils import ensure_uri, path_from_uri
 from .array import ArrayAdapter
-from .utils import init_adapter_from_catalog
+from .utils import ColumnMismatchError, init_adapter_from_catalog
 
 
 class CSVAdapter(Adapter[TableStructure]):
@@ -133,8 +133,17 @@ class CSVAdapter(Adapter[TableStructure]):
             data to be appended
         """
 
-        uri = self._file_paths[partition]
-        data.to_csv(uri, index=False, mode="a", header=False)
+        path = self._file_paths[partition]
+        columns = list(self.structure().columns)
+        if set(data.columns) != set(columns):
+            raise ColumnMismatchError(
+                f"The columns {list(data.columns)} do not match the columns of "
+                f"this table, {columns}."
+            )
+        # Rows are written positionally, so put the columns in the table's
+        # order. A file that does not exist yet, or is empty, gets the header.
+        header = not (path.exists() and path.stat().st_size > 0)
+        data[columns].to_csv(path, index=False, mode="a", header=header)
 
     def write_partition(
         self, partition: int, data: dask.dataframe.DataFrame | pandas.DataFrame
