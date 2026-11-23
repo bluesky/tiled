@@ -115,5 +115,9 @@ DEFAULT_MIMETYPES_BY_FILE_EXT = {
     # on opensuse csv -> text/x-comma-separated-values
     ".csv": "text/csv",
     ".parquet": PARQUET_MIMETYPE,
+    ".arrow": APACHE_ARROW_FILE_MIME_TYPE,
+    # Feather v2 is an Arrow IPC file. Feather v1 is a different format and
+    # is intentionally not given its own reader.
+    ".feather": APACHE_ARROW_FILE_MIME_TYPE,
     ".zarr": ZARR_MIMETYPE,
 }

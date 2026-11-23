@@ -42,6 +42,10 @@ Write the date in place of the "Unreleased" in the case a new version is release
   with HTTP 422, as are values that the columns' types cannot hold (previously
   HTTP 500). The first append to a CSV partition writes the header, which it
   left out, so the first row of data was read back as the header.
+- Fix opening and registering existing Arrow tables. Infer structure from IPC
+  schemas without loading row data, preserve the partition count, and support
+  `from_uris` plus the `.arrow` and Feather v2 `.feather` extensions. Feather
+  v1 and Arrow IPC streams (`.arrows`) are not supported.
 - A full write to a table in Arrow storage raised after truncating the file,
   so the table read back empty.
 - A table in SQL storage created with a `primary_key` but without
