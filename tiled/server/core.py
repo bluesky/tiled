@@ -9,6 +9,7 @@ from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 from hashlib import md5
 from typing import Any, Literal
+from urllib.parse import quote
 
 import anyio
 import dateutil.tz
@@ -119,7 +120,7 @@ async def len_or_approx(tree, exact=False, threshold=5000):
 
 
 def pagination_links(base_url, route, path_parts, page, next_cursor, length_hint):
-    path_str = "/".join(path_parts)
+    path_str = "/".join(quote(part, safe="") for part in path_parts)
     if page.cursor is not None:
         offset_or_cursor = f"page[cursor]={page.cursor}&"
     elif page.offset:  # Neither None nor 0
@@ -293,13 +294,19 @@ async def construct_entries_response(
         if not hasattr(tree, "sort"):
             raise HTTPException(
                 status_code=HTTP_400_BAD_REQUEST,
-                detail="This Tree does not support sorting.",
+                detail="This container does not support sorting.",
             )
         tree = tree.sort(sorting)
 
     count = await len_or_approx(
         tree, exact=(schemas.EntryFields.count in fields), threshold=exact_count_limit
     )
+
+    if page.cursor is not None and not hasattr(tree, "keys_page"):
+        raise HTTPException(
+            status_code=HTTP_400_BAD_REQUEST,
+            detail="This container does not support cursor pagination.",
+        )
 
     next_cursor = None
     if fields == [schemas.EntryFields.none]:
@@ -540,7 +547,7 @@ async def construct_resource(
     exact_count_limit,
     depth=0,
 ):
-    path_str = "/".join(path_parts)
+    path_str = "/".join(quote(part, safe="") for part in path_parts)
     id_ = path_parts[-1] if path_parts else ""
     attributes = {"ancestors": path_parts[:-1]}
     if include_data_sources and hasattr(entry, "data_sources"):

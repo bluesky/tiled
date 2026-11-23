@@ -113,6 +113,17 @@ def get_base_url_websocket(websocket: WebSocket) -> str:
     return f"{get_root_url_websocket(websocket)}/api/v1"
 
 
+def request_is_https(request: Request) -> bool:
+    """Tell whether the client reached the server over HTTPS.
+
+    When a proxy terminates TLS, the request to the server itself is plain
+    HTTP and the proxy says so in `X-Forwarded-Proto`, which takes
+    precedence over the scheme of the connection.
+    """
+    scheme = request.headers.get("x-forwarded-proto", request.url.scheme)
+    return scheme.split(",", 1)[0].strip() == "https"
+
+
 def get_base_url(request: Request) -> str:
     """
     Base URL for the API

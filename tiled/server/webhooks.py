@@ -99,9 +99,31 @@ _STANDARD_BLOCKED_NETWORKS: list[ipaddress.IPv4Network | ipaddress.IPv6Network] 
     ipaddress.ip_network("100.64.0.0/10"),  # shared address space (CGNAT)
     ipaddress.ip_network("0.0.0.0/8"),  # "this" network
     ipaddress.ip_network("::1/128"),  # IPv6 loopback
+    ipaddress.ip_network("::/128"),  # IPv6 unspecified
     ipaddress.ip_network("fc00::/7"),  # IPv6 unique local
     ipaddress.ip_network("fe80::/10"),  # IPv6 link-local
 ]
+
+
+def _embedded_ipv4(
+    addr: ipaddress.IPv4Address | ipaddress.IPv6Address,
+) -> ipaddress.IPv4Address | None:
+    """The IPv4 address that an IPv6 address stands for, if any.
+
+    An IPv4-mapped (::ffff:a.b.c.d), IPv4-compatible (::a.b.c.d), 6to4 or
+    Teredo address reaches an IPv4 host, so it is judged as that host too.
+    """
+    if not isinstance(addr, ipaddress.IPv6Address):
+        return None
+    if addr.ipv4_mapped is not None:
+        return addr.ipv4_mapped
+    if addr.sixtofour is not None:
+        return addr.sixtofour
+    if addr.teredo is not None:
+        return addr.teredo[1]
+    if int(addr) >> 32 == 0:  # IPv4-compatible, deprecated but routable
+        return ipaddress.IPv4Address(int(addr) & 0xFFFFFFFF)
+    return None
 
 
 def get_combined_blocked_networks(
@@ -172,8 +194,11 @@ def check_url_ssrf_safety(
             addr = ipaddress.ip_address(ip_str)
         except ValueError:
             continue
+        addresses = [addr]
+        if (embedded := _embedded_ipv4(addr)) is not None:
+            addresses.append(embedded)
         for net in ALL_BLOCKED_NETWORKS:
-            if addr in net:
+            if any(a in net for a in addresses):
                 # Allow if this address is in allowed hosts. The reverse lookup
                 # is a network round-trip, so it is done only when it matters.
                 if (

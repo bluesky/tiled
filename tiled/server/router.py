@@ -1,13 +1,16 @@
 import collections
 import dataclasses
 import inspect
+import math
 import os
+import stat
 import warnings
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from datetime import UTC, datetime, timedelta
 from functools import cache, partial
 from pathlib import Path
 from typing import Literal, TypeVar
+from urllib.parse import quote
 
 import anyio
 import packaging
@@ -30,11 +33,13 @@ from jsonpatch import apply_patch as apply_json_patch
 from starlette.requests import URL
 from starlette.status import (
     HTTP_400_BAD_REQUEST,
+    HTTP_401_UNAUTHORIZED,
     HTTP_403_FORBIDDEN,
     HTTP_404_NOT_FOUND,
     HTTP_405_METHOD_NOT_ALLOWED,
     HTTP_406_NOT_ACCEPTABLE,
     HTTP_410_GONE,
+    HTTP_415_UNSUPPORTED_MEDIA_TYPE,
     HTTP_422_UNPROCESSABLE_CONTENT,
     HTTP_500_INTERNAL_SERVER_ERROR,
     HTTP_503_SERVICE_UNAVAILABLE,
@@ -53,10 +58,18 @@ from .. import __version__
 from ..access_control.protocols import ApprovedAccessTags, normalize_access_tags
 from ..links import links_for_node
 from ..ndslice import NDBlock, NDSlice
+from ..serialization.awkward import zipped_buffer_names
 from ..stream_messages import ArrayPatch
 from ..structures.core import Spec, StructureFamily
 from ..type_aliases import AccessTags, Scopes
-from ..utils import BrokenLink, ensure_awaitable, patch_mimetypes, path_from_uri
+from ..utils import (
+    BrokenLink,
+    UnsafePath,
+    contained_path,
+    ensure_awaitable,
+    patch_mimetypes,
+    path_from_uri,
+)
 from ..validation_registration import ValidationError, ValidationRegistry
 from . import schemas
 from ._backcompat import (
@@ -198,6 +211,56 @@ def _patch_route_signature(
         return route_with_sig
 
     return inner
+
+
+def body_deserializer(
+    request: Request,
+    structure_family: str,
+    deserialization_registry: SerializationRegistry,
+):
+    """The media type of the request body, and the deserializer for it.
+
+    Parameters of the media type, such as a charset, take no part in the
+    lookup. Respond with 415 if the request names no media type, or one that
+    cannot be deserialized to this structure family.
+    """
+    media_type = request.headers.get("content-type", "").split(";", 1)[0].strip()
+    try:
+        deserializer = deserialization_registry.dispatch(structure_family, media_type)
+    except ValueError:
+        supported = ", ".join(deserialization_registry.media_types(structure_family))
+        raise HTTPException(
+            status_code=HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail=(
+                f"The Content-Type {media_type!r} is not supported for "
+                f"{structure_family}. Supported: {supported}"
+            ),
+        )
+    return media_type, deserializer
+
+
+def require_within_bytesize_limit(nbytes: int, settings: Settings) -> None:
+    "Respond with 400 if a response of `nbytes` would exceed the configured limit."
+    if nbytes > settings.response_bytesize_limit:
+        raise HTTPException(
+            status_code=HTTP_400_BAD_REQUEST,
+            detail=(
+                f"Response would exceed {settings.response_bytesize_limit}. "
+                "Use slicing ('?slice=...') to request smaller chunks."
+            ),
+        )
+
+
+def require_expected_buffers(keys: Iterable[str], expected_keys: set[str]) -> None:
+    "Respond with 400 if an uploaded awkward buffer is not one that the form names."
+    if unexpected_keys := sorted(set(keys) - expected_keys):
+        raise HTTPException(
+            status_code=HTTP_400_BAD_REQUEST,
+            detail=(
+                "The request body contains buffers that are not part of "
+                f"this array: {unexpected_keys}"
+            ),
+        )
 
 
 def get_router(
@@ -750,6 +813,12 @@ def get_router(
                     f"{resulting_shape} that would result from the requested block and slice."
                 ),
             )
+        if entry.structure_family == StructureFamily.array:
+            # The size is known from the structure; check it before reading.
+            itemsize = entry.structure().data_type.to_numpy_dtype().itemsize
+            require_within_bytesize_limit(
+                math.prod(resulting_shape) * itemsize, settings
+            )
 
         if ndim == 0:
             # Handle special case of numpy scalar.
@@ -781,14 +850,7 @@ def get_router(
                     detail=f"The shape expected from the structure {expected_shape} "
                     f"does not match the actual data shape {array.shape}",
                 )
-        if array.nbytes > settings.response_bytesize_limit:
-            raise HTTPException(
-                status_code=HTTP_400_BAD_REQUEST,
-                detail=(
-                    f"Response would exceed {settings.response_bytesize_limit}. "
-                    "Use slicing ('?slice=...') to request smaller chunks."
-                ),
-            )
+        require_within_bytesize_limit(array.nbytes, settings)
         try:
             with record_timing(request.state.metrics, "pack"):
                 return await construct_data_response(
@@ -839,6 +901,18 @@ def get_router(
             getattr(request.app.state, "access_policy", None),
         )
         structure_family = entry.structure_family
+        if structure_family == StructureFamily.array:
+            # The size is known from the structure; check it before reading.
+            structure = entry.structure()
+            try:
+                shape = slice.shape_after_slice(structure.shape)
+            except IndexError:
+                raise HTTPException(
+                    status_code=HTTP_400_BAD_REQUEST,
+                    detail=f"Slice {slice} is out of range for shape {structure.shape}",
+                )
+            itemsize = structure.data_type.to_numpy_dtype().itemsize
+            require_within_bytesize_limit(math.prod(shape) * itemsize, settings)
         # Deferred import because this is not a required dependency of the server
         # for some use cases.
         import numpy
@@ -871,14 +945,7 @@ def get_router(
                 detail=f"The shape expected from the structure {expected_shape} "
                 f"does not match the actual data shape {array.shape}",
             )
-        if array.nbytes > settings.response_bytesize_limit:
-            raise HTTPException(
-                status_code=HTTP_400_BAD_REQUEST,
-                detail=(
-                    f"Response would exceed {settings.response_bytesize_limit}. "
-                    "Use slicing ('?slice=...') to request smaller chunks."
-                ),
-            )
+        require_within_bytesize_limit(array.nbytes, settings)
         try:
             with record_timing(request.state.metrics, "pack"):
                 return await construct_data_response(
@@ -925,7 +992,8 @@ def get_router(
         websocket: WebSocket,
         path: str,
         envelope_format: schemas.EnvelopeFormat = schemas.EnvelopeFormat.json,
-        start: int | None = None,
+        # 0 and -1 both mean "as far back as available".
+        start: int | None = Query(None, ge=-1),
         principal: schemas.Principal | None = Depends(get_current_principal_websocket),
         authn_access_tags: AccessTags | None = Depends(
             get_current_access_tags_websocket
@@ -974,9 +1042,18 @@ def get_router(
                 await websocket.close(code=4003, reason="Authentication failed")
                 return
 
+        # Authorization is enforced per route, as for the HTTP routes.
+        required_scopes = ["read:data", "read:metadata"]
+        if not set(required_scopes).issubset(authn_scopes):
+            detail = f"Not enough permissions. Requires scopes {required_scopes}."
+            if needs_first_message_auth:
+                await websocket.close(code=4003, reason=detail)
+                return
+            raise HTTPException(status_code=HTTP_401_UNAUTHORIZED, detail=detail)
+
         entry = await get_entry(
             path,
-            ["read:data", "read:metadata"],
+            required_scopes,
             principal,
             authn_access_tags,
             authn_scopes,
@@ -998,7 +1075,7 @@ def get_router(
         base_websocket_url = URL(get_base_url_websocket(websocket))
         scheme = "https" if base_websocket_url.scheme == "wss" else "http"
         path_parts = [segment for segment in path.split("/") if segment]
-        path_str = "/".join(path_parts)
+        path_str = "/".join(quote(part, safe="") for part in path_parts)
         uri = f"{base_websocket_url.replace(scheme=scheme)}/array/full/{path_str}"
         handler = entry.make_ws_handler(websocket, formatter, uri)
         await handler(start, already_accepted=needs_first_message_auth)
@@ -1048,14 +1125,7 @@ def get_router(
                 ),
             ) from err
 
-        if array._impl.nbytes > settings.response_bytesize_limit:
-            raise HTTPException(
-                status_code=HTTP_400_BAD_REQUEST,
-                detail=(
-                    f"Response would exceed {settings.response_bytesize_limit}. "
-                    "Use slicing ('?slice=...') to request smaller chunks."
-                ),
-            )
+        require_within_bytesize_limit(array._impl.nbytes, settings)
         try:
             with record_timing(request.state.metrics, "pack"):
                 return await construct_data_response(
@@ -1104,8 +1174,9 @@ def get_router(
                 detail="This node cannot accept array data.",
             )
 
-        media_type = request.headers["content-type"]
-        deserializer = deserialization_registry.dispatch("ragged", media_type)
+        media_type, deserializer = body_deserializer(
+            request, "ragged", deserialization_registry
+        )
 
         body = await request.body()
         await ensure_awaitable(
@@ -1145,8 +1216,9 @@ def get_router(
                 detail="This node cannot accept blocks of ragged array data.",
             )
 
-        media_type = request.headers["content-type"]
-        deserializer = deserialization_registry.dispatch("ragged", media_type)
+        media_type, deserializer = body_deserializer(
+            request, "ragged", deserialization_registry
+        )
 
         body = await request.body()
         await ensure_awaitable(
@@ -1200,8 +1272,9 @@ def get_router(
             )
 
         body = await request.body()
-        media_type = request.headers["content-type"]
-        deserializer = deserialization_registry.dispatch("ragged", media_type)
+        media_type, deserializer = body_deserializer(
+            request, "ragged", deserialization_registry
+        )
         structure = await ensure_awaitable(
             entry.patch,
             shape,
@@ -1910,14 +1983,7 @@ def get_router(
         with record_timing(request.state.metrics, "read"):
             array = await ensure_awaitable(entry.read)
 
-        if array.nbytes > settings.response_bytesize_limit:
-            raise HTTPException(
-                status_code=HTTP_400_BAD_REQUEST,
-                detail=(
-                    f"Response would exceed {settings.response_bytesize_limit}. "
-                    "Use slicing ('?slice=...') to request smaller chunks."
-                ),
-            )
+        require_within_bytesize_limit(array.nbytes, settings)
         try:
             components = awkward.to_buffers(array)
             with record_timing(request.state.metrics, "pack"):
@@ -1963,8 +2029,11 @@ def get_router(
         for data_source in body.data_sources:
             if data_source.assets:
                 raise HTTPException(
-                    "Externally-managed assets cannot be registered "
-                    "using POST /metadata/{path}. Use POST /register/{path} instead."
+                    status_code=HTTP_400_BAD_REQUEST,
+                    detail=(
+                        "Externally-managed assets cannot be registered using "
+                        "POST /metadata/{path}. Use POST /register/{path} instead."
+                    ),
                 )
         if body.data_sources and not getattr(entry, "writable", False):
             raise HTTPException(
@@ -2092,7 +2161,11 @@ def get_router(
             structure_family,
             structure,
             get_base_url(request),
-            "/".join(filter(None, [path.strip("/"), node.key])),
+            "/".join(
+                quote(part, safe="")
+                for part in [*path.strip("/").split("/"), node.key]
+                if part
+            ),
         )
         data_sources_dump = [
             ds.model_dump() for ds in await node.data_sources(include_assets=True)
@@ -2234,13 +2307,11 @@ def get_router(
                 status_code=HTTP_405_METHOD_NOT_ALLOWED,
                 detail="This node cannot accept array data.",
             )
-        media_type = request.headers["content-type"]
-        if entry.structure_family == "array":
-            deserializer = deserialization_registry.dispatch("array", media_type)
-        elif entry.structure_family == "sparse":
-            deserializer = deserialization_registry.dispatch("sparse", media_type)
-        else:
+        if entry.structure_family not in ("array", "sparse"):
             raise NotImplementedError(entry.structure_family)
+        media_type, deserializer = body_deserializer(
+            request, entry.structure_family, deserialization_registry
+        )
         await ensure_awaitable(
             entry.write, media_type, deserializer, entry, body, persist
         )
@@ -2278,9 +2349,8 @@ def get_router(
             )
 
         body = await request.body()
-        media_type = request.headers["content-type"]
-        deserializer = deserialization_registry.dispatch(
-            entry.structure_family, media_type
+        media_type, deserializer = body_deserializer(
+            request, entry.structure_family, deserialization_registry
         )
         await ensure_awaitable(
             entry.write_block, block, media_type, deserializer, entry, body, persist
@@ -2332,8 +2402,9 @@ def get_router(
             )
 
         body = await request.body()
-        media_type = request.headers["content-type"]
-        deserializer = deserialization_registry.dispatch("array", media_type)
+        media_type, deserializer = body_deserializer(
+            request, "array", deserialization_registry
+        )
         structure = await ensure_awaitable(
             entry.patch,
             shape,
@@ -2377,9 +2448,8 @@ def get_router(
                 detail="This node does not support writing.",
             )
         body = await request.body()
-        media_type = request.headers["content-type"]
-        deserializer = deserialization_registry.dispatch(
-            StructureFamily.table, media_type
+        media_type, deserializer = body_deserializer(
+            request, StructureFamily.table, deserialization_registry
         )
         await ensure_awaitable(entry.write, media_type, deserializer, entry, body)
         return json_or_msgpack(request, None)
@@ -2414,9 +2484,8 @@ def get_router(
                 detail="This node does not supporting writing a partition.",
             )
         body = await request.body()
-        media_type = request.headers["content-type"]
-        deserializer = deserialization_registry.dispatch(
-            StructureFamily.table, media_type
+        media_type, deserializer = body_deserializer(
+            request, StructureFamily.table, deserialization_registry
         )
         await ensure_awaitable(
             entry.write_partition, media_type, deserializer, entry, body, partition
@@ -2447,15 +2516,14 @@ def get_router(
             None,
             getattr(request.app.state, "access_policy", None),
         )
-        if not hasattr(entry, "write_partition"):
+        if not hasattr(entry, "append_partition"):
             raise HTTPException(
                 status_code=HTTP_405_METHOD_NOT_ALLOWED,
-                detail="This node does not supporting writing a partition.",
+                detail="This node does not support appending to a partition.",
             )
         body = await request.body()
-        media_type = request.headers["content-type"]
-        deserializer = deserialization_registry.dispatch(
-            StructureFamily.table, media_type
+        media_type, deserializer = body_deserializer(
+            request, StructureFamily.table, deserialization_registry
         )
         await ensure_awaitable(
             entry.append_partition, media_type, deserializer, entry, body, partition
@@ -2491,14 +2559,20 @@ def get_router(
                 status_code=HTTP_405_METHOD_NOT_ALLOWED,
                 detail="This node cannot be written to.",
             )
-        media_type = request.headers["content-type"]
-        deserializer = deserialization_registry.dispatch(
-            StructureFamily.awkward, media_type
+        media_type, deserializer = body_deserializer(
+            request, StructureFamily.awkward, deserialization_registry
         )
         structure = entry.structure()
+        # The body comes from the client, and its keys are used as file names.
+        # Accept only the buffers that the form of this node names.
+        expected_keys = set(structure.awkward_form.expected_from_buffers())
+        if media_type == "application/zip":
+            # The names are checked before any member is decompressed.
+            require_expected_buffers(zipped_buffer_names(body), expected_keys)
         data = await ensure_awaitable(
             deserializer, body, structure.form, structure.length
         )
+        require_expected_buffers(data, expected_keys)
         await ensure_awaitable(entry.write, data)
         return json_or_msgpack(request, None)
 
@@ -2883,19 +2957,33 @@ def get_router(
             )
         path = path_from_uri(asset.data_uri)
         if relative_path is not None:
-            # Be doubly sure that this is under the Asset's data_uri directory
-            # and not sneakily escaping it.
-            if not os.path.commonpath([path, path / relative_path]) != path:
-                # This should not be possible.
-                raise RuntimeError(
-                    f"Refusing to serve {path / relative_path} because it is outside "
-                    "of the Asset's directory"
+            # The relative path comes from the request. Serve only files inside
+            # the Asset's directory, after resolving ".." and symbolic links.
+            try:
+                full_path = await anyio.to_thread.run_sync(
+                    contained_path, path, relative_path
                 )
-            full_path = path / relative_path
+            except UnsafePath:
+                raise HTTPException(
+                    status_code=HTTP_400_BAD_REQUEST,
+                    detail=(
+                        "relative_path query parameter must name a file inside "
+                        "of this asset's directory"
+                    ),
+                )
+            filename = relative_path.name
         else:
             full_path = path
-        stat_result = await anyio.to_thread.run_sync(os.stat, full_path)
-        filename = full_path.name
+            filename = path.name
+        try:
+            stat_result = await anyio.to_thread.run_sync(os.stat, full_path)
+        except (FileNotFoundError, NotADirectoryError):
+            stat_result = None
+        if stat_result is None or not stat.S_ISREG(stat_result.st_mode):
+            raise HTTPException(
+                status_code=HTTP_404_NOT_FOUND,
+                detail="This asset has no such file.",
+            )
         return FileResponse(
             full_path,
             stat_result=stat_result,
@@ -2959,7 +3047,9 @@ def get_router(
         # Walk the directory and any subdirectories. Aggregate a list of all the
         # files, given as paths relative to the directory root.
         for root, _directories, files in os.walk(path):
-            manifest.extend(Path(root, file) for file in files)
+            manifest.extend(
+                Path(root, file).relative_to(path).as_posix() for file in files
+            )
         return json_or_msgpack(request, {"manifest": manifest})
 
     @router.delete(

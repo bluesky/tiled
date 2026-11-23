@@ -2,7 +2,7 @@ import concurrent.futures
 import functools
 import warnings
 from typing import TYPE_CHECKING
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, quote, urlparse
 
 import dask
 import dask.dataframe
@@ -220,7 +220,7 @@ class _DaskDataFrameClient(BaseClient):
                 with attempt:
                     content = handle_error(
                         self.context.http_client.get(
-                            self_link + f"/{column}",
+                            self_link + f"/{quote(column, safe='')}",
                             headers={"Accept": MSGPACK_MIME_TYPE},
                         )
                     ).json()

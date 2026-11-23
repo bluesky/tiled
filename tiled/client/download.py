@@ -6,7 +6,7 @@ import signal
 from _thread import LockType
 from collections.abc import Iterable, MutableMapping
 from concurrent.futures import ThreadPoolExecutor, wait
-from pathlib import Path
+from pathlib import Path, PurePath, PurePosixPath
 from threading import Event, Lock
 
 import httpx2 as httpx
@@ -20,6 +20,7 @@ from rich.progress import (
     TransferSpeedColumn,
 )
 
+from ..utils import UnsafePath, is_safe_path_segment
 from .utils import handle_error, retry_context
 
 # This extracts the filename to the Content-Disposition header.
@@ -49,16 +50,46 @@ def _resolve_placeholder(target, response: httpx.Response):
     if isinstance(target, Path):
         if target.name != ATTACHMENT_FILENAME_PLACEHOLDER:
             return target
-        filename = CONTENT_DISPOSITION_PATTERN.match(
-            response.headers["Content-Disposition"]
-        ).group(1)
-        return Path(target.parent, filename)
+        return Path(target.parent, _attachment_filename(response))
     if ATTACHMENT_FILENAME_PLACEHOLDER not in target:
         return target
+    return target.replace(
+        ATTACHMENT_FILENAME_PLACEHOLDER, _attachment_filename(response)
+    )
+
+
+def _attachment_filename(response: httpx.Response) -> str:
+    """Return the filename that the server gave in `Content-Disposition`.
+
+    The server names the file. It does not choose where the file goes, so a
+    name that is not a plain file name is refused."""
     filename = CONTENT_DISPOSITION_PATTERN.match(
         response.headers["Content-Disposition"]
     ).group(1)
-    return target.replace(ATTACHMENT_FILENAME_PLACEHOLDER, filename)
+    if not is_safe_path_segment(filename) or PurePath(filename).name != filename:
+        raise UnsafePath(
+            f"The server named the downloaded file {filename!r}, which is not "
+            "a plain file name."
+        )
+    return filename
+
+
+def require_relative_path(path: str) -> None:
+    """Raise UnsafePath unless a path given by the server stays inside the
+    directory that it will be joined to.
+
+    This looks at the text of the path only. It is for the paths in an asset
+    manifest, which become the paths of downloaded files."""
+    # The server gives POSIX-style paths. Also read the path as this platform
+    # would, which on Windows recognizes drives and backslashes.
+    for flavor in {PurePosixPath, type(PurePath())}:
+        parsed = flavor(path)
+        # The anchor is the root or drive of an absolute path.
+        if not parsed.parts or parsed.anchor or ".." in parsed.parts:
+            raise UnsafePath(
+                f"The server listed the file {path!r}, which is not a path "
+                "inside of the asset. Refusing to download it."
+            )
 
 
 def _download_url(
@@ -73,9 +104,13 @@ def _download_url(
     accept_encoding: str | None,
 ):
     """Fetch `url` and write the body to disk (when `mapping is None`) or to
-    a `BytesIO` stored in `mapping` (otherwise). Returns the resolved target."""
+    a `BytesIO` stored in `mapping` (otherwise). Returns the resolved target.
+
+    If the download fails, the error is raised, and a file that was written
+    in part is removed."""
     progress.console.log(f"Requesting {url}")
     resolved = target
+    written: Path | None = None
     # Override the client's default Accept-Encoding so that raw-asset downloads
     # do not negotiate blosc2 (see STREAMING_ACCEPT_ENCODING) or, when the
     # caller disables compression, are served uncompressed with a
@@ -87,6 +122,9 @@ def _download_url(
         for attempt in retry_context():
             with attempt:
                 with client.stream("GET", url, headers=headers) as response:
+                    if response.is_error:
+                        # The body holds the server's explanation.
+                        response.read()
                     handle_error(response)
                     resolved = _resolve_placeholder(target, response)
                     # Content-Length is absent when the server streams a
@@ -99,6 +137,7 @@ def _download_url(
                     progress.start_task(task_id)
                     if mapping is None:
                         sink = open(resolved, "wb")
+                        written = resolved
                     else:
                         sink = io.BytesIO()
                     try:
@@ -116,8 +155,11 @@ def _download_url(
                             sink.close()
     except Exception as err:
         progress.console.log(f"ERROR {err!r}")
-    else:
-        progress.console.log(f"Downloaded {resolved}")
+        if written is not None:
+            # Do not leave part of a file behind as if it were the whole.
+            written.unlink(missing_ok=True)
+        raise
+    progress.console.log(f"Downloaded {resolved}")
     return resolved
 
 
@@ -141,6 +183,9 @@ def download(
     A target may embed `ATTACHMENT_FILENAME_PLACEHOLDER`, which is replaced
     with the filename advertised by the server via `Content-Disposition`.
     Returns the list of resolved targets in submission order.
+
+    Every download is attempted. If any of them fails, the first error is
+    raised once all are done, with a note of how many failed.
 
     `totals`, if given, must be parallel to `urls`; each entry pre-seeds the
     known content length so the progress bar is determinate even when the
@@ -208,4 +253,11 @@ def download(
     finally:
         # Restore SIGINT handler.
         signal.signal(signal.SIGINT, original_sigint_handler)
+    errors = [error for future in futures if (error := future.exception())]
+    if errors:
+        errors[0].add_note(
+            f"{len(errors)} of {len(futures)} downloads failed. "
+            "This is the first error."
+        )
+        raise errors[0]
     return [future.result() for future in futures]

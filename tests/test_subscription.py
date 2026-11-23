@@ -89,10 +89,14 @@ def test_subscribe_immediately_after_creation_websockets(tiled_websocket_context
         subscription.disconnect()
 
 
+@pytest.mark.parametrize("how", ["start", "start_in_thread"])
 def test_websocket_connection_to_non_existent_node_subscription(
-    tiled_websocket_context,
+    tiled_websocket_context, how
 ):
-    """Test subscription to non-existent node raises appropriate error."""
+    """Test subscription to non-existent node raises appropriate error.
+
+    start_in_thread raises it too, instead of waiting for a connection that
+    is never made."""
     context = tiled_websocket_context
 
     non_existent_node_id = "definitely_non_existent_websocket_node_99999999"
@@ -105,7 +109,7 @@ def test_websocket_connection_to_non_existent_node_subscription(
 
     # Attempting to start should raise WebSocketDenialResponse
     with pytest.raises(WebSocketDenialResponse):
-        subscription.start()
+        getattr(subscription, how)()
 
 
 def test_subscribe_after_first_update_subscription(tiled_websocket_context):

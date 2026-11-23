@@ -1,5 +1,6 @@
 import io
 import os
+import secrets
 import sys
 import tempfile
 from pathlib import Path
@@ -19,7 +20,7 @@ from tiled.client.base import BaseClient
 from tiled.config import Authentication
 from tiled.server.app import build_app
 from tiled.server.settings import get_settings
-from tiled.utils import ensure_specified_sql_driver
+from tiled.utils import ensure_specified_sql_driver, ensure_uri
 
 from .utils import enter_username_password as utils_enter_uname_passwd
 from .utils import temp_postgres, temp_postgres_sync
@@ -390,15 +391,30 @@ def url_limit(request: pytest.FixtureRequest):
 
 
 @pytest.fixture
-def redis_uri():
+def redis_key_prefix():
+    """A Redis key prefix unique to this test.
+
+    Each test builds a fresh catalog, so node IDs (and therefore Redis keys and
+    pub/sub channels) repeat across tests. A unique prefix keeps tests that run
+    at the same time on different xdist workers apart.
+    """
+    # "test-" marks keys left behind if teardown does not run; the random part
+    # is short enough to type when inspecting Redis by hand.
+    return f"test-{secrets.token_hex(4)}:"
+
+
+@pytest.fixture
+def redis_uri(redis_key_prefix):
     if uri := os.getenv("TILED_TEST_REDIS"):
         import redis
 
-        client = redis.from_url(uri, socket_timeout=10, socket_connect_timeout=30)
-        # Delete all keys from the current database before and after test.
-        client.flushdb()
         yield uri
-        client.flushdb()
+        # Delete only this test's keys; other tests may be using the server.
+        client = redis.from_url(uri, socket_timeout=10, socket_connect_timeout=30)
+        with client:
+            keys = list(client.scan_iter(match=f"{redis_key_prefix}*"))
+            if keys:
+                client.delete(*keys)
     else:
         raise pytest.skip("No TILED_TEST_REDIS configured")
 
@@ -431,11 +447,11 @@ def init_auth_database(tmpdir):
     return database_uri
 
 
-def build_test_app(tmpdir, redis_uri, public=False):
+def build_test_app(tmpdir, redis_uri, redis_key_prefix, public=False):
     tree = from_uri(
         "sqlite:///:memory:",
         writable_storage=[
-            f"file://localhost{str(tmpdir / 'data')}",
+            ensure_uri(tmpdir / "data"),
             f"duckdb:///{tmpdir / 'data.duckdb'}",
         ],
         readable_storage=[Path(tempfile.gettempdir()).resolve()],
@@ -444,6 +460,7 @@ def build_test_app(tmpdir, redis_uri, public=False):
         # the test suite should be going on for more than ten minutes.
         cache_config={
             "uri": redis_uri,
+            "key_prefix": redis_key_prefix,
             "data_ttl": 600,  # 10 minutes
             "seq_ttl": 600,  # 10 minutes
             "socket_timeout": 600,  # 10 minutes
@@ -461,21 +478,25 @@ def build_test_app(tmpdir, redis_uri, public=False):
 
 
 @pytest.fixture(scope="function")
-def tiled_websocket_context(tmpdir, redis_uri):
+def tiled_websocket_context(tmpdir, redis_uri, redis_key_prefix):
     """Fixture that provides a Tiled context with websocket support."""
-    with Context.from_app(build_test_app(tmpdir, redis_uri, public=False)) as context:
+    app = build_test_app(tmpdir, redis_uri, redis_key_prefix, public=False)
+    with Context.from_app(app) as context:
         yield context
 
 
 @pytest.fixture(scope="function")
-def tiled_websocket_context_public(tmpdir, redis_uri):
+def tiled_websocket_context_public(tmpdir, redis_uri, redis_key_prefix):
     """Fixture that provides a Tiled context with websocket support."""
-    with Context.from_app(build_test_app(tmpdir, redis_uri, public=True)) as context:
+    app = build_test_app(tmpdir, redis_uri, redis_key_prefix, public=True)
+    with Context.from_app(app) as context:
         yield context
 
 
 @pytest.fixture(scope="function")
-def tiled_websocket_context_multiuser(tmpdir, redis_uri, enter_username_password):
+def tiled_websocket_context_multiuser(
+    tmpdir, redis_uri, redis_key_prefix, enter_username_password
+):
     """Fixture that provides a multi-user Tiled context with JWT auth and websocket support.
 
     Logs in as 'alice' during setup so that context.tokens and from_context()
@@ -500,6 +521,7 @@ def tiled_websocket_context_multiuser(tmpdir, redis_uri, enter_username_password
         ],
         "streaming_cache": {
             "uri": redis_uri,
+            "key_prefix": redis_key_prefix,
             "data_ttl": 600,
             "seq_ttl": 600,
             "socket_timeout": 600,
