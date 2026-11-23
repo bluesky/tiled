@@ -49,6 +49,9 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - Reading a subset of a table's columns from SQL storage returns them in the
   requested order (previously in an arbitrary order), and an unknown column is
   refused with HTTP 400 (previously dropped without notice).
+- Serialize database initialization on PostgreSQL with an advisory lock, so
+  replicas starting at once against a fresh database no longer crash on
+  colliding DDL.
 
 ## v0.2.22 (2026-11-18)
 
