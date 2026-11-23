@@ -74,7 +74,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
   `ALTER TABLE api_keys` in the same `tiled admin downgrade-database` run
   failed; and `d88e91ea03f9` added `NOT NULL` columns without values, which
   failed on any table with rows.
-  
+
 ## v0.2.22 (2026-11-18)
 
 ### Security

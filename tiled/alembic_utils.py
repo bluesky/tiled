@@ -276,6 +276,7 @@ def revisions_accepted_at_startup(
             accepted.extend(down_revision)
     return accepted
 
+
 # Arbitrary. Advisory locks are scoped per database.
 INITIALIZATION_LOCK_KEY = 0x711ED
 
