@@ -244,8 +244,6 @@ def initialize_database_if_needed(
 
     return _run_outside_event_loop(lambda: asyncio.run(do_setup()))
 
-    return _run_outside_event_loop(run)
-
 
 # A migration script can set this module attribute to False to declare that the
 # server code at its revision runs correctly on a database at the previous
