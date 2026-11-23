@@ -22,6 +22,11 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Fixed
 
+- The OAuth authorization redirect no longer requests the `offline_access`
+  scope by default. Identity providers that reject it, such as ORCID, failed
+  every login. The redirect now requests `openid`, plus `extra_scopes` for
+  `EntraAuthenticator`, which can list `offline_access` to request it again.
+  [#1658](https://github.com/bluesky/tiled/issues/1658)
 - Node keys are percent-encoded wherever they become a segment of a URL path,
   in the links the server returns and in the URLs the Python client builds.
   A key with `#`, `?`, a space or `+` addressed another node or failed: writing
