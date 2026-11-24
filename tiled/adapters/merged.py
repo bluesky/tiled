@@ -15,9 +15,22 @@ implementing the same duck-typed paging protocol as `CatalogNodeAdapter`
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+import anyio
+
 from ..structures.core import Spec, StructureFamily
 from ..type_aliases import JSON
 from ..utils import UNCHANGED
+
+# For a mounted subtree that has only the synchronous interface. It may block
+# on I/O, so these are run in a worker thread, not on the event loop.
+
+
+def _keys_sync(subtree: Any, offset: int, stop: int | None) -> list[str]:
+    return list(subtree.keys())[offset:stop]
+
+
+def _items_sync(subtree: Any, offset: int, stop: int | None) -> list[tuple[str, Any]]:
+    return list(subtree.items())[offset:stop]
 
 
 class MergedDeepSearchAdapter:
@@ -89,7 +102,7 @@ class MergedDeepSearchAdapter:
             if hasattr(subtree, "exact_len"):
                 self._mount_lens[index] = int(await subtree.exact_len())
             elif hasattr(subtree, "__len__"):
-                self._mount_lens[index] = len(subtree)
+                self._mount_lens[index] = await anyio.to_thread.run_sync(len, subtree)
             else:
                 self._mount_lens[index] = len(await self._mount_keys(subtree, 0, None))
         return self._mount_lens[index]
@@ -99,18 +112,22 @@ class MergedDeepSearchAdapter:
     ) -> list[str]:
         if hasattr(subtree, "keys_range"):
             return list(await subtree.keys_range(offset, limit))
-        keys = list(subtree.keys())
         stop = None if limit is None else offset + limit
-        return keys[offset:stop]
+        keys: list[str] = await anyio.to_thread.run_sync(
+            _keys_sync, subtree, offset, stop
+        )
+        return keys
 
     async def _mount_items(
         self, subtree: Any, offset: int, limit: int | None
     ) -> list[tuple[str, Any]]:
         if hasattr(subtree, "items_range"):
             return list(await subtree.items_range(offset, limit))
-        items = list(subtree.items())
         stop = None if limit is None else offset + limit
-        return items[offset:stop]
+        items: list[tuple[str, Any]] = await anyio.to_thread.run_sync(
+            _items_sync, subtree, offset, stop
+        )
+        return items
 
     async def _paginate(
         self, offset: int, limit: int | None, *, keys_only: bool

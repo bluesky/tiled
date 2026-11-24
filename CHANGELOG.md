@@ -111,6 +111,9 @@ Write the date in place of the "Unreleased" in the case a new version is release
   loop.
 - The queries of an access policy are applied to a container that has only
   the synchronous interface in a worker thread, not on the event loop.
+- In a deep search, a mounted subtree that has only the synchronous interface
+  is read (its length, keys and items) in a worker thread, not on the event
+  loop.
 
 ### Changed
 

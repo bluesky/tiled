@@ -558,3 +558,57 @@ def test_sync_container_search_deep_off_the_event_loop():
         assert len(results) == 3
     assert record  # It was called...
     assert not any(record)  # ...in a thread.
+
+
+class _SyncSubtree:
+    """
+    Stand-in for a mounted subtree that has only the synchronous interface.
+
+    Record whether it was read on the event loop thread.
+    """
+
+    def __init__(self, mapping):
+        self._mapping = mapping
+        self.ran_on_event_loop = []
+
+    def _record(self):
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            self.ran_on_event_loop.append(False)
+        else:
+            self.ran_on_event_loop.append(True)
+
+    def __len__(self):
+        self._record()
+        return len(self._mapping)
+
+    def keys(self):
+        self._record()
+        return self._mapping.keys()
+
+    def items(self):
+        self._record()
+        return self._mapping.items()
+
+
+async def test_merged_deep_search_adapter_reads_sync_mount_off_the_event_loop():
+    """
+    A mounted subtree with only the synchronous interface may block on I/O
+    when its length, keys or items are read. They are read in a worker thread.
+    """
+    subtree = _SyncSubtree({"x": 1, "y": 2, "z": 3})
+    adapter = MergedDeepSearchAdapter({"a": 0}, [("m", subtree)])
+
+    assert await adapter.keys_range(0, None) == ["a", "m/x", "m/y", "m/z"]
+    assert await adapter.keys_range(2, 2) == ["m/y", "m/z"]
+    assert await adapter.items_range(0, None) == [
+        ("a", 0),
+        ("m/x", 1),
+        ("m/y", 2),
+        ("m/z", 3),
+    ]
+    assert await adapter.items_range(3, 1) == [("m/z", 3)]
+    assert await adapter.exact_len() == 4
+    assert subtree.ran_on_event_loop  # It was read...
+    assert not any(subtree.ran_on_event_loop)  # ...in a thread.
