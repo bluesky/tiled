@@ -119,6 +119,16 @@ async def len_or_approx(tree, exact=False, threshold=5000):
     return await anyio.to_thread.run_sync(len, tree)
 
 
+def _keys_slice_sync(tree, offset, limit):
+    # Materialize inside the worker thread, in case the adapter's view is lazy.
+    return list(tree.keys()[offset : offset + limit])
+
+
+def _items_slice_sync(tree, offset, limit):
+    # Materialize inside the worker thread, in case the adapter's view is lazy.
+    return list(tree.items()[offset : offset + limit])
+
+
 def pagination_links(base_url, route, path_parts, page, next_cursor, length_hint):
     path_str = "/".join(quote(part, safe="") for part in path_parts)
     if page.cursor is not None:
@@ -323,7 +333,12 @@ async def construct_entries_response(
                     # Non-default sort: use offset pagination
                     keys = await tree.keys_range(page.offset, page.limit)
         else:
-            keys = tree.keys()[page.offset : page.offset + page.limit]
+            # This container has only the synchronous interface, which may
+            # block on I/O (e.g. a database query). Run it in a worker thread
+            # so that it does not stall the event loop.
+            keys = await anyio.to_thread.run_sync(
+                _keys_slice_sync, tree, page.offset, page.limit
+            )
         items = [(key, None) for key in keys]
     elif fields == [schemas.EntryFields.count]:
         # Only count is requested, so we do not need to pull any items.
@@ -342,7 +357,10 @@ async def construct_entries_response(
                     # Non-default sort: use offset pagination
                     items = await tree.items_range(page.offset, page.limit)
         else:
-            items = tree.items()[page.offset : page.offset + page.limit]
+            # As above: synchronous interface, so run it in a worker thread.
+            items = await anyio.to_thread.run_sync(
+                _items_slice_sync, tree, page.offset, page.limit
+            )
 
     # Construct pagination links
     links = pagination_links(base_url, route, path_parts, page, next_cursor, count)

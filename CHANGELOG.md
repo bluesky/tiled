@@ -89,6 +89,11 @@ Write the date in place of the "Unreleased" in the case a new version is release
   `ALTER TABLE api_keys` in the same `tiled admin downgrade-database` run
   failed; and `d88e91ea03f9` added `NOT NULL` columns without values, which
   failed on any table with rows.
+- Listing a page of entries from a container that has only the synchronous
+  interface (no `keys_page` or `items_page`), such as a custom adapter backed
+  by a database, runs in a worker thread. It ran on the event loop, so one
+  slow search blocked every other request handled by the same server process,
+  and its health check.
 
 ### Changed
 
