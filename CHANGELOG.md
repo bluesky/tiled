@@ -101,6 +101,9 @@ Write the date in place of the "Unreleased" in the case a new version is release
   reads the entry (`tree[key]`) in a worker thread, not on the event loop.
 - The server walks a path through a container that has only the synchronous
   interface (`tree[segment]`) in a worker thread, not on the event loop.
+- A node whose contents are inlined in its description (such as an xarray
+  dataset or an HDF5 group) is walked in a worker thread, not on the event
+  loop.
 
 ### Changed
 

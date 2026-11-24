@@ -1,6 +1,7 @@
 import collections.abc
 import dataclasses
 import inspect
+import itertools
 import operator
 import re
 import sys
@@ -127,6 +128,26 @@ def _keys_slice_sync(tree, offset, limit):
 def _items_slice_sync(tree, offset, limit):
     # Materialize inside the worker thread, in case the adapter's view is lazy.
     return list(tree.items()[offset : offset + limit])
+
+
+def _inlined_children_sync(entry, limit):
+    """
+    Collect the children of a node whose contents are to be inlined.
+
+    Return a list of (key, adapter), where adapter is None for a broken link,
+    or return None if the node has more than ``limit`` children.
+    """
+    keys = list(itertools.islice(entry.keys(), limit + 1))
+    if len(keys) > limit:
+        return None
+    children = []
+    for key in keys:
+        try:
+            children.append((key, entry[key]))
+        except BrokenLink:
+            # If there are any broken links (e.g. in HDF5), just keep the key
+            children.append((key, None))
+    return children
 
 
 def pagination_links(base_url, route, path_parts, page, next_cursor, length_hint):
@@ -631,40 +652,42 @@ async def construct_resource(
                     # Too large: do not inline its contents.
                     contents = None
                 else:
-                    contents = {}
-                    # The size may change as we are walking the entry.
-                    # Get a new *true* count.
-                    count = 0
-                    for key in entry.keys():
-                        count += 1
-                        if count > INLINED_CONTENTS_LIMIT:
-                            # The estimated count was inaccurate or else the entry has grown
-                            # new children while we are walking it. Too large!
-                            count = await len_or_approx(
-                                entry, exact=do_exact_count, threshold=exact_count_limit
-                            )
-                            contents = None
-                            break
-                        try:
-                            adapter = entry[key]
-                        except BrokenLink:
-                            # If there are any broken links (e.g. in HDF5), just keep the key
-                            contents[key] = None
-                            continue
-
-                        contents[key] = await construct_resource(
-                            base_url,
-                            path_parts + [key],
-                            adapter,
-                            fields,
-                            select_metadata,
-                            omit_links,
-                            include_data_sources,
-                            media_type,
-                            max_depth,
-                            exact_count_limit,
-                            depth=1 + depth,
+                    # Walking the entry uses its synchronous interface, which
+                    # may block on I/O. Run it in a worker thread so that it
+                    # does not stall the event loop.
+                    children = await anyio.to_thread.run_sync(
+                        _inlined_children_sync, entry, INLINED_CONTENTS_LIMIT
+                    )
+                    if children is None:
+                        # The estimated count was inaccurate or else the entry has grown
+                        # new children since it was counted. Too large!
+                        count = await len_or_approx(
+                            entry, exact=do_exact_count, threshold=exact_count_limit
                         )
+                        contents = None
+                    else:
+                        # The size may have changed since it was counted.
+                        # This is the *true* count.
+                        count = len(children)
+                        contents = {}
+                        for key, adapter in children:
+                            if adapter is None:
+                                # A broken link
+                                contents[key] = None
+                                continue
+                            contents[key] = await construct_resource(
+                                base_url,
+                                path_parts + [key],
+                                adapter,
+                                fields,
+                                select_metadata,
+                                omit_links,
+                                include_data_sources,
+                                media_type,
+                                max_depth,
+                                exact_count_limit,
+                                depth=1 + depth,
+                            )
             else:
                 contents = None
             attributes["structure"] = schemas.NodeStructure(
