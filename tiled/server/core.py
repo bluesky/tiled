@@ -338,7 +338,14 @@ async def construct_entries_response(
                 status_code=HTTP_400_BAD_REQUEST,
                 detail="This container does not support sorting.",
             )
-        tree = tree.sort(sorting)
+        if hasattr(tree, "lookup_adapter"):
+            # This only records the sorting, to be applied by the database.
+            tree = tree.sort(sorting)
+        else:
+            # A container with the synchronous interface may sort its entries
+            # here (MapAdapter does), reading the metadata of each. Run it in
+            # a worker thread so that it does not stall the event loop.
+            tree = await anyio.to_thread.run_sync(tree.sort, sorting)
 
     count = await len_or_approx(
         tree, exact=(schemas.EntryFields.count in fields), threshold=exact_count_limit

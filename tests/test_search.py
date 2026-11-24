@@ -108,6 +108,7 @@ class _ThreadRecordingMapAdapter(MapAdapter):
 
     ran_on_event_loop = []  # slicing keys or items
     getitem_ran_on_event_loop = []
+    sort_ran_on_event_loop = []
 
     @staticmethod
     def _record(record):
@@ -129,6 +130,10 @@ class _ThreadRecordingMapAdapter(MapAdapter):
     def __getitem__(self, key):
         self._record(self.getitem_ran_on_event_loop)
         return super().__getitem__(key)
+
+    def sort(self, sorting):
+        self._record(self.sort_ran_on_event_loop)
+        return super().sort(sorting)
 
 
 @pytest.mark.parametrize("method", ["keys", "items"])
@@ -181,5 +186,22 @@ def test_sync_container_key_lookup_off_the_event_loop():
         listed = list(client.search(KeyLookup("a")))
         assert list(client.search(KeyLookup("does-not-exist"))) == []
     assert listed == ["a"]
+    assert record  # It was called...
+    assert not any(record)  # ...in a thread.
+
+
+def test_sync_container_sorted_off_the_event_loop():
+    """
+    A container with the synchronous interface may sort its entries when
+    ``sort`` is called (MapAdapter does, reading the metadata of each).
+    """
+    recording_tree = _ThreadRecordingMapAdapter(dict(tree.items()))
+    record = _ThreadRecordingMapAdapter.sort_ran_on_event_loop
+    app = build_app(recording_tree)
+    with Context.from_app(app) as context:
+        client = from_context(context)
+        record.clear()
+        listed = list(client.sort(("animal", 1)))
+    assert listed == ["c", "a", "b"]  # cat, dog, dog
     assert record  # It was called...
     assert not any(record)  # ...in a thread.

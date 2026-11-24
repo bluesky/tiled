@@ -104,6 +104,8 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - A node whose contents are inlined in its description (such as an xarray
   dataset or an HDF5 group) is walked in a worker thread, not on the event
   loop.
+- Sorting a container that has only the synchronous interface (`sort`) runs
+  in a worker thread, not on the event loop.
 
 ### Changed
 
