@@ -94,6 +94,9 @@ Write the date in place of the "Unreleased" in the case a new version is release
   by a database, runs in a worker thread. It ran on the event loop, so one
   slow search blocked every other request handled by the same server process,
   and its health check.
+- Queries on a container that has only the synchronous interface are applied
+  (`search`) in a worker thread, not on the event loop. Such a container may
+  evaluate the query at that point, as `MapAdapter` does.
 
 ### Changed
 

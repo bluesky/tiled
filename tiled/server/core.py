@@ -239,7 +239,14 @@ async def apply_search(tree, filters, query_registry):
                 if isinstance(query, KeyLookup):
                     key_lookups.append(query.key)
                     continue
-                tree = tree.search(query)
+                if hasattr(tree, "lookup_adapter"):
+                    # This only builds a query, to be run when it is awaited.
+                    tree = tree.search(query)
+                else:
+                    # A container with the synchronous interface may evaluate
+                    # the query here, or block on I/O. Run it in a worker
+                    # thread so that it does not stall the event loop.
+                    tree = await anyio.to_thread.run_sync(tree.search, query)
             except QueryValueError as err:
                 raise HTTPException(
                     status_code=HTTP_400_BAD_REQUEST, detail=err.args[0]

@@ -142,3 +142,20 @@ def test_sync_container_listed_off_the_event_loop(method):
     assert len(listed) == len(tree)
     assert _ThreadRecordingMapAdapter.ran_on_event_loop  # It was called...
     assert not any(_ThreadRecordingMapAdapter.ran_on_event_loop)  # ...in a thread.
+
+
+def test_sync_container_searched_off_the_event_loop():
+    """
+    A container with the synchronous interface may evaluate a query when
+    ``search`` is called (MapAdapter walks its entries), or block on I/O.
+    The server must not do that on the event loop.
+    """
+    recording_tree = _ThreadRecordingMapAdapter(dict(tree.items()))
+    app = build_app(recording_tree)
+    with Context.from_app(app) as context:
+        client = from_context(context)
+        _ThreadRecordingMapAdapter.ran_on_event_loop.clear()
+        listed = list(client.search(Key("animal") == "dog"))
+    assert listed == ["a", "b"]
+    assert _ThreadRecordingMapAdapter.ran_on_event_loop  # It was called...
+    assert not any(_ThreadRecordingMapAdapter.ran_on_event_loop)  # ...in a thread.
