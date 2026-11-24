@@ -109,6 +109,8 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - A deep search of a container that has only the synchronous interface
   (`search_deep`) walks its descendants in a worker thread, not on the event
   loop.
+- The queries of an access policy are applied to a container that has only
+  the synchronous interface in a worker thread, not on the event loop.
 
 ### Changed
 
