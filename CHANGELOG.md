@@ -106,6 +106,9 @@ Write the date in place of the "Unreleased" in the case a new version is release
   loop.
 - Sorting a container that has only the synchronous interface (`sort`) runs
   in a worker thread, not on the event loop.
+- A deep search of a container that has only the synchronous interface
+  (`search_deep`) walks its descendants in a worker thread, not on the event
+  loop.
 
 ### Changed
 

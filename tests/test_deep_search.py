@@ -6,6 +6,7 @@ These tests are written based on discussion in issue #1368:
 https://github.com/bluesky/tiled/issues/1368#issuecomment-5284649768
 """
 
+import asyncio
 import uuid
 from pathlib import Path
 
@@ -525,3 +526,35 @@ async def test_search_deep_on_data_source_backed_node_is_a_400(tmpdir):
             client["data"].item["links"]["search_deep"], params=_SAMPLE_ID_PARAMS
         )
     assert response.status_code == 400
+
+
+class _SearchDeepRecordingMapAdapter(MapAdapter):
+    "Record whether ``search_deep`` ran on the server's event loop thread."
+
+    ran_on_event_loop = []
+
+    def search_deep(self, max_depth=None):
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            self.ran_on_event_loop.append(False)
+        else:
+            self.ran_on_event_loop.append(True)
+        return super().search_deep(max_depth=max_depth)
+
+
+def test_sync_container_search_deep_off_the_event_loop():
+    """
+    A container with the synchronous interface may walk all of its
+    descendants when ``search_deep`` is called (MapAdapter does), which can
+    block on I/O. The server must not do that on the event loop.
+    """
+    tree = _SearchDeepRecordingMapAdapter(dict(_nested_map_tree().items()))
+    record = _SearchDeepRecordingMapAdapter.ran_on_event_loop
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        record.clear()
+        results = client.search_deep(Key("sample_id") == "abc123")
+        assert len(results) == 3
+    assert record  # It was called...
+    assert not any(record)  # ...in a thread.

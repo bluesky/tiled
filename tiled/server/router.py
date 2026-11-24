@@ -545,7 +545,16 @@ def get_router(
                 detail="This Tree does not support deep search.",
             )
         try:
-            entry = entry.search_deep(max_depth=max_depth)
+            if hasattr(entry, "lookup_adapter"):
+                # This only builds a query, to be run when it is awaited.
+                entry = entry.search_deep(max_depth=max_depth)
+            else:
+                # A container with the synchronous interface may walk all of
+                # its descendants here (MapAdapter does). Run it in a worker
+                # thread so that it does not stall the event loop.
+                entry = await anyio.to_thread.run_sync(
+                    partial(entry.search_deep, max_depth=max_depth)
+                )
         except (NotImplementedError, ValueError) as err:
             raise HTTPException(status_code=HTTP_400_BAD_REQUEST, detail=str(err))
         if hasattr(entry, "map_mounts"):
