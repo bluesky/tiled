@@ -5,6 +5,16 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## Unreleased
 
+### Security
+
+- The WebSocket route `/stream/single` requires the `read:data` and
+  `read:metadata` scopes, like the HTTP routes that serve the same data. A
+  credential without them was accepted
+  _when the server had no access policy configured_.
+- The webhook URL check also refuses IPv6 addresses that stand for a blocked
+  IPv4 address (IPv4-mapped, IPv4-compatible, 6to4 and Teredo), and the
+  unspecified address `::`.
+
 ### Added
 
 - A migration script can declare `required_at_startup = False`, meaning that
@@ -79,26 +89,6 @@ Write the date in place of the "Unreleased" in the case a new version is release
   `ALTER TABLE api_keys` in the same `tiled admin downgrade-database` run
   failed; and `d88e91ea03f9` added `NOT NULL` columns without values, which
   failed on any table with rows.
-
-## v0.2.22 (2026-11-18)
-
-### Security
-
-- The WebSocket route `/stream/single` requires the `read:data` and
-  `read:metadata` scopes, like the HTTP routes that serve the same data. A
-  credential without them was accepted when the server had no access policy.
-- The webhook URL check also refuses IPv6 addresses that stand for a blocked
-  IPv4 address (IPv4-mapped, IPv4-compatible, 6to4 and Teredo), and the
-  unspecified address `::`.
-
-### Added
-
-- `streaming_cache.key_prefix`, prepended to every Redis key and pub/sub
-  channel the streaming cache uses. These are named by node ID alone, so
-  separate Tiled deployments sharing one Redis server received each other's
-  streamed data; giving each deployment its own prefix keeps them apart. Tests
-  that use Redis each get a unique prefix, which fixes intermittent failures
-  when they ran at the same time on different pytest-xdist workers.
 
 ### Changed
 
