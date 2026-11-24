@@ -214,6 +214,7 @@ COMPARISON_NOISE = {
     ("catalog", "sqlite"): {
         "add_column metadata_fts5.rowid",
         "add_index nodes.ix_nodes_metadata",
+        "add_index nodes.ix_nodes_parent_key_pattern",
         "remove_table metadata_fts5_config",
         "remove_table metadata_fts5_data",
         "remove_table metadata_fts5_docsize",
