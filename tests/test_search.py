@@ -7,7 +7,7 @@ from tiled.adapters.array import ArrayAdapter
 from tiled.adapters.mapping import MapAdapter
 from tiled.catalog import in_memory
 from tiled.client import Context, from_context
-from tiled.queries import FullText, Key
+from tiled.queries import FullText, Key, KeyLookup
 from tiled.server.app import build_app
 
 tree = MapAdapter(
@@ -106,23 +106,29 @@ class _ThreadRecordingMapAdapter(MapAdapter):
     Record whether the slicing ran on the server's event loop thread.
     """
 
-    ran_on_event_loop = []
+    ran_on_event_loop = []  # slicing keys or items
+    getitem_ran_on_event_loop = []
 
-    def _record(self):
+    @staticmethod
+    def _record(record):
         try:
             asyncio.get_running_loop()
         except RuntimeError:
-            self.ran_on_event_loop.append(False)
+            record.append(False)
         else:
-            self.ran_on_event_loop.append(True)
+            record.append(True)
 
     def _keys_slice(self, *args, **kwargs):
-        self._record()
+        self._record(self.ran_on_event_loop)
         return super()._keys_slice(*args, **kwargs)
 
     def _items_slice(self, *args, **kwargs):
-        self._record()
+        self._record(self.ran_on_event_loop)
         return super()._items_slice(*args, **kwargs)
+
+    def __getitem__(self, key):
+        self._record(self.getitem_ran_on_event_loop)
+        return super().__getitem__(key)
 
 
 @pytest.mark.parametrize("method", ["keys", "items"])
@@ -159,3 +165,21 @@ def test_sync_container_searched_off_the_event_loop():
     assert listed == ["a", "b"]
     assert _ThreadRecordingMapAdapter.ran_on_event_loop  # It was called...
     assert not any(_ThreadRecordingMapAdapter.ran_on_event_loop)  # ...in a thread.
+
+
+def test_sync_container_key_lookup_off_the_event_loop():
+    """
+    A lookup query is answered by ``tree[key]``, which may block on I/O in a
+    container with the synchronous interface.
+    """
+    recording_tree = _ThreadRecordingMapAdapter(dict(tree.items()))
+    record = _ThreadRecordingMapAdapter.getitem_ran_on_event_loop
+    app = build_app(recording_tree)
+    with Context.from_app(app) as context:
+        client = from_context(context)
+        record.clear()
+        listed = list(client.search(KeyLookup("a")))
+        assert list(client.search(KeyLookup("does-not-exist"))) == []
+    assert listed == ["a"]
+    assert record  # It was called...
+    assert not any(record)  # ...in a thread.

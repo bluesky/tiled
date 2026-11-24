@@ -97,6 +97,8 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - Queries on a container that has only the synchronous interface are applied
   (`search`) in a worker thread, not on the event loop. Such a container may
   evaluate the query at that point, as `MapAdapter` does.
+- A key lookup query on a container that has only the synchronous interface
+  reads the entry (`tree[key]`) in a worker thread, not on the event loop.
 
 ### Changed
 

@@ -269,11 +269,15 @@ async def apply_search(tree, filters, query_registry):
                     tree = MapAdapter({})
             else:
                 try:
-                    tree = MapAdapter(
-                        {key_lookup: tree[key_lookup]}, must_revalidate=False
+                    # The synchronous interface may block on I/O. Run it in a
+                    # worker thread so that it does not stall the event loop.
+                    entry = await anyio.to_thread.run_sync(
+                        operator.getitem, tree, key_lookup
                     )
                 except KeyError:
                     tree = MapAdapter({})
+                else:
+                    tree = MapAdapter({key_lookup: entry}, must_revalidate=False)
 
     return tree
 
