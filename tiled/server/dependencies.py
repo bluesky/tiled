@@ -1,3 +1,6 @@
+import operator
+
+import anyio
 import pydantic_settings
 from fastapi import HTTPException, Query, Request
 from pydantic import constr
@@ -88,7 +91,11 @@ async def get_entry(
                 # Old-style dict-like interface
                 # Traverse into sub-tree(s) to reach the desired entry
                 try:
-                    entry = entry[segment]
+                    # This synchronous interface may block on I/O. Run it in a
+                    # worker thread so that it does not stall the event loop.
+                    entry = await anyio.to_thread.run_sync(
+                        operator.getitem, entry, segment
+                    )
                 except (KeyError, TypeError):
                     raise NoEntry(path_parts)
 

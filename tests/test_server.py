@@ -9,13 +9,14 @@ from fastapi import APIRouter
 from starlette.status import (
     HTTP_200_OK,
     HTTP_403_FORBIDDEN,
+    HTTP_404_NOT_FOUND,
     HTTP_500_INTERNAL_SERVER_ERROR,
 )
 
 from tiled.adapters.array import ArrayAdapter
 from tiled.adapters.mapping import MapAdapter
 from tiled.catalog import in_memory
-from tiled.client import Context, from_uri
+from tiled.client import Context, from_context, from_uri
 from tiled.client.utils import DEFAULT_TIMEOUT_PARAMS
 from tiled.config import Authentication, Database
 from tiled.server.app import build_app, build_app_from_config
@@ -310,3 +311,40 @@ async def test_background_tasks_stop_before_database_pool_closes(monkeypatch):
 
     assert purge_tasks, "The purge task never ran."
     assert tasks_done_when_pool_closed == [True]
+
+
+class _GetitemRecordingMapAdapter(MapAdapter):
+    "Record whether ``tree[key]`` ran on the server's event loop thread."
+
+    ran_on_event_loop = []
+
+    def __getitem__(self, key):
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            self.ran_on_event_loop.append(False)
+        else:
+            self.ran_on_event_loop.append(True)
+        return super().__getitem__(key)
+
+
+def test_sync_container_path_lookup_off_the_event_loop():
+    """
+    The server walks a path through a container with the synchronous
+    interface by ``tree[segment]``, which may block on I/O (e.g. a database
+    query). It must run in a worker thread, or one slow lookup stalls every
+    other request handled by the same process.
+    """
+    tree = _GetitemRecordingMapAdapter({"a": _GetitemRecordingMapAdapter({"b": arr})})
+    record = _GetitemRecordingMapAdapter.ran_on_event_loop
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        record.clear()
+        assert client["a"]["b"].shape == (5, 5)
+        # A missing key (KeyError) and a path that runs past a node that is
+        # not a container (TypeError) are still reported as not found.
+        for path in ["a/missing", "a/b/c"]:
+            response = context.http_client.get(f"/api/v1/metadata/{path}")
+            assert response.status_code == HTTP_404_NOT_FOUND
+    assert record  # It was called...
+    assert not any(record)  # ...in a thread.
