@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 # This is list of all valid revisions (from current to oldest).
 ALL_REVISIONS = [
+    "8f2400f6ac20",
     "bfbcd5d137d0",
     "917dbbcfc4b1",
     "3e87cbeb195b",

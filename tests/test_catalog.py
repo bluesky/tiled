@@ -47,7 +47,7 @@ from tiled.client import Context, from_context
 from tiled.client.register import register
 from tiled.client.utils import ClientError
 from tiled.client.xarray import write_xarray_dataset
-from tiled.queries import AccessTagsFilter, Eq, Key
+from tiled.queries import AccessTagsFilter, Eq, Key, KeyLike
 from tiled.server.app import build_app, build_app_from_config
 from tiled.server.schemas import Asset, DataSource, Management
 from tiled.storage import SQLStorage, get_storage, parse_storage, sanitize_uri
@@ -354,6 +354,25 @@ async def test_metadata_index_is_used(example_data_adapter):
         )
         assert len(results[0]) == 1
         assert expected_index in str(e)
+    await a.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_key_prefix_index_is_used(postgresql_with_example_data_adapter):
+    # PostgreSQL only: on SQLite, no index serves key_like.
+    a = postgresql_with_example_data_adapter
+    await a.startup()
+    keys, _ = await a.keys_page(limit=20)
+    used = 0
+    for key in keys:
+        with record_explanations() as e:
+            results = await a.search(KeyLike(key[:-1], before=False)).keys_page(limit=5)
+        assert results[0] == [key]
+        used += "ix_nodes_parent_key_pattern" in str(e)
+    # The planner passes over the index for the occasional key that is a
+    # histogram bound in the table statistics (about 1 in 100 here), so
+    # require it for most keys, not for every one.
+    assert used > len(keys) / 2
     await a.shutdown()
 
 

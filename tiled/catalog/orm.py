@@ -126,6 +126,17 @@ class Node(Timestamped, Base):
         # AND id > cursor ORDER BY id) and cursor_for_offset (OFFSET N LIMIT 1
         # ORDER BY id). Serves both SQLite and PostgreSQL efficiently.
         Index("ix_nodes_parent_id", "parent", "id"),
+        # PostgreSQL-only B-tree index for key prefix lookup within a parent
+        # (WHERE parent = ? AND key LIKE 'prefix%'), such as a partial Bluesky
+        # run UID. The operator class is needed for LIKE to use the index when
+        # the database collation is not "C". On SQLite, key_like uses
+        # substr/instr, which no index serves.
+        Index(
+            "ix_nodes_parent_key_pattern",
+            "parent",
+            "key",
+            postgresql_ops={"key": "varchar_pattern_ops"},
+        ).ddl_if(dialect="postgresql"),
     )
 
 
