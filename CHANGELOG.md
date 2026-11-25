@@ -3,7 +3,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
-## 2026-11-25
+## v0.2.23 (2026-11-25)
 
 ### Security
 
