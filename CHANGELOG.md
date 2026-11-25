@@ -22,9 +22,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
   starts, with a warning, on a database that has not applied it yet (but is
   at the previous revision), so that a new version of Tiled can be deployed
   before the database is upgraded. A database two or more migrations behind
-  is refused, as before. Both catalog migrations in this release declare this.
-  Together they leave a v0.2.22 database (revision `917dbbcfc4b1`) two
-  migrations behind, so it must be upgraded before the server starts.
+  is refused, as before. The catalog migration in this release declares this.
 - `streaming_cache.key_prefix`, prepended to every Redis key and pub/sub
   channel the streaming cache uses. These are named by node ID alone, so
   separate Tiled deployments sharing one Redis server received each other's
@@ -93,19 +91,6 @@ Write the date in place of the "Unreleased" in the case a new version is release
   failed on any table with rows.
 
 ### Changed
-
-- A new catalog database migration (`8f2400f6ac20`) adds a PostgreSQL index
-  on `nodes (parent, key)` that serves `KeyLike` searches for the start of a
-  key (`before=False`), such as a partial Bluesky run UID. Run
-  `tiled catalog upgrade-database`. Building the index blocks writes to
-  `nodes`, for minutes on a large catalog. To avoid that, create the index
-  beforehand; the migration then leaves it as it is.
-  [#1676](https://github.com/bluesky/tiled/issues/1676)
-
-  ```sql
-  CREATE INDEX CONCURRENTLY ix_nodes_parent_key_pattern
-      ON nodes (parent, key varchar_pattern_ops);
-  ```
 
 - The `tiled_csrf` and `tiled_api_key` cookies carry the `Secure` attribute
   when they are set over HTTPS.

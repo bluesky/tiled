@@ -11,6 +11,8 @@ import asyncio
 import numpy
 import pytest
 from alembic.script import ScriptDirectory
+from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from tiled.adapters.array import ArrayAdapter
@@ -86,6 +88,40 @@ def test_catalog_migrations_round_trip(sqlite_or_postgres_uri, tmpdir):
         client = from_context(context)
         client.write_array(numpy.arange(3), key="x")
         assert list(client) == ["x"]
+
+
+def test_catalog_upgrade_refuses_invalid_key_pattern_index(postgres_uri):
+    "An index left invalid by a failed concurrent build is refused, not accepted."
+    uri = ensure_specified_sql_driver(postgres_uri)
+    alembic = catalog_alembic.ALEMBIC_INI_TEMPLATE_PATH, catalog_alembic.ALEMBIC_DIR
+    initialize_catalog_database(uri)
+    downgrade(*alembic, uri, "bfbcd5d137d0")
+
+    async def fail_concurrent_build():
+        engine = create_async_engine(uri, isolation_level="AUTOCOMMIT")
+        try:
+            async with engine.connect() as connection:
+                # With a second container, this unique index cannot be built.
+                await connection.execute(
+                    text(
+                        "INSERT INTO nodes (parent, key, structure_family, metadata, specs) "
+                        "VALUES (0, 'x', 'container', '{}', '[]')"
+                    )
+                )
+                with pytest.raises(IntegrityError):
+                    await connection.execute(
+                        text(
+                            "CREATE UNIQUE INDEX CONCURRENTLY ix_nodes_parent_key_pattern "
+                            "ON nodes (structure_family)"
+                        )
+                    )
+        finally:
+            await engine.dispose()
+
+    asyncio.run(fail_concurrent_build())
+    with pytest.raises(RuntimeError, match="not valid"):
+        upgrade(*alembic, uri, "8f2400f6ac20")
+    assert current_revision(uri, CATALOG_REVISIONS) == "bfbcd5d137d0"
 
 
 def test_authn_migrations_round_trip(sqlite_or_postgres_uri, enter_username_password):
