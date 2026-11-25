@@ -1,6 +1,15 @@
+import asyncio
+
+import numpy
 import pytest
 from starlette.requests import Request
 
+from tiled.access_control.access_policies import DummyAccessPolicy
+from tiled.adapters.array import ArrayAdapter
+from tiled.adapters.mapping import MapAdapter
+from tiled.client import Context, from_context
+from tiled.queries import Key
+from tiled.server.app import build_app
 from tiled.server.utils import get_current_url, get_root_url, normalize_root_path
 
 
@@ -67,3 +76,46 @@ def test_get_root_url_honors_forwarded_headers():
         },
     )
     assert get_root_url(request) == "https://example.com/tiled"
+
+
+class _SearchRecordingMapAdapter(MapAdapter):
+    "Record whether ``search`` ran on the server's event loop thread."
+
+    ran_on_event_loop = []
+
+    def search(self, query):
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            self.ran_on_event_loop.append(False)
+        else:
+            self.ran_on_event_loop.append(True)
+        return super().search(query)
+
+
+class _DogsOnlyAccessPolicy(DummyAccessPolicy):
+    async def filters(self, node, principal, authn_access_tags, authn_scopes, scopes):
+        return [Key("animal") == "dog"]
+
+
+def test_access_filters_applied_to_sync_container_off_the_event_loop():
+    """
+    The queries of an access policy are applied with ``search``. A container
+    with the synchronous interface may evaluate the query there (MapAdapter
+    walks its entries), or block on I/O. The server must not do that on the
+    event loop.
+    """
+    tree = _SearchRecordingMapAdapter(
+        {
+            "a": ArrayAdapter.from_array(numpy.arange(3), metadata={"animal": "dog"}),
+            "b": ArrayAdapter.from_array(numpy.arange(3), metadata={"animal": "cat"}),
+        }
+    )
+    record = _SearchRecordingMapAdapter.ran_on_event_loop
+    app = build_app(tree, access_policy=_DogsOnlyAccessPolicy())
+    with Context.from_app(app) as context:
+        client = from_context(context)
+        record.clear()
+        assert list(client) == ["a"]
+    assert record  # It was called...
+    assert not any(record)  # ...in a thread.

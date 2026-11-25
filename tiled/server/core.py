@@ -1,6 +1,7 @@
 import collections.abc
 import dataclasses
 import inspect
+import itertools
 import operator
 import re
 import sys
@@ -119,6 +120,36 @@ async def len_or_approx(tree, exact=False, threshold=5000):
     return await anyio.to_thread.run_sync(len, tree)
 
 
+def _keys_slice_sync(tree, offset, limit):
+    # Materialize inside the worker thread, in case the adapter's view is lazy.
+    return list(tree.keys()[offset : offset + limit])
+
+
+def _items_slice_sync(tree, offset, limit):
+    # Materialize inside the worker thread, in case the adapter's view is lazy.
+    return list(tree.items()[offset : offset + limit])
+
+
+def _inlined_children_sync(entry, limit):
+    """
+    Collect the children of a node whose contents are to be inlined.
+
+    Return a list of (key, adapter), where adapter is None for a broken link,
+    or return None if the node has more than ``limit`` children.
+    """
+    keys = list(itertools.islice(entry.keys(), limit + 1))
+    if len(keys) > limit:
+        return None
+    children = []
+    for key in keys:
+        try:
+            children.append((key, entry[key]))
+        except BrokenLink:
+            # If there are any broken links (e.g. in HDF5), just keep the key
+            children.append((key, None))
+    return children
+
+
 def pagination_links(base_url, route, path_parts, page, next_cursor, length_hint):
     path_str = "/".join(quote(part, safe="") for part in path_parts)
     if page.cursor is not None:
@@ -229,7 +260,14 @@ async def apply_search(tree, filters, query_registry):
                 if isinstance(query, KeyLookup):
                     key_lookups.append(query.key)
                     continue
-                tree = tree.search(query)
+                if hasattr(tree, "lookup_adapter"):
+                    # This only builds a query, to be run when it is awaited.
+                    tree = tree.search(query)
+                else:
+                    # A container with the synchronous interface may evaluate
+                    # the query here, or block on I/O. Run it in a worker
+                    # thread so that it does not stall the event loop.
+                    tree = await anyio.to_thread.run_sync(tree.search, query)
             except QueryValueError as err:
                 raise HTTPException(
                     status_code=HTTP_400_BAD_REQUEST, detail=err.args[0]
@@ -252,11 +290,15 @@ async def apply_search(tree, filters, query_registry):
                     tree = MapAdapter({})
             else:
                 try:
-                    tree = MapAdapter(
-                        {key_lookup: tree[key_lookup]}, must_revalidate=False
+                    # The synchronous interface may block on I/O. Run it in a
+                    # worker thread so that it does not stall the event loop.
+                    entry = await anyio.to_thread.run_sync(
+                        operator.getitem, tree, key_lookup
                     )
                 except KeyError:
                     tree = MapAdapter({})
+                else:
+                    tree = MapAdapter({key_lookup: entry}, must_revalidate=False)
 
     return tree
 
@@ -296,7 +338,14 @@ async def construct_entries_response(
                 status_code=HTTP_400_BAD_REQUEST,
                 detail="This container does not support sorting.",
             )
-        tree = tree.sort(sorting)
+        if hasattr(tree, "lookup_adapter"):
+            # This only records the sorting, to be applied by the database.
+            tree = tree.sort(sorting)
+        else:
+            # A container with the synchronous interface may sort its entries
+            # here (MapAdapter does), reading the metadata of each. Run it in
+            # a worker thread so that it does not stall the event loop.
+            tree = await anyio.to_thread.run_sync(tree.sort, sorting)
 
     count = await len_or_approx(
         tree, exact=(schemas.EntryFields.count in fields), threshold=exact_count_limit
@@ -323,7 +372,12 @@ async def construct_entries_response(
                     # Non-default sort: use offset pagination
                     keys = await tree.keys_range(page.offset, page.limit)
         else:
-            keys = tree.keys()[page.offset : page.offset + page.limit]
+            # This container has only the synchronous interface, which may
+            # block on I/O (e.g. a database query). Run it in a worker thread
+            # so that it does not stall the event loop.
+            keys = await anyio.to_thread.run_sync(
+                _keys_slice_sync, tree, page.offset, page.limit
+            )
         items = [(key, None) for key in keys]
     elif fields == [schemas.EntryFields.count]:
         # Only count is requested, so we do not need to pull any items.
@@ -342,7 +396,10 @@ async def construct_entries_response(
                     # Non-default sort: use offset pagination
                     items = await tree.items_range(page.offset, page.limit)
         else:
-            items = tree.items()[page.offset : page.offset + page.limit]
+            # As above: synchronous interface, so run it in a worker thread.
+            items = await anyio.to_thread.run_sync(
+                _items_slice_sync, tree, page.offset, page.limit
+            )
 
     # Construct pagination links
     links = pagination_links(base_url, route, path_parts, page, next_cursor, count)
@@ -602,40 +659,42 @@ async def construct_resource(
                     # Too large: do not inline its contents.
                     contents = None
                 else:
-                    contents = {}
-                    # The size may change as we are walking the entry.
-                    # Get a new *true* count.
-                    count = 0
-                    for key in entry.keys():
-                        count += 1
-                        if count > INLINED_CONTENTS_LIMIT:
-                            # The estimated count was inaccurate or else the entry has grown
-                            # new children while we are walking it. Too large!
-                            count = await len_or_approx(
-                                entry, exact=do_exact_count, threshold=exact_count_limit
-                            )
-                            contents = None
-                            break
-                        try:
-                            adapter = entry[key]
-                        except BrokenLink:
-                            # If there are any broken links (e.g. in HDF5), just keep the key
-                            contents[key] = None
-                            continue
-
-                        contents[key] = await construct_resource(
-                            base_url,
-                            path_parts + [key],
-                            adapter,
-                            fields,
-                            select_metadata,
-                            omit_links,
-                            include_data_sources,
-                            media_type,
-                            max_depth,
-                            exact_count_limit,
-                            depth=1 + depth,
+                    # Walking the entry uses its synchronous interface, which
+                    # may block on I/O. Run it in a worker thread so that it
+                    # does not stall the event loop.
+                    children = await anyio.to_thread.run_sync(
+                        _inlined_children_sync, entry, INLINED_CONTENTS_LIMIT
+                    )
+                    if children is None:
+                        # The estimated count was inaccurate or else the entry has grown
+                        # new children since it was counted. Too large!
+                        count = await len_or_approx(
+                            entry, exact=do_exact_count, threshold=exact_count_limit
                         )
+                        contents = None
+                    else:
+                        # The size may have changed since it was counted.
+                        # This is the *true* count.
+                        count = len(children)
+                        contents = {}
+                        for key, adapter in children:
+                            if adapter is None:
+                                # A broken link
+                                contents[key] = None
+                                continue
+                            contents[key] = await construct_resource(
+                                base_url,
+                                path_parts + [key],
+                                adapter,
+                                fields,
+                                select_metadata,
+                                omit_links,
+                                include_data_sources,
+                                media_type,
+                                max_depth,
+                                exact_count_limit,
+                                depth=1 + depth,
+                            )
             else:
                 contents = None
             attributes["structure"] = schemas.NodeStructure(

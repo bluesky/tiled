@@ -6,6 +6,7 @@ import types
 from collections.abc import Generator, Mapping, Sequence
 from typing import Any, Literal
 
+import anyio
 from fastapi import Request, WebSocket
 from starlette.types import Scope
 
@@ -210,5 +211,13 @@ async def filter_for_access(
                         entry, "resolve_access_tag_ids"
                     ):
                         query.tag_ids = await entry.resolve_access_tag_ids(query.tags)
-                    entry = entry.search(query)
+                    if hasattr(entry, "lookup_adapter"):
+                        # This only builds a query, to be run when it is awaited.
+                        entry = entry.search(query)
+                    else:
+                        # A container with the synchronous interface may
+                        # evaluate the query here, or block on I/O. Run it in
+                        # a worker thread so that it does not stall the event
+                        # loop.
+                        entry = await anyio.to_thread.run_sync(entry.search, query)
     return entry

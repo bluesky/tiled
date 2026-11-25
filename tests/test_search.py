@@ -1,3 +1,5 @@
+import asyncio
+
 import numpy
 import pytest
 
@@ -5,7 +7,7 @@ from tiled.adapters.array import ArrayAdapter
 from tiled.adapters.mapping import MapAdapter
 from tiled.catalog import in_memory
 from tiled.client import Context, from_context
-from tiled.queries import FullText, Key
+from tiled.queries import FullText, Key, KeyLookup
 from tiled.server.app import build_app
 
 tree = MapAdapter(
@@ -95,3 +97,111 @@ def test_compound_key_into_results():
         client = from_context(context)
         result = client.search(FullText("hot"))["i", "X", "a"]
         assert "apple" in result.metadata
+
+
+class _ThreadRecordingMapAdapter(MapAdapter):
+    """
+    A container with only the synchronous interface (no ``keys_page`` etc.).
+
+    Record whether the slicing ran on the server's event loop thread.
+    """
+
+    ran_on_event_loop = []  # slicing keys or items
+    getitem_ran_on_event_loop = []
+    sort_ran_on_event_loop = []
+
+    @staticmethod
+    def _record(record):
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            record.append(False)
+        else:
+            record.append(True)
+
+    def _keys_slice(self, *args, **kwargs):
+        self._record(self.ran_on_event_loop)
+        return super()._keys_slice(*args, **kwargs)
+
+    def _items_slice(self, *args, **kwargs):
+        self._record(self.ran_on_event_loop)
+        return super()._items_slice(*args, **kwargs)
+
+    def __getitem__(self, key):
+        self._record(self.getitem_ran_on_event_loop)
+        return super().__getitem__(key)
+
+    def sort(self, sorting):
+        self._record(self.sort_ran_on_event_loop)
+        return super().sort(sorting)
+
+
+@pytest.mark.parametrize("method", ["keys", "items"])
+def test_sync_container_listed_off_the_event_loop(method):
+    """
+    A container that has only the synchronous interface may block on I/O
+    (e.g. a database query) when listing a page of its entries. The server
+    must run that in a worker thread, or one slow request stalls every other
+    request (and the health check) handled by the same process.
+    """
+    recording_tree = _ThreadRecordingMapAdapter(dict(tree.items()))
+    app = build_app(recording_tree)
+    with Context.from_app(app) as context:
+        client = from_context(context)
+        _ThreadRecordingMapAdapter.ran_on_event_loop.clear()
+        listed = list(getattr(client, method)())
+    assert len(listed) == len(tree)
+    assert _ThreadRecordingMapAdapter.ran_on_event_loop  # It was called...
+    assert not any(_ThreadRecordingMapAdapter.ran_on_event_loop)  # ...in a thread.
+
+
+def test_sync_container_searched_off_the_event_loop():
+    """
+    A container with the synchronous interface may evaluate a query when
+    ``search`` is called (MapAdapter walks its entries), or block on I/O.
+    The server must not do that on the event loop.
+    """
+    recording_tree = _ThreadRecordingMapAdapter(dict(tree.items()))
+    app = build_app(recording_tree)
+    with Context.from_app(app) as context:
+        client = from_context(context)
+        _ThreadRecordingMapAdapter.ran_on_event_loop.clear()
+        listed = list(client.search(Key("animal") == "dog"))
+    assert listed == ["a", "b"]
+    assert _ThreadRecordingMapAdapter.ran_on_event_loop  # It was called...
+    assert not any(_ThreadRecordingMapAdapter.ran_on_event_loop)  # ...in a thread.
+
+
+def test_sync_container_key_lookup_off_the_event_loop():
+    """
+    A lookup query is answered by ``tree[key]``, which may block on I/O in a
+    container with the synchronous interface.
+    """
+    recording_tree = _ThreadRecordingMapAdapter(dict(tree.items()))
+    record = _ThreadRecordingMapAdapter.getitem_ran_on_event_loop
+    app = build_app(recording_tree)
+    with Context.from_app(app) as context:
+        client = from_context(context)
+        record.clear()
+        listed = list(client.search(KeyLookup("a")))
+        assert list(client.search(KeyLookup("does-not-exist"))) == []
+    assert listed == ["a"]
+    assert record  # It was called...
+    assert not any(record)  # ...in a thread.
+
+
+def test_sync_container_sorted_off_the_event_loop():
+    """
+    A container with the synchronous interface may sort its entries when
+    ``sort`` is called (MapAdapter does, reading the metadata of each).
+    """
+    recording_tree = _ThreadRecordingMapAdapter(dict(tree.items()))
+    record = _ThreadRecordingMapAdapter.sort_ran_on_event_loop
+    app = build_app(recording_tree)
+    with Context.from_app(app) as context:
+        client = from_context(context)
+        record.clear()
+        listed = list(client.sort(("animal", 1)))
+    assert listed == ["c", "a", "b"]  # cat, dog, dog
+    assert record  # It was called...
+    assert not any(record)  # ...in a thread.

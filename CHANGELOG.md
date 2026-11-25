@@ -89,6 +89,31 @@ Write the date in place of the "Unreleased" in the case a new version is release
   `ALTER TABLE api_keys` in the same `tiled admin downgrade-database` run
   failed; and `d88e91ea03f9` added `NOT NULL` columns without values, which
   failed on any table with rows.
+- Listing a page of entries from a container that has only the synchronous
+  interface (no `keys_page` or `items_page`), such as a custom adapter backed
+  by a database, runs in a worker thread. It ran on the event loop, so one
+  slow search blocked every other request handled by the same server process,
+  and its health check.
+- Queries on a container that has only the synchronous interface are applied
+  (`search`) in a worker thread, not on the event loop. Such a container may
+  evaluate the query at that point, as `MapAdapter` does.
+- A key lookup query on a container that has only the synchronous interface
+  reads the entry (`tree[key]`) in a worker thread, not on the event loop.
+- The server walks a path through a container that has only the synchronous
+  interface (`tree[segment]`) in a worker thread, not on the event loop.
+- A node whose contents are inlined in its description (such as an xarray
+  dataset or an HDF5 group) is walked in a worker thread, not on the event
+  loop.
+- Sorting a container that has only the synchronous interface (`sort`) runs
+  in a worker thread, not on the event loop.
+- A deep search of a container that has only the synchronous interface
+  (`search_deep`) walks its descendants in a worker thread, not on the event
+  loop.
+- The queries of an access policy are applied to a container that has only
+  the synchronous interface in a worker thread, not on the event loop.
+- In a deep search, a mounted subtree that has only the synchronous interface
+  is read (its length, keys and items) in a worker thread, not on the event
+  loop.
 
 ### Changed
 
