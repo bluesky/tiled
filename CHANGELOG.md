@@ -3,6 +3,26 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- A new catalog database migration (`8f2400f6ac20`) adds a PostgreSQL index
+  on `nodes (parent, key)` that serves `KeyLike` searches for the start of a
+  key (`before=False`), such as a partial Bluesky run UID. Run
+  `tiled catalog upgrade-database`; the server starts, with a warning, on a
+  v0.2.23 database (revision `bfbcd5d137d0`), so this can follow the
+  deployment. Building the index blocks writes to `nodes`, for minutes on a
+  large catalog. To avoid that, create the index beforehand; the migration
+  then leaves it as it is. If that build fails or is cancelled, it leaves an
+  invalid index, which the migration refuses: drop it and build it again.
+  [#1676](https://github.com/bluesky/tiled/issues/1676)
+
+  ```sql
+  CREATE INDEX CONCURRENTLY ix_nodes_parent_key_pattern
+      ON nodes (parent, key varchar_pattern_ops);
+  ```
+
 ## 2026-11-25
 
 ### Security
