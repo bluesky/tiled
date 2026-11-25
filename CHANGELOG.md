@@ -3,7 +3,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
-## Unreleased
+## 2026-11-25
 
 ### Security
 
@@ -89,19 +89,6 @@ Write the date in place of the "Unreleased" in the case a new version is release
   `ALTER TABLE api_keys` in the same `tiled admin downgrade-database` run
   failed; and `d88e91ea03f9` added `NOT NULL` columns without values, which
   failed on any table with rows.
-
-### Changed
-
-- The `tiled_csrf` and `tiled_api_key` cookies carry the `Secure` attribute
-  when they are set over HTTPS.
-- `GET /array/full` and `GET /array/block` compare the size of the requested
-  data, known from the structure, with `response_bytesize_limit` before any
-  data is read. A slice out of range for the array responds with HTTP 400.
-- A zip archive uploaded to `PUT /awkward/full` has its member names checked
-  against the form before any member is decompressed.
-
-### Fixed
-
 - Creating a node responds with HTTP 409 only when its key exists. Every
   integrity error of the catalog database, such as a violated foreign key,
   was reported as a key collision.
@@ -130,6 +117,16 @@ Write the date in place of the "Unreleased" in the case a new version is release
   HTTP 406.
 - Exporting a container to HDF5 writes each column of a table it holds as its
   own dataset, string columns included. Every column held the whole table.
+
+### Changed
+
+- The `tiled_csrf` and `tiled_api_key` cookies carry the `Secure` attribute
+  when they are set over HTTPS.
+- `GET /array/full` and `GET /array/block` compare the size of the requested
+  data, known from the structure, with `response_bytesize_limit` before any
+  data is read. A slice out of range for the array responds with HTTP 400.
+- A zip archive uploaded to `PUT /awkward/full` has its member names checked
+  against the form before any member is decompressed.
 
 ## v0.2.22 (2026-11-18)
 
