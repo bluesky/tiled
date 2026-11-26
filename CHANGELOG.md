@@ -130,6 +130,15 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## v0.2.22 (2026-11-18)
 
+### Added
+
+- A benchmark suite (`benchmarks/`, pytest-benchmark) timing common
+  operations against a PostgreSQL-backed server. It runs in CI on every push
+  to `main` and nightly, and the history is plotted at
+  <https://bluesky.github.io/tiled/dev/bench/>; on pull requests the results
+  are compared with `main` in the job summary. It replaces the unmaintained
+  asv configuration.
+  
 ### Security
 
 This release addresses security issues identified by a frontier AI model. One

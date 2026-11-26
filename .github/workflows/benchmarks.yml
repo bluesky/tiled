@@ -1,0 +1,121 @@
+name: Benchmarks
+
+# Runs the benchmark suite (benchmarks/) and publishes the results.
+#
+# - On push to main, nightly, and on manual dispatch: the results are
+#   appended to the history on the gh-pages branch and shown at
+#   https://bluesky.github.io/tiled/dev/bench/. A regression beyond
+#   `alert-threshold` against the previous point gets a commit comment.
+# - On pull requests: the results are compared with the latest point on main
+#   and reported in the job summary, for information only. GitHub-hosted
+#   runners vary by 10-20% between runs, so only large changes are meaningful.
+#
+# The run itself is one job; the publishing and the comparison are separate
+# jobs, so that the write permission to the repository is held only where it
+# is needed (and never while running code from a pull request).
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  schedule:
+    - cron: "0 5 * * *"
+  workflow_dispatch:
+
+env:
+  PYTHON_VERSION: "3.13"
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    name: Run benchmarks
+    # Switch to a self-hosted runner for stable timings.
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v7
+      with:
+        fetch-depth: 0  # get full history for `git describe` to produce version
+
+    - name: Install uv and set the python version
+      uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e  # v10.3.2
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: Install tiled
+      run: uv sync --all-extras
+
+    - name: Start PostgreSQL service in container.
+      shell: bash -l {0}
+      run: source continuous_integration/scripts/start_postgres.sh
+
+    - name: Run benchmarks
+      shell: bash -l {0}
+      run: |
+        set -vxeuo pipefail
+        uv run pytest -c benchmarks/pytest.ini --benchmark-json=benchmark.json
+        uv run python benchmarks/to_dashboard.py benchmark.json > dashboard.json
+      env:
+        TILED_TEST_POSTGRESQL_URI: postgresql://postgres:secret@localhost:5432
+        TILED_BUILD_SKIP_UI: 1
+
+    - name: Upload results
+      uses: actions/upload-artifact@v4
+      with:
+        name: benchmark-results
+        path: |
+          benchmark.json
+          dashboard.json
+
+  publish:
+    name: Publish to the dashboard
+    needs: run
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+    - uses: actions/checkout@v7
+    - uses: actions/download-artifact@v4
+      with:
+        name: benchmark-results
+    - name: Append the results to the history and push
+      uses: benchmark-action/github-action-benchmark@v1
+      with:
+        name: Tiled benchmarks
+        tool: customSmallerIsBetter
+        output-file-path: dashboard.json
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        auto-push: true
+        alert-threshold: "150%"
+        comment-on-alert: true
+        fail-on-alert: false
+
+  compare:
+    name: Compare with main
+    needs: run
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v7
+    - uses: actions/download-artifact@v4
+      with:
+        name: benchmark-results
+    - name: Compare with the latest results on main
+      # Informational: the comparison needs the history on gh-pages, which
+      # does not exist until the first run on main.
+      continue-on-error: true
+      uses: benchmark-action/github-action-benchmark@v1
+      with:
+        name: Tiled benchmarks
+        tool: customSmallerIsBetter
+        output-file-path: dashboard.json
+        # Read the history from gh-pages, but do not write to it.
+        save-data-file: false
+        auto-push: false
+        summary-always: true
+        alert-threshold: "150%"
+        fail-on-alert: false
