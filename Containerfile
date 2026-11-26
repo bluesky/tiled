@@ -7,7 +7,7 @@ FROM ghcr.io/astral-sh/uv:${UV_VERSION} AS uv_bin
 
 # The built UI is static files, the same on every platform, so build it on the
 # builder's own platform rather than under emulation for each target platform.
-FROM --platform=$BUILDPLATFORM docker.io/node:26.13.0-alpine AS web_frontend_build
+FROM --platform=$BUILDPLATFORM docker.io/node:26.13.1-alpine AS web_frontend_build
 WORKDIR /src
 # Install deps from the lockfile alone so editing UI source does not re-run npm.
 COPY web-frontend/package.json web-frontend/package-lock.json ./
