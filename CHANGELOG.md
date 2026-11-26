@@ -1110,6 +1110,13 @@ wherever it is used.
   after use.
 
 
+## Unreleased
+
+### Added
+
+- A script to test data writing workflows with locust
+
+
 ## v0.1.4 (2025-09-24)
 
 ### Fixed
