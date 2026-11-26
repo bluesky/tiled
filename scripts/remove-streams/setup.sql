@@ -1,0 +1,2 @@
+CREATE DATABASE catalog;
+CREATE DATABASE storage;
