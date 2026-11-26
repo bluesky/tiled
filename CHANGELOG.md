@@ -71,6 +71,10 @@ Write the date in place of the "Unreleased" in the case a new version is release
   so the table read back empty.
 - A table in SQL storage created with a `primary_key` but without
   `order_by_args` raised `UnboundLocalError` on every access.
+- SQLite reads no longer fail when a float column starts with 1024 or more
+  NULLs. NaN is stored as NULL, and the ADBC driver was inferring INT64 from
+  that first batch, then rejecting a later REAL for the whole table. The read
+  widens that inference batch only far enough to include the first stored float.
 - Reading a subset of a table's columns from SQL storage returns them in the
   requested order (previously in an arbitrary order), and an unknown column is
   refused with HTTP 400 (previously dropped without notice).
