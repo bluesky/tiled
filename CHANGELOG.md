@@ -30,6 +30,11 @@ Write the date in place of the "Unreleased" in the case a new version is release
   that use Redis each get a unique prefix, which fixes intermittent failures
   when they ran at the same time on different pytest-xdist workers.
 
+### Added
+
+- Configured recycle and added explicit pre-ping option (disabled by default) for
+  storage databases.
+
 ### Fixed
 
 - The OAuth authorization redirect no longer requests the `offline_access`
